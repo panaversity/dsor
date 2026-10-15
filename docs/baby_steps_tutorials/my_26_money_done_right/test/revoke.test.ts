@@ -1,4 +1,4 @@
-// NEW IN STEP 25: tearing up a permission slip (decision 142).
+// STEP 25: tearing up a permission slip (decision 142).
 //
 // Rule DSOR-DEL-04a: a delegation MUST be revocable by its delegator and by a tenant administrator.
 // Rule DSOR-DEL-04c: on revocation or expiry, every proposal created under the delegation that is
@@ -30,7 +30,7 @@ import { callOperation, makeDoor } from "./support/door.ts";
 const SUPERVISOR = { loggedInAs: "user_123" };
 
 /**
- * NEW IN STEP 25, decision 157: the last decision in org_456's log. A command that gets past §21.8
+ * STEP 25, decision 157: the last decision in org_456's log. A command that gets past §21.8
  * leaves the records of its proposal's moves after its decision, so the log's last record is not it.
  */
 const lastDecision = async (): Promise<AuditRecord | undefined> =>
@@ -280,7 +280,7 @@ describe("what was waiting under the slip", () => {
   });
 
   it("DSOR-DEL-04c: each proposal a revocation cancels has a record of its move, in the name of the person who revoked", async () => {
-    // NEW IN STEP 25, decision 157: a move to CANCELLED is a move like any other, so it has its
+    // STEP 25, decision 157: a move to CANCELLED is a move like any other, so it has its
     // record in the log, written by the statement that revokes the slip and makes the move.
     const waiting = await underDel100(["PROPOSED", "PENDING_APPROVAL"]);
     const approved = await underDel100(["PROPOSED", "PENDING_APPROVAL", "APPROVED"]);
@@ -324,7 +324,7 @@ describe("what was waiting under the slip", () => {
   });
 
   /**
-   * NEW IN STEP 25, decision 157: the store, running `meanwhile` just after each of the first
+   * STEP 25, decision 157: the store, running `meanwhile` just after each of the first
    * `times` reads of what waits under del_100, as approvals one day will, and counting every read.
    */
   function afterEachRead(
@@ -363,12 +363,12 @@ describe("what was waiting under the slip", () => {
     return { reads: () => reads };
   }
 
-  /** NEW IN STEP 25, decision 157: a new proposal starts waiting under del_100 after each read. */
+  /** STEP 25, decision 157: a new proposal starts waiting under del_100 after each read. */
   const newWorkAfterEachRead = (times: number): { readonly reads: () => number } =>
     afterEachRead(times, () => underDel100(["PROPOSED", "PENDING_APPROVAL"]));
 
   it("DSOR-DEL-04c: a proposal that starts waiting while the slip is revoked is cancelled too, with its record", async () => {
-    // NEW IN STEP 25, decision 157: the revocation reads what waits, to write each cancellation's
+    // STEP 25, decision 157: the revocation reads what waits, to write each cancellation's
     // record, and then writes. A proposal that starts waiting in between is not in what it read: it
     // revokes only if what waits is still what it read, and otherwise reads again.
     await underDel100(["PROPOSED", "PENDING_APPROVAL"]);
@@ -409,7 +409,7 @@ describe("what was waiting under the slip", () => {
   });
 
   it("DSOR-DEL-04c: a proposal that stops waiting while the slip is revoked is left as it went, and the rest are cancelled", async () => {
-    // NEW IN STEP 25, decision 157, found by a review: the other half of "still what was read". A
+    // STEP 25, decision 157, found by a review: the other half of "still what was read". A
     // proposal that left PENDING_APPROVAL after the read is in what was read and no longer waits:
     // its move to CANCELLED would be its second move out of PENDING_APPROVAL, which the database
     // refuses, and the revocation would fail whole. So it reads again.
@@ -444,7 +444,7 @@ describe("what was waiting under the slip", () => {
   });
 
   it("DSOR-DEL-04c: a slip that has ended is told so at once, even while what waits under it changes", async () => {
-    // NEW IN STEP 25, decision 157, found by a review: "it had ended" was read off "what waits is
+    // STEP 25, decision 157, found by a review: "it had ended" was read off "what waits is
     // the same", so a slip that had ended while new work kept arriving was read five times, and
     // answered "it kept changing". Called directly: through the door, §21.9 refuses first.
     await revokeSlip("org_456", "del_100", "user_123", "the first", {
@@ -471,7 +471,7 @@ describe("what was waiting under the slip", () => {
   });
 
   it("DSOR-DEL-04c: a revocation that keeps finding new work waiting revokes nothing, and answers CONFLICT", async () => {
-    // NEW IN STEP 25, decision 157: it reads again at most five times. Every time, something new
+    // STEP 25, decision 157: it reads again at most five times. Every time, something new
     // waits; so it gives up, and nothing is changed: not the slip, and nothing under it.
     await underDel100(["PROPOSED", "PENDING_APPROVAL"]);
 
@@ -557,7 +557,7 @@ describe("what was waiting under the slip", () => {
   });
 
   it("DSOR-DEL-04a: a revocation whose reply is lost after it committed is found by its records: its signer is told the slip is revoked, and what it cancelled gives its amount back to the day", async () => {
-    // NEW IN STEP 25, decision 157, found by a review: the statement that revokes commits, and its
+    // STEP 25, decision 157, found by a review: the statement that revokes commits, and its
     // reply is lost. The records of its cancels are looked for and found, so it happened, and
     // `revokeSlip` says so when `rows` is undefined. With that half of its condition deleted, every
     // test stayed green, and the revocation answered AUTHORIZATION_DENIED, its own proposal was
@@ -709,7 +709,7 @@ describe("what the application may do to a slip", () => {
   });
 });
 
-// NEW IN STEP 25, decision 143: who may revoke is decided at §21.9, before the decision is recorded.
+// STEP 25, decision 143: who may revoke is decided at §21.9, before the decision is recorded.
 
 describe("§21.9: the target's own rules, decided and recorded", () => {
   it("DSOR-DEL-04a: user_123, who may revoke slips, may not revoke one cfo_100 signed, and the log says DENY", async () => {
@@ -868,7 +868,7 @@ describe("§21.9: the target's own rules, decided and recorded", () => {
               const done = await stage.run(context);
 
               // user_123's other revocation lands here, after this one's decision and before its
-              // handler, as two sent at once can. NEW IN STEP 25, decision 157: in a request of its
+              // handler, as two sent at once can. STEP 25, decision 157: in a request of its
               // own, as the records of what it cancels say.
               await revokeSlip("org_456", "del_100", "user_123", "the first of two", {
                 subject: "user_123",

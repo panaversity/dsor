@@ -265,7 +265,7 @@ const TENANT_TABLES: ReadonlyArray<readonly [table: string, column: string]> = O
   // STEP 24: the day totals and the reservations against them (decision 140).
   ["dsor.day_totals", "tenant"],
   ["dsor.reservations", "tenant"],
-  // NEW IN STEP 25: the emergency brake (decision 142).
+  // STEP 25: the emergency brake (decision 142).
   ["dsor.agent_controls", "tenant"],
 ]);
 
@@ -519,15 +519,15 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
                    -- STEP 24: and the reservations', which keep a settled one (decision 140).
                    WHEN rel = to_regclass('dsor.reservations')
                    THEN '(state = ''held''::text)'
-                   -- NEW IN STEP 25: and the brake's, which keeps a lift final (decision 142).
+                   -- STEP 25: and the brake's, which keeps a lift final (decision 142).
                    WHEN rel = to_regclass('dsor.agent_controls')
                    THEN '(lifted_at IS NULL)'
-                   -- NEW IN STEP 25: and the slips', which lets an active slip become revoked
+                   -- STEP 25: and the slips', which lets an active slip become revoked
                    -- and nothing else. Decision 156: or a suspended one, in the words PostgreSQL
                    -- writes an IN list back in, measured.
                    WHEN rel = to_regclass('dsor.delegations')
                    THEN '(status = ANY (ARRAY[''active''::text, ''suspended''::text]))' END,
-              -- NEW IN STEP 25: what the second policy lets a row become: anything, the program's
+              -- STEP 25: what the second policy lets a row become: anything, the program's
               -- to say, except for a slip, which only becomes revoked.
               -- Decision 143: and with who revoked it. Decision 156: and when and why, as
               -- PostgreSQL writes it back, measured.
@@ -781,7 +781,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
   }
 
   // STEP 18: the permission slips. The application reads them and writes none: a slip it
-  // could write is a slip it could sign for itself (decision 127). NEW IN STEP 25: none but its
+  // could write is a slip it could sign for itself (decision 127). STEP 25: none but its
   // status and who revoked it, when and why, which is how a slip is torn up; that it can only become
   // revoked is the slips' second policy's to keep, and the lock check above asks for it (decision
   // 142).
@@ -874,7 +874,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     );
   }
 
-  // NEW IN STEP 25: the brake. The application pulls it and releases it, and nothing else: a brake
+  // STEP 25: the brake. The application pulls it and releases it, and nothing else: a brake
   // it could delete is one it could release with no lift on the record, one whose target or reason
   // it could rewrite is a different brake, and one it could write already lifted is a lift nobody
   // gave (decision 142). A lift rewritten or undone is the second policy's to refuse.

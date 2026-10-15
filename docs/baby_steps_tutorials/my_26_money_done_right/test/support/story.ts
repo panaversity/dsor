@@ -25,7 +25,7 @@ export function storyStatements(): readonly string[] {
 
   return [
     // STEP 22: the proposals and their moves, moves first because they point at them.
-    // NEW IN STEP 25: and the brakes, so each test starts with none on.
+    // STEP 25: and the brakes, so each test starts with none on.
     "DELETE FROM dsor.agent_controls WHERE tenant IN ('org_456', 'org_789')",
     "DELETE FROM dsor.proposal_moves WHERE tenant IN ('org_456', 'org_789')",
     // STEP 24: and the reservations and the day totals, which point at proposals and slips.
@@ -43,7 +43,7 @@ export function storyStatements(): readonly string[] {
     rowsFrom("017_del_100_may_be_used_unattended.sql"),
     // STEP 24: and its daily limit.
     rowsFrom("023_del_100_has_a_daily_limit.sql"),
-    // NEW IN STEP 25: and org_789's slip, of the same number.
+    // STEP 25: and org_789's slip, of the same number.
     rowsFrom("026_org_789_has_a_slip_too.sql"),
     // So a test that makes a payment knows it is PAY-902, whatever ran before it.
     "ALTER SEQUENCE public.payment_numbers RESTART WITH 902",

@@ -88,7 +88,7 @@ export const ROWS_OF = `SELECT 'invoice' AS entity, id, vendor, NULL::text AS in
                         SELECT 'payment', id, vendor, invoice, amount_value::text, amount_currency, status,
                                version
                           FROM public.payments WHERE tenant_id = $1
-                        -- NEW IN STEP 25: the story's agent, stopped or working, and the company,
+                        -- STEP 25: the story's agent, stopped or working, and the company,
                         -- frozen or working: what a careless control.suspend could change.
                         UNION ALL
                         SELECT 'agent', 'accounts-payable-fte', NULL, NULL, NULL, NULL,
@@ -98,7 +98,7 @@ export const ROWS_OF = `SELECT 'invoice' AS entity, id, vendor, NULL::text AS in
                                     THEN 'stopped' ELSE 'working' END,
                                NULL
                         UNION ALL
-                        -- NEW IN STEP 25: and the slips, which a careless delegation.revoke could
+                        -- STEP 25: and the slips, which a careless delegation.revoke could
                         -- tear up.
                         SELECT 'delegation', id, NULL, NULL, NULL, NULL, status, NULL
                           FROM dsor.delegations WHERE tenant = $1

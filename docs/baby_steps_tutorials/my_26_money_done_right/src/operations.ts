@@ -77,7 +77,7 @@ import { audit, type DecisionToRecord, OutcomeUnknown } from "./audit.ts";
 import { type Claim, claimKey, KEY, settleKey, TakenButUnread } from "./idempotency.ts";
 // STEP 24: the day's total, booked at §21.10 and settled by the door (decision 140).
 import { reserve, settleReservation, usedToday } from "./reservation.ts";
-// NEW IN STEP 25: the brake, asked at §21.4 and again as a proposal moves to EXECUTING.
+// STEP 25: the brake, asked at §21.4 and again as a proposal moves to EXECUTING.
 import { liftTheBrake, pullTheBrake, whatStops } from "./controls.ts";
 import { findPerson } from "./people.ts";
 import { money } from "./money.ts";
@@ -223,7 +223,7 @@ function idFrom(
   askedBy: string,
   tenant: string,
   requestId: string,
-  // NEW IN STEP 25: the argument the address is in, when it is not named after its entity.
+  // STEP 25: the argument the address is in, when it is not named after its entity.
   // delegation.revoke's is `target`: an argument named `delegation` is refused at §21.6, so no
   // request can name the slip it runs under (decision 142).
   argument: string = entity,
@@ -285,7 +285,7 @@ function idFrom(
 }
 
 /**
- * NEW IN STEP 25: what a brake is pulled on: one agent of this company, or the company itself for
+ * STEP 25: what a brake is pulled on: one agent of this company, or the company itself for
  * every agent in it (decision 142). An agent is a principal this program knows, of the kind agent,
  * working for this company; a person is never a brake's target.
  */
@@ -353,7 +353,7 @@ function brakeTargetFrom(
 }
 
 /**
- * NEW IN STEP 25: whether a principal may release a brake: a person, never an agent, whatever its
+ * STEP 25: whether a principal may release a brake: a person, never an agent, whatever its
  * slip grants (DSOR-OPS-01d, decision 142). Asked at §21.9, before the decision is recorded
  * (decision 143).
  */
@@ -574,7 +574,7 @@ const handlers: Readonly<Record<string, Handler>> = {
     };
   },
 
-  // NEW IN STEP 25: the emergency brake, pulled or released by a person (DSOR-OPS-01a, decision
+  // STEP 25: the emergency brake, pulled or released by a person (DSOR-OPS-01a, decision
   // 142). Pulling needs control:suspend, which authorize asked; releasing needs it too, and a person:
   // an agent whose slip one day grants control:suspend may set the brake, never release it
   // (DSOR-OPS-01d).
@@ -652,7 +652,7 @@ const handlers: Readonly<Record<string, Handler>> = {
     };
   },
 
-  // NEW IN STEP 25: tearing up a slip (DSOR-DEL-04a, decision 142). Its signer may; a tenant
+  // STEP 25: tearing up a slip (DSOR-DEL-04a, decision 142). Its signer may; a tenant
   // administrator, who could revoke anyone's, is nobody in this story's cast, and waits for the
   // identity provider, step 43. In one statement, what was waiting under the slip is cancelled
   // (DSOR-DEL-04c); then those proposals' reservations are given back to the day.
@@ -681,14 +681,14 @@ const handlers: Readonly<Record<string, Handler>> = {
     // Who may, and whether the slip can still be revoked, were decided at §21.9 and recorded
     // (decision 143). The slip can still have ended since: the signer's other revocation, sent at
     // the same time, may land first. The statement sees it, and the caller is told CONFLICT below.
-    // NEW IN STEP 25, decision 157: and the records of the moves to CANCELLED are in this
+    // STEP 25, decision 157: and the records of the moves to CANCELLED are in this
     // request's name, the signer's own: `direct`, never an agent's, since only a person may revoke.
     const revoked = await revokeSlip(tenant, read.id, askedBy, reason, {
       subject: askedBy,
       requestId,
     });
 
-    // NEW IN STEP 25, decision 157: what waits under the slip changed each time it was read, so
+    // STEP 25, decision 157: what waits under the slip changed each time it was read, so
     // nothing was revoked. Asking again is for a person to decide, once they have looked.
     if (revoked.kind === "changed") {
       return refused(
@@ -1212,7 +1212,7 @@ const resolveTheOperation: Stage["run"] = (context) => {
 };
 
 /**
- * NEW IN STEP 25: §21.4 — is a brake on? (DSOR-OPS-01a, decision 142).
+ * STEP 25: §21.4 — is a brake on? (DSOR-OPS-01a, decision 142).
  *
  * For a command from an agent: a suspension of that agent in this company, or a freeze of every
  * agent in it, refuses it `AGENT_SUSPENDED`, retry `never`, because only a person lifts it. A
@@ -1836,7 +1836,7 @@ const createTheProposal: Stage["run"] = async (context) => {
 };
 
 /**
- * NEW IN STEP 25, decision 143: §21.9, in part — check the target.
+ * STEP 25, decision 143: §21.9, in part — check the target.
  *
  * Who may act on what a command names, and the state it must be in, decided before §21.11 records
  * the decision, so a refusal is recorded as the DENY it is. They were in the handlers, after an ALLOW
@@ -2385,7 +2385,7 @@ export const PIPELINE: readonly Stage[] = Object.freeze([
   stage(null, "resolve the operation", "both", resolveTheOperation),
   // STEP 18. §21.3: whose slip an agent's command runs under, and what it may do there.
   stage(3, "resolve the delegation", "both", resolveTheDelegation),
-  // NEW IN STEP 25. §21.4: a brake on the agent stops its commands (decision 142).
+  // STEP 25. §21.4: a brake on the agent stops its commands (decision 142).
   stage(4, "check the operational status", "both", checkTheOperationalStatus),
   stage(5, "authorize", "both", authorize),
   stage(6, "validate the input", "both", validateTheInput),
@@ -2393,7 +2393,7 @@ export const PIPELINE: readonly Stage[] = Object.freeze([
   stage(7, "claim the idempotency key", "command", claimTheKey),
   // STEP 22. §21.8: the command becomes a proposal, with a state (decision 136).
   stage(8, "create the proposal", "command", createTheProposal),
-  // NEW IN STEP 25. Part of §21.9: who may act on the target, and the state it is in (decision 143).
+  // STEP 25. Part of §21.9: who may act on the target, and the state it is in (decision 143).
   stage(9, "check the target", "command", checkTheTarget),
   // STEP 18. Part of §21.10: the slip's limit on one payment, from the validated amount.
   stage(10, "check the slip's limit", "command", checkTheSlipsLimit),
@@ -2572,7 +2572,7 @@ async function recordTheRead(
  * TRANSACTION_FAILED left its proposal FAILED, a review measured; any code not here is
  * OUTCOME_UNKNOWN, because the door cannot tell what happened.
  *
- * NEW IN STEP 25, decision 156: AUTHORIZATION_DENIED too. delegation.revoke answers it when its
+ * STEP 25, decision 156: AUTHORIZATION_DENIED too. delegation.revoke answers it when its
  * one statement, which names the signer, matched no slip: nothing was written. Without it, a door
  * that lost §21.9 told the caller OUTCOME_UNKNOWN about a revocation that never happened.
  */
@@ -3040,7 +3040,7 @@ export function makeDoor(
         }
       }
 
-      // NEW IN STEP 25: a brake pulled after §21.4 asked, seen in the statement that would have moved
+      // STEP 25: a brake pulled after §21.4 asked, seen in the statement that would have moved
       // the proposal to EXECUTING: nothing was written, the proposal is still PROPOSED and is DENIED,
       // and the handler never runs (DSOR-OPS-01c, decision 142).
       if (started.kind === "stopped") {

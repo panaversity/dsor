@@ -509,7 +509,7 @@ function aPauseAfter(placesLost: number): Promise<void> {
  * undefined when the reply was lost and the first record was found written: the statement
  * committed, and its rows never arrived.
  *
- * NEW IN STEP 25, decision 157, found by a review: sealed is not written. A record that waits on a
+ * STEP 25, decision 157, found by a review: sealed is not written. A record that waits on a
  * condition (`recordInsertIf`) is written only if the condition holds, and the statement succeeds
  * either way: a brake that stops an agent's moves writes neither the moves nor their records, and a
  * revocation that revokes nothing writes no record of a cancel. Only the rows say which happened:
@@ -672,7 +672,7 @@ export async function recordTogether<Row>(
       // pooler reports a server connection it lost as 08P01.
       //
       // A statement that writes no record has nothing to look for, and its failure goes on as it
-      // came. NEW IN STEP 25, decision 157: a revocation of a slip with nothing waiting under it is
+      // came. STEP 25, decision 157: a revocation of a slip with nothing waiting under it is
       // one, and its failure reaches the handler as a throw, as it did before this decision.
       const first = records[0];
 
@@ -1060,7 +1060,7 @@ export function theRecordsAlone(records: readonly AuditRecord[]): StatementToSen
  * (proposal.ts), and this is the record's part of it. One INSERT per record, and not one VALUES list
  * for all of them, so that a step that writes a record only on a condition can say so for each.
  *
- * NEW IN STEP 25, decision 157: and this step does: a record is written only if `condition` holds,
+ * STEP 25, decision 157: and this step does: a record is written only if `condition` holds,
  * `INSERT ... SELECT $1, ... WHERE condition`. A brake can stop a proposal's moves inside their
  * statement, and a revocation can find the slip ended; a record written all the same would say a move
  * happened that did not. Each value still takes its column's type: a SELECT over a VALUES list would

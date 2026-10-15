@@ -46,12 +46,12 @@ export const ROLES: Readonly<Record<string, readonly string[]>> = Object.freeze(
     "invoice:issue",
     "payment:create",
     "payment:cancel",
-    // NEW IN STEP 25: the supervisor may pull the emergency brake on the agent, and release it,
+    // STEP 25: the supervisor may pull the emergency brake on the agent, and release it,
     // and revoke a slip they signed (decision 142).
     "control:suspend",
     "delegation:revoke",
   ]),
-  // NEW IN STEP 25: and so may the CFO. Either person can stop the agents at 3 a.m., and revoke a
+  // STEP 25: and so may the CFO. Either person can stop the agents at 3 a.m., and revoke a
   // slip they signed. Decision 156: the CFO could not revoke one. §21.5 refused her for want of
   // delegation:revoke before §21.9 asked who signed it, so a slip she signed was nobody's to revoke.
   approver: Object.freeze([

@@ -21,7 +21,7 @@ function handlersForBoth() {
   const stub = () =>
     ({ kind: "error", askedBy: "user_123", envelope: refusal("CONFLICT", "x") }) as const;
 
-  // STEP 17: and the two payment operations. NEW IN STEP 25: and the brake.
+  // STEP 17: and the two payment operations. STEP 25: and the brake.
   return {
     "control.suspend": stub,
     "delegation.revoke": stub,
@@ -68,7 +68,7 @@ describe("callOperation", () => {
     // imports getInvoice behind the registry's back: there is no door to close until
     // step 42. It does prove the two lists cannot drift apart.
     expect(operationIds().sort()).toEqual([
-      "control.suspend", // NEW IN STEP 25
+      "control.suspend", // STEP 25
       "delegation.revoke",
       "invoice.get",
       "invoice.issue",
@@ -164,7 +164,7 @@ describe("callOperation", () => {
   it("DSOR-OPR-01: on load, every contract is accounted for", async () => {
     const ids = operationIds();
 
-    // STEP 13: three. STEP 17: five, with the payments. NEW IN STEP 25: seven, with the brake
+    // STEP 13: three. STEP 17: five, with the payments. STEP 25: seven, with the brake
     // and the slip torn up.
     expect(ids).toEqual([
       "control.suspend",

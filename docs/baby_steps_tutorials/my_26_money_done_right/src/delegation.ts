@@ -16,7 +16,7 @@
 
 import { money, type Money } from "./money.ts";
 import { theDatabase } from "./store.ts";
-// NEW IN STEP 25, decision 157: a revocation's moves to CANCELLED have their records too.
+// STEP 25, decision 157: a revocation's moves to CANCELLED have their records too.
 import { recordInsertIf, recordTogether } from "./audit.ts";
 import { type Asked, type ProposalState, transition } from "./proposal.ts";
 
@@ -210,7 +210,7 @@ export function effectiveAuthority(
   );
 }
 
-/** NEW IN STEP 25: one slip by its id, whatever its status: who signed it, and where it stands. */
+/** STEP 25: one slip by its id, whatever its status: who signed it, and where it stands. */
 export async function slipNamed(
   tenant: string,
   id: string,
@@ -226,7 +226,7 @@ export async function slipNamed(
     : Object.freeze({ delegator: row.delegator, status: row.status });
 }
 
-/** NEW IN STEP 25: what revoking a slip did. */
+/** STEP 25: what revoking a slip did. */
 export type Revoked =
   | { readonly kind: "revoked"; readonly cancelled: readonly string[] }
   /** It had ended when the statement ran, revoked or expired already: nothing was changed. */
@@ -234,13 +234,13 @@ export type Revoked =
   /** Decision 156: `by` did not sign it, or there is no such slip: nothing was changed. */
   | { readonly kind: "not_theirs" }
   /**
-   * NEW IN STEP 25, decision 157: what waits under the slip was different each time it was read,
+   * STEP 25, decision 157: what waits under the slip was different each time it was read,
    * up to `LOOKS_AT_WHAT_WAITS` times, so nothing was changed.
    */
   | { readonly kind: "changed" };
 
 /**
- * NEW IN STEP 25, decision 157: the proposals waiting under a slip, for approval or approved, with
+ * STEP 25, decision 157: the proposals waiting under a slip, for approval or approved, with
  * the operation and payload hash the records of their moves carry. One text, for the read and for
  * the statement that checks what it read: a second copy could drift from the first (lesson 17).
  * `$1` is the company, and `$2` the slip.
@@ -257,13 +257,13 @@ const WAITING_UNDER_A_SLIP = `
                         AND n.from_state = m.to_state)`;
 
 /**
- * NEW IN STEP 25, decision 157: how many times a revocation reads what waits before it gives up.
+ * STEP 25, decision 157: how many times a revocation reads what waits before it gives up.
  * Nothing can wait for approval before step 29, so only a test makes this matter yet.
  */
 export const LOOKS_AT_WHAT_WAITS: number = 5;
 
 /**
- * NEW IN STEP 25: revoke an active slip, and cancel what was waiting under it (DSOR-DEL-04a,
+ * STEP 25: revoke an active slip, and cancel what was waiting under it (DSOR-DEL-04a,
  * DSOR-DEL-04c, decision 142).
  *
  * Decision 156: or a suspended one. DSOR-DEL-04a makes no exception for a slip's status, and a slip
@@ -280,7 +280,7 @@ export const LOOKS_AT_WHAT_WAITS: number = 5;
  * proposals are still waiting to run. A prepared proposal, READY, is left: §26.2 has no move from
  * READY to CANCELLED, and step 31's proposal.execute checks the slip again before anything runs.
  *
- * NEW IN STEP 25, decision 157: and each move to CANCELLED has its record in the log, in the name of
+ * STEP 25, decision 157: and each move to CANCELLED has its record in the log, in the name of
  * the request that revoked, `asked`, written by the same statement. A record's hash is made here, in
  * the program, so what waits is read first, and the statement revokes only if what waits is still
  * what was read: a proposal that started waiting in between has no record ready, and would be left

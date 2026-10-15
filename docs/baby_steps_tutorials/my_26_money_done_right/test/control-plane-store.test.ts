@@ -52,7 +52,7 @@ describe("DSoR's own store", () => {
     // 20: and the idempotency keys, its third (decision 131). STEP 22: and the proposals,
     // their moves and the map of moves, its fourth (decision 136).
     expect(await tablesIn("dsor")).toStrictEqual([
-      // NEW IN STEP 25: the emergency brake (decision 142).
+      // STEP 25: the emergency brake (decision 142).
       "agent_controls",
       "audit",
       // STEP 24: the day totals and the reservations (decision 140).

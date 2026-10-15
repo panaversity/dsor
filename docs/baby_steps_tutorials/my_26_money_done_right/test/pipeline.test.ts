@@ -57,7 +57,7 @@ describe("the pipeline", () => {
       "resolve the operation",
       // STEP 18: §21 step 3, after the operation, because it asks whether that is a command.
       "resolve the delegation",
-      // NEW IN STEP 25: §21 step 4, the brake, for both kinds; it lets a query through.
+      // STEP 25: §21 step 4, the brake, for both kinds; it lets a query through.
       "check the operational status",
       "authorize",
       "validate the input",
@@ -65,7 +65,7 @@ describe("the pipeline", () => {
       "claim the idempotency key",
       // STEP 22: §21 step 8, the command becomes a proposal, for commands only.
       "create the proposal",
-      // NEW IN STEP 25: part of §21 step 9, who may act on the target (decision 143).
+      // STEP 25: part of §21 step 9, who may act on the target (decision 143).
       "check the target",
       // STEP 18: part of §21 step 10, the slip's limit on one payment, for commands only.
       "check the slip's limit",
@@ -77,7 +77,7 @@ describe("the pipeline", () => {
   // 4, the operational status, is still missing; after the claim at 7 come the proposal, the
   // preconditions and the rest of the controls. STEP 22: the proposal is 8.
   it("DSOR-EXE-01a: each stage carries its §21 number, and they only ever go up", () => {
-    // NEW IN STEP 25: and 4, the operational status, no longer missing.
+    // STEP 25: and 4, the operational status, no longer missing.
     expect(PIPELINE.map((s) => s.at)).toEqual([1, 2, null, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
 
     const numbered = PIPELINE.map((s) => s.at).filter((at): at is number => at !== null);
@@ -111,7 +111,7 @@ describe("the pipeline", () => {
         stage.name === "check the slip's limit" ||
         stage.name === "claim the idempotency key" ||
         stage.name === "create the proposal" ||
-        // NEW IN STEP 25: and the target's rules, which only commands have (decision 143). The
+        // STEP 25: and the target's rules, which only commands have (decision 143). The
         // brake, §21.4, runs for both, as §21 says, and lets a query through.
         stage.name === "check the target";
 
@@ -143,12 +143,12 @@ describe("the pipeline", () => {
       fake(2, "resolve the tenant"),
       fake(null, "resolve the operation"),
       fake(3, "resolve the delegation"), // STEP 18
-      fake(4, "check the operational status"), // NEW IN STEP 25
+      fake(4, "check the operational status"), // STEP 25
       fake(5, "authorize"),
       fake(6, "validate the input"),
       fake(7, "claim the idempotency key", "command"), // STEP 20
       fake(8, "create the proposal", "command"), // STEP 22
-      fake(9, "check the target", "command"), // NEW IN STEP 25
+      fake(9, "check the target", "command"), // STEP 25
       fake(10, "check the slip's limit", "command"), // STEP 18
       fake(11, "record the decision"),
     ];
@@ -578,11 +578,11 @@ describe("the pipeline", () => {
       fake(3, "claim the idempotency key", "command"),
       fake(null, "resolve the operation"),
       fake(3, "resolve the delegation"), // STEP 18: required, so present
-      fake(4, "check the operational status"), // NEW IN STEP 25: required, so present
+      fake(4, "check the operational status"), // STEP 25: required, so present
       fake(5, "authorize"),
       fake(6, "validate the input"),
       fake(8, "create the proposal", "command"), // STEP 22: required, so present
-      fake(9, "check the target", "command"), // NEW IN STEP 25: required, so present
+      fake(9, "check the target", "command"), // STEP 25: required, so present
       fake(10, "check the slip's limit", "command"),
       fake(11, "record the decision"),
     ];
@@ -779,7 +779,7 @@ describe("the pipeline", () => {
         // STEP 22: and the proposal, which fills something only for a command. Its own
         // test is below the claim's.
         "create the proposal",
-        // NEW IN STEP 25: and the brake, which only refuses, and only an agent's commands: a no-op
+        // STEP 25: and the brake, which only refuses, and only an agent's commands: a no-op
         // one lets a stopped agent through, which brake.test.ts catches. And the target's rules,
         // which only refuse: a no-op one lets user_123 revoke a slip they did not sign, which
         // revoke.test.ts catches.
@@ -1006,7 +1006,7 @@ describe("the pipeline", () => {
   //
   // Step 08 made the list five long, so this now walks 120 orderings instead of 24, and still
   // exactly one is accepted. The test cost nothing to strengthen: the number came from the list.
-  // NEW IN STEP 25: a proof by its parts, where the whole walk was. All 39,916,800 orderings of eleven
+  // STEP 25: a proof by its parts, where the whole walk was. All 39,916,800 orderings of eleven
   // stages took 65 seconds, measured, and twelve would take thirteen minutes (decision 142). Every
   // ordering but the real one differs from it in some pair of stages, and the check refuses a list
   // by the order of its required names; so these are what a wrong ordering looks like, every one
@@ -1074,7 +1074,7 @@ describe("the pipeline", () => {
   });
 
   it("DSOR-EXE-01a: every reordering of any three stages, and of any four, is refused", () => {
-    // NEW IN STEP 25, decision 143: a cycle of three is no swap and no single move, and the first
+    // STEP 25, decision 143: a cycle of three is no swap and no single move, and the first
     // version of this proof let a check that accepted one through, a review measured.
     const reorderingsOf = <T>(xs: readonly T[]): T[][] =>
       xs.length <= 1

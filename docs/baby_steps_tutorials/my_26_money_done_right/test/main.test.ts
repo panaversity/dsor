@@ -151,7 +151,7 @@ describe("the program a learner runs", () => {
       // STEP 21: 38, with the stale section's three: a payment, its cancel, and the stale one.
       // STEP 23: 41, with the three ways to call one payment: the dry run is recorded too.
       // STEP 24: 51, with del_100's day: six payments made and four refused.
-      // NEW IN STEP 25: 53, with control.suspend and delegation.revoke refused another company's
+      // STEP 25: 53, with control.suspend and delegation.revoke refused another company's
       // address; and 61, with the brake's eight: pulled, the agent refused, its read, lifted, its
       // payment, the freeze, the agent refused again, the freeze lifted.
       // Decision 152: 62, with the agent's read of INV-1009 before it issues it.
@@ -608,7 +608,7 @@ describe("the program a learner runs", () => {
     }));
 
   it("DSOR-OPS-01a: the demo pulls the brake on the agent and releases it, and freezes every agent", () => {
-    // NEW IN STEP 25 (decision 142). The map's "done when": a suspended agent is refused, and
+    // STEP 25 (decision 142). The map's "done when": a suspended agent is refused, and
     // nothing in the agent changed.
     const out = demo().report;
     const stopped = (by: string, what: string): string =>

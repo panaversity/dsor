@@ -71,7 +71,7 @@ function show(answer: Awaited<ReturnType<typeof callOperation>>): string {
     }
 
     // STEP 17: an invoice's receipt or a payment's: an address and a status either way.
-    // NEW IN STEP 25: or a brake's, which says whether it is on instead.
+    // STEP 25: or a brake's, which says whether it is on instead.
     const row = r.data as { uri: string; status?: string; suspended?: boolean };
     const status = row.status ?? (row.suspended === true ? "brake on" : "brake off");
 
@@ -735,7 +735,7 @@ if (firstOver !== undefined) {
 
 console.log(`  the day has used ${await usedToday("org_456", "del_100")} USD of 200000.00`);
 
-// NEW IN STEP 25: the emergency brake (decision 142). At 3 a.m. the agent pays what it should not, and
+// STEP 25: the emergency brake (decision 142). At 3 a.m. the agent pays what it should not, and
 // a person stops it from DSoR's side: nothing here asks the agent to stop, and nothing in the agent
 // changes. A stopped agent can still read; it can change nothing until a person lifts the brake.
 console.log();

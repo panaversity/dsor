@@ -62,7 +62,7 @@ const labels: Readonly<Record<string, Readonly<Record<string, Classification>>>>
     // STEP 21.
     version: "internal",
   }),
-  // NEW IN STEP 25: a slip revoked, as its receipt shows it: its status, and how many proposals
+  // STEP 25: a slip revoked, as its receipt shows it: its status, and how many proposals
   // waiting under it were cancelled.
   delegation: Object.freeze({
     uri: "internal",
@@ -71,7 +71,7 @@ const labels: Readonly<Record<string, Readonly<Record<string, Classification>>>>
     status: "internal",
     cancelled: "internal",
   }),
-  // NEW IN STEP 25: a brake, as its receipt shows it: what it stops, and whether it is on.
+  // STEP 25: a brake, as its receipt shows it: what it stops, and whether it is on.
   control: Object.freeze({
     uri: "internal",
     tenantId: "internal",

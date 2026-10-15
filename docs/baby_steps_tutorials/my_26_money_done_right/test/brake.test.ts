@@ -1,4 +1,4 @@
-// NEW IN STEP 25: the emergency brake (decision 142).
+// STEP 25: the emergency brake (decision 142).
 //
 // Rule DSOR-OPS-01a: DSoR MUST provide per-agent suspension and a tenant-wide agent freeze.
 // Rule DSOR-OPS-01c: while a suspension or freeze is active, a proposal from an affected agent MUST
@@ -28,7 +28,7 @@ import { callOperation, makeDoor } from "./support/door.ts";
 const AGENT = "accounts-payable-fte";
 
 /**
- * NEW IN STEP 25, decision 157: the last decision in org_456's log. A command that gets past §21.8
+ * STEP 25, decision 157: the last decision in org_456's log. A command that gets past §21.8
  * leaves the records of its proposal's moves after its decision, so the log's last record is not it.
  */
 const lastDecision = async (): Promise<AuditRecord | undefined> =>
@@ -144,7 +144,7 @@ describe("the brake, in DSoR's own store", () => {
   });
 });
 
-// NEW IN STEP 25, piece 2: §21.4 asks the brake, for every command.
+// STEP 25, piece 2: §21.4 asks the brake, for every command.
 
 const AGENT_LOGIN = { loggedInAs: AGENT, tenant: "org_456" };
 const SUPERVISOR = { loggedInAs: "user_123" };
@@ -236,7 +236,7 @@ describe("§21.4: a stopped agent changes nothing", () => {
   });
 });
 
-// NEW IN STEP 25, piece 3: and again as the proposal moves to EXECUTING.
+// STEP 25, piece 3: and again as the proposal moves to EXECUTING.
 
 /**
  * Decision 156: both brakes, the agent's suspension and the company's freeze. Every test of the
@@ -289,7 +289,7 @@ describe("a brake pulled after §21.4 still stops the handler", () => {
   }
 
   it("DSOR-OPS-01c: a brake pulled after the decision stops the moves to READY and EXECUTING, and no record says they happened", async () => {
-    // NEW IN STEP 25, decision 157: a move and its record are one statement, and the brake stops
+    // STEP 25, decision 157: a move and its record are one statement, and the brake stops
     // the moves inside it, with no error. The records are written only if the moves were, or the
     // log would say the proposal went READY and EXECUTING when it never did.
     const list = PIPELINE.map((stage) =>
@@ -340,7 +340,7 @@ describe("a brake pulled after §21.4 still stops the handler", () => {
   });
 });
 
-// NEW IN STEP 25, piece 4: control.suspend, the brake as a command for people.
+// STEP 25, piece 4: control.suspend, the brake as a command for people.
 
 const CFO = { loggedInAs: "cfo_100" };
 const THE_AGENT = "dsor://org_456/agent/accounts-payable-fte";
@@ -540,7 +540,7 @@ describe("two brakes at once", () => {
   });
 });
 
-// NEW IN STEP 25, decision 143: the brake on every way into EXECUTING, and on a prepared command.
+// STEP 25, decision 143: the brake on every way into EXECUTING, and on a prepared command.
 
 describe("no way into EXECUTING forgets the brake", () => {
   /** A proposal of the agent's, at READY. */

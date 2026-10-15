@@ -1,4 +1,4 @@
-// NEW IN STEP 25: the emergency brake, in DSoR's own store (decision 142).
+// STEP 25: the emergency brake, in DSoR's own store (decision 142).
 //
 // A suspension stops one agent in one company; a freeze stops every agent in it. Both live in
 // `dsor.agent_controls`, which the agent never reads and nothing it sends can change, so stopping it

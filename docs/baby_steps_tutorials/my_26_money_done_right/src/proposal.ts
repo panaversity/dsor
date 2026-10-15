@@ -105,7 +105,7 @@ export interface ForTheRecord extends Asked {
  * proposal; the first move's record has none, because the proposal has no number yet when the
  * record's hash is made.
  *
- * NEW IN STEP 25, decision 157: exported, because a revocation moves the proposals waiting under the
+ * STEP 25, decision 157: exported, because a revocation moves the proposals waiting under the
  * slip, and each of those moves has its record too (delegation.ts).
  */
 export function transition(
@@ -135,7 +135,7 @@ export function transition(
  * STEP 22, decision 157: each record's INSERT, as a part of the statement's WITH, `r0`,
  * `r1` and so on. A part of a WITH that writes runs whether or not the statement reads it.
  *
- * NEW IN STEP 25, decision 157: and only if the moves were written. A brake on the agent stops its
+ * STEP 25, decision 157: and only if the moves were written. A brake on the agent stops its
  * moves inside the statement, which then writes no move and does not fail; a record written all the
  * same would say a move happened that did not. So each record asks whether `moved` wrote a row.
  */
@@ -248,7 +248,7 @@ export type MoveOutcome =
   /** The proposal is not in that state, or the map has no such move: nothing was written. */
   | { readonly kind: "refused" }
   /**
-   * NEW IN STEP 25: a brake was on the agent the moves were for, so nothing was written
+   * STEP 25: a brake was on the agent the moves were for, so nothing was written
    * (DSOR-OPS-01c, decision 142).
    */
   | { readonly kind: "stopped" };
@@ -291,9 +291,9 @@ export async function moveProposal(
   cause: string,
   by: ForTheRecord,
 ): Promise<MoveOutcome> {
-  // NEW IN STEP 25, decision 143: nothing enters EXECUTING one move at a time. That way in asks the
+  // STEP 25, decision 143: nothing enters EXECUTING one move at a time. That way in asks the
   // brake, and only moveProposalThrough, told the agent, asks it; a caller that came this way would
-  // run a stopped agent's command, as a review measured. NEW IN STEP 25, decision 157: before the
+  // run a stopped agent's command, as a review measured. STEP 25, decision 157: before the
   // log is asked for its end, so a refused move costs nothing there.
   if (to === "EXECUTING") {
     return Object.freeze({ kind: "refused" });
@@ -319,7 +319,7 @@ export async function moveProposalThrough(
   id: string,
   path: ReadonlyArray<readonly [from: ProposalState, to: ProposalState, cause: string]>,
   actor: string,
-  // NEW IN STEP 25: the agent on whose behalf the moves are made, or null for a person. Required, so
+  // STEP 25: the agent on whose behalf the moves are made, or null for a person. Required, so
   // no caller can forget it: for an agent, none is written if a brake is on it, in the same statement,
   // so a brake pulled a moment ago is seen (DSOR-OPS-01c, decisions 142 and 143). A brake stops
   // agents, never people, so a person's moves ask nothing.
@@ -366,7 +366,7 @@ export async function moveProposalThrough(
       },
     );
 
-    // NEW IN STEP 25, decision 157: no rows when the reply was lost and the first record was found:
+    // STEP 25, decision 157: no rows when the reply was lost and the first record was found:
     // a record is written only beside its moves, so the moves were written.
     moved = rows === undefined ? path.length : rows[0]?.moved;
   } catch (error) {

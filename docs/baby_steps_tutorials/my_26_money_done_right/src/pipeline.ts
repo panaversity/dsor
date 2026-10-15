@@ -226,7 +226,7 @@ const REQUIRED: readonly string[] = Object.freeze([
   // before authorize, which asks the power it computes. Required by name, so a pipeline without it
   // is refused at load, not discovered on an agent's first command (decision 127).
   "resolve the delegation",
-  // NEW IN STEP 25: after the delegation, as §21 numbers it, and before anything is authorized, so
+  // STEP 25: after the delegation, as §21 numbers it, and before anything is authorized, so
   // a stopped agent's command goes no further (DSOR-OPS-01a, decision 142).
   "check the operational status",
   "authorize",
@@ -238,7 +238,7 @@ const REQUIRED: readonly string[] = Object.freeze([
   // answer and never a second proposal; before anything is decided, so every decision about a
   // command has a proposal to move (DSOR-APR-01a, decision 136).
   "create the proposal",
-  // NEW IN STEP 25: after the arguments are validated and the proposal made, before the limit and the
+  // STEP 25: after the arguments are validated and the proposal made, before the limit and the
   // decision, so who may act on a target is recorded as the DENY it is (decision 143).
   "check the target",
   // STEP 18: required too, because without it a payment above the slip's limit goes

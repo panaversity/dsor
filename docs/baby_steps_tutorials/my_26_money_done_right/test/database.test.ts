@@ -301,7 +301,7 @@ describe("refuseIfItCanRewriteHistory", () => {
     await db.exec(
       "CREATE TABLE dsor.day_totals (tenant TEXT, day DATE); CREATE TABLE dsor.reservations (tenant TEXT, proposal TEXT);",
     );
-    // NEW IN STEP 25: eleven, with the brake.
+    // STEP 25: eleven, with the brake.
     await db.exec("CREATE TABLE dsor.agent_controls (tenant TEXT, id TEXT);");
     await db.exec("CREATE ROLE editor;");
     // STEP 16: the folder's USAGE as well as the table's UPDATE. Without it the route this
@@ -586,7 +586,7 @@ describe("refuseIfItCanRewriteHistory", () => {
   });
 
   it("DSOR-OPS-01a: an application that may delete a brake, rewrite it, or write one already lifted is refused at start-up", async () => {
-    // NEW IN STEP 25 (decision 142). Each right, one of them one SET ROLE away, and one through a
+    // STEP 25 (decision 142). Each right, one of them one SET ROLE away, and one through a
     // helper's owner.
     for (const grant of [
       "GRANT DELETE ON dsor.agent_controls TO dsor_runtime",
@@ -611,7 +611,7 @@ describe("refuseIfItCanRewriteHistory", () => {
   });
 
   it("DSOR-DEL-04a: the slips without the policy that lets one only become revoked are refused at start-up", async () => {
-    // NEW IN STEP 25: without it, the right to revoke a slip would be the right to bring one back,
+    // STEP 25: without it, the right to revoke a slip would be the right to bring one back,
     // or to change one to anything (decision 142).
     const db = await aDatabase();
 
@@ -627,7 +627,7 @@ describe("refuseIfItCanRewriteHistory", () => {
   });
 
   it("DSOR-DEL-04a: an application that may change what a slip grants is still refused at start-up, though it may revoke one", async () => {
-    // NEW IN STEP 25: the four columns of a revocation, and none other.
+    // STEP 25: the four columns of a revocation, and none other.
     for (const grant of [
       "GRANT UPDATE (permissions) ON dsor.delegations TO dsor_runtime",
       "GRANT UPDATE (daily_limit_value) ON dsor.delegations TO dsor_runtime",
@@ -648,7 +648,7 @@ describe("refuseIfItCanRewriteHistory", () => {
   });
 
   it("DSOR-OPS-01a: the brake's table without the policy that keeps a lift final is refused at start-up", async () => {
-    // NEW IN STEP 25: without it, a lifted brake could be put back with a lift nobody gave.
+    // STEP 25: without it, a lifted brake could be put back with a lift nobody gave.
     const db = await aDatabase();
 
     await db.exec("RESET ROLE");
@@ -779,7 +779,7 @@ describe("refuseIfItCanRewriteHistory", () => {
     await db.exec(
       "CREATE TABLE dsor.day_totals (tenant TEXT, day DATE); CREATE TABLE dsor.reservations (tenant TEXT, proposal TEXT);",
     );
-    // NEW IN STEP 25: eleven, with the brake.
+    // STEP 25: eleven, with the brake.
     await db.exec("CREATE TABLE dsor.agent_controls (tenant TEXT, id TEXT);");
     await db.exec("CREATE ROLE editor;");
     await db.exec("GRANT UPDATE ON dsor.audit TO editor;");
