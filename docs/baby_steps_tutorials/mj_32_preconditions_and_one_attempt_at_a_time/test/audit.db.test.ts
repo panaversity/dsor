@@ -80,6 +80,10 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
       // The approvals. Read every column, and add an approval through five named
       // columns. Nothing on given_at, which the database fills, and no UPDATE or DELETE: an
       // approval, once given, says what it said (step 29's README, decision D8).
+      // Step 32's vendors: read them, every column, and nothing more (step 32's README, decision
+      // D1).
+      { object: "app.vendors", held: "SELECT" },
+      { object: "app.vendors SELECT", held: "tenant_id id status version" },
       { object: "dsor.approvals", held: "SELECT" },
       { object: "dsor.approvals INSERT", held: "tenant_id id proposal_id approver approval" },
       {

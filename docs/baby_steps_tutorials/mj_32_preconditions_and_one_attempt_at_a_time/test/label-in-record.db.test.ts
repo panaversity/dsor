@@ -77,6 +77,7 @@ describe("C7 on the database: the record of a read keeps its label", () => {
         ...(await database.list(tenant, after, count)),
         freshness: warehouse,
       }),
+      vendor: database.vendor,
     };
     const request_id = requestId("frs-warehouse");
     await call(registryOver(store), log, { ...CFO, request_id }, "invoice.get", GET_1008);

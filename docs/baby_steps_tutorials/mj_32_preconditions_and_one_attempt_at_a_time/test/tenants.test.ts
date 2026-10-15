@@ -848,6 +848,7 @@ describe("C8: the code can reach only the active company, and its answer must be
           .map((invoice) => structuredClone(invoice)),
         freshness: (await memory.list(tenant, after, count)).freshness,
       }),
+      vendor: memory.vendor,
     };
     const fresh = createLog();
     const leaky = buildRegistry(

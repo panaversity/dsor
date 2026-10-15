@@ -54,6 +54,8 @@ export function relabelled(labels: unknown[]): InvoiceStore {
       ...(await inner.list(tenant, after, count)),
       freshness: next(),
     }),
+    // Step 32: and the vendors, unlabelled again.
+    vendor: inner.vendor,
   };
 }
 
@@ -80,6 +82,8 @@ export function cacheOver(inner: InvoiceStore): InvoiceStore {
       return read;
     },
     list: (tenant, after, count) => inner.list(tenant, after, count),
+    // Step 32: and the vendors, passed on, as lists are.
+    vendor: (tenant, id) => inner.vendor(tenant, id),
   };
 }
 

@@ -22,6 +22,9 @@ const INVOICE_COLUMNS = [
 // README, decision 11).
 export const INVOICE_TRIGGER =
   "CREATE TRIGGER invoices_version BEFORE UPDATE ON app.invoices FOR EACH ROW EXECUTE FUNCTION app.next_version()";
+// Step 32: and a vendor's (step 32's README, decision D1).
+export const VENDOR_TRIGGER =
+  "CREATE TRIGGER vendors_version BEFORE UPDATE ON app.vendors FOR EACH ROW EXECUTE FUNCTION app.next_version()";
 export const PAYMENT_TRIGGER =
   "CREATE TRIGGER payments_version BEFORE UPDATE ON app.payments FOR EACH ROW EXECUTE FUNCTION app.next_version()";
 // The guard on proposals, the one trigger on DSoR's own side (step 22's README,
@@ -255,6 +258,20 @@ export function today(): Catalog {
         rowSecurity: { enabled: true, forced: true },
         rules: [],
         triggers: [PAYMENT_TRIGGER],
+      },
+      // Step 32's vendors, read and never written, as invoices are (step 32's README, decision D1).
+      {
+        name: "app.vendors",
+        kind: "table",
+        held: ["SELECT"],
+        columns: ["tenant_id", "id", "status", "version"].map((name) => ({
+          name,
+          held: ["SELECT"],
+          filled: name === "version",
+        })),
+        rowSecurity: { enabled: true, forced: true },
+        rules: [],
+        triggers: [VENDOR_TRIGGER],
       },
       // The approvals, behind the company's lock, written once.
       {

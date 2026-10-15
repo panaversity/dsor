@@ -9,7 +9,13 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Answer } from "../src/envelope.ts";
 import { call } from "../src/pipeline.ts";
 import { createDbLog } from "../src/postgres.ts";
-import { CONTROL_TRIGGER, INVOICE_TRIGGER, PAYMENT_TRIGGER, PROPOSAL_TRIGGER } from "./catalogs.ts";
+import {
+  CONTROL_TRIGGER,
+  INVOICE_TRIGGER,
+  PAYMENT_TRIGGER,
+  PROPOSAL_TRIGGER,
+  VENDOR_TRIGGER,
+} from "./catalogs.ts";
 import { AGENT, CFO, SUPERVISOR, keyed } from "./helpers.ts";
 import {
   NO_PRIVILEGE,
@@ -326,6 +332,8 @@ describe("C8 and C11: the version in a read, and the triggers in the catalog", (
       INVOICE_TRIGGER,
       PAYMENT_TRIGGER,
       PROPOSAL_TRIGGER,
+      // And a vendor's (step 32's README, decision D1).
+      VENDOR_TRIGGER,
     ]);
   });
 });

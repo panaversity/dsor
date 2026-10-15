@@ -12,9 +12,11 @@
 // - amend <payment>: a change to a draft payment of INV-9001 outside DSoR: its amount changes,
 //   it stays a draft, and the database's trigger raises its version.
 // - remove: INV-9001 and the payments drafted for it, which the key to the invoice needs first.
+// - vendor <id> <status>: the accounts team approves or suspends one of org_456's vendors, and the
+//   database's trigger raises its version (step 32's README, decision D1).
 // Run by the tests as:
 //   node test/owner-invoices.ts add [value currency] | credit <open> [version] | amend <payment> |
-//   remove
+//   remove | vendor <id> <status>
 import pg from "pg";
 import { loadDotEnv, requireEnv } from "../src/postgres.ts";
 import { redact } from "./db.ts";
@@ -58,6 +60,13 @@ try {
       `UPDATE app.payments SET amount_value = amount_value - 1
         WHERE tenant_id = 'org_456' AND id = $1 AND invoice_id = 'INV-9001' RETURNING version`,
       [payment],
+    );
+    result = { version: rows[0]?.["version"] };
+  } else if (command === "vendor") {
+    const [id, status] = args;
+    const { rows } = await pool.query(
+      `UPDATE app.vendors SET status = $2 WHERE tenant_id = 'org_456' AND id = $1 RETURNING version`,
+      [id, status],
     );
     result = { version: rows[0]?.["version"] };
   } else if (command === "remove") {

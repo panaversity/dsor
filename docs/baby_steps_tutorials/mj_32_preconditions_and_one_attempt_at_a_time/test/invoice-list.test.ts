@@ -204,6 +204,7 @@ describe("C1: the store is asked for one row more than the page, and reads no mo
         asked.push(count);
         return memory.list(tenant, after, count);
       },
+      vendor: memory.vendor,
     };
     // The registry holds the store (step 10's README, decision 13). Found by the Stage 2
     // review, and fixed from step 10 on.

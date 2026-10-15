@@ -12,7 +12,7 @@
   "concurrency": { "strategy": "optimistic" },
   "execution": { "semantics": "compensatable", "compensated_by": ["payment.cancel"] },
   "risk": { "level": "medium" },
-  "bind": { "invoice": "input.invoice" },
+  "bind": { "invoice": "input.invoice", "vendor": "state.invoice.vendor_id" },
   "preconditions": { "freshness": "current", "predicates": [] },
   "controls": [],
   "audit": { "level": "full" },

@@ -4,6 +4,7 @@
 import type { Freshness } from "./freshness.ts";
 import { money, type Money } from "./money.ts";
 import { formatUri } from "./uri.ts";
+import { getVendor, vendors, type Vendor } from "./vendor.ts";
 
 export type InvoiceStatus = "draft" | "issued" | "paid" | "cancelled";
 
@@ -119,12 +120,25 @@ export type InvoiceStore = {
     after: string | undefined,
     count: number,
   ) => Promise<{ rows: Invoice[]; freshness: Freshness }>;
+  // NEW IN STEP 32: and one vendor, read from the same accounts system, with its read's label.
+  //   The accounts system keeps its vendors beside its invoices, so the store that reads one reads
+  //   the other (step 32's README, decision D1).
+  /** Finds one vendor of one company: a copy of it, or `undefined` when there is none, and the read's label. */
+  vendor: (
+    tenant: string,
+    id: string,
+  ) => Promise<{ vendor: Vendor | undefined; freshness: Freshness }>;
 };
 
 // Or the invoices of a list of the test's own, which the test may change, as
 // the accounts system changes an invoice (step 21's README, decision 8).
 /** The invoices above, or those of the list given, held in memory, for the unit tests. */
-export function memoryInvoices(list: Invoice[] = invoices): InvoiceStore {
+// NEW IN STEP 32: and the vendors of step 32, or those of the list given, which the test may
+//   change, as the accounts team suspends a vendor.
+export function memoryInvoices(
+  list: Invoice[] = invoices,
+  suppliers: Vendor[] = vendors,
+): InvoiceStore {
   return {
     // A read of one invoice names its version (DSOR-FRS-01a).
     get: async (tenant, id) => {
@@ -136,6 +150,12 @@ export function memoryInvoices(list: Invoice[] = invoices): InvoiceStore {
       rows: listInvoices(list, tenant, after, count),
       freshness: readNow(),
     }),
+    // NEW IN STEP 32: a read of one vendor names its version, as an invoice's does.
+    vendor: async (tenant, id) => {
+      const vendor = getVendor(suppliers, tenant, id);
+      const version = vendor === undefined ? {} : { resource_version: String(vendor.version) };
+      return { vendor, freshness: { ...readNow(), ...version } };
+    },
   };
 }
 
@@ -172,6 +192,10 @@ export const NO_STORE: InvoiceStore = Object.freeze({
   },
   // And no list. Found by the Stage 2 review, and fixed from step 13 on.
   list: async (): Promise<never> => {
+    throw new Error("this registry was built without a store of invoices");
+  },
+  // NEW IN STEP 32: and no vendor.
+  vendor: async (): Promise<never> => {
     throw new Error("this registry was built without a store of invoices");
   },
 });

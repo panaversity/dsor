@@ -376,7 +376,8 @@ export async function call(
     //   runs under no slip, so no limit applies (decision 10).
     // What line ⑨ read, which the work's writes are pinned to (step 24's README,
     // decision 16).
-    let boundState: Bound["state"] = {};
+    // NEW IN STEP 32: the invoices line ⑨ read, apart from the vendors it read with them.
+    let boundInvoices: Bound["invoices"] = {};
     // The request line ⑨ and line ⑩ decide: its contract, the request, DSoR's own
     //   work for it, who asked for it, the roles they hold now, and the slip it runs under. For a
     //   call, the call itself. For a release, the stored request (step 31's README, decision D1).
@@ -440,11 +441,15 @@ export async function call(
     ): Promise<Requirement[] | undefined> => {
       const { contract, copy, own } = asked;
       const limits = limitsOf(asked.slip);
-      const { state, spends } = await line(9, async () => {
+      const {
+        state,
+        invoices: read,
+        spends,
+      } = await line(9, async () => {
         const bound = await readBound(contract, copy, invoices, tenant);
         // At a release, facts first: a request decided on another version of the
         //   record is refused before any rule is asked (DSOR-APR-03c; step 31's README, D5).
-        if (asked.decidedOn !== undefined) checkDecidedOn(bound.state, asked.decidedOn);
+        if (asked.decidedOn !== undefined) checkDecidedOn(bound.invoices, asked.decidedOn);
         if (own !== undefined)
           await own.check(
             copy,
@@ -470,7 +475,7 @@ export async function call(
           );
         return bound;
       });
-      boundState = state;
+      boundInvoices = read;
       return await line(10, async () => {
         // The company's controls on this operation come first, for every caller. A
         //   condition converts with the newest fresh sheet of the company's source. The most
@@ -770,7 +775,7 @@ export async function call(
           // Pinned to what line ⑨ read, so the work drafts only on the version line
           // ⑩ reserved for (step 24's README, decision 16). Found by step 24's review.
           const payments =
-            contract["kind"] === "query" ? NO_PAYMENTS : pinned(stores.payments, boundState);
+            contract["kind"] === "query" ? NO_PAYMENTS : pinned(stores.payments, boundInvoices);
           // DSoR's own change gets DSoR's own stores, inside the claim, with the
           //   caller. The company's code never gets them (step 25's README, decision D2).
           let returned: unknown;

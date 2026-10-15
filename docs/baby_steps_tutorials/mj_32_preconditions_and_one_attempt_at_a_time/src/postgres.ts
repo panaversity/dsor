@@ -30,6 +30,7 @@ import {
 } from "./log.ts";
 import { money } from "./money.ts";
 import type { Payment, PaymentStatus, PaymentStore } from "./payment.ts";
+import type { Vendor, VendorStatus } from "./vendor.ts";
 import type { RateSheet } from "./exchange.ts";
 import type { Loaded, Newest, RateStore } from "./rates.ts";
 import {
@@ -382,6 +383,32 @@ function invoicesThrough(run: Runner): InvoiceStore {
         ).rows,
       }));
       return { rows: rows.map(invoiceOf), freshness: fromPostgres(observed) };
+    },
+    // NEW IN STEP 32: one vendor of the company, from app.vendors, read as an invoice is: the
+    //   company in the WHERE, DSoR's own lock, inside the company's transaction for the database's
+    //   (DSOR-TEN-01b; step 32's README, decision D1).
+    vendor: async (tenant, id) => {
+      const { observed, rows } = await run(tenant, async (client) => ({
+        observed: await databaseNow(client),
+        rows: (
+          await client.query<{
+            tenant_id: string;
+            id: string;
+            status: VendorStatus;
+            version: number;
+          }>(
+            `SELECT tenant_id, id, status, version FROM app.vendors WHERE tenant_id = $1 AND id = $2`,
+            [tenant, id],
+          )
+        ).rows,
+      }));
+      const row = rows[0];
+      const vendor: Vendor | undefined =
+        row === undefined
+          ? undefined
+          : { tenant_id: row.tenant_id, id: row.id, status: row.status, version: row.version };
+      const version = vendor === undefined ? {} : { resource_version: String(vendor.version) };
+      return { vendor, freshness: { ...fromPostgres(observed), ...version } };
     },
   };
 }

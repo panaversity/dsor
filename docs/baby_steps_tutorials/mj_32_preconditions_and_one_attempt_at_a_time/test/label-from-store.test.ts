@@ -222,6 +222,7 @@ describe("C4, from the sweep: every read's label is checked, and kept as it was 
         return { invoice, freshness: fresh };
       },
       list: inner.list,
+      vendor: inner.vendor,
     };
     const answer = await runOver(shifty, CFO, async (_input, company) => {
       const invoice = await company.invoices.get("INV-1008");

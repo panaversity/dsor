@@ -110,11 +110,13 @@ describe("C1: every table with a company column has its lock", () => {
   // And dsor.controls, each company's rules (step 28's README, decision D2).
   // And dsor.notices, the notices to each rule's owner (step 28b's README, decision D5).
   // And dsor.approvals (step 29's README, decision D8).
-  it("DSOR-RP-01b: app.invoices, app.payments, dsor.approvals, dsor.audit, dsor.brakes, dsor.controls, dsor.delegations, dsor.idempotency, dsor.limit_counters, dsor.notices, dsor.proposals, dsor.rates, and dsor.reservations have row-level security enabled, forced, and policies", async () => {
+  it("DSOR-RP-01b: app.invoices, app.payments, app.vendors, dsor.approvals, dsor.audit, dsor.brakes, dsor.controls, dsor.delegations, dsor.idempotency, dsor.limit_counters, dsor.notices, dsor.proposals, dsor.rates, and dsor.reservations have row-level security enabled, forced, and policies", async () => {
     const { rows } = await observer.query(TENANT_TABLES);
     expect(rows).toStrictEqual([
       { table: "app.invoices", enabled: true, forced: true, policies: 1 },
       { table: "app.payments", enabled: true, forced: true, policies: 1 },
+      // Step 32's vendors (step 32's README, decision D1).
+      { table: "app.vendors", enabled: true, forced: true, policies: 1 },
       { table: "dsor.approvals", enabled: true, forced: true, policies: 1 },
       { table: "dsor.audit", enabled: true, forced: true, policies: 2 },
       // The brakes, with starts_on and lifts_once (step 25b's README, decision D9).
@@ -159,6 +161,16 @@ describe("C1: every table with a company column has its lock", () => {
       // Step 17's app.payments: the same rule, which checks the rows written too.
       {
         table: "app.payments",
+        name: "tenant_isolation",
+        command: "ALL",
+        roles: ["public"],
+        using: `(tenant_id = ${company})`,
+        check: null,
+        kind: "PERMISSIVE",
+      },
+      // Step 32's vendors: the same rule.
+      {
+        table: "app.vendors",
         name: "tenant_isolation",
         command: "ALL",
         roles: ["public"],
