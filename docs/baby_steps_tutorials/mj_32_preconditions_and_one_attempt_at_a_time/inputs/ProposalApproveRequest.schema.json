@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ProposalApproveRequest",
+  "description": "The input of proposal.approve, as §26.1's table gives it: the canonical URI of the waiting proposal, and the fingerprint of the request the approver saw, which DSoR compares with the stored one (DSOR-APR-09; step 29's README, decision D1). The pattern is the specification's resourceUri; the /proposal/ part beside it is this tutorial's.",
+  "type": "object",
+  "properties": {
+    "proposal": {
+      "$ref": "urn:dsor:schema:1.3:common#/$defs/resourceUri",
+      "type": "string",
+      "pattern": "^dsor://[^/]+/proposal/"
+    },
+    "payload_hash": {
+      "$ref": "urn:dsor:schema:1.3:common#/$defs/hash",
+      "type": "string",
+      "maxLength": 200,
+      "description": "The fingerprint of the stored request, sha256: and the hex digest of its RFC 8785 canonical JSON (DSOR-APR-02b)."
+    }
+  },
+  "required": ["proposal", "payload_hash"],
+  "additionalProperties": false
+}
