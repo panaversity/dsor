@@ -64,6 +64,7 @@ import type { Answer } from "./envelope.ts";
 import { readCatalog } from "./catalog.ts";
 import { storeDifferences } from "./inspector.ts";
 import { invoiceUri, invoices, memoryInvoices, type Invoice } from "./invoice.ts";
+import { vendors } from "./vendor.ts";
 import { memoryPayments, type Payment } from "./payment.ts";
 import { createLog, type DecisionLog } from "./log.ts";
 import { handlersFor } from "./operations.ts";
@@ -1915,6 +1916,89 @@ console.log("  user_123 releases it:", await releasesIt(SUPERVISOR_123, prepared
 console.log(
   `  payments drafted in this world: ${releaseDrafted.map((p) => p.invoice_id).join(", ")}`,
 );
+
+// NEW IN STEP 32: preconditions and one attempt at a time, in memory, in a world of its own
+//   (step 32's README, decision D12 and the story's numbers). The agent asks twice for INV-1008:
+//   the second attempt is refused, naming the first, which waits for the CFO. cfo_100 approves it,
+//   the accounts team suspends VENDOR-44, and the agent's release reads the vendor again: the
+//   proposal is invalidated, and its booking goes back to the day. Last, user_123 asks for a
+//   payment of INV-1005, a draft invoice, and the contract's precondition refuses it.
+console.log("preconditions and one attempt at a time, in memory, in a world of their own:");
+const attemptVendors = structuredClone(vendors);
+const attemptInvoices = memoryInvoices(structuredClone(invoices), attemptVendors);
+const attemptDrafted: Payment[] = [];
+const attemptPayments = memoryPayments(attemptDrafted);
+const attemptSlips = memorySlips(limited);
+const attemptProposals = memoryProposals(() => lifeClock.now);
+const attemptBookings = memoryReservations(() => lifeClock.now);
+const attemptRules = memoryControls(readControls(CONTROLS));
+const attemptWorld = buildRegistry(
+  readContracts(CONTRACTS),
+  handlersFor(),
+  readRoles(ROLES),
+  readInputs(INPUTS),
+  readClassifications(CLASSIFICATIONS),
+  attemptInvoices,
+  attemptPayments,
+  attemptSlips,
+  directories,
+  readRoleSettings(),
+  memoryClaims(
+    attemptInvoices,
+    attemptPayments,
+    attemptProposals,
+    attemptBookings,
+    attemptSlips,
+    undefined,
+    memoryRates(() => lifeClock.now),
+    attemptRules,
+  ),
+  ownWorkFor(),
+  undefined,
+  undefined,
+  undefined,
+  attemptRules,
+  storyKsors(),
+);
+const attemptLog = createLog();
+let attemptKeys = 0;
+/** One call in this world, with a key of its own. */
+const attemptCall = (who: RequestEnvelope, name: string, input: unknown): Promise<Answer> =>
+  call(attemptWorld, attemptLog, withKey(who, `attempt-${++attemptKeys}`), name, input);
+const ofInvoice = (id: string) => ({
+  invoice: `dsor://org_456/invoice/${id}`,
+  expected_version: 1,
+});
+const firstAttempt = await attemptCall(AGENT, "payment.create", ofInvoice("INV-1008"));
+console.log("  the agent drafts INV-1008, 31,400.00 USD:", waitHeard(firstAttempt));
+const secondAttempt = await attemptCall(AGENT, "payment.create", ofInvoice("INV-1008"));
+console.log("  the agent drafts INV-1008 again, with a new key:", heard(secondAttempt));
+const firstId =
+  String("proposal" in firstAttempt ? firstAttempt.proposal : "")
+    .split("/")
+    .at(-1) ?? "";
+const firstKept = await attemptProposals.get("org_456", firstId);
+if (firstKept === undefined) throw new Error("the story's proposal is not there");
+const attemptApproval = await attemptCall(CFO_100, "proposal.approve", {
+  proposal: firstKept.uri,
+  payload_hash: firstKept.payload_hash,
+});
+console.log(
+  "  cfo_100 approves the first:",
+  "data" in attemptApproval
+    ? String((attemptApproval.data as { state: string }).state)
+    : heard(attemptApproval),
+);
+attemptVendors.find((v) => v.tenant_id === "org_456" && v.id === "VENDOR-44")!.status = "suspended";
+console.log("  the accounts team suspends VENDOR-44");
+const attemptRelease = await attemptCall(AGENT, "proposal.execute", { proposal: firstKept.uri });
+console.log("  the agent releases INV-1008:", heard(attemptRelease));
+const attemptEnd = await attemptProposals.get("org_456", firstId);
+const attemptBooking = (await attemptBookings.get("org_456", firstId))?.state ?? "none";
+console.log(`  INV-1008's proposal: ${attemptEnd?.state}, its booking ${attemptBooking}`);
+const draftInvoice = await attemptCall(SUPERVISOR_123, "payment.create", ofInvoice("INV-1005"));
+console.log("  user_123 drafts INV-1005, a draft invoice:", heard(draftInvoice));
+console.log(`  payments drafted in this world: ${attemptDrafted.length}`);
 
 // Every call above left one record in the log before its answer was returned, the
 // refusals too. dsor_runtime reads one company at a time, and never a

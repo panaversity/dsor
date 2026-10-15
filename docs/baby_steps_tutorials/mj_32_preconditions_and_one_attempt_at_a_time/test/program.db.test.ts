@@ -234,6 +234,28 @@ describe("the program", () => {
       ]) {
         expect(releases).toMatch(line);
       }
+      // Step 32: preconditions and one attempt at a time, in a world of its own: the second
+      // attempt is refused, naming the first; a vendor suspended after the approval invalidates at
+      // the release; and a draft invoice is refused by its precondition (step 32's README, D12).
+      const attempts = output.slice(
+        output.indexOf(
+          "preconditions and one attempt at a time, in memory, in a world of their own",
+        ),
+      );
+      for (const line of [
+        "the agent drafts INV-1008, 31,400.00 USD: PENDING_APPROVAL, needs CFO x1 (high-value-payment)",
+        "the agent drafts INV-1008 again, with a new key: CONFLICT: invoice INV-1008 has an attempt in flight already: proposal dsor://org_456/proposal/prop_",
+        ", PENDING_APPROVAL",
+        "cfo_100 approves the first: APPROVED",
+        "the accounts team suspends VENDOR-44",
+        "the agent releases INV-1008: APPROVAL_INVALIDATED: proposal prop_",
+        ' is INVALIDATED: CONFLICT: a precondition of payment.create does not hold: state.vendor.status == "approved"',
+        "INV-1008's proposal: INVALIDATED, its booking released",
+        'user_123 drafts INV-1005, a draft invoice: CONFLICT: a precondition of payment.create does not hold: state.invoice.status == "issued"',
+        "payments drafted in this world: 0",
+      ]) {
+        expect(attempts).toMatch(line);
+      }
       expect(output).toMatch("the day's total under del_100: 91120.00 USD");
       expect(output).toMatch("a week later, dsor-scheduler sweeps org_456: answered, 3 expired");
       expect(output).toMatch("INV-1008's payment: EXPIRED, its booking released");
