@@ -830,8 +830,70 @@ for a human. An agent may gather evidence; it does not settle these alone.
     time. Step 29's learner build checks that a rule asks only for a role that could approve at all;
     nothing checks that someone outside the chain holds it. Should the switch-on of such a rule, or
     the answer to a request it stops, say that nobody may approve it?
+124. **Which retry class does a limit on one payment give?** §28 gives `LIMIT_EXCEEDED` the
+    retry class `after_delay`. That fits a running total, such as a daily limit, which has room
+    again the next day. A slip's limit per payment does not change with time, so waiting cannot
+    help, and `after_delay` invites a retry that is refused again. The `my_18` learner build
+    answers `LIMIT_EXCEEDED`, as DSOR-DEL-06e names, with the table's retry class. Should §28
+    give the per-payment case the class `never`, or name a code of its own for it?
+125. **What does a record say when an authority was never established?** The audit record's
+    `identity.subject_authority` requires an `as_of` time. When a role source answers with no
+    time, or is never asked because DSoR refused first, there is no such time. The `my_19`
+    learner build writes the decision's own time, which reads as though the authority was
+    checked then. Should `as_of` be optional, or should `subject_authority` be able to say that
+    the authority was not established?
+126. **Does an allowed replay need a record?** §21 stops at step 7 for a replay and returns the
+    recorded result. §29 says "every decision from step 3 onward is recorded individually". A
+    replay refused at steps 3 to 5, because authority changed (§22), is recorded, while a replay
+    that passes them leaves no record, not even its own request id. The `my_20` learner build
+    records nothing for an allowed replay. Should a replay be recorded, perhaps as a kind of its
+    own, or should §29 say that a replay is not a decision?
+127. **May a request name a slip, or an agent, as the thing it acts on?** DSOR-SRC-02b refuses "a
+    tenant, principal, or delegation identifier inside operation arguments that disagrees with
+    the security context". Read literally, a delegator could never name the slip they revoke,
+    which DSOR-DEL-04a says they may, and a person could never name the agent they stop under
+    DSOR-OPS-01a. The `my_25` learner build reads the rule as covering the authority a request
+    runs under: it refuses the argument names `principal`, `principal_id`, `delegation` and
+    `delegation_id`, and calls the slip or agent an operation acts on its `target`. Should
+    DSOR-SRC-02b say that it covers the request's own authority, and not the resource an
+    operation acts on?
+128. **Are `COMMITTED` and `FAILED` final?** §26.2's plain words say "Once a proposal is
+    `COMMITTED`, `FAILED`, `REJECTED`, and so on, it never moves again." The diagram's last
+    line moves `COMMITTED` and `FAILED` to `COMPENSATING` for compensatable and saga commands.
+    The `my_22` learner build follows the plain words: its map has no compensation moves,
+    though its `payment.create` is declared `compensatable`. Should the plain words say "final,
+    except for compensation"?
+129. **Where does a transition record say what moved?** `DSOR-AUD-01` asks for a record of every
+    proposal transition, and `DSOR-APR-01b` for each transition's actor and cause. The audit
+    record has `kind: proposal_transition` and a `result`, but no field for the state left, the
+    actor that moved it, or the cause. The `my_22` learner build writes the state entered as the
+    `result`, and the state left, the actor and the cause as text in `reason`, where they are
+    inside the hash but not separate fields. Should `audit-record.schema.json` give a transition
+    `from`, `to`, `actor` and `cause`?
 
-124. **May a `READY` proposal move to `INVALIDATED`?** §26.2's picture draws `APPROVED` to
+130. **Can an agent's own traffic delay a person's brake past §44?** `DSOR-OPS-01b` asks a
+    suspension or freeze to take effect for new decisions within §44's bound, 60 seconds at L2 and
+    5 seconds at L3, "without cooperation from the agent runtime". In the `my_22` to `my_25`
+    learner builds every record goes to the end of its company's log one writer at a time (decision
+    158 in the learner's notes), so a person's `control.suspend` waits for its turns behind the
+    agent's records already waiting. On a database 127 ms away a turn is a few round trips, and
+    twenty payments sent at once took about 34 seconds. A revocation waits for the same turns, and
+    `DSOR-DEL-04b` asks it to take effect within 60 seconds at L2. Nothing yet limits how many
+    requests an agent sends (`DSOR-OPS-02`). Should a control command's records go ahead of the
+    agent's, or is a rate limit the only answer the specification needs?
+
+131. **What is a waiting retry told when its own refusal cannot be recorded?** A request with the
+    idempotency key of one still being carried out waits for its answer, and if none comes it is
+    told `OUTCOME_UNKNOWN`. That refusal is a decision, so `DSOR-EXE-02` records it before the
+    response, and if the record cannot be written, `DSOR-EXE-03b` refuses with
+    `EVIDENCE_STORE_UNAVAILABLE`, whose retry class §28 fixes at `safe_same_key`: nothing was done,
+    send it again. For the retry that is true; the first request, still running, may yet do it.
+    Measured in the `my_20` learner build on a database 127 ms away, before decision 158: of fifty
+    requests with one key, 47 or 48 were told `EVIDENCE_STORE_UNAVAILABLE` this way. Should an
+    evidence failure after `OUTCOME_UNKNOWN` keep `OUTCOME_UNKNOWN`, or should §28 let
+    `EVIDENCE_STORE_UNAVAILABLE` carry another retry class here?
+
+132. **May a `READY` proposal move to `INVALIDATED`?** §26.2's picture draws `APPROVED` to
     `INVALIDATED`, and no move out of `READY` but to `EXECUTING`. DSOR-APR-03c says a proposal moves
     to `INVALIDATED` when "a new `REQUIRE_*` or `DENY` outcome appears" at its release. In step 31's
     learner build, the agent prepares INV-1009 in `propose_only` mode, a rule then asks the CFO above
@@ -839,13 +901,13 @@ for a human. An agent may gather evidence; it does not settle these alone.
     `READY` to `CANCELLED` and `EXPIRED` (open question 90). Should §26.2 draw it, or should such a
     proposal move on to `PENDING_APPROVAL` and wait for the approval the new rule asks for?
 
-125. **Should `proposal.execute` take `propose_only` mode?** DSOR-OPR-05 lets every command be
+133. **Should `proposal.execute` take `propose_only` mode?** DSOR-OPR-05 lets every command be
     called in three modes. A release prepared in `propose_only` mode would itself wait for a release.
     Step 31's learner build refuses that mode for `proposal.execute` with `VALIDATION_FAILED`, and
     allows a dry run, which checks everything again and moves nothing (its D13). Should
     DSOR-OPR-05 name the release as an exception?
 
-126. **Should a brake or a suspended signer invalidate a waiting payment, or only stop it for now?**
+134. **Should a brake or a suspended signer invalidate a waiting payment, or only stop it for now?**
     DSOR-APR-03c invalidates a proposal when a check fails at its release. In step 31's learner build,
     a check that cannot be made now (a directory with no recent answer, no usable exchange rate)
     leaves the proposal waiting, and the same key may retry (its D15). But an emergency brake on the

@@ -656,3 +656,52 @@ arguments are the shape the contract asks for.
 So the question to ask of every refusal in a handler is: **is this a fact about what happened, or a
 fact about the request?** The second kind belongs before §21.11, or the log lies. Piece 2 of step 10
 put a fact about the request in the handler; piece 4's first assertion about the log found it.
+
+## 36 · A role attribute is not a privilege, and is never inherited
+
+`BYPASSRLS`, `SUPERUSER`, `CREATEROLE`: properties of a role, not rights on an object. PostgreSQL
+passes rights through membership and never properties, so a member of `neon_superuser` is still
+filtered by every policy — and is one `SET ROLE` away from not being. Two consequences. A check that
+asks "does this account hold X" must also ask "may it become a role that does". And a test that
+predicts the leak from the map's wording, rather than measuring it, asserts the wrong thing; the
+probe is what corrected it. Step 11, the Neon test.
+
+## 37 · A test that runs with more rights than the program cannot see the program's lock
+
+Step 09's lesson was that the program must connect as the application. Step 11 found the same hole
+one layer down: the tests ran the stores as PGlite's superuser, and a superuser skips every
+row-level policy, so a store that forgot the company passed every store test. Measured: 27 failures
+as the superuser, 142 as the application, and none of the 27 in a store's own file. The test
+support drops to the application's role, and anything that needs the owner steps up for one call
+and steps back down in a `finally`.
+
+## 38 · Permissive policies are OR'd, so "is there a policy" is not a question
+
+Row-level security lets a table carry many policies, and by default a row passes if *any* of them
+says yes. A check that asks whether a policy exists is satisfied by the one that locks and blind to
+the second one that opens. Ask for the policy you wrote — one, for every command and every role,
+with the expression PostgreSQL prints back — and nothing beside it. Step 11, after the review; the
+same shape as lesson 33's pin that matched a shape.
+
+## 39 · A config file the typechecker never sees can carry a dead option for three steps
+
+`singleFork: true` sat in every Vitest config from step 09 on, with a comment explaining the
+determinism it bought. Vitest 4 has no such option, and nothing said so, because `tsconfig.json`
+included `src` and `test` and the config was a plain object to everyone. Include the config files;
+the first `tsc` run refused the option. The symptom had been visible for days as "a different
+failure each run" and was taken for load.
+
+## 40 · A migration's checksum is the file, comments included
+
+Edit one word of a comment in an applied migration and the runner refuses: "has changed since it
+was applied". That is the guard working. The cost is that a comment correction is a new migration
+to the database, so a step whose migration is still unreleased recreates its throwaway database
+rather than carrying a second file for a comment. Step 11, twice.
+
+## 41 · Measure the platform, not the standard it runs
+
+PostgreSQL's rule is that a role attribute never passes through membership, and PGlite proved it.
+Neon runs PostgreSQL and grants `BYPASSRLS` to every Console-made role directly, so the rule was
+true and the conclusion drawn from it — "the Console user is one SET ROLE away" — was false there,
+and Neon forbids that `SET ROLE` besides. A sentence about what a platform does is measured on the
+platform. Step 11, after a Neon project finally existed.

@@ -1846,7 +1846,7 @@ predicted all four breaks before any code. The build followed in five pieces.
   D13 while answering the README's review. M1, a late sheet of rates that invalidated an approved
   payment, now waits (D15). M2, the expiry read once before a wait of up to two seconds, is read
   again before the work. M3, the survivors, each became a test. L1 fixed; L2, L3 recorded (L3 is
-  open question 126); one break of the slip's lock still survives, recorded.
+  open question 134); one break of the slip's lock still survives, recorded.
 - **The reader's review:** the second idea had no picture (the flight plan to Lahore is it now),
   "gate" meant two things, and ten words were undefined.
 - **Counts:** unit 2210, database 489, at 54c30e2.

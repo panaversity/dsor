@@ -1,0 +1,518 @@
+// STEP 17: the first command whose effect can be undone, and the operation that undoes it.
+//
+// `payment.create` makes a draft payment for one of the company's invoices, to that invoice's own
+// vendor. `payment.cancel` takes a draft back. And every command now says, in its contract and on
+// every receipt, which execution semantics apply: whether it commits in one transaction, can be
+// undone by an operation it names, or cannot be undone at all (decision 125).
+//
+// Rule DSOR-EXE-05a: every command MUST declare one of these execution semantics in its contract.
+// Rule DSOR-EXE-05b: every command result MUST state the execution semantics that applied.
+// Rule DSOR-EXE-05c: a COMPENSATABLE or SAGA operation MUST name its compensating operations,
+// which run under the full pipeline.
+
+import type { PGlite } from "@electric-sql/pglite";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { theLog } from "../src/audit.ts";
+import { success, type ErrorEnvelope, type ResultEnvelope } from "../src/envelopes.ts";
+import { PIPELINE, type Handler, type OperationAnswer } from "../src/operations.ts";
+import { callOperation, makeDoor } from "./support/door.ts";
+import { readNow } from "../src/freshness.ts";
+import { getInvoice } from "../src/invoice.ts";
+import { cancelPayment, createPayment, paymentsOf } from "../src/payment.ts";
+import { contractsFromDisk, loadRegistry, type ContractDocument } from "../src/registry.ts";
+import { aDatabase, asTheOwner, forgetTheLog, resetTheStory } from "./support/database.ts";
+
+const SUPERVISOR = { loggedInAs: "user_123" };
+const AGENT = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };
+const CFO = { loggedInAs: "cfo_100" };
+const INV_1008 = "dsor://org_456/invoice/INV-1008";
+const PAY_901 = "dsor://org_456/payment/PAY-901";
+const AMOUNT = Object.freeze({ value: "31400.00", currency: "USD" });
+
+let db: PGlite;
+
+beforeAll(async () => {
+  db = await aDatabase();
+});
+
+afterAll(async () => {
+  await db.close();
+});
+
+beforeEach(async () => {
+  await resetTheStory();
+  await forgetTheLog("org_456");
+});
+
+/** The receipt of a command that ran, or an error naming what came back instead. */
+function receiptOf(answer: OperationAnswer): ResultEnvelope {
+  if (answer.kind !== "result") {
+    throw new Error(`expected a receipt, got ${JSON.stringify(answer)}`);
+  }
+
+  return answer.envelope;
+}
+
+/** The refusal, or an error naming what came back instead. */
+function refusalOf(answer: OperationAnswer): ErrorEnvelope {
+  if (answer.kind !== "error") {
+    throw new Error(`expected a refusal, got ${JSON.stringify(answer)}`);
+  }
+
+  return answer.envelope;
+}
+
+/** org_456's payments, as the owner reads them: number and status. */
+const paymentsOf456 = async (): Promise<string[]> =>
+  asTheOwner(async () =>
+    (
+      await db.query<{ id: string; status: string }>(
+        "SELECT id, status FROM public.payments WHERE tenant_id = 'org_456' ORDER BY id",
+      )
+    ).rows.map((row) => `${row.id} ${row.status}`),
+  );
+
+/** The contracts on disk, with payment.create's execution replaced. */
+const withExecution = (execution: unknown): ContractDocument[] =>
+  contractsFromDisk().map((contract) =>
+    contract.expectedId === "payment.create"
+      ? { ...contract, document: { ...(contract.document as object), execution } }
+      : contract,
+  );
+
+describe("every command says whether it can be undone", () => {
+  const registry = loadRegistry(contractsFromDisk());
+
+  it("DSOR-EXE-05a: every command's contract declares its execution semantics", () => {
+    const commands = [...registry.values()]
+      .filter((contract) => contract.kind === "command")
+      .map((contract) => `${contract.id} ${contract.execution?.semantics}`)
+      .sort();
+
+    expect(commands).toStrictEqual([
+      "invoice.issue atomic",
+      "payment.cancel atomic",
+      "payment.create compensatable",
+    ]);
+  });
+
+  it("DSOR-EXE-05a: a command contract whose semantics is not one of the five stops the program", () => {
+    // Decision 148: the test above reads the contracts this step ships, and they are well behaved.
+    // A review let the schema take any word for the semantics, and every test stayed green: a
+    // contract saying "undoable" would have loaded, and its command would have run.
+    for (const semantics of ["undoable", "ATOMIC", "best-effort", ""]) {
+      expect(() => loadRegistry(withExecution({ semantics })), semantics).toThrow(
+        /\/execution\/semantics must be equal to one of the allowed values/,
+      );
+    }
+  });
+
+  it("DSOR-EXE-05c: payment.create names payment.cancel as the operation that undoes it", () => {
+    expect(registry.get("payment.create")?.execution).toStrictEqual({
+      semantics: "compensatable",
+      compensated_by: ["payment.cancel"],
+    });
+  });
+});
+
+describe("payment.create", () => {
+  it("DSOR-EXE-05b: makes PAY-902, a draft for 31,400.00 USD paying INV-1008 to VENDOR-44, and says it can be undone", async () => {
+    const receipt = receiptOf(
+      await callOperation(SUPERVISOR, "payment.create", { invoice: INV_1008, amount: AMOUNT }),
+    );
+
+    expect(receipt.outcome).toBe("COMMITTED");
+    expect(receipt.semantics).toBe("compensatable");
+    expect(receipt.data).toStrictEqual({
+      uri: "dsor://org_456/payment/PAY-902",
+      tenantId: "org_456",
+      id: "PAY-902",
+      vendor: "dsor://org_456/vendor/VENDOR-44",
+      invoice: INV_1008,
+      amount: { value: "31400.00", currency: "USD" },
+      status: "draft",
+      version: 1, // NEW IN STEP 21
+    });
+    expect(await paymentsOf456()).toStrictEqual(["PAY-901 draft", "PAY-902 draft"]);
+  });
+
+  it("DSOR-CLS-02a: the agent's receipt leaves the amount out, though the agent sent it", async () => {
+    const receipt = receiptOf(
+      await callOperation(AGENT, "payment.create", { invoice: INV_1008, amount: AMOUNT }),
+    );
+
+    expect(receipt.semantics).toBe("compensatable");
+    expect(receipt.data).not.toHaveProperty("amount");
+    expect(receipt.redactions).toStrictEqual([
+      { field: "amount", reason: "clearance", treatment: "omitted" },
+    ]);
+  });
+
+  it("a payment for an invoice the company does not hold is refused, and nothing is made", async () => {
+    // INV-2001 is org_789's alone. Asked as org_456, it is an invoice org_456 does not hold.
+    const refusal = refusalOf(
+      await callOperation(SUPERVISOR, "payment.create", {
+        invoice: "dsor://org_456/invoice/INV-2001",
+        amount: AMOUNT,
+      }),
+    );
+
+    expect(refusal.code).toBe("RESOURCE_NOT_FOUND");
+    expect(refusal.retry).toBe("never");
+    expect(await paymentsOf456()).toStrictEqual(["PAY-901 draft"]);
+  });
+
+  it("an amount a payment cannot carry is refused before anything is written", async () => {
+    for (const amount of [
+      undefined,
+      31400,
+      "31400.00",
+      { value: 31400, currency: "USD" },
+      { value: "0.00", currency: "USD" },
+      { value: "0", currency: "USD" },
+      { value: "-5.00", currency: "USD" },
+      // Three decimals: the column holds two, and PostgreSQL would round this to 31400.01.
+      { value: "31400.005", currency: "USD" },
+      // Seventeen digits before the point: more than the column holds.
+      { value: "12345678901234567.00", currency: "USD" },
+      { value: "31,400.00", currency: "USD" },
+      { value: "31400.00", currency: "usd" },
+    ]) {
+      const refusal = refusalOf(
+        await callOperation(SUPERVISOR, "payment.create", { invoice: INV_1008, amount }),
+      );
+
+      expect(refusal.code, JSON.stringify(amount)).toBe("VALIDATION_FAILED");
+      expect(refusal.retry, JSON.stringify(amount)).toBe("never");
+    }
+
+    expect(await paymentsOf456()).toStrictEqual(["PAY-901 draft"]);
+  });
+
+  it("a payment in another currency than its invoice is refused before anything is written", async () => {
+    // STEP 17, decision 126: a USD invoice was paid in EUR, and in ZZZ, which is no currency.
+    // Converting between currencies is step 26's; until then a payment is in its invoice's.
+    for (const currency of ["EUR", "ZZZ"]) {
+      const refusal = refusalOf(
+        await callOperation(SUPERVISOR, "payment.create", {
+          invoice: INV_1008,
+          amount: { value: "31400.00", currency },
+        }),
+      );
+
+      expect(refusal.code, currency).toBe("VALIDATION_FAILED");
+      // Decision 148: the refusal names the currency the caller sent, never the invoice's own.
+      expect(refusal.message, currency).toMatch(`INV-1008 is not in ${currency},`);
+    }
+
+    expect(await paymentsOf456()).toStrictEqual(["PAY-901 draft"]);
+  });
+
+  it("DSOR-CLS-02a: the agent's refusal for another currency does not name the invoice's own", async () => {
+    // Decision 148: the refusal said "INV-1008 is in USD". An invoice's amount is confidential, its
+    // currency too, and the agent's reads and receipts leave it out; one payment.create in another
+    // currency handed it back, with nothing made and nothing in the log to show it, a review
+    // measured. INV-1009 is moved to EUR first, so what is tested is a value the database holds,
+    // not a word the message could hold whatever the invoice says. The payment is in USD, as the
+    // agent's slip is, so the slip's limit does not refuse it first.
+    await asTheOwner(() =>
+      db.exec(
+        "UPDATE public.invoices SET amount_currency = 'EUR' WHERE tenant_id = 'org_456' AND id = 'INV-1009'",
+      ),
+    );
+
+    const refusal = refusalOf(
+      await callOperation(AGENT, "payment.create", {
+        invoice: "dsor://org_456/invoice/INV-1009",
+        amount: { value: "1.00", currency: "USD" },
+      }),
+    );
+
+    expect(JSON.stringify(refusal)).not.toContain("EUR");
+    expect(refusal.code).toBe("VALIDATION_FAILED");
+    expect(refusal.message).toMatch("INV-1009 is not in USD,");
+    expect(await paymentsOf456()).toStrictEqual(["PAY-901 draft"]);
+  });
+
+  it("the handler reads what the payload hash describes, not the caller's object again", async () => {
+    // STEP 17, decision 126: the arguments were copied one level deep, and the hash was taken
+    // from that copy's text, but a nested amount was read again from the caller's own object. A
+    // value that answers differently the second time hashed 31400.00 and paid 1.00, a review measured.
+    let reads = 0;
+    const amount = {
+      currency: "USD",
+      get value() {
+        reads += 1;
+
+        return reads === 1 ? "31400.00" : "1.00";
+      },
+    };
+
+    const receipt = receiptOf(
+      await callOperation(SUPERVISOR, "payment.create", { invoice: INV_1008, amount }),
+    );
+
+    expect(receipt.data?.["amount"]).toStrictEqual({ value: "31400.00", currency: "USD" });
+    expect(reads).toBe(1);
+  });
+
+  it("the largest amount the column holds, to the cent, is made as it was sent", async () => {
+    const receipt = receiptOf(
+      await callOperation(SUPERVISOR, "payment.create", {
+        invoice: INV_1008,
+        amount: { value: "9999999999999999.99", currency: "USD" },
+      }),
+    );
+
+    expect(receipt.data?.["amount"]).toStrictEqual({
+      value: "9999999999999999.99",
+      currency: "USD",
+    });
+  });
+
+  it("DSOR-AUT-01b: the CFO may not make a payment", async () => {
+    const refusal = refusalOf(
+      await callOperation(CFO, "payment.create", { invoice: INV_1008, amount: AMOUNT }),
+    );
+
+    expect(refusal.code).toBe("AUTHORIZATION_DENIED");
+    expect(await paymentsOf456()).toStrictEqual(["PAY-901 draft"]);
+  });
+});
+
+describe("payment.cancel", () => {
+  it("DSOR-EXE-05b: takes PAY-901 back, and says how: atomic, one statement that commits or not", async () => {
+    const receipt = receiptOf(
+      await callOperation(SUPERVISOR, "payment.cancel", { payment: PAY_901, expected_version: 1 }),
+    );
+
+    expect(receipt.semantics).toBe("atomic");
+    expect(receipt.data?.["status"]).toBe("cancelled");
+    expect(await paymentsOf456()).toStrictEqual(["PAY-901 cancelled"]);
+  });
+
+  it("a cancelled payment is not cancelled again: CONFLICT, and asking again cannot help", async () => {
+    receiptOf(
+      await callOperation(SUPERVISOR, "payment.cancel", { payment: PAY_901, expected_version: 1 }),
+    );
+
+    const refusal = refusalOf(
+      await callOperation(SUPERVISOR, "payment.cancel", { payment: PAY_901, expected_version: 2 }),
+    );
+
+    expect(refusal.code).toBe("CONFLICT");
+    expect(refusal.retry).toBe("never");
+    expect(refusal.message).toMatch(/PAY-901 is cancelled/);
+  });
+
+  it("a payment the company does not hold is not found", async () => {
+    const refusal = refusalOf(
+      await callOperation(SUPERVISOR, "payment.cancel", {
+        payment: "dsor://org_456/payment/PAY-999",
+        expected_version: 1,
+      }),
+    );
+
+    expect(refusal.code).toBe("RESOURCE_NOT_FOUND");
+  });
+
+  it("an invoice's address is not a payment's", async () => {
+    const refusal = refusalOf(
+      await callOperation(SUPERVISOR, "payment.cancel", { payment: INV_1008, expected_version: 1 }),
+    );
+
+    expect(refusal.code).toBe("VALIDATION_FAILED");
+    expect(await paymentsOf456()).toStrictEqual(["PAY-901 draft"]);
+  });
+
+  it("DSOR-EXE-05c: what payment.create made, payment.cancel undoes", async () => {
+    const made = receiptOf(
+      await callOperation(AGENT, "payment.create", { invoice: INV_1008, amount: AMOUNT }),
+    );
+    const address = String(made.data?.["uri"]);
+    const undone = receiptOf(
+      await callOperation(AGENT, "payment.cancel", { payment: address, expected_version: 1 }),
+    );
+
+    expect(undone.data?.["uri"]).toBe(address);
+    expect(await paymentsOf456()).toStrictEqual(["PAY-901 draft", "PAY-902 cancelled"]);
+  });
+
+  it("DSOR-EXE-05c: the undo runs under the full pipeline: its own permission, its own decision in the log", async () => {
+    // The CFO may not cancel, as the CFO may not create: the undo is an operation like any other.
+    expect(
+      refusalOf(
+        await callOperation(CFO, "payment.cancel", { payment: PAY_901, expected_version: 1 }),
+      ).code,
+    ).toBe("AUTHORIZATION_DENIED");
+    expect(await paymentsOf456()).toStrictEqual(["PAY-901 draft"]);
+
+    receiptOf(
+      await callOperation(SUPERVISOR, "payment.cancel", { payment: PAY_901, expected_version: 1 }),
+    );
+
+    const decisions = (await theLog("org_456"))
+      .filter((record) => record.kind === "decision")
+      .map((record) => `${record.operation} ${record.authorization} ${record.result}`);
+
+    expect(decisions).toStrictEqual([
+      "payment.cancel@1 DENY AUTHORIZATION_DENIED",
+      "payment.cancel@1 ALLOW ALLOWED",
+    ]);
+  });
+});
+
+describe("the first lock: every payment statement names its company", () => {
+  it("DSOR-TEN-01b: as the owner, past the second lock, the payment statements still reach only their own company", async () => {
+    // Decision 148: two locks keep the companies apart, and the payments' first lock, the company in
+    // each statement's WHERE, had no test of its own. A review took it out of createPayment and every
+    // test passed, because the second lock still hid org_789's rows (README, Break 5). The owner is
+    // not filtered by the second lock, so as the owner the WHERE is all that answers.
+    //
+    // payment.ts has five statements, and this test reaches all five. Its first version reached
+    // three. A second review took the company out of the other two, and every test still passed.
+    const made = await asTheOwner(() => createPayment("org_456", "INV-2001", AMOUNT));
+    const cancelled = await asTheOwner(() => cancelPayment("org_456", "PAY-901", 1));
+
+    // createPayment's INSERT, then its question about why nothing was made. INV-2001 is org_789's
+    // alone, so org_456 holds no such invoice, and nothing is made.
+    expect(made).toStrictEqual({ kind: "no_invoice" });
+    // cancelPayment's UPDATE. Each company has a PAY-901, and only org_456's is taken back.
+    expect(cancelled.kind).toBe("cancelled");
+    expect(
+      await asTheOwner(
+        async () =>
+          (
+            await db.query<{ tenant_id: string; id: string; status: string }>(
+              "SELECT tenant_id, id, status FROM public.payments ORDER BY tenant_id, id",
+            )
+          ).rows,
+      ),
+    ).toStrictEqual([
+      { tenant_id: "org_456", id: "PAY-901", status: "cancelled" },
+      { tenant_id: "org_789", id: "PAY-901", status: "draft" },
+    ]);
+
+    // paymentsOf, the demo's report. org_456's payments are its own PAY-901, and not org_789's too.
+    const ours = await asTheOwner(() => paymentsOf("org_456"));
+
+    expect(ours.map((payment) => payment.uri)).toStrictEqual([PAY_901]);
+
+    // cancelPayment's question about why nothing was cancelled. It runs only when the UPDATE changed
+    // nothing, so org_456 asks for a number it does not have. org_789 pays its INV-2001 as PAY-902,
+    // then cancels it, which raises its version to 2. Without the company, the question would find
+    // org_789's PAY-902, and answer that it has moved on to version 2.
+    expect(
+      await createPayment("org_789", "INV-2001", { value: "4200.00", currency: "USD" }),
+    ).toMatchObject({ kind: "created", payment: { uri: "dsor://org_789/payment/PAY-902" } });
+    expect((await cancelPayment("org_789", "PAY-902", 1)).kind).toBe("cancelled");
+    expect(await asTheOwner(() => cancelPayment("org_456", "PAY-902", 1))).toStrictEqual({
+      kind: "not_found",
+    });
+  });
+});
+
+describe("the door says the semantics, from the contract", () => {
+  it("DSOR-EXE-05b: a handler that writes the wrong semantics does not change what the caller is told", async () => {
+    // A careless handler, begun as a copy of one whose effect commits once: it makes the payment,
+    // and says `atomic` on the receipt. The contract says the payment can be undone, and the door
+    // says so.
+    const careless: Handler = async (_args, _contract, askedBy, tenant, hash, requestId) => {
+      const made = await createPayment(tenant, "INV-1008", AMOUNT);
+
+      if (made.kind !== "created") {
+        throw new Error("the story has no INV-1008 to pay");
+      }
+
+      return {
+        kind: "result",
+        askedBy,
+        envelope: success({
+          data: made.payment as unknown as Record<string, unknown>,
+          semantics: "atomic",
+          payloadHash: hash,
+          tenant,
+          principalId: askedBy,
+          requestId,
+        }),
+      };
+    };
+    const door = makeDoor(PIPELINE, { "payment.create": careless });
+
+    const receipt = receiptOf(
+      await door(SUPERVISOR, "payment.create", { invoice: INV_1008, amount: AMOUNT }),
+    );
+
+    expect(receipt.semantics).toBe("compensatable");
+  });
+  it("DSOR-EXE-05b: a command that answers like a query is refused, not let out without its semantics", async () => {
+    // STEP 17, decision 126: a handler that began as a copy of invoice.get made the payment
+    // and answered with a row, which carries no semantics anywhere, and the door let it out.
+    const careless: Handler = async (_args, _contract, askedBy, tenant) => {
+      const made = await createPayment(tenant, "INV-1008", AMOUNT);
+      const invoice = (await getInvoice(tenant, "INV-1008")).value;
+
+      if (made.kind !== "created" || invoice === undefined) {
+        throw new Error("the story has no INV-1008 to pay");
+      }
+
+      return { kind: "data", askedBy, invoice, freshness: readNow() };
+    };
+    const door = makeDoor(PIPELINE, { "payment.create": careless });
+
+    const refusal = refusalOf(
+      await door(SUPERVISOR, "payment.create", { invoice: INV_1008, amount: AMOUNT }),
+    );
+
+    expect(refusal.code).toBe("INTERNAL_ERROR");
+    expect(refusal.message).toMatch(/answered with a row instead of a receipt/);
+  });
+});
+
+describe("what undoes an operation is an operation the program has", () => {
+  it("DSOR-EXE-05c: an operation undone by one this program does not have stops the program", () => {
+    expect(() =>
+      loadRegistry(
+        withExecution({ semantics: "compensatable", compensated_by: ["payment.vanish"] }),
+      ),
+    ).toThrow(/payment\.vanish/);
+  });
+
+  it("DSOR-EXE-05c: a query cannot undo anything, so naming one stops the program", () => {
+    expect(() =>
+      loadRegistry(withExecution({ semantics: "compensatable", compensated_by: ["invoice.get"] })),
+    ).toThrow(/invoice\.get.*query/);
+  });
+
+  it("DSOR-EXE-05c: an operation that can be undone, and names nothing that undoes it, is refused", () => {
+    // Without the key, the specification's schema refuses it. With an empty list, the schema takes
+    // it, and the registry used to (decision 126): an undo promised and none named.
+    expect(() => loadRegistry(withExecution({ semantics: "compensatable" }))).toThrow(
+      /compensated_by/,
+    );
+    expect(() =>
+      loadRegistry(withExecution({ semantics: "compensatable", compensated_by: [] })),
+    ).toThrow(/names nothing that undoes it/);
+    expect(() => loadRegistry(withExecution({ semantics: "saga", compensated_by: [] }))).toThrow(
+      /names nothing that undoes it/,
+    );
+  });
+
+  it("DSOR-EXE-05c: an operation is not its own undo, and names each undo once", () => {
+    // STEP 17, decision 126: a careless contract that named payment.create where it meant
+    // payment.cancel promised an undo that makes a second payment.
+    expect(() =>
+      loadRegistry(
+        withExecution({ semantics: "compensatable", compensated_by: ["payment.create"] }),
+      ),
+    ).toThrow(/payment\.create is undone by itself/);
+    expect(() =>
+      loadRegistry(
+        withExecution({
+          semantics: "compensatable",
+          compensated_by: ["payment.cancel", "payment.cancel"],
+        }),
+      ),
+    ).toThrow(/names payment\.cancel twice/);
+  });
+});

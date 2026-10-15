@@ -483,7 +483,7 @@ proposal twice, or lost or spent a booking twice.
 - **L2, recorded:** the contract names the permission `proposal:execute`, which nothing checks. The
   specification's schema asks every contract to name one, and D12 says line ⑨ decides instead.
 - **L3, recorded:** a brake, and a signer the directory lists as suspended, invalidate the payment
-  for good, though both can be lifted. The same question as D15: open question 126.
+  for good, though both can be lifted. The same question as D15: open question 134.
 - **L4, done at hand-over:** the status page, the map's "done when", and the rules met.
 - **One break survived, recorded:** with the slip's lock gone from the check again, every test still
   passed. A test would race a release against a tear-up of the slip, on the database.
@@ -501,10 +501,10 @@ says where each permission comes from.
   So this step is done when a stricter rule makes INV-2012 `INVALIDATED` (D1). The map's "done
   when" changes with this step.
 - **`READY` to `INVALIDATED`.** §26.2's picture does not draw this move. This step adds it (D6), as
-  step 25c added `READY` to `CANCELLED`. Open question 124 in
+  step 25c added `READY` to `CANCELLED`. Open question 132 in
   [`research/open-questions.md`](../../../research/open-questions.md).
 - **No `propose_only` for a release.** DSOR-OPR-05 says every command takes the three modes. This
-  step refuses one (D13). Open question 125.
+  step refuses one (D13). Open question 133.
 - **Releasing DSoR's own work** (D14), **suspending at the release** (D16), and **whether an
   approver must still hold the role** at the release: this step reads the role the approval
   recorded.

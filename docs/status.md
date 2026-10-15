@@ -2,7 +2,7 @@
 
 **This document is the only authority on what is implemented.** The README is the
 idea; the specification is the contract; this page is the facts. Last updated:
-2026-10-13.
+2026-10-15.
 
 ## Specification
 
@@ -49,8 +49,8 @@ implementation, and their tests do not count toward `pnpm coverage:req`. CI runs
 `pnpm check` inside every step, and `pnpm guard` checks each step's rule ids, the
 schema patterns it copies, and [`rules-met.md`](baby_steps_tutorials/rules-met.md).
 
-The table lists the `mj_` learner builds. Steps 01 to 10 also have a second learner's
-builds, `my_01` to `my_10`, described in the next section.
+The table lists the `mj_` learner builds. Steps 01 to 25 also have a second learner's
+builds, `my_01` to `my_25`, described in the next section.
 
 | Step | State |
 | --- | --- |
@@ -89,7 +89,7 @@ builds, `my_01` to `my_10`, described in the next section.
 | 28b · where a rule came from | Planned. A learner build, `mj_28b_where_a_rule_came_from`, the second half of the map's step 28. Each company has a stand-in for KSoR, inside DSoR's program, that keeps each policy's versions with their SHA-256 fingerprints; DSoR asks the call's own company's KSoR which version is in force, waits 2 seconds at most, and uses only an answer it can check. DSoR's own sweep, `rule.check_authority`, for its system logins only (`rule:check`, held by the scheduler), marks each active version whose policy moved `stale_authority`: the database writes the time of the mark, and keeps the version in force, with a `control_change` record and a notice to the version's owner in `dsor.notices`, in one transaction (migration 024). DSOR-CTL-03a is met in part: no timer calls the sweep, so §44's 24 hours hold only if a deployment calls it daily, and nothing reads or sends the notice. Line ⑩ reads the active and the stale versions in one read, and a stale one answers as its `on_stale` says during its grace, which runs from the mark (DSOR-CTL-03b); after it, on a high or critical operation, at least `REQUIRE_APPROVAL` (DSOR-CTL-03c), which the tests reach by rating `payment.create` high, since it ships medium. The record keeps the authority a rule cites, marks a stale one `superseded_version`, and names the version in force beside the controls in the tutorial's extensions (DSOR-CTL-04, this tutorial's reading). A switch-on asks KSoR first, and refuses a citation that is not in force. A rule cites a policy of its own company in KSoR, or `local` (DSOR-CTL-01b), and its grace on a high or critical operation is at most 30 days (DSOR-BND-02). Only a stale version's owner, in person, suspends or retires it. Open questions 116 to 119. Proved partly by `pnpm test:db`, which CI does not run. It is not the official step |
 | 29 · approvals | Planned. A learner build, `mj_29_approvals`. A person approves a waiting proposal with DSoR's own command `proposal.approve`, for people only, with the input `{ proposal, payload_hash }` (§26.1). Line ⑨ looks before any work: the call must be direct and from a person (DSOR-APR-05a); the approver must hold the target contract's `approve_permission`, `payment:approve` for the payment commands, held with `proposal:approve` by the CFO and the tenant administrator (DSOR-APR-07); the proposal must be `PENDING_APPROVAL` and its time not come, by the store's clock; the approver must hold a role it waits for, and approve once; and last the fingerprint must be the stored payload hash, or `APPROVAL_MISMATCH` (DSOR-APR-09). The fingerprint is SHA-256 over RFC 8785 canonical JSON, and a request whose text is not valid Unicode is refused at line ⑥ (DSOR-APR-02b). A waiting proposal keeps what it waits for in the schema's own field, `requires`, written once (migration 025). Each approval is kept whole, in `approval.schema.json`'s shape, in `dsor.approvals`: add-only for DSoR's login, one for each person and proposal, its key columns tied to the record, behind the company's lock (migration 026, DSOR-APR-02a). The approval and the move to `APPROVED` are one step under the company's ending lock, which the tear-up and the sweep take too, reading the clock after the wait; the move waits until every rule that asked has its quorum (DSOR-AUT-02c). An approval expires with its proposal, and the sweep expires an approved one and gives back its booking (DSOR-APR-04a, DSOR-DEL-06d). A rule may ask only for an approval that someone can give, and line ⑩ fails closed if a rule ever asks for an approval of DSoR's own work (DSOR-APR-08). DSOR-APR-05b is met in part: the only approval is a person's own call, and no MCP channel exists to test. The approver reads the request from DSoR's store; DSoR's own rendering of it (DSOR-APR-06a, L3) is later. Nothing executes an approved proposal before step 31. Open questions 120 to 122. Proved partly by `pnpm test:db`, which CI does not run. It is not the official step |
 | 30 · who may not approve | Planned. A learner build, `mj_30_who_may_not_approve`. No one in a proposal's requesting chain approves it (DSOR-SOD-02): line ⑨ of `proposal.approve`, after the target's `approve_permission` and before the proposal's state, refuses with `SOD_VIOLATION` a person who acted in the request, who signed the slip it names, read from DSoR's own store of slips, or who is its subject. The refusal comes before any work: it is recorded `DENY`, and a dry run hears the same. Owner-approval mode (DSOR-SOD-05 to DSOR-SOD-13) is not built, so the rule always applies. An AP supervisor may approve now, and a rule of the company's own may ask for one. An agent never approves (DSOR-SOD-01a) and every approver is a person (DSOR-SOD-01b), held by step 29's guards and by tests titled with their ids. A quorum counts distinct people (DSOR-SOD-04c): at line ⑨, in the store's step, in the count itself, and by the database's key `approvals_once`, with two approvals at once on the database. Open question 123. Proved partly by `pnpm test:db`, which CI does not run. It is not the official step |
-| 31 · check again at execution | Planned. A learner build, `mj_31_check_again_at_execution`. DSoR's own command `proposal.execute` releases a waiting proposal, `APPROVED` or `READY`, with the input `{ proposal }` and nothing else (DSOR-APR-13), and runs the request that was stored with it (DSOR-APR-10). Line ⑤ checks no permission of its own for it; line ⑨ decides who may release once line ⑧ has loaded the proposal: the agent that asked, under the slip it asked under, if that slip holds the full permission (DSOR-APR-11), or a person who holds it. Before the work it checks again on live data, for whoever asked: the stored request's fingerprint, the asker's slip, signer, brake, and permission in the mode it asked in, the bound invoice's version, the rules and the limits now, and the approvals against the role and quorum the rules ask for now, with segregation of duties for each approver (DSOR-APR-03a, DSOR-APR-03b). A "no" moves the proposal to `INVALIDATED`, `READY` too (migration 027), gives its booking back, and answers `APPROVAL_INVALIDATED` with the cause (DSOR-APR-03c). A check that cannot be made now, such as no recent answer from the directory or no usable rate, leaves it waiting, and the same key may retry. The record names the rule versions the request was decided under (DSOR-APR-03d). The expiry is read again just before the work. A dry run checks again and moves nothing; `propose_only` is refused. DSoR's own work prepared in `propose_only` mode is not released. A vendor's status is step 32's. Open questions 124 to 126. Proved partly by `pnpm test:db`, which CI does not run. It is not the official step |
+| 31 · check again at execution | Planned. A learner build, `mj_31_check_again_at_execution`. DSoR's own command `proposal.execute` releases a waiting proposal, `APPROVED` or `READY`, with the input `{ proposal }` and nothing else (DSOR-APR-13), and runs the request that was stored with it (DSOR-APR-10). Line ⑤ checks no permission of its own for it; line ⑨ decides who may release once line ⑧ has loaded the proposal: the agent that asked, under the slip it asked under, if that slip holds the full permission (DSOR-APR-11), or a person who holds it. Before the work it checks again on live data, for whoever asked: the stored request's fingerprint, the asker's slip, signer, brake, and permission in the mode it asked in, the bound invoice's version, the rules and the limits now, and the approvals against the role and quorum the rules ask for now, with segregation of duties for each approver (DSOR-APR-03a, DSOR-APR-03b). A "no" moves the proposal to `INVALIDATED`, `READY` too (migration 027), gives its booking back, and answers `APPROVAL_INVALIDATED` with the cause (DSOR-APR-03c). A check that cannot be made now, such as no recent answer from the directory or no usable rate, leaves it waiting, and the same key may retry. The record names the rule versions the request was decided under (DSOR-APR-03d). The expiry is read again just before the work. A dry run checks again and moves nothing; `propose_only` is refused. DSoR's own work prepared in `propose_only` mode is not released. A vendor's status is step 32's. Open questions 132 to 134. Proved partly by `pnpm test:db`, which CI does not run. It is not the official step |
 | 32 to 51 | Planned |
 
 ## The baby-steps tutorial
@@ -102,7 +102,7 @@ built in the open with their reasoning recorded in
 learner's copies, listed step by step in the table above, with notes in
 [`mj_notes.md`](baby_steps_tutorials/mj_notes.md).
 
-In the `my_` track, eleven of the 52 are built. Test counts are cumulative, because each step inherits the
+In the `my_` track, twenty-six of the 52 are built. Test counts are cumulative, because each step inherits the
 one before it:
 
 | Step | Tests | The one new idea |
@@ -118,17 +118,33 @@ one before it:
 | `my_08_write_the_decision_first` | 234 | every decision is recorded before the answer, refusals included, in a hash chain |
 | `my_09_postgres_on_neon` | 327 | the audit log moves into PostgreSQL, and the application — the account the program actually connects as — may not rewrite it |
 | `my_10_tenants` | 376 | a second company shares the program and the database: every row carries its company, every request is inside exactly one, another company's address is refused without revealing anything |
+| `my_11_row_level_security` | 412 | the second lock: PostgreSQL itself hides every other company's rows, told the company per statement inside its own transaction, and the program refuses to start as an account the lock does not apply to |
+| `my_12_cross_tenant_test_suite` | 444 | one generated test that calls every operation in the registry with another company's address, from an example request each contract carries, and fails by name for an operation it cannot call |
+| `my_13_bounded_queries` | 468 | invoice.list, with the size of the answer the server's: a maximum page size and result size on every query, a cursor that is an address, and a door that refuses an oversize answer whatever handler produced it |
+| `my_14_classification_and_masking` | 512 | every field labelled, the agent cleared for internal, a field above it left out of the answer and listed before the answer leaves, every answer labelled, and a read that handed out confidential data written down with its rows and their count |
+| `my_15_freshness_labels` | 534 | every answer says how old its data is, when it was read and from where, in a label the code that read writes; the door refuses a read with no label, and a `current` label stamped before the request began |
+| `my_16_the_control_plane_store` | 557 | DSoR's log moves out of the business's tables into a schema of its own, `dsor`, in the same database: the first piece of paperwork in its control-plane store. The program refuses to start if the application owns that schema or may create things in it |
+| `my_17_vendors_and_payments` | 623 | vendors and payments, two more record types under the same locks; every command says, in its contract and on every receipt, whether its effect can be undone, and `payment.create` is undone by `payment.cancel` |
+| `my_18_delegations` | 663 | the permission slip: every command the agent sends runs under a slip a person signed, found by DSoR itself, and its power is computed at each decision as the slip's permissions cut down to what the signer holds right now and to the login's scopes, up to the slip's limit per payment |
+| `my_19_unattended_mode_and_the_role_source` | 696 | at 2 a.m. nobody is logged in: an agent's command under a slip is `unattended`, its subject the slip's signer and the agent in its actor chain, the slip named on the record; what the signer holds is asked of the company's directory, and no fresh answer is no answer |
+| `my_20_idempotency_keys` | 735 | every command carries an idempotency key beside its arguments, claimed with one INSERT at §21.7; the same key and request get the recorded answer and nothing runs twice, a different request under the key is refused, and fifty at once make one payment; since decision 158 a request waits up to thirty seconds for the same request still being carried out |
+| `my_21_optimistic_concurrency` | 754 | invoices and payments carry a version raised in the same UPDATE as every change; every command declares its concurrency strategy, an optimistic command says the version it decided on, and a record that moved on is refused `STALE_STATE` before any business rule, with no new version handed over |
+| `my_22_proposals_and_their_states` | 840 | every command past its key's claim becomes a proposal at §21.8, whose state is its last move; the map of §26.2, without its compensation line, and a one-line history are kept by the database, so a finished proposal cannot move and one cannot run twice; the door moves it to DENIED, READY, EXECUTING and how it ended; since decision 157 every move is written with its own audit record in one statement, and the database refuses a move without one; since decision 158 each company's log takes one writer at a time |
+| `my_23_three_ways_to_call` | 881 | a command is called execute, propose_only or validate_only, said beside its arguments; a dry run claims and proposes nothing, is recorded as VALIDATED and changes nothing; a prepared one stops at READY; the claim keeps the mode |
+| `my_24_limits_with_reservations` | 923 | a slip has a daily limit, 200,000.00 USD for del_100; each payment, and no other command, books its amount against the day in one statement, keyed by its proposal, so requests racing never book past it; the reservation is held, committed or released as the proposal ends |
+| `my_25_revocation_and_the_emergency_brake` | 1021 | the emergency brake: a person suspends one agent or freezes every agent in a company, from DSoR's own store; §21.4 refuses a stopped agent's commands, and the move to EXECUTING asks again; a slip's signer, supervisor or approver, revokes it, active or suspended, and what waited under it is cancelled, if it is still what was read; none of it asks the agent |
 
 **What this is not.** Read these as worked examples, not as conformance. Three things
 are true of all of them:
 
 - **Each step's own `pnpm check` runs in CI, and its database tests do not.** The root
-  `vitest.config.ts` collects `packages/*/src/**/*.test.ts` only, so a separate CI job,
-  "Baby steps", runs `pnpm --dir docs/baby_steps_tutorials/<step> check` inside every
-  step folder, on Ubuntu and Windows. A step's `pnpm test:db`, which needs a real
-  PostgreSQL, is run by hand. Every `my_` step also has a `test/main.test.ts` that runs its
-  demo program as a subprocess, so the output each README pastes as proof is checked
-  rather than asserted.
+  `vitest.config.ts` collects `packages/*/src/**/*.test.ts` only, so CI checks each step
+  folder by itself. Every folder gets two jobs, one on Ubuntu and one on Windows, and each
+  runs `pnpm install` and `pnpm check` inside the folder. A job named "Baby steps" passes
+  only when all of them passed. A step's `pnpm test:db`, which needs a real PostgreSQL, is
+  run by hand. Every `my_` step also has a `test/main.test.ts` that runs its demo program
+  as a subprocess, so the output each README pastes as proof is checked rather than
+  asserted.
 - **Nothing is authenticated, and only the audit log is durable.** There is no real
   login until steps 43 and 44. From step 09 the audit log is in PostgreSQL and survives
   a restart; from step 10 the invoices are rows there too. Up to step 09 the invoice store is
@@ -137,6 +153,12 @@ are true of all of them:
   Its database tier (nine tests, the same as step 09's) has been run against a local
   PostgreSQL 17 with two real logins and a database of the step's own, on 2026-10-05; the
   four migrations applied and the demo ran against that server, both chains verifying.
+- **Steps 16 to 25's database tiers pass against Neon,** each on a database of its own, on
+  2026-10-14 and 15, 127 ms from the machine that ran them: 39, 51, 51, 51, 52, 53, 60, 60, 62 and 75 tests,
+  none skipped. That first run on a database far away
+  found two settings measured on a server on the same machine: how long a request waits for the
+  same request still being carried out, and how a company's log is shared by writers. Decision 158
+  changed both.
 - **`my_09` has a second test tier.** `pnpm check` proves its guarantees against
   PostgreSQL compiled to WebAssembly, in-process, so they hold on a fresh checkout.
   `pnpm test:db` covers what one in-process connection cannot do — logging in as a
@@ -146,14 +168,14 @@ are true of all of them:
   PostgreSQL 17 with two real logins, on 2026-10-04; without a server they report
   `9 skipped` rather than passing quietly.
 - **A requirement id in a step's test title is a claim about that step, not about
-  DSoR.** `my_08`'s 232 tests name 23 ids in their titles, and each step's README has a
+  DSoR.** `my_08`'s 234 tests name 22 ids in their titles, and each step's README has a
   table saying which halves of which rules it does *not* meet. No L1, L2 or L3
   requirement should be read as implemented on the strength of the tutorial.
 
 The tutorial is also where most of what has been *learned* is written down:
-[`my_notes/decisions.md`](baby_steps_tutorials/my_notes/decisions.md) holds 93 dated
+[`my_notes/decisions.md`](baby_steps_tutorials/my_notes/decisions.md) holds 158 dated
 decisions and [`my_notes/lessons.md`](baby_steps_tutorials/my_notes/lessons.md) holds
-35 lessons, several of them about tests that passed while proving nothing. The `mj_` track
+41 lessons, several of them about tests that passed while proving nothing. The `mj_` track
 keeps its own in [`mj_notes.md`](baby_steps_tutorials/mj_notes.md).
 
 ## Learning-path stages

@@ -1,0 +1,50 @@
+{
+  "id": "payment.create",
+  "version": 1,
+  "kind": "command",
+  "effect": "additive",
+  "input": {
+    "schema": "PaymentCreateRequest"
+  },
+  "output": {
+    "schema": "Payment"
+  },
+  "authorization": {
+    "permission": "payment:create"
+  },
+  "tenancy": {
+    "required": true
+  },
+  "delegation": {
+    "required": true
+  },
+  "idempotency": {
+    "required": false
+  },
+  "concurrency": {
+    "strategy": "none"
+  },
+  "execution": {
+    "semantics": "compensatable",
+    "compensated_by": ["payment.cancel"]
+  },
+  "preconditions": {
+    "freshness": "current",
+    "predicates": []
+  },
+  "controls": [],
+  "risk": {
+    "level": "medium"
+  },
+  "audit": {
+    "level": "full"
+  },
+  "extensions": {
+    "com.panaversity.tutorial": {
+      "example_request": {
+        "invoice": "dsor://org_456/invoice/INV-1009",
+        "amount": { "value": "2500.00", "currency": "USD" }
+      }
+    }
+  }
+}

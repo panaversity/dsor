@@ -1,0 +1,545 @@
+// NEW IN STEP 19: unattended mode, and the role source.
+//
+// At 2 a.m. nobody is logged in. The agent logs in as itself, and DSoR reads whose authority it
+// carries from the slip, never from the request; a company directory says whether that person still
+// holds the job; and the record says all of it (decision 129).
+//
+// Rule DSOR-DEL-07: an unattended request MUST be accepted only under a delegation whose modes
+// include unattended.
+// Rule DSOR-DEL-08: in unattended mode DSoR MUST take the subject from the delegation record, never
+// from the request.
+// Rule DSOR-IDN-05: each tenant MUST configure a role source from which DSoR can read the current
+// roles of a principal who is not present in the request.
+// Rule DSOR-IDN-06: when the delegator's current authority cannot be established within the
+// staleness bound, DSoR MUST deny the command.
+
+import type { PGlite } from "@electric-sql/pglite";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { theLog, verifyChain, type AuditRecord } from "../src/audit.ts";
+import { aDirectory, useDirectory } from "../src/directory.ts";
+import type { ErrorEnvelope } from "../src/envelopes.ts";
+import { callOperation, type OperationAnswer } from "../src/operations.ts";
+import { aDatabase, asTheOwner, forgetTheLog, resetTheStory } from "./support/database.ts";
+
+const SUPERVISOR = { loggedInAs: "user_123" };
+const AGENT = { loggedInAs: "accounts-payable-fte", tenant: "org_456" };
+const PAY_901 = "dsor://org_456/payment/PAY-901";
+
+let db: PGlite;
+
+beforeAll(async () => {
+  db = await aDatabase();
+});
+
+afterAll(async () => {
+  await db.close();
+});
+
+beforeEach(async () => {
+  await resetTheStory();
+  await forgetTheLog("org_456");
+});
+
+afterEach(() => {
+  useDirectory("org_456", undefined);
+});
+
+function refusalOf(answer: OperationAnswer): ErrorEnvelope {
+  if (answer.kind !== "error") {
+    throw new Error(`expected a refusal, got ${JSON.stringify(answer)}`);
+  }
+
+  return answer.envelope;
+}
+
+const cancel = (login: object, args: object = {}): Promise<OperationAnswer> =>
+  callOperation(login as never, "payment.cancel", { payment: PAY_901, ...args });
+
+const hoursAgo = (hours: number): string =>
+  new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+
+describe("a slip says in which modes it may be used", () => {
+  it("DSOR-DEL-07: del_100 allows unattended, and the agent's command runs", async () => {
+    expect((await cancel(AGENT)).kind).toBe("result");
+  });
+
+  it("DSOR-DEL-07: a slip that does not allow unattended is no slip for the agent alone at night", async () => {
+    await asTheOwner(() =>
+      db.exec("UPDATE dsor.delegations SET modes = ARRAY['on_behalf_of'] WHERE id = 'del_100'"),
+    );
+
+    const refusal = refusalOf(await cancel(AGENT));
+
+    expect(refusal.code).toBe("DELEGATION_REQUIRED");
+    expect(refusal.message).toMatch(/unattended/);
+  });
+
+  it("DSOR-DEL-07: a slip that names no modes allows none the agent can use alone", async () => {
+    // Decision 130: the default was unattended, so the database, not the signer, made a slip usable
+    // with nobody present.
+    await asTheOwner(() =>
+      db.exec(
+        `UPDATE dsor.delegations SET status = 'revoked' WHERE id = 'del_100';
+         INSERT INTO dsor.delegations (tenant, id, delegator, delegate, permissions, status, expires_at)
+         VALUES ('org_456', 'del_200', 'user_123', 'accounts-payable-fte', ARRAY['payment:cancel'],
+                 'active', '2099-12-31T23:59:59Z')`,
+      ),
+    );
+
+    const refusal = refusalOf(await cancel(AGENT));
+
+    expect(refusal.code).toBe("DELEGATION_REQUIRED");
+    expect(refusal.message).toMatch(/del_200 does not allow unattended/);
+  });
+
+  it("a slip is signed by someone other than its own agent", async () => {
+    // Decision 130: a slip the agent signed for itself ran. The agent cannot write slips; the store
+    // still should not hold one.
+    const answer = await asTheOwner(async () => {
+      try {
+        await db.exec(
+          `INSERT INTO dsor.delegations (tenant, id, delegator, delegate, permissions, status, expires_at)
+           VALUES ('org_456', 'del_201', 'accounts-payable-fte', 'accounts-payable-fte',
+                   ARRAY['payment:cancel'], 'suspended', '2099-12-31T23:59:59Z')`,
+        );
+
+        return "allowed";
+      } catch (error) {
+        return (error as Error).message;
+      }
+    });
+
+    expect(answer).toMatch(/check constraint/);
+  });
+
+  it("DSOR-DEL-07: a slip's modes are never empty, and only the two the specification names", async () => {
+    for (const modes of ["ARRAY[]::text[]", "ARRAY['at_night']"]) {
+      const answer = await asTheOwner(async () => {
+        try {
+          await db.exec(`UPDATE dsor.delegations SET modes = ${modes} WHERE id = 'del_100'`);
+
+          return "allowed";
+        } catch (error) {
+          return (error as Error).message;
+        }
+      });
+
+      expect(answer, modes).toMatch(/check constraint/);
+    }
+  });
+});
+
+describe("the company directory", () => {
+  it("DSOR-IDN-06: with the directory switched off, the agent is refused, not waved through", async () => {
+    // The map's "break it", as a test.
+    useDirectory("org_456", aDirectory("org_456", { down: true }));
+
+    const refusal = refusalOf(await cancel(AGENT));
+
+    expect(refusal.code).toBe("DEPENDENCY_TIMEOUT");
+    expect(refusal.retry).toBe("safe_same_key");
+    expect(refusal.message).toMatch(/did not answer/);
+  });
+
+  it("DSOR-IDN-06: an answer older than 24 hours is no answer, and the refusal does not say when it was", async () => {
+    // Decision 130: FRESHNESS_UNSATISFIABLE, retry after_delay, because sending it again at once
+    // cannot help; and the agent is not told when the directory last knew its signer.
+    const asOf = hoursAgo(25);
+
+    useDirectory("org_456", aDirectory("org_456", { asOf }));
+
+    const refusal = refusalOf(await cancel(AGENT));
+
+    expect(refusal.code).toBe("FRESHNESS_UNSATISFIABLE");
+    expect(refusal.retry).toBe("after_delay");
+    expect(refusal.message).not.toContain(asOf.slice(0, 13));
+  });
+
+  it("DSOR-IDN-06: an answer dated more than five minutes ahead, with no zone, or in a year past 9999 is no answer", async () => {
+    // Decision 130: each of these passed, or broke the record, before. A year ahead and 9999 counted
+    // as fresh; a time with no zone was read in this host's zone; a year past 9999 broke the
+    // record's own schema check, and a healthy store answered EVIDENCE_STORE_UNAVAILABLE.
+    //
+    // Decision 150: six minutes and a day ahead hold the limit at five minutes. With only a year
+    // ahead here, a limit of 300 days passed every test. Six minutes comes first, because it has
+    // one minute to spare from the moment the list is made.
+    for (const asOf of [
+      hoursAgo(-0.1),
+      hoursAgo(-24),
+      hoursAgo(-24 * 365),
+      "9999-12-31T23:59:59.000Z",
+      "+275760-09-13T00:00:00.000Z",
+      hoursAgo(1).replace("Z", ""),
+    ]) {
+      useDirectory("org_456", aDirectory("org_456", { asOf }));
+
+      expect(refusalOf(await cancel(AGENT)).code, asOf).toBe("FRESHNESS_UNSATISFIABLE");
+    }
+  });
+
+  it("DSOR-EXE-02: an answer from the year 0000, ahead of UTC, is no answer, and the refusal is written down", async () => {
+    // Decision 150: JavaScript reads this time as the year before 0000, and writes it
+    // "-000001-12-31T23:00:00.000Z". The record's schema cannot hold that, so a healthy store
+    // answered EVIDENCE_STORE_UNAVAILABLE, and the refusal was written nowhere.
+    useDirectory("org_456", aDirectory("org_456", { asOf: "0000-01-01T00:00:00+01:00" }));
+
+    expect(refusalOf(await cancel(AGENT)).code).toBe("FRESHNESS_UNSATISFIABLE");
+
+    const decisions = (await theLog("org_456")).filter((r) => r.kind === "decision");
+
+    expect(decisions).toHaveLength(1);
+    expect(decisions[0]?.result).toBe("FRESHNESS_UNSATISFIABLE");
+    // The directory gave no time this program can use, so the record has the decision's own.
+    expect(decisions[0]?.identity.subject_authority.as_of).toBe(decisions[0]?.at);
+  });
+
+  it("DSOR-IDN-06: an answer dated on a day the calendar does not have is no answer", async () => {
+    // Decision 150: JavaScript reads 31 September as 1 October. At 10:00 on 1 October that answer
+    // was ten hours old, it counted, and the agent's command ran under it. The clock is held still
+    // here, because on any later day the answer is refused as stale anyway.
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-10-01T10:00:00Z"));
+
+    try {
+      useDirectory("org_456", aDirectory("org_456", { asOf: "2026-09-31T00:00:00Z" }));
+
+      expect(refusalOf(await cancel(AGENT)).code).toBe("FRESHNESS_UNSATISFIABLE");
+
+      // A real day, 22 hours before the held clock, still counts: the clock is the one held.
+      useDirectory("org_456", aDirectory("org_456", { asOf: "2026-09-30T12:00:00Z" }));
+
+      expect((await cancel(AGENT)).kind).toBe("result");
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it("DSOR-IDN-06: a directory a few minutes ahead of this program's clock still counts", async () => {
+    useDirectory("org_456", aDirectory("org_456", { asOf: hoursAgo(-4 / 60) }));
+
+    expect((await cancel(AGENT)).kind).toBe("result");
+  });
+
+  it("DSOR-IDN-06: an answer that is not a list of permissions and a time is no answer", async () => {
+    const answers: unknown[] = [
+      { permissions: "payment:cancel", asOf: hoursAgo(1) },
+      { permissions: [42], asOf: hoursAgo(1) },
+      { permissions: ["payment:cancel"], asOf: new Date() },
+      undefined,
+      Promise.resolve({ permissions: ["payment:cancel"], asOf: hoursAgo(1) }),
+    ];
+
+    for (const answer of answers) {
+      useDirectory("org_456", { lookup: () => answer as never });
+
+      expect(refusalOf(await cancel(AGENT)).code, String(answer)).toBe("FRESHNESS_UNSATISFIABLE");
+    }
+  });
+
+  it("the directory's answer is read once, so the list that is checked is the list that is used", async () => {
+    // Decision 150: decision 130 copied the answer before checking it, and no test held it there.
+    // Here the answer's list says what it holds when first read and something else after: its one
+    // permission is "payment:cancel", then 42, and the field is the list, then text. Checked first
+    // and copied after, the 42 is used unchecked. And `permissions` was still read twice, once to
+    // ask whether it was a list and once to copy it, so the text was taken as single letters.
+    let fieldReads = 0;
+    let itemReads = 0;
+    const list: unknown[] = [];
+
+    Object.defineProperty(list, 0, {
+      enumerable: true,
+      get: () => {
+        itemReads += 1;
+
+        return itemReads === 1 ? "payment:cancel" : 42;
+      },
+    });
+
+    useDirectory("org_456", {
+      lookup: () =>
+        ({
+          asOf: hoursAgo(1),
+          get permissions() {
+            fieldReads += 1;
+
+            return fieldReads === 1 ? list : "payment:cancel";
+          },
+        }) as never,
+    });
+
+    expect((await cancel(AGENT)).kind).toBe("result");
+    expect({ fieldReads, itemReads }).toStrictEqual({ fieldReads: 1, itemReads: 1 });
+  });
+
+  it("DSOR-IDN-06: an answer from 23 hours ago still counts", async () => {
+    useDirectory("org_456", aDirectory("org_456", { asOf: hoursAgo(23) }));
+
+    expect((await cancel(AGENT)).kind).toBe("result");
+  });
+
+  it("DSOR-IDN-06: an answer whose time is not a time is no answer", async () => {
+    useDirectory("org_456", aDirectory("org_456", { asOf: "yesterday" }));
+
+    expect(refusalOf(await cancel(AGENT)).code).toBe("FRESHNESS_UNSATISFIABLE");
+  });
+
+  it("DSOR-IDN-05: a company with no directory is refused every agent command", async () => {
+    // Decision 130: every one, not one. The title said so before the test did.
+    useDirectory("org_456", null);
+
+    for (const [id, args] of [
+      ["invoice.issue", { invoice: "dsor://org_456/invoice/INV-1009" }],
+      [
+        "payment.create",
+        {
+          invoice: "dsor://org_456/invoice/INV-1009",
+          amount: { value: "2500.00", currency: "USD" },
+        },
+      ],
+      ["payment.cancel", { payment: PAY_901 }],
+    ] as const) {
+      expect(refusalOf(await callOperation(AGENT, id, args)).code, id).toBe("DEPENDENCY_TIMEOUT");
+    }
+  });
+
+  it("DSOR-IDN-06: what the directory says now is what counts: user_123 moved, and the agent is refused", async () => {
+    expect((await cancel(AGENT)).kind).toBe("result");
+
+    await resetTheStory();
+    useDirectory("org_456", aDirectory("org_456", { holds: { user_123: ["invoice:read"] } }));
+
+    expect(refusalOf(await cancel(AGENT)).code).toBe("AUTHORIZATION_DENIED");
+  });
+
+  it("a person who is logged in needs no directory: the directory down, user_123 still cancels", async () => {
+    useDirectory("org_456", aDirectory("org_456", { down: true }));
+
+    expect((await cancel(SUPERVISOR)).kind).toBe("result");
+  });
+});
+
+describe("whose authority the record says", () => {
+  const decisions = async (): Promise<AuditRecord[]> =>
+    (await theLog("org_456")).filter((r) => r.kind === "decision");
+
+  it("DSOR-DEL-08: the subject is the slip's signer, the agent is in the actor chain, and the slip is named", async () => {
+    const asOf = hoursAgo(1);
+
+    useDirectory("org_456", aDirectory("org_456", { asOf }));
+    await cancel(AGENT);
+
+    const [decision] = await decisions();
+
+    expect(decision?.identity).toStrictEqual({
+      mode: "unattended",
+      subject: "user_123",
+      actor_chain: ["accounts-payable-fte"],
+      subject_authority: { source: "role_source", as_of: asOf },
+    });
+    expect(decision?.delegation).toBe("del_100");
+    // The agent logged in, and the correlation still says so.
+    expect(decision?.correlation.principal_id).toBe("accounts-payable-fte");
+  });
+
+  it("DSOR-DEL-08: the subject is whoever signed the slip: del_300, signed by cfo_100, is recorded as cfo_100", async () => {
+    // Decision 150: every record this file read was made under a slip user_123 signed, so a record
+    // that named user_123 whatever the slip said passed every test.
+    await asTheOwner(() =>
+      db.exec(
+        `UPDATE dsor.delegations SET status = 'revoked' WHERE id = 'del_100';
+         INSERT INTO dsor.delegations (tenant, id, delegator, delegate, permissions, modes, status, expires_at)
+         VALUES ('org_456', 'del_300', 'cfo_100', 'accounts-payable-fte', ARRAY['payment:cancel'],
+                 ARRAY['unattended'], 'active', '2099-12-31T23:59:59Z')`,
+      ),
+    );
+    useDirectory("org_456", aDirectory("org_456", { holds: { cfo_100: ["payment:cancel"] } }));
+
+    expect((await cancel(AGENT)).kind).toBe("result");
+
+    const [decision] = await decisions();
+
+    expect(decision?.identity).toMatchObject({
+      mode: "unattended",
+      subject: "cfo_100",
+      actor_chain: ["accounts-payable-fte"],
+    });
+    expect(decision?.delegation).toBe("del_300");
+  });
+
+  it("DSOR-DEL-08: in org_789 the subject is the signer of org_789's own slip, user_789", async () => {
+    // Decision 150: the agent works for both companies. A slip looked up in the wrong one would put
+    // an org_456 person on org_789's record.
+    await forgetTheLog("org_789");
+    await asTheOwner(() =>
+      db.exec(
+        `INSERT INTO dsor.delegations (tenant, id, delegator, delegate, permissions, modes, status, expires_at)
+         VALUES ('org_789', 'del_789', 'user_789', 'accounts-payable-fte', ARRAY['invoice:issue'],
+                 ARRAY['unattended'], 'active', '2099-12-31T23:59:59Z')`,
+      ),
+    );
+    useDirectory("org_789", aDirectory("org_789", { holds: { user_789: ["invoice:issue"] } }));
+
+    try {
+      const answer = await callOperation({ ...AGENT, tenant: "org_789" }, "invoice.issue", {
+        invoice: "dsor://org_789/invoice/INV-1008",
+      });
+
+      expect(answer.kind).toBe("result");
+
+      const [decision] = (await theLog("org_789")).filter((r) => r.kind === "decision");
+
+      expect(decision?.identity).toMatchObject({
+        mode: "unattended",
+        subject: "user_789",
+        actor_chain: ["accounts-payable-fte"],
+      });
+      expect(decision?.delegation).toBe("del_789");
+    } finally {
+      useDirectory("org_789", undefined);
+    }
+  });
+
+  it("DSOR-DEL-10: a refusal under the slip is recorded the same way", async () => {
+    await callOperation(AGENT, "payment.create", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+      amount: { value: "60000.00", currency: "USD" },
+    });
+
+    const [decision] = await decisions();
+
+    expect(decision?.result).toBe("LIMIT_EXCEEDED");
+    expect(decision?.identity.mode).toBe("unattended");
+    expect(decision?.identity.subject).toBe("user_123");
+    expect(decision?.delegation).toBe("del_100");
+  });
+
+  it("DSOR-DEL-08: never from the request: a planted subject changes nothing on the record", async () => {
+    await cancel(AGENT, { subject: "cfo_100" });
+
+    expect((await decisions())[0]?.identity.subject).toBe("user_123");
+  });
+
+  it("DSOR-DEL-08: never from the request: identity planted in the login and the arguments changes nothing", async () => {
+    // Decision 130: a review planted more than `subject`, in both places, and the code held; now a
+    // test says so.
+    const planted = {
+      subject: "cfo_100",
+      delegator: "cfo_100",
+      on_behalf_of: "cfo_100",
+      mode: "direct",
+    };
+
+    const answer = await callOperation({ ...AGENT, ...planted } as never, "payment.cancel", {
+      payment: PAY_901,
+      ...planted,
+    });
+
+    expect(answer.kind).toBe("result");
+
+    const [decision] = await decisions();
+
+    expect(decision?.identity).toMatchObject({
+      mode: "unattended",
+      subject: "user_123",
+      actor_chain: ["accounts-payable-fte"],
+    });
+    expect(decision?.delegation).toBe("del_100");
+  });
+
+  it("a person's decision stays direct, with nobody in the chain and no slip", async () => {
+    await cancel(SUPERVISOR);
+
+    const [decision] = await decisions();
+
+    expect(decision?.identity.mode).toBe("direct");
+    expect(decision?.identity.subject).toBe("user_123");
+    expect(decision?.identity.actor_chain).toStrictEqual([]);
+    expect(decision?.delegation).toBeUndefined();
+  });
+
+  it("DSOR-DEL-10: every refusal after DSoR found the slip is recorded under it", async () => {
+    // Decision 130: these five were recorded as the agent acting for itself, with no slip, and for
+    // the directory as if the role source had answered at that moment.
+    const cases: readonly (readonly [string, () => Promise<unknown>, string])[] = [
+      [
+        "a slip that does not allow unattended",
+        () =>
+          asTheOwner(() =>
+            db.exec(
+              "UPDATE dsor.delegations SET modes = ARRAY['on_behalf_of'] WHERE id = 'del_100'",
+            ),
+          ),
+        "DELEGATION_REQUIRED",
+      ],
+      [
+        "an expired slip",
+        () =>
+          asTheOwner(() =>
+            db.exec(
+              "UPDATE dsor.delegations SET expires_at = '2020-01-01T00:00:00Z' WHERE id = 'del_100'",
+            ),
+          ),
+        "DELEGATION_EXPIRED",
+      ],
+      ["no directory", async () => useDirectory("org_456", null), "DEPENDENCY_TIMEOUT"],
+      [
+        "a directory that does not answer",
+        async () => useDirectory("org_456", aDirectory("org_456", { down: true })),
+        "DEPENDENCY_TIMEOUT",
+      ],
+      [
+        "a stale answer",
+        async () => useDirectory("org_456", aDirectory("org_456", { asOf: hoursAgo(25) })),
+        "FRESHNESS_UNSATISFIABLE",
+      ],
+    ];
+
+    for (const [what, arrange, code] of cases) {
+      await resetTheStory();
+      await forgetTheLog("org_456");
+      useDirectory("org_456", undefined);
+      await arrange();
+      await cancel(AGENT);
+
+      const [decision] = await decisions();
+
+      expect(decision?.result, what).toBe(code);
+      expect(decision?.identity.mode, what).toBe("unattended");
+      expect(decision?.identity.subject, what).toBe("user_123");
+      expect(decision?.identity.actor_chain, what).toStrictEqual(["accounts-payable-fte"]);
+      expect(decision?.delegation, what).toBe("del_100");
+    }
+  });
+
+  it("DSOR-DEL-10: a stale answer is recorded with the directory's own time, not the decision's", async () => {
+    const asOf = hoursAgo(25);
+
+    useDirectory("org_456", aDirectory("org_456", { asOf }));
+    await cancel(AGENT);
+
+    expect((await decisions())[0]?.identity.subject_authority.as_of).toBe(asOf);
+  });
+
+  it("an agent's command refused before DSoR found an active slip stays direct: no one's authority was used", async () => {
+    await asTheOwner(() =>
+      db.exec("UPDATE dsor.delegations SET status = 'revoked' WHERE id = 'del_100'"),
+    );
+    await cancel(AGENT);
+
+    const [decision] = await decisions();
+
+    expect(decision?.result).toBe("DELEGATION_REQUIRED");
+    expect(decision?.identity.mode).toBe("direct");
+    expect(decision?.identity.subject).toBe("accounts-payable-fte");
+    expect(decision?.delegation).toBeUndefined();
+  });
+
+  it("DSOR-AUD-04b: the slip is inside the hash: the chain verifies, and a slip changed afterwards breaks it", async () => {
+    await cancel(AGENT);
+
+    expect(verifyChain(await theLog("org_456"))).toBe(true);
+
+    await asTheOwner(() => db.exec("UPDATE dsor.audit SET delegation = 'del_999'"));
+
+    expect(verifyChain(await theLog("org_456"))).toBe(false);
+  });
+});
