@@ -367,9 +367,15 @@ describe("C7: the .propose form of a permission", () => {
 
   it("Step 23: payment:create covers payment:create.propose, so user_123 may call in each of the three modes", async () => {
     const world = story();
+    // Changed in step 32: three invoices, since INV-1008's prepared draft is in flight, and a
+    //   second attempt on it would be refused (DSOR-EXC-01; step 32's README, decision D6).
     const ready = await draft(world, inMode(keyed(SUPERVISOR), "propose_only"));
-    const dry = await draft(world, inMode(SUPERVISOR, "validate_only"));
-    const done = await draft(world, keyed(SUPERVISOR));
+    const other = (id: string) => ({
+      invoice: `dsor://org_456/invoice/${id}`,
+      expected_version: 1,
+    });
+    const dry = await draft(world, inMode(SUPERVISOR, "validate_only"), other("INV-1012"));
+    const done = await draft(world, keyed(SUPERVISOR), other("INV-1002"));
     const outcomes = [ready, dry, done].map(({ answer }) => "outcome" in answer && answer.outcome);
     expect(outcomes).toStrictEqual(["READY", "VALIDATED", "COMMITTED"]);
   });
@@ -609,7 +615,12 @@ describe("C5 and C12: what the answers, the proposals, and the records say", () 
     const world = story();
     const executed = await draft(world, keyed(AGENT));
     const prepared = await draft(world, inMode(keyed(AGENT), "propose_only"));
-    const dry = await draft(world, inMode(AGENT, "validate_only"));
+    // Changed in step 32: the dry run asks about another invoice, since INV-1008's prepared draft
+    //   is in flight (DSOR-EXC-01; step 32's README, decision D6).
+    const dry = await draft(world, inMode(AGENT, "validate_only"), {
+      invoice: "dsor://org_456/invoice/INV-1012",
+      expected_version: 1,
+    });
     const records = await world.log.records();
     const modes = records.map((record) => record.extensions?.[OUR_EXTENSIONS]?.invocation_mode);
     expect(modes).toStrictEqual(["execute", "propose_only", "validate_only"]);

@@ -476,12 +476,16 @@ const dry = await ask({ ...AGENT, mode: "validate_only" }, "payment.create", DRA
 console.log("the agent's dry run:", dry);
 // Then it prepares the draft, in propose_only mode. The proposal waits READY, and no draft is
 // written. proposal.execute, which releases it, comes in step 31 (outcome 2).
-const PREPARE = { ...withKey(AGENT, "prepare-INV-1008"), mode: "propose_only" };
-const prepared = await ask(PREPARE, "payment.create", DRAFT_1008);
+// NEW IN STEP 32: of INV-1012, 22,750.00 USD. A prepared draft is in flight, and one attempt at a
+//   time would refuse the night's drafts of INV-1008 below (DSOR-EXC-01; step 32's README,
+//   decision D6). The story's invoices stay at version 1.
+const DRAFT_1012 = { invoice: "dsor://org_456/invoice/INV-1012", expected_version: 1 };
+const PREPARE = { ...withKey(AGENT, "prepare-INV-1012"), mode: "propose_only" };
+const prepared = await ask(PREPARE, "payment.create", DRAFT_1012);
 console.log("the agent prepares a draft:", prepared);
 await showProposal(prepared);
 // The same key, sent to execute, is refused: a key keeps its mode (outcome 3).
-const executeIt = await ask(withKey(AGENT, "prepare-INV-1008"), "payment.create", DRAFT_1008);
+const executeIt = await ask(withKey(AGENT, "prepare-INV-1012"), "payment.create", DRAFT_1012);
 console.log("the same key, to execute:", heard(executeIt));
 
 // The night. Nobody is logged in, and the agent works under del_100. At every
@@ -528,10 +532,12 @@ console.log(
 console.log("ap_clerk, the agent reads:", heard(await ask(AGENT, "invoice.get", INV_1008)));
 // Ap_clerk holds payment:create.propose, so the agent may still prepare the draft,
 // which waits READY for a person to release (step 23's README, outcome 4).
-const CLERK_PREPARES = { ...withKey(AGENT, "prepare-INV-1008-clerk"), mode: "propose_only" };
+// NEW IN STEP 32: of INV-1004, 27,300.00 USD, since INV-1012's prepared draft is in flight.
+const CLERK_PREPARES = { ...withKey(AGENT, "prepare-INV-1004-clerk"), mode: "propose_only" };
+const DRAFT_1004 = { invoice: "dsor://org_456/invoice/INV-1004", expected_version: 1 };
 console.log(
   "ap_clerk, the agent prepares:",
-  heard(await ask(CLERK_PREPARES, "payment.create", DRAFT_1008)),
+  heard(await ask(CLERK_PREPARES, "payment.create", DRAFT_1004)),
 );
 // No suspension on the database. Since step 19b, the directory's "suspended"
 // suspends her slips, and a suspension in the shared database is permanent, so the next run's
@@ -1224,12 +1230,14 @@ for (const [what, answer] of [
   }
 }
 // A dry run says what the real call would get, and books nothing (step 27's README, decision D12).
+// NEW IN STEP 32: of INV-1004, 27,300.00 USD, since INV-1008 waits above, in flight, and a dry
+//   run of it would hear CONFLICT (DSOR-EXC-01; step 32's README, decision D6).
 const dry1008 = await ruleCall({ ...AGENT, mode: "validate_only" }, "payment.create", {
-  invoice: "dsor://org_456/invoice/INV-1008",
+  invoice: "dsor://org_456/invoice/INV-1004",
   expected_version: 1,
 });
 console.log(
-  "  a dry run of INV-1008:",
+  "  a dry run of INV-1004:",
   "decision" in dry1008 ? `${dry1008.outcome}, ${dry1008.decision}` : heard(dry1008),
 );
 console.log(

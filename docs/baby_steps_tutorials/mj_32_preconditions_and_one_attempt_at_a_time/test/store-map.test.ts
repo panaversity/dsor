@@ -173,6 +173,9 @@ describe("the shipped map", () => {
             // And its expiry, which the database's clock sets, and which the
             // trigger never lets change (step 25c's README, decisions D6 and D7).
             "expires_at",
+            // Step 32: and the record its operation is exclusive over, written once (step 32's
+            // README, decision D7).
+            "exclusive_over",
           ],
           // Changed in step 29: and what a waiting proposal waits for, which the move to
           // PENDING_APPROVAL writes once (step 29's README, decision D4).

@@ -16,8 +16,8 @@ invoice and the vendor itself, fresh, and never takes the caller's word for them
 The second idea is one attempt at a time. While one request to pay INV-1008 waits for the CFO, a
 second request to pay INV-1008 is refused, and DSoR names the one that waits. It is like booking
 the last hotel room: while one booking for the room is open, a second booking for the same room is
-refused. And when DSoR works out how much of an invoice is left to pay, it counts the payments
-already waiting as spent.
+refused. And when DSoR works out how much of an invoice is left to pay, it counts a payment that
+still waits, for an approval or for its release, as spent.
 
 ## Why it matters
 
@@ -120,14 +120,16 @@ review, and each one says what it costs. This folder is a copy of step 31.
   attempt in flight already: proposal prop_…, PENDING_APPROVAL`. The second proposal ends `DENIED`,
   and the record says `DENY`. *Downside:* a second agent of the same company learns the address of
   the first agent's proposal.
-- **D9. What is left to pay** is the invoice's open amount, minus each of its payments drafted and
-  not cancelled, never below zero. If another proposal in flight spends the invoice, nothing is
-  left: `payment.create` drafts all that is left, so it commits all of it (DSOR-EXC-02). Counting
-  the drafts is this tutorial's own: no step pays a draft yet, so a draft is a payment that waits.
-  *Downside:* a draft nobody cancels holds the invoice for ever.
-- **D10. The draft is for what is left.** The code works the amount out the same way, and the
-  store refuses a draft of any other amount than line ⑨'s. *Downside:* one sum, worked out in two
-  places.
+- **D9. What is left to pay** is the invoice's open amount, unless another proposal in flight
+  spends the invoice: then nothing is left (DSOR-EXC-02). `payment.create` drafts all that is left,
+  so one in flight commits all of it. *Changed while building:* this decision first counted the
+  drafts too, the payments made and not cancelled. DSOR-EXC-02 counts what is committed to
+  proposals in flight, and no step pays a draft yet, so this step counts what the rule names.
+  *Downside:* two drafts of one invoice can still be made one after the other. The step that pays
+  a draft must count the payments in flight then.
+- **D10. Withdrawn while building.** It said the draft is for what is left, worked out in the code
+  and in line ⑨. With D9 as it is now, whenever the code runs, what is left is the whole open
+  amount, so the code drafts the open amount, as before.
 - **D11. At the release, line ⑨ runs again in full:** the reads and their freshness, the lock, and
   the preconditions on the invoice and the vendor as they are now. The proposal being released is
   in flight itself, so it is left out of its own count. A precondition that fails invalidates
@@ -136,8 +138,27 @@ review, and each one says what it costs. This folder is a copy of step 31.
   and approved again.
 - **D12. The program tells three scenes.** The agent asks twice for INV-1008: the second is refused,
   naming the first. VENDOR-44 is suspended after cfo_100's approval, and the release invalidates.
-  INV-1002 is drafted, a second draft finds nothing left to pay, and after the first is cancelled
-  it is drafted again. *Downside:* a longer program run to read.
+  INV-1005, a draft invoice, is refused by its precondition. *Downside:* a longer program run to
+  read.
+
+### Decisions found while building (Claude Code)
+
+- **D13. Line ⑨ checks the version a call names, before the preconditions.** Step 21 checked it in
+  the code, and step 31 at the release. With the preconditions before the code, a request decided
+  on another version of a draft invoice heard the precondition's `CONFLICT` before `STALE_STATE`.
+  Facts come first (step 21's decision 7), so line ⑨ compares the version for every call, in every
+  mode. *Downside:* a stale request prepared in `propose_only` mode, or tried as a dry run, now
+  hears `STALE_STATE` at once, where step 23 let it wait `READY` or said `ALLOW`. Tests that used a
+  stale version to make the code refuse now give the code a refusal of its own.
+- **D14. Memory undoes a proposal after an accident, as the database does.** In memory, a code
+  that broke left its proposal `EXECUTING`, where the database rolls it back with the claim (step
+  22's decision 9). `EXECUTING` is in flight, so the retry was refused by its own leftover.
+  *Downside:* the unit tests no longer show the old difference between memory and the database.
+- **D15. Each database test file starts with no proposal in flight.** Runs of earlier steps left
+  about eighty proposals waiting in the tests' database, and each would hold INV-1008. Before each
+  file, the owner ends them along moves the picture draws: `CANCELLED`, or `FAILED` for one that
+  was running. It deletes nothing. *Downside:* a test that wanted another file's leftovers would
+  not find them. None does.
 
 ### The story's numbers
 
@@ -148,9 +169,7 @@ review, and each one says what it costs. This folder is a copy of step 31.
 | Wednesday | cfo_100 | approves INV-1008 | `APPROVED` |
 | Thursday | the accounts team | suspends VENDOR-44 | (in the accounts system) |
 | Friday | the agent | releases INV-1008 | `APPROVAL_INVALIDATED`: the vendor is not approved. The proposal is `INVALIDATED`, and its 31,400.00 USD goes back to the day |
-| Tuesday | the agent | drafts INV-1002, 8,900.50 USD | `COMMITTED`, a payment drafted |
-| Tuesday | the agent | drafts INV-1002 again | `CONFLICT`: nothing is left to pay |
-| Tuesday | user_123 | cancels that payment, then the agent drafts INV-1002 again | `COMMITTED`, a new payment drafted |
+| Tuesday | the agent | drafts INV-1005, 1,999.99 USD, a draft invoice nobody issued | `CONFLICT`: the precondition `state.invoice.status == "issued"` does not hold |
 
 ### The tests, by claim
 
@@ -158,7 +177,7 @@ review, and each one says what it costs. This folder is a copy of step 31.
 |---|---|
 | C1 | The contract's preconditions run at line ⑨, on what DSoR read: an invoice that is not issued, a vendor that is not approved or not there, nothing left to pay. Each is `CONFLICT`, `DENY`, before any booking; a dry run hears the same (DSOR-MOD-03, DSOR-CTL-08) |
 | C2 | One attempt at a time: a second `payment.create` over an invoice with one in flight is `CONFLICT`, naming it, in every state of flight; one that ended frees the invoice; two at once on the database make one proposal (DSOR-EXC-01) |
-| C3 | What is left to pay counts the payments waiting: drafts, and proposals in flight; a cancelled draft frees its amount; the draft is for what is left (DSOR-EXC-02) |
+| C3 | What is left to pay counts the proposals in flight that spend the invoice, `READY` ones too; one that ended frees it; the proposal being released is not counted against itself, nor is its dry run (DSOR-EXC-02) |
 | C4 | Freshness: a bound read weaker than the contract asks is `FRESHNESS_UNSATISFIABLE`; start-up refuses a `HIGH` or `CRITICAL` contract that asks less than `current` (DSOR-FRS-02a, DSOR-FRS-02b) |
 | C5 | The release checks the preconditions again: VENDOR-44 suspended after the approval makes the proposal `INVALIDATED`; the proposal is not counted against itself (DSOR-APR-03a, DSOR-APR-03c) |
 
@@ -168,9 +187,10 @@ review, and each one says what it costs. This folder is a copy of step 31.
 |---|---|---|
 | B1. The look for a proposal in flight is gone | the second attempt on INV-1008 is still refused, by the count of what is left to pay: two guards hold one door | (asked at the review) |
 | B2. The release does not read the vendor again | INV-1008 is paid to a suspended VENDOR-44 | (asked at the review) |
-| B3. Drafts are not counted | INV-1002 is drafted twice, 8,900.50 USD each | (asked at the review) |
+| B3. The look and the count are both gone | both attempts on INV-1008 wait, and both are paid: step 31's failure comes back | (asked at the review) |
 | B4. The proposal being released counts against itself | INV-1008's own release finds nothing left to pay, and is `INVALIDATED` | (asked at the review) |
 | B5. `payment.create` loses its precondition on the invoice's status | INV-1005, a draft invoice, gets a payment | (asked at the review) |
+| B6. On the database, the invoice's lock is gone | two attempts at once both pass the look, and the database's key refuses the second | (asked at the review) |
 
 ### Left open, and not this step's idea
 

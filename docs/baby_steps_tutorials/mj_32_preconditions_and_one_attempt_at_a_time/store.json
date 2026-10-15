@@ -127,7 +127,8 @@
             "resources",
             "requester",
             "idempotency_key",
-            "expires_at"
+            "expires_at",
+            "exclusive_over"
           ],
           "UPDATE": ["state", "requires"]
         }

@@ -714,7 +714,10 @@ describe("from the review", () => {
     expect(proposal?.requester.subject_authority).toStrictEqual(authority);
   });
 
-  it("Step 22: in memory, an accident leaves its proposal EXECUTING, where the database rolls it back (step 22's README, decision 9)", async () => {
+  // Changed in step 32: memory undoes the proposal and its records after an accident, as the
+  //   database's rollback does. Left EXECUTING, it would hold INV-1008 against the retry (step 32's
+  //   README, decision D7).
+  it("Step 32: in memory, an accident leaves no proposal and no record of it, as the database rolls it back (step 22's README, decision 9)", async () => {
     const proposals = memoryProposals();
     const registry = proposalRegistry([], proposals, memoryInvoices(), {
       ...handlersFor(),
@@ -725,7 +728,8 @@ describe("from the review", () => {
     const answer = await call(registry, createLog(), keyed(AGENT), "payment.create", INV_1008);
     expect(answer).toMatchObject({ code: "INTERNAL_ERROR" });
     expect("proposal" in answer).toBe(false);
-    expect((await proposals.all()).map((proposal) => proposal.state)).toStrictEqual(["EXECUTING"]);
+    expect(await proposals.all()).toStrictEqual([]);
+    expect(await proposals.transitions()).toStrictEqual([]);
   });
 
   it("Step 22: the store in memory refuses a second proposal with one id, as the database's key does", async () => {

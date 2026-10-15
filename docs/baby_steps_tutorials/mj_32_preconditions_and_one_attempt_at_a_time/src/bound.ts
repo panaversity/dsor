@@ -43,6 +43,24 @@ function spendsOf(contract: Contract): unknown {
   return (extensions?.[OURS] as { spends?: unknown } | undefined)?.spends;
 }
 
+// NEW IN STEP 32: the aliases the input binds, each with its input's field, in the bind's order.
+/** The aliases a contract binds from its input, by the field of the input that names each. */
+export function inputBound(contract: Contract): Map<string, string> {
+  const found = new Map<string, string>();
+  for (const [alias, path] of bindsOf(contract)) {
+    const field = typeof path === "string" ? BIND.exec(path)?.[1] : undefined;
+    if (field !== undefined) found.set(alias, field);
+  }
+  return found;
+}
+
+// NEW IN STEP 32: a proposal in flight of a command that spends commits what it spends
+//   (DSOR-EXC-02; step 32's README, decision D9).
+/** Whether a contract's command spends what it binds. */
+export function spendsAnything(contract: Contract | undefined): boolean {
+  return contract !== undefined && spendsOf(contract) !== undefined;
+}
+
 /**
  * Start-up: every bind is input.<field>, or the vendor of an alias the input binds before it, a
  * command's only, and every spends names an alias the input binds.

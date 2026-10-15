@@ -65,10 +65,12 @@ async function rowsOf(sql: string, values: unknown[] = []): Promise<Record<strin
 }
 
 /** intake-fte prepares a draft for INV-9001, which waits at READY and holds 31,400.00 USD. */
-async function prepare(on = registry): Promise<Answer> {
-  const rows = await rowsOf("SELECT version FROM app.invoices WHERE id = 'INV-9001'");
+// Step 32: or of another bill, for a second prepared draft, since one in flight over INV-9001
+//   would refuse it (DSOR-EXC-01; step 32's README, decision D6).
+async function prepare(on = registry, bill = "INV-9001"): Promise<Answer> {
+  const rows = await rowsOf("SELECT version FROM app.invoices WHERE id = $1", [bill]);
   const input = {
-    invoice: "dsor://org_456/invoice/INV-9001",
+    invoice: `dsor://org_456/invoice/${bill}`,
     expected_version: rows[0]?.["version"],
   };
   return withPlanted("tok_intake", intake, () =>
@@ -144,7 +146,7 @@ describe("C1, C4: the sweep, on the database", () => {
   it("Step 25c: on the database, the sweep expires a READY proposal past its time, with a record that names dsor-scheduler, and gives its booking back; one not yet due stays (step 25c's README, claim C4)", async () => {
     const due = idOf(await prepare(quick));
     await pause(1200);
-    const fresh = idOf(await prepare(quick));
+    const fresh = idOf(await prepare(quick, "INV-1009"));
     const swept = await sweep(quick);
     expect(swept).toMatchObject({ outcome: "COMMITTED", data: { tenant_id: "org_456" } });
     expect((await proposals.get("org_456", due))?.state).toBe("EXPIRED");
@@ -285,7 +287,7 @@ describe("one ending at a time (step 25c's README, decision D13)", () => {
 describe("C8: one sweep, one transaction", () => {
   it("Step 25c: on the database, an accident during the sweep rolls back every move and every release, with the claim (step 25c's README, decision D8)", async () => {
     const first = idOf(await prepare(quick));
-    const second = idOf(await prepare(quick));
+    const second = idOf(await prepare(quick, "INV-1009"));
     await pause(1200);
     const shipped = ownWorkFor();
     const expire = shipped["proposal.expire_due"]!;

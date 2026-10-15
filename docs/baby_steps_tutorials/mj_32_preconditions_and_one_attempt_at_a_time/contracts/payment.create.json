@@ -21,6 +21,7 @@
       "dsor_exceeds(state.invoice.open_amount, dsor_money(\"0.00\", state.invoice.open_amount.currency))"
     ]
   },
+  "in_flight": { "exclusive_over": ["invoice"] },
   "controls": [],
   "audit": { "level": "full" },
   "extensions": { "org.panaversity.steps": { "spends": "state.invoice.open_amount" } }

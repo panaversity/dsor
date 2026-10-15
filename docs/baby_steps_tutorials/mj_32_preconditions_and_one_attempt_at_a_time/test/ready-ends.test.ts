@@ -56,6 +56,10 @@ const T0 = Date.parse("2026-10-08T09:00:00.000Z");
 const DRAFT_456 = { invoice: "dsor://org_456/invoice/INV-1008", expected_version: 1 };
 const DRAFT_789 = { invoice: "dsor://org_789/invoice/INV-1008", expected_version: 1 };
 const DEL_100_URI = "dsor://org_456/delegation/del_100";
+// Step 32: other bills of org_456, for a test that keeps INV-1008 in flight, since a second
+//   attempt on it would be refused (DSOR-EXC-01; step 32's README, decision D6).
+const DRAFT_1012 = { invoice: "dsor://org_456/invoice/INV-1012", expected_version: 1 };
+const DRAFT_1002 = { invoice: "dsor://org_456/invoice/INV-1002", expected_version: 1 };
 const DAY = { value: "200000", currency: "USD" };
 const AMOUNT = { value: "31400.00", currency: "USD" };
 
@@ -211,7 +215,8 @@ describe("C2: a tear-up ends a READY proposal", () => {
     const w = world();
     const p1 = await planted(w, ["PENDING_APPROVAL"]);
     const p2 = await planted(w, ["PENDING_APPROVAL", "APPROVED"]);
-    const p3 = idOf(await prepare(w));
+    // Changed in step 32: of INV-1012, since p1 and p2 are in flight over INV-1008.
+    const p3 = idOf(await prepare(w, AGENT, DRAFT_1012));
     expect(await stateOf(w, p3)).toBe("READY");
     expect((await w.reservations.get("org_456", p3))?.state).toBe("held");
     const torn = await w.ask(keyed(SUPERVISOR), "delegation.revoke", {
@@ -285,10 +290,12 @@ describe("C4: the sweep", () => {
   it("Step 25c: after its lifetime, dsor-scheduler's sweep expires the READY proposal and gives its booking back; a newer READY one, a COMMITTED one, and another company's are left alone (step 25c's README, claim C4)", async () => {
     const w = world();
     const due = idOf(await prepare(w));
-    const done = idOf(await w.ask(keyed(AGENT), "payment.create", DRAFT_456));
+    // Changed in step 32: of INV-1012 and INV-1002, since the due proposal is in flight over
+    //   INV-1008 until the sweep ends it.
+    const done = idOf(await w.ask(keyed(AGENT), "payment.create", DRAFT_1012));
     const theirs = idOf(await prepare(w, USER_700, DRAFT_789));
     w.clock.now = T0 + 7 * DAY_MS;
-    const fresh = idOf(await prepare(w));
+    const fresh = idOf(await prepare(w, AGENT, DRAFT_1002));
     const swept = await sweep(w);
     expect(swept).toMatchObject({
       outcome: "COMMITTED",

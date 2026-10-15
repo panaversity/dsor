@@ -136,6 +136,9 @@ const PROPOSAL_COLUMNS = [
   "created_at",
   "expires_at",
   "requires",
+  // Step 32: the record its operation is exclusive over, which migration 029 adds last
+  // (step 32's README, decision D7).
+  "exclusive_over",
 ];
 
 // Dsor.brakes, as migration 019 makes it. dsor_runtime reads every column, adds a

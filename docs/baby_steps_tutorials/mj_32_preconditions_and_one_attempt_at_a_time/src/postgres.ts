@@ -64,6 +64,8 @@ import {
   type Requester,
   type State,
   type Waiting,
+  IN_FLIGHT,
+  type InFlight,
 } from "./proposals.ts";
 import {
   isOutcome,
@@ -1757,9 +1759,10 @@ function proposalsThrough(run: Runner): ProposalStore {
           // clocks change. Found by step 25c's review (finding L6). The table's CHECK keeps it
           // after created_at and within 720 hours of it (step 25c's README, decision D6).
           `INSERT INTO dsor.proposals (tenant_id, id, operation, mode, state, payload, payload_hash,
-                                       resources, requester, idempotency_key, expires_at)
+                                       resources, requester, idempotency_key, expires_at,
+                                       exclusive_over)
            VALUES ($1, $2, $3, $9, 'PROPOSED', $4::jsonb, $5, $6::text[], $7::jsonb, $8,
-                   now() + $10::bigint * interval '1 millisecond')`,
+                   now() + $10::bigint * interval '1 millisecond', $11)`,
           [
             tenant,
             id,
@@ -1771,6 +1774,9 @@ function proposalsThrough(run: Runner): ProposalStore {
             draft.idempotency_key,
             draft.mode,
             millisecondsOf(lifetime),
+            // NEW IN STEP 32: the record its operation is exclusive over, or none: the key
+            //   proposals_one_attempt reads it (migration 029; step 32's README, decision D7).
+            draft.exclusive_over ?? null,
           ],
         );
         if (rowCount !== 1)
@@ -1922,6 +1928,27 @@ function proposalsThrough(run: Runner): ProposalStore {
     },
     approvals: async (tenant: string, id: string): Promise<Approval[]> =>
       run(tenant, (client) => approvalsIn(client, tenant, id)),
+    // NEW IN STEP 32: the lock of one operation over one record, an advisory lock, as a slip's is,
+    //   alone, until the transaction ends: the claim's, inside a claim (step 32's README, D7).
+    holdOver: async (tenant: string, operation: string, uri: string): Promise<void> =>
+      run(tenant, async (client) => {
+        await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+          JSON.stringify(["exclusive", tenant, operation, uri]),
+        ]);
+      }),
+    // NEW IN STEP 32: the company's proposals in flight whose request names this record. DSoR's
+    //   own WHERE, the company first, with row-level security behind it (DSOR-TEN-01b). Inside a
+    //   claim, in the claim's transaction, after the record's lock (step 32's README, decision D7).
+    inFlightOver: async (tenant: string, uri: string): Promise<InFlight[]> =>
+      run(tenant, async (client) => {
+        const { rows } = await client.query<InFlight>(
+          `SELECT id, operation, state FROM dsor.proposals
+            WHERE tenant_id = $1 AND $2 = ANY (resources) AND state = ANY ($3::text[])
+            ORDER BY id`,
+          [tenant, uri, IN_FLIGHT],
+        );
+        return rows;
+      }),
     // By the database's clock as it reads now. DSoR's own WHERE, the company first, with row-level
     // security behind it (DSOR-TEN-01b).
     isDue: async (tenant: string, id: string): Promise<boolean> =>

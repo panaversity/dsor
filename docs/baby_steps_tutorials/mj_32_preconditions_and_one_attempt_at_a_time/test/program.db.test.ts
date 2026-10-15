@@ -125,7 +125,8 @@ describe("the program", () => {
       expect(output).toMatch(
         "INV-2006's record: ALLOW PENDING_APPROVAL, high-value-payment v8 REQUIRE_APPROVAL, error: no usable rate compares JPY with USD",
       );
-      expect(output).toMatch("a dry run of INV-1008: VALIDATED, REQUIRE_APPROVAL");
+      // Changed in step 32: of INV-1004, since INV-1008 waits, in flight (step 32's README, D6).
+      expect(output).toMatch("a dry run of INV-1004: VALIDATED, REQUIRE_APPROVAL");
       // Start-up checks dsor.controls too, and the story of who may switch a rule
       // on runs in memory (step 28's README, the story's numbers, and decisions D6 and D10).
       expect(output).toMatch(

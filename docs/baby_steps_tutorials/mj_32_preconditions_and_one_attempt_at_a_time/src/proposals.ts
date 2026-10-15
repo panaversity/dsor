@@ -109,6 +109,11 @@ export type ProposalDraft = {
   resources: string[];
   requester: Requester;
   idempotency_key: string;
+  // NEW IN STEP 32: and the address of the record its operation is exclusive over, when its
+  //   contract names one. It is the store's own key, not a field of proposal.schema.json, so a
+  //   proposal never shows it: two proposals in flight for one operation over one record cannot
+  //   both be kept (DSOR-EXC-01; step 32's README, decision D7).
+  exclusive_over?: string;
 };
 
 /** One move, as a proposal's history shows it: proposal.schema.json's transitions. */
@@ -183,7 +188,28 @@ export type ProposalStore = {
   // approval's step read too. Line ⑨'s look asks it, so a dry run hears what the real call hears.
   // Found by step 29's review, finding L2.
   isDue: (tenant: string, id: string) => Promise<boolean>;
+  // NEW IN STEP 32: and every proposal of the company in flight whose request names this record,
+  //   by its address, in the order of their ids. Line ⑨ counts them as spent, and refuses a second
+  //   attempt of the same operation (DSOR-EXC-01, DSOR-EXC-02; step 32's README, decisions D7 and
+  //   D9).
+  inFlightOver: (tenant: string, uri: string) => Promise<InFlight[]>;
+  // NEW IN STEP 32: and the lock of one operation over one record, held alone until the claim
+  //   ends, so two attempts over one invoice look one after the other (step 32's README, D7).
+  holdOver: (tenant: string, operation: string, uri: string) => Promise<void>;
 };
+
+// NEW IN STEP 32: the five states of §25.1's "in flight": the proposal may still run, or it runs.
+/** The states of a proposal in flight (§25.1). */
+export const IN_FLIGHT: readonly State[] = Object.freeze([
+  "READY",
+  "PENDING_APPROVAL",
+  "APPROVED",
+  "EXECUTING",
+  "OUTCOME_UNKNOWN",
+] as State[]);
+
+/** A proposal in flight over a record: its id, its operation with its version, and its state. */
+export type InFlight = { id: string; operation: string; state: State };
 
 // A proposal whose time has come, and the state it waited in (step 27's README,
 // decision D11).
@@ -282,6 +308,9 @@ export const NO_PROPOSALS: ProposalStore = Object.freeze({
   },
   approvals: async () => [],
   isDue: async () => false,
+  // NEW IN STEP 32: and none in flight, and no lock.
+  inFlightOver: async () => [],
+  holdOver: async () => {},
 });
 
 /** A record kept in memory: the record, its id, its place in the log, and its time. */
@@ -295,6 +324,10 @@ export type KeptTransition = ProposalTransition & {
 export type MemoryProposals = ProposalStore & {
   transitions: () => Promise<KeptTransition[]>;
   all: () => Promise<Proposal[]>;
+  // NEW IN STEP 32: and the undo of one proposal, with its records, which memory's claims call
+  //   after an accident, as the database's rollback undoes both. A proposal left EXECUTING would
+  //   now hold its invoice for ever (step 32's README, decision D14).
+  undo: (uri: string) => Promise<void>;
 };
 
 // One proposal in memory, without its history, which the records hold.
@@ -329,7 +362,7 @@ export function memoryProposals(now: () => number = Date.now): MemoryProposals {
   };
   const shown = (row: Row): Proposal => {
     const uri = proposalUri(row.tenant, row.id);
-    const { tenant, id: _id, ...draft } = structuredClone(row);
+    const { tenant, id: _id, exclusive_over: _exclusive, ...draft } = structuredClone(row);
     const transitions = records
       .filter((kept) => kept.tenant === tenant && kept.resources[0] === uri)
       .map(transitionFrom);
@@ -396,6 +429,23 @@ export function memoryProposals(now: () => number = Date.now): MemoryProposals {
       const row = rows.get(keyOf(tenant, id));
       // Only while it is still in `from`, as the database's UPDATE … WHERE state checks.
       if (row === undefined || row.state !== from) return false;
+      // NEW IN STEP 32: the database's key proposals_one_attempt, in memory: no second proposal in
+      //   flight for one operation over one record (DSOR-EXC-01; step 32's README, decision D7).
+      if (row.exclusive_over !== undefined && IN_FLIGHT.includes(to)) {
+        const name = row.operation.split("@")[0];
+        for (const other of rows.values()) {
+          if (other === row || other.tenant !== tenant || !IN_FLIGHT.includes(other.state))
+            continue;
+          if (
+            other.exclusive_over === row.exclusive_over &&
+            other.operation.split("@")[0] === name
+          ) {
+            throw new Error(
+              `two proposals of ${name} would be in flight over ${row.exclusive_over}`,
+            );
+          }
+        }
+      }
       row.state = to;
       // A copy, so a caller that changes its list afterwards cannot change the proposal.
       if (requires !== undefined) row.requires = structuredClone(requires);
@@ -421,6 +471,21 @@ export function memoryProposals(now: () => number = Date.now): MemoryProposals {
       }
       // In the order of their ids, as the database's ORDER BY gives them. Found by
       // step 25c's review: memory gave them in the order they were made.
+      return found.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    },
+    // NEW IN STEP 32: outside a claim, as in a dry run, no lock is held. Memory's claims hold the
+    //   lock themselves, until the claim ends (src/claims.ts).
+    holdOver: async (): Promise<void> => {},
+    // NEW IN STEP 32: as the database's SELECT does it: this company, a state in flight, and the
+    //   record's address among the request's, in the order of their ids.
+    inFlightOver: async (tenant: string, uri: string): Promise<InFlight[]> => {
+      const found: InFlight[] = [];
+      for (const row of rows.values()) {
+        if (row.tenant !== tenant || !IN_FLIGHT.includes(row.state)) continue;
+        if (row.resources.includes(uri)) {
+          found.push({ id: row.id, operation: row.operation, state: row.state });
+        }
+      }
       return found.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     },
     // As the database's SELECT does it: this company, READY or, since step 27, PENDING_APPROVAL,
@@ -483,6 +548,11 @@ export function memoryProposals(now: () => number = Date.now): MemoryProposals {
     },
     transitions: async (): Promise<KeptTransition[]> => structuredClone(records),
     all: async (): Promise<Proposal[]> => [...rows.values()].map(shown),
+    undo: async (uri: string): Promise<void> => {
+      for (const [key, row] of rows) if (proposalUri(row.tenant, row.id) === uri) rows.delete(key);
+      const kept = records.filter((made) => made.resources[0] !== uri);
+      records.splice(0, records.length, ...kept);
+    },
   });
 }
 

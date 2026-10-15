@@ -11,6 +11,7 @@ import {
   type RoleSource,
 } from "./authority.ts";
 import { bindProblems } from "./bound.ts";
+import { exclusiveProblems } from "./inflight.ts";
 import { freshnessProblems } from "./preconditions.ts";
 import { NO_BRAKES, type BrakeStore } from "./brakes.ts";
 import { keyProblems, memoryClaims, type ClaimStore } from "./claims.ts";
@@ -286,6 +287,8 @@ export function buildRegistry(
   // NEW IN STEP 32: and a HIGH or CRITICAL command's preconditions are read current, unless its
   //   contract permits bounded staleness with an age (DSOR-FRS-02a; step 32's README, decision D5).
   problems.push(...freshnessProblems(contracts.values()));
+  // NEW IN STEP 32: and what a command is exclusive over (step 32's README, decision D6).
+  problems.push(...exclusiveProblems(contracts.values()));
   // And every command's strategy is one this step keeps, and an optimistic
   // command's input asks for the version its caller decided on (DSOR-CON-01a; step 21's README,
   // decision 10).

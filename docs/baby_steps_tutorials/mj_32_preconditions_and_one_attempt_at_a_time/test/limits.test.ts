@@ -386,10 +386,23 @@ describe("C9, C12: a dry run checks and reserves nothing, and a prepared call re
       [idOf(prepared.answer), "held"],
     ]);
     // With 31,400.00 held, five drafts fit, and the sixth is refused.
+    // Changed in step 32: each of another bill of 31,400.00 USD, since INV-1008's prepared draft
+    //   is in flight, and a second attempt on it would be refused (DSOR-EXC-01; step 32's README,
+    //   decision D6).
     const words: string[] = [];
-    for (let i = 0; i < 6; i++) words.push(heard((await draft(world)).answer));
+    for (let i = 0; i < 6; i++) {
+      const id = `INV-91${String(i).padStart(2, "0")}`;
+      world.ledger.push({ ...structuredClone(world.ledger.find((b) => b.id === "INV-1008")!), id });
+      const bill = { invoice: `dsor://org_456/invoice/${id}`, expected_version: 1 };
+      words.push(heard((await draft(world, keyed(AGENT), bill)).answer));
+    }
     expect(words).toStrictEqual([...Array(5).fill("COMMITTED"), "LIMIT_EXCEEDED"]);
-    const over = await draft(world, { ...keyed(AGENT), mode: "propose_only" });
+    world.ledger.push({
+      ...structuredClone(world.ledger.find((b) => b.id === "INV-1008")!),
+      id: "INV-9106",
+    });
+    const overBill = { invoice: "dsor://org_456/invoice/INV-9106", expected_version: 1 };
+    const over = await draft(world, { ...keyed(AGENT), mode: "propose_only" }, overBill);
     expect(over.answer).toMatchObject({ code: "LIMIT_EXCEEDED", message: FOR_ONE_DAY });
     expect((await world.proposals.get("org_456", idOf(over.answer)))?.state).toBe("DENIED");
   });

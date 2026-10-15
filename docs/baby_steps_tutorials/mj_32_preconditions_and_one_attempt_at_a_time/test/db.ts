@@ -182,6 +182,13 @@ function asOwner(program: string, args: string[] = []): unknown {
   return JSON.parse(run.stdout);
 }
 
+// Step 32: the owner ends every proposal in flight, between two tests of one file that each
+//   need an invoice free (test/owner-attempts.ts; step 32's README, decision D7).
+/** What the owner's attempts program printed: how many proposals it ended. */
+export function ownerAttempts(): unknown {
+  return asOwner("owner-attempts.ts", ["clear"]);
+}
+
 // The owner writes the slips a test needs, and asks DSoR's slip store with
 // no policy behind it (test/owner-slips.ts).
 /** What the owner's slip program printed, for these words. */

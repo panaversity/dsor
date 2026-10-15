@@ -84,6 +84,7 @@ import {
   type RequestEnvelope,
 } from "./request.ts";
 import { semanticsOf } from "./semantics.ts";
+import { checkExclusive, countInFlight, exclusiveOf } from "./inflight.ts";
 import { checkFreshness, checkPreconditions } from "./preconditions.ts";
 import { lookFor, type OwnWork } from "./revocation.ts";
 import { NO_SLIPS, type Slip, type SlipStore } from "./slips.ts";
@@ -461,11 +462,26 @@ export async function call(
           asked.decidedOn ??
           (own === undefined ? decidedOnOf(contract, copy).decidedOn : undefined);
         if (decided !== undefined) checkDecidedOn(bound.invoices, decided);
+        // NEW IN STEP 32: one attempt at a time: inside a claim, the invoice's lock, then another
+        //   proposal in flight of this operation over it refuses with CONFLICT, naming it. A
+        //   release takes the lock too, and is left out of its own look (DSOR-EXC-01; step 32's
+        //   README, decisions D6 to D8).
+        await checkExclusive(contract, bound, proposals, tenant, reserveFor ?? asked.booked);
+        // NEW IN STEP 32: what another proposal in flight spends is spent: the invoice's open
+        //   amount that a precondition reads, and what line ⑩ books. The proposal being decided
+        //   is left out of its own count (DSOR-EXC-02; step 32's README, decisions D9 and D11).
+        const counted = await countInFlight(
+          bound,
+          proposals,
+          tenant,
+          registry.contracts,
+          reserveFor ?? asked.booked,
+        );
         // NEW IN STEP 32: then the contract's preconditions, on what DSoR read, for the request
         //   asked about: the call's own, or, at a release, the stored one, against the records as
         //   they are now. The first that does not hold refuses, before any rule or booking
         //   (DSOR-MOD-03, DSOR-CTL-08, DSOR-APR-03a; step 32's README, decisions D3, D4, and D11).
-        checkPreconditions(contract, factsOf(bound.state, asked));
+        checkPreconditions(contract, factsOf(counted.state, asked));
         if (own !== undefined)
           await own.check(
             copy,
@@ -489,7 +505,7 @@ export async function call(
               permissionsOf(caller, registry.roles, tenant),
             ),
           );
-        return bound;
+        return counted;
       });
       boundInvoices = read;
       return await line(10, async () => {
@@ -981,6 +997,11 @@ export async function call(
               resources: urisIn(copy),
               requester: requesterOf(caller, under, tenant, new Date().toISOString()),
               idempotency_key: scope.key,
+              // NEW IN STEP 32: and the record its operation is exclusive over, for the database's
+              //   key (DSOR-EXC-01; step 32's README, decision D7).
+              ...(exclusiveOf(contract, copy) === undefined
+                ? {}
+                : { exclusive_over: exclusiveOf(contract, copy)! }),
             },
             correlation,
             // The company's READY lifetime. Start-up refused a registry without

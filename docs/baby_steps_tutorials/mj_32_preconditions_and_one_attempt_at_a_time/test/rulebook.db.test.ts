@@ -26,6 +26,7 @@ import {
   ownerRules,
   tryThenRollBack,
 } from "./db.ts";
+import { endAttempts } from "./attempts.ts";
 import { keyed, OUR_EXTENSIONS, storyDirectories, withPlanted } from "./helpers.ts";
 import { shippedRule } from "./rule-world.ts";
 
@@ -388,6 +389,9 @@ describe("C2: line ⑩ reads dsor.controls at every call (step 28's README, deci
   it("Step 28: on the database, intake-fte's payment of INV-9001, 31,400.00 USD, waits for the CFO under version 8; a rule switched on in dsor.controls that refuses INV-9001 applies to the next call; and once it is suspended, the payment waits for the CFO again", async () => {
     ownerLimits("reset");
     expect(await draft9001()).toMatchObject({ outcome: "PENDING_APPROVAL" });
+    // Changed in step 32: the waiting payment is ended, so the next attempt on INV-9001 meets the
+    //   rule, not the first attempt (DSOR-EXC-01; step 32's README, decision D15).
+    await endAttempts(pool);
     const id = `test-${randomUUID()}`;
     await rules.add("org_456", refusing9001(id), byCfo("a hold on INV-9001"));
     await rules.move("org_456", id, 1, "draft", "active", byCfo("on"));
@@ -401,7 +405,10 @@ describe("C2: line ⑩ reads dsor.controls at every call (step 28's README, deci
 // the claim held a connection of its own. Four calls at once on a pool of two each held one
 // connection and waited for another, for ever.
 describe("C2: line ⑩ reads the rules on the claim's own connection (step 28's README, decision D5)", () => {
-  it("Step 28: four payments of INV-9001 at once, through one pool of two connections, in a world that reads dsor.controls: each one waits for the CFO, and none waits for a connection", async () => {
+  // Changed in step 32: only one attempt may be open on INV-9001, so one waits for the CFO and
+  //   three hear CONFLICT. The point stays: none of the four waits for a connection (DSOR-EXC-01;
+  //   step 32's README, decisions D6 and D7).
+  it("Step 28: four payments of INV-9001 at once, through one pool of two connections, in a world that reads dsor.controls: one waits for the CFO, three hear CONFLICT, and none waits for a connection", async () => {
     ownerLimits("reset");
     const small = newPool();
     try {
@@ -424,12 +431,7 @@ describe("C2: line ⑩ reads the rules on the claim's own connection (step 28's 
       const heard = answers.map((a) =>
         "outcome" in a ? a.outcome : "code" in a ? a.code : "data",
       );
-      expect(heard).toStrictEqual([
-        "PENDING_APPROVAL",
-        "PENDING_APPROVAL",
-        "PENDING_APPROVAL",
-        "PENDING_APPROVAL",
-      ]);
+      expect(heard.sort()).toStrictEqual(["CONFLICT", "CONFLICT", "CONFLICT", "PENDING_APPROVAL"]);
     } finally {
       await small.end();
     }

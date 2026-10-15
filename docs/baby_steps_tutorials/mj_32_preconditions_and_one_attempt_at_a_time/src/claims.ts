@@ -16,6 +16,7 @@ import {
   type Pending,
   type ProposalMode,
   type ProposalStore,
+  type MemoryProposals,
 } from "./proposals.ts";
 import type { Contract } from "./registry.ts";
 import { NO_RATES, type RateStore } from "./rates.ts";
@@ -247,6 +248,11 @@ export function memoryClaims(
 ): ClaimStore {
   // Each claim by its scope, written as one text.
   const claims = new Map<string, MemoryClaim>();
+  // NEW IN STEP 32: the lock of one operation over one record, which line ⑨ takes inside a claim
+  //   and the claim holds until it ends, as the database's advisory lock is held until its
+  //   transaction ends. Memory's calls interleave at each await, so seven drafts at once looked
+  //   together without it. Found while building (step 32's README, decision D7).
+  const locks = new Map<string, Promise<void>>();
   const run = async (
     scope: ClaimScope,
     payloadHash: string,
@@ -266,10 +272,28 @@ export function memoryClaims(
       // Line ⑧ opens the proposal first, and its last move follows the code. A
       // refusal closes it FAILED. An accident closes nothing: memory cannot undo the proposal, and
       // it stays EXECUTING, where the database rolls it back with the claim.
+      // NEW IN STEP 32: memory's own proposals are undone after an accident, as the database's
+      //   rollback undoes them: a proposal left EXECUTING is in flight, and would hold its invoice
+      //   against the retry (step 32's README, decision D14). Another store is left as it is.
+      let made: string | undefined;
+      // NEW IN STEP 32: the locks this claim holds, each given back when the claim ends.
+      const held: (() => void)[] = [];
+      const holdOver = async (tenant: string, operation: string, uri: string): Promise<void> => {
+        const key = JSON.stringify([tenant, operation, uri]);
+        const before = locks.get(key) ?? Promise.resolve();
+        let free = (): void => {};
+        const mine = new Promise<void>((resolve) => (free = resolve));
+        locks.set(
+          key,
+          before.then(() => mine),
+        );
+        await before;
+        held.push(free);
+      };
       const stores: WorkStores = {
         invoices,
         payments,
-        proposals,
+        proposals: { ...proposals, holdOver },
         reservations,
         slips,
         brakes,
@@ -279,6 +303,7 @@ export function memoryClaims(
       const outcome = Promise.resolve().then(async (): Promise<Kept> => {
         const opened = steps === undefined ? undefined : await steps.open(stores);
         const proposal = opened?.proposal;
+        made = proposal;
         // A proposal that lines ⑨ and ⑩ refused ended DENIED. Its refusal is the
         // outcome, and no work runs.
         if (opened?.refused !== undefined) {
@@ -306,11 +331,19 @@ export function memoryClaims(
         return { ...ended, proposal };
       });
       claims.set(id, { payloadHash, mode, requestId, outcome });
+      // NEW IN STEP 32: the claim's locks are given back once its work has ended, either way.
+      void outcome.then(
+        () => held.forEach((free) => free()),
+        () => held.forEach((free) => free()),
+      );
       try {
         return fresh(await outcome);
       } catch (error) {
         // An accident keeps no claim, as the database rolls the claim back with the work.
         claims.delete(id);
+        if (made !== undefined && "undo" in proposals) {
+          await (proposals as MemoryProposals).undo(made);
+        }
         throw error;
       }
     }

@@ -444,7 +444,9 @@ describe("what a condition reads", () => {
     const controls = controlsOf({ org_456: [agentPayments, inputNamesInv1008], org_789: [] });
     const w = await withTuesday(controls);
     expect(await draft(w, "INV-2002")).toMatchObject({ outcome: "PENDING_APPROVAL" });
-    expect(await draft(w, "INV-2002", SUPERVISOR)).toMatchObject({ outcome: "COMMITTED" });
+    // Changed in step 32: user_123's own draft is of INV-1002, since the agent's INV-2002 is in
+    //   flight, and a second attempt on it would be refused (DSOR-EXC-01; step 32's README, D6).
+    expect(await draft(w, "INV-1002", SUPERVISOR)).toMatchObject({ outcome: "COMMITTED" });
   });
 
   // Found by step 27's sweep, P01, P12, RT2, and K22: line ⑩ could judge org_789 by org_456's

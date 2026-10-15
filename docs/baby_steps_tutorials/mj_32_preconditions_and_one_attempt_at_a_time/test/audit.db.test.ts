@@ -176,11 +176,12 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
       { object: "dsor.proposals", held: "SELECT" },
       {
         object: "dsor.proposals INSERT",
-        held: "tenant_id id operation mode state payload payload_hash resources requester idempotency_key expires_at",
+        // And, since step 32, the record its operation is exclusive over (step 32's README, D7).
+        held: "tenant_id id operation mode state payload payload_hash resources requester idempotency_key expires_at exclusive_over",
       },
       {
         object: "dsor.proposals SELECT",
-        held: "tenant_id id operation mode state payload payload_hash resources requester idempotency_key created_at expires_at requires",
+        held: "tenant_id id operation mode state payload payload_hash resources requester idempotency_key created_at expires_at requires exclusive_over",
       },
       { object: "dsor.proposals UPDATE", held: "state requires" },
       // The sheets of rates. Read every column, and add a sheet through six named
