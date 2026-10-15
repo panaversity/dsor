@@ -110,3 +110,82 @@ describe("C3: a proposal in flight counts as spent (step 32's README, decisions 
     expect(await w.draft("INV-1008")).toMatchObject({ outcome: "PENDING_APPROVAL" });
   });
 });
+
+/** payment.create with no in_flight block, and without its precondition that something is left. */
+function withNeitherGuard() {
+  const changed = contract("payment.create");
+  delete changed["in_flight"];
+  const preconditions = changed["preconditions"] as { predicates: string[] };
+  changed["preconditions"] = {
+    ...preconditions,
+    predicates: preconditions.predicates.filter((p) => !p.startsWith("dsor_exceeds")),
+  };
+  return shippedWith(changed);
+}
+
+/** A proposal of org_456, written straight to the store, in flight over INV-1008: READY. */
+async function plantReady(w: RuleWorld, operation: string): Promise<string> {
+  const id = `prop_00000000-0000-4000-8000-${String(Math.floor(Math.random() * 1e12)).padStart(12, "0")}`;
+  const requester = {
+    identity_mode: "direct" as const,
+    subject: "user_123",
+    subject_type: "human",
+    actor_chain: [],
+    active_tenant: "org_456",
+    subject_authority: { source: "token" as const, as_of: "2026-10-06T15:00:00.000Z" },
+  };
+  const by = {
+    mover: dsorMover(requester),
+    cause: "the test plants it",
+    correlation: { request_id: "req_test" } as never,
+  };
+  const uri = "dsor://org_456/invoice/INV-1008";
+  const draft = {
+    operation,
+    mode: "propose_only" as const,
+    payload: { invoice: uri },
+    payload_hash: `sha256:${"d".repeat(64)}`,
+    resources: [uri],
+    requester,
+    idempotency_key: id,
+  };
+  await w.proposals.create("org_456", id, draft, by, "P7D");
+  if (!(await w.proposals.move("org_456", id, "PROPOSED", "READY", by))) {
+    throw new Error("the planted proposal did not move");
+  }
+  return id;
+}
+
+// Found by a sweep of small breaks, M04: the count set what line ⑩ books to zero too. The
+// precondition refuses first, so nothing showed. But a contract without that precondition booked
+// 0.00 against the slip's day and drafted 31,400.00 USD. The count is for preconditions only, and
+// the booking always counts the invoice's real open amount (step 32's README, decision D9).
+describe("C3: the count is for preconditions; the booking counts what the invoice owes", () => {
+  it("DSOR-DEL-06b: with neither guard, a second attempt on INV-1008 while the first waits books 31,400.00 USD, not nothing", async () => {
+    const w = await ruleWorldOnTuesday(undefined, undefined, undefined, withNeitherGuard());
+    expect(await w.draft("INV-1008")).toMatchObject({ outcome: "PENDING_APPROVAL" });
+    const second = await w.draft("INV-1008");
+    expect(second).toMatchObject({ outcome: "PENDING_APPROVAL" });
+    expect((await w.reservations.get("org_456", idOf(second)))?.amount).toStrictEqual({
+      value: "31400.00",
+      currency: "USD",
+    });
+  });
+});
+
+// Found by the sweep too, M05 and M06: no test had a proposal of another operation in flight over
+// the invoice. One that spends nothing commits nothing, and only a second attempt of the same
+// operation is refused (DSOR-EXC-01, DSOR-EXC-02).
+describe("C2, C3: only the same operation is exclusive, and only a spender is counted", () => {
+  it("DSOR-EXC-01: a prepared invoice.issue over INV-1008, in flight, neither refuses nor empties the agent's payment of INV-1008: it waits for the CFO", async () => {
+    const w = await ruleWorldOnTuesday();
+    await plantReady(w, "invoice.issue@1");
+    expect(await w.draft("INV-1008")).toMatchObject({ outcome: "PENDING_APPROVAL" });
+  });
+
+  it("DSOR-EXC-02: a prepared payment.create over INV-1008, planted in flight, empties it: the agent's payment finds nothing left to pay", async () => {
+    const w = await ruleWorldOnTuesday(undefined, undefined, undefined, withoutExclusivity());
+    await plantReady(w, "payment.create@1");
+    expect(await w.draft("INV-1008")).toMatchObject({ code: "CONFLICT", message: LEFT });
+  });
+});

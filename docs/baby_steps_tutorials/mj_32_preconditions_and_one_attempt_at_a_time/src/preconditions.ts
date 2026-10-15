@@ -42,28 +42,48 @@ export function freshnessProblems(contracts: Iterable<Contract>): string[] {
 
 /**
  * Refuses with FRESHNESS_UNSATISFIABLE when a read line ⑨ made is less fresh than the contract
- * asks. DSoR never falls back to a cache: it refuses (DSOR-FRS-02b). The age is by DSoR's clock.
+ * asks, or, at a release, than CURRENT, whatever the contract permits (§26.4; DSOR-APR-03a). DSoR
+ * never falls back to a cache: it refuses (DSOR-FRS-02b). The age is by DSoR's clock.
  */
 export function checkFreshness(
   contract: Contract,
   labels: readonly Freshness[],
   now: number = Date.now(),
+  atRelease: boolean = false,
 ): void {
-  const { freshness, max_age_seconds } = preconditionsOf(contract);
+  const declared = preconditionsOf(contract);
+  const freshness = atRelease ? "current" : declared.freshness;
   for (const label of labels) {
-    if (freshEnough(label, freshness, max_age_seconds, now)) continue;
-    const why = `a read for ${contract.id} was ${label.mode} from ${label.connector}, and its preconditions ask for ${String(freshness)}`;
+    if (freshEnough(label, freshness, declared.max_age_seconds, now)) continue;
+    const asks = atRelease
+      ? "a release reads current state"
+      : `its preconditions ask for ${String(freshness)}`;
+    const why = `a read for ${contract.id} was ${label.mode} from ${label.connector}, and ${asks}`;
     throw new Refusal("FRESHNESS_UNSATISFIABLE", why, "internal");
   }
 }
 
-/** Whether one read meets what the contract asks. A mode the contract does not name asks nothing. */
+// The four modes, strongest first, as step 15's labels rank them (step 15's README, decision 6).
+const RANK: readonly FreshnessMode[] = [
+  "current",
+  "bounded_staleness",
+  "connector_defined",
+  "observational",
+];
+
+/**
+ * Whether one read meets what the contract asks: a label at least as strong, and a read of bounded
+ * staleness no older than the contract's age when the contract asks for bounded staleness. Found by
+ * step 32's review, finding L5: a contract that asked connector_defined took an observational read.
+ */
 function freshEnough(label: Freshness, asked: unknown, age: unknown, now: number): boolean {
-  const mode: FreshnessMode = label.mode;
-  if (asked === "current") return mode === "current";
-  if (asked !== "bounded_staleness") return true;
-  if (mode === "current") return true;
-  if (mode !== "bounded_staleness" || typeof age !== "number") return false;
+  const wanted = RANK.indexOf(asked as FreshnessMode);
+  // A contract that names no mode DSoR knows asks nothing; start-up checks the schema's enum.
+  if (wanted === -1) return true;
+  const got = RANK.indexOf(label.mode);
+  if (got === -1 || got > wanted) return false;
+  if (asked !== "bounded_staleness" || label.mode !== "bounded_staleness") return true;
+  if (typeof age !== "number") return false;
   // As moments, never as text. A read from the future is no fresher than one from now.
   const old = now - Date.parse(label.observed_at);
   return Number.isFinite(old) && old <= age * 1_000;

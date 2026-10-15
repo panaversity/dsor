@@ -183,11 +183,17 @@ describe("C1 and C6: the release, on the database (DSOR-APR-10, D4, D10)", () =>
     } finally {
       holder.release();
     }
+    // Changed in step 32: both releases take the invoice's lock at line ⑨ first, so either may win.
+    //   The loser hears CONFLICT, whose words are internal: user_123 reads them, and intake-fte, an
+    //   agent whose clearance is below internal, hears them masked (step 32's README, decision D7;
+    //   step 31's README, decision D17).
     const heard = answers.map((a) => ("code" in a ? `${a.code}: ${a.message}` : "COMMITTED"));
-    expect(heard.sort()).toStrictEqual([
-      "COMMITTED",
-      `CONFLICT: proposal ${id} was released by another call`,
-    ]);
+    const lostBy = "code" in answers[0]! ? "intake-fte" : "user_123";
+    const loserHears =
+      lostBy === "user_123"
+        ? `CONFLICT: proposal ${id} was released by another call`
+        : "CONFLICT: the operation refused the call, and its reason is above the caller's clearance";
+    expect(heard.sort()).toStrictEqual(["COMMITTED", loserHears]);
     expect(await paymentsOf9001()).toBe(1);
     expect(await bookingOf(id)).toBe("committed");
   });

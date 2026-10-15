@@ -56,25 +56,33 @@ export async function checkExclusive(
   proposals: Pick<ProposalStore, "inFlightOver" | "holdOver">,
   tenant: string,
   self: string | undefined,
+  // Whether to take the invoice's lock: only inside the claim of a new attempt.
+  locks: boolean,
 ): Promise<void> {
   const listed = exclusiveListOf(contract);
   if (!Array.isArray(listed) || typeof listed[0] !== "string") return;
   const invoice = bound.invoices[listed[0]];
   if (invoice === undefined) return;
   const uri = invoiceUri(invoice);
-  await proposals.holdOver(tenant, contract.id, uri);
+  if (locks) await proposals.holdOver(tenant, contract.id, uri);
   const first = (await proposals.inFlightOver(tenant, uri)).find(
     (other) => other.id !== self && operationOf(other.operation) === contract.id,
   );
   if (first === undefined) return;
   const address = `dsor://${tenant}/proposal/${first.id}`;
   const why = `${listed[0]} ${invoice.id} has an attempt in flight already: proposal ${address}, ${first.state}`;
-  throw new Refusal("CONFLICT", why, "internal");
+  // Public, so every caller hears which proposal holds the invoice, as DSOR-EXC-01 asks: the words
+  //   repeat the invoice the caller named, and add a proposal's address and state. Found by step
+  //   32's review, finding M3: labelled internal, an agent below that clearance heard no name.
+  throw new Refusal("CONFLICT", why, "public");
 }
 
 /**
  * The bound state, with each bound invoice that another proposal in flight spends counted as
- * spent: its open amount is zero, in its own currency, and so is what the command spends of it.
+ * spent: its open amount is zero, in its own currency. Only the preconditions read this state.
+ * What line ⑩ books stays the invoice's real open amount, so a contract without a precondition
+ * over what is left still books what it drafts. Found by a sweep of small breaks, M04: the count
+ * set the booking to zero too, and such a contract booked 0.00 and drafted 31,400.00 USD.
  */
 export async function countInFlight(
   bound: Bound,
@@ -86,7 +94,6 @@ export async function countInFlight(
   self: string | undefined,
 ): Promise<Bound> {
   const state = { ...bound.state };
-  let spends = bound.spends;
   for (const [alias, invoice] of Object.entries(bound.invoices)) {
     const others = (await proposals.inFlightOver(tenant, invoiceUri(invoice))).filter(
       (other) => other.id !== self && spendsAnything(contracts.get(operationOf(other.operation))),
@@ -94,9 +101,8 @@ export async function countInFlight(
     if (others.length === 0) continue;
     const nothing = { value: "0.00", currency: invoice.open_amount.currency };
     state[alias] = { ...invoice, open_amount: nothing };
-    if (spends !== undefined && spends.currency === nothing.currency) spends = { ...nothing };
   }
-  return { ...bound, state, ...(spends === undefined ? {} : { spends }) };
+  return { ...bound, state };
 }
 
 /** An operation's name, from the name and version a proposal keeps, such as payment.create@1. */

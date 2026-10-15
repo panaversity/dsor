@@ -128,6 +128,10 @@ export type ReservationStore = {
 export type MemoryReservations = ReservationStore & {
   all: () => Promise<Reservation[]>;
   used: (tenant: string, delegation: string, currency: string) => Promise<string>;
+  // NEW IN STEP 32: and the undo of one proposal's reservation, which memory's claims call after an
+  //   accident in a call that made the proposal, as the database's rollback undoes the reservation
+  //   with it (step 32's README, decision D14; step 32's review, finding M1).
+  forget: (tenant: string, proposal: string) => Promise<void>;
 };
 
 /** Reservations in memory, for the unit tests. The day is today in UTC, by this clock. */
@@ -198,6 +202,17 @@ export function memoryReservations(now: () => number = Date.now): MemoryReservat
       return reservation === undefined ? undefined : shown(reservation);
     },
     all: async (): Promise<Reservation[]> => [...kept.values()].map(shown),
+    forget: async (tenant: string, proposal: string): Promise<void> => {
+      const reservation = kept.get(keyOf(tenant, proposal));
+      if (reservation === undefined) return;
+      // A held or committed reservation counts in its day's total; a released one does not.
+      if (reservation.state !== "released") {
+        const { delegation, day, amount, spent } = reservation;
+        const total = totalOf(tenant, delegation, day, amount.currency);
+        totals.set(total, (totals.get(total) ?? 0n) - spent);
+      }
+      kept.delete(keyOf(tenant, proposal));
+    },
     used: async (tenant: string, delegation: string, currency: string): Promise<string> => {
       const used = totals.get(totalOf(tenant, delegation, today(), currency)) ?? 0n;
       const text = used.toString().padStart(SCALE + 1, "0");

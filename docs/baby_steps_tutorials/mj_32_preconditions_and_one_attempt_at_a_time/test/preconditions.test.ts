@@ -245,6 +245,18 @@ describe("C4: the reads must be as fresh as the contract asks (step 32's README,
     },
   );
 
+  // Found by a sweep of small breaks, M17: "current" let a bounded_staleness read through too.
+  it("DSOR-FRS-02b: a read of bounded staleness, 1 second old, where the contract asks for current, is FRESHNESS_UNSATISFIABLE too", async () => {
+    const bounded: Freshness = {
+      mode: "bounded_staleness",
+      observed_at: new Date(Date.now() - 1_000).toISOString(),
+      connector: "warehouse",
+    };
+    const w = world({ store: labelled(bounded, "invoice") });
+    expect(await w.draft("INV-1002")).toMatchObject({ code: "FRESHNESS_UNSATISFIABLE" });
+    expect(w.rows).toStrictEqual([]);
+  });
+
   it("DSOR-FRS-02a: a HIGH payment.create that permits bounded staleness of 60 seconds takes a read 20 seconds old, and refuses one 90 seconds old", async () => {
     const contracts = payingWith("high", { freshness: "bounded_staleness", max_age_seconds: 60 });
     const at = (seconds: number): Freshness => ({

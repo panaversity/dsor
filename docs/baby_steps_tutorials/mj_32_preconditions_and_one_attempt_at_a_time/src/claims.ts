@@ -9,7 +9,7 @@ import { RETRY, Refusal, type ErrorCode } from "./envelope.ts";
 import type { InvoiceStore } from "./invoice.ts";
 import { isLabel } from "./labels.ts";
 import type { PaymentStore } from "./payment.ts";
-import { memoryReservations, type ReservationStore } from "./limits.ts";
+import { memoryReservations, type MemoryReservations, type ReservationStore } from "./limits.ts";
 import {
   memoryProposals,
   type Opened,
@@ -272,9 +272,11 @@ export function memoryClaims(
       // Line ⑧ opens the proposal first, and its last move follows the code. A
       // refusal closes it FAILED. An accident closes nothing: memory cannot undo the proposal, and
       // it stays EXECUTING, where the database rolls it back with the claim.
-      // NEW IN STEP 32: memory's own proposals are undone after an accident, as the database's
-      //   rollback undoes them: a proposal left EXECUTING is in flight, and would hold its invoice
-      //   against the retry (step 32's README, decision D14). Another store is left as it is.
+      // NEW IN STEP 32: after an accident, memory undoes what this call did to its proposal, as the
+      //   database's rollback does: a proposal left EXECUTING is in flight, and would hold its
+      //   invoice against the retry. A proposal this call made goes, with the reservation it made.
+      //   A proposal it loaded, for a release, goes back to the state it was in (step 32's README,
+      //   decision D14; step 32's review, finding M1). Stores of another kind are left as they are.
       let made: string | undefined;
       // NEW IN STEP 32: the locks this claim holds, each given back when the claim ends.
       const held: (() => void)[] = [];
@@ -342,7 +344,11 @@ export function memoryClaims(
         // An accident keeps no claim, as the database rolls the claim back with the work.
         claims.delete(id);
         if (made !== undefined && "undo" in proposals) {
-          await (proposals as MemoryProposals).undo(made);
+          const undone = await (proposals as MemoryProposals).undo(made, requestId);
+          if (undone === "gone" && "forget" in reservations) {
+            const proposal = made.split("/").at(-1) ?? "";
+            await (reservations as MemoryReservations).forget(scope.tenant, proposal);
+          }
         }
         throw error;
       }

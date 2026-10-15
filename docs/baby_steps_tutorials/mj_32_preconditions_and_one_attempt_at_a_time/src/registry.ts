@@ -52,7 +52,7 @@ import {
   type RoleTableSource,
   type Roles,
 } from "./permissions.ts";
-import { releaseProblems } from "./release.ts";
+import { releaseProblems, releases } from "./release.ts";
 import { ownProblems, type OwnWork } from "./revocation.ts";
 import { undoProblems } from "./semantics.ts";
 import { NO_SLIPS, type SlipStore } from "./slips.ts";
@@ -369,6 +369,14 @@ export function buildRegistry(
     const runs = code.has(contract.id) || ownWork.has(contract.id);
     if (predicates.length > 0 && runs && contract["kind"] !== "command") {
       problems.push(`${contract.id}: it lists predicates, which no step evaluates for a query`);
+    }
+    // NEW IN STEP 32: and a release's own: it checks the stored request's preconditions, never its
+    //   own, so a predicate in its contract would be taken and skipped. Found by step 32's review,
+    //   finding L2: the predicate false on proposal.execute, and the release was COMMITTED.
+    if (predicates.length > 0 && releases(contract)) {
+      problems.push(
+        `${contract.id}: it lists predicates, which a release never evaluates: it checks the stored request's`,
+      );
     }
   }
 

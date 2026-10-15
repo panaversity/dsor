@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 import type { Answer } from "../src/envelope.ts";
 import { handlersFor } from "../src/operations.ts";
-import { dsorMover, type Proposal, type State } from "../src/proposals.ts";
+import { dsorMover, memoryProposals, type Proposal, type State } from "../src/proposals.ts";
 import {
   AGENT,
   CFO,
@@ -184,5 +184,114 @@ describe("C2: start-up checks what is exclusive (step 32's README, decision D6)"
     expect(() => withoutControls(shippedWith(changed), handlersFor(), shippedRoles)).toThrow(
       "payment.create: in_flight.exclusive_over",
     );
+  });
+});
+
+// Found by a sweep of small breaks, M14 and M28: memory's copy of the database's key, and its look's
+// company, had no test of their own. The lock and the look stood in front of both.
+describe("C2: memory's store, on its own (step 32's README, decision D7)", () => {
+  /** A proposal of payment.create over this invoice, written straight to the store. */
+  function draftOver(tenant: string, invoice: string, key: string) {
+    const requester = {
+      identity_mode: "direct" as const,
+      subject: "user_123",
+      subject_type: "human",
+      actor_chain: [],
+      active_tenant: tenant,
+      subject_authority: { source: "token" as const, as_of: "2026-10-16T09:00:00.000Z" },
+    };
+    const by = {
+      mover: dsorMover(requester),
+      cause: "the test writes it",
+      correlation: { request_id: "req_test" } as never,
+    };
+    const draft = {
+      operation: "payment.create@1",
+      mode: "propose_only" as const,
+      payload: { invoice, expected_version: 1 },
+      payload_hash: `sha256:${"e".repeat(64)}`,
+      resources: [invoice],
+      requester,
+      idempotency_key: key,
+      exclusive_over: invoice,
+    };
+    return { draft, by };
+  }
+
+  it("DSOR-EXC-01: memory's key refuses a second proposal of payment.create in flight over INV-1008, as the database's does, and keeps the first", async () => {
+    const proposals = memoryProposals();
+    const one = draftOver("org_456", "dsor://org_456/invoice/INV-1008", "k-one");
+    const two = draftOver("org_456", "dsor://org_456/invoice/INV-1008", "k-two");
+    await proposals.create(
+      "org_456",
+      "prop_00000000-0000-4000-8000-000000000321",
+      one.draft,
+      one.by,
+      "P7D",
+    );
+    await proposals.create(
+      "org_456",
+      "prop_00000000-0000-4000-8000-000000000322",
+      two.draft,
+      two.by,
+      "P7D",
+    );
+    expect(
+      await proposals.move(
+        "org_456",
+        "prop_00000000-0000-4000-8000-000000000321",
+        "PROPOSED",
+        "READY",
+        one.by,
+      ),
+    ).toBe(true);
+    await expect(
+      proposals.move(
+        "org_456",
+        "prop_00000000-0000-4000-8000-000000000322",
+        "PROPOSED",
+        "READY",
+        two.by,
+      ),
+    ).rejects.toThrow(
+      "two proposals of payment.create would be in flight over dsor://org_456/invoice/INV-1008",
+    );
+    expect(
+      (await proposals.get("org_456", "prop_00000000-0000-4000-8000-000000000322"))?.state,
+    ).toBe("PROPOSED");
+  });
+
+  it("DSOR-IDN-03b: org_789's INV-1008 in flight is not org_456's: memory's look reads one company, by the whole address", async () => {
+    const proposals = memoryProposals();
+    const theirs = draftOver("org_789", "dsor://org_789/invoice/INV-1008", "k-789");
+    await proposals.create(
+      "org_789",
+      "prop_00000000-0000-4000-8000-000000000789",
+      theirs.draft,
+      theirs.by,
+      "P7D",
+    );
+    await proposals.move(
+      "org_789",
+      "prop_00000000-0000-4000-8000-000000000789",
+      "PROPOSED",
+      "READY",
+      theirs.by,
+    );
+    expect(
+      await proposals.inFlightOver("org_456", "dsor://org_456/invoice/INV-1008"),
+    ).toStrictEqual([]);
+    expect(
+      await proposals.inFlightOver("org_456", "dsor://org_789/invoice/INV-1008"),
+    ).toStrictEqual([]);
+    expect(
+      await proposals.inFlightOver("org_789", "dsor://org_789/invoice/INV-1008"),
+    ).toStrictEqual([
+      {
+        id: "prop_00000000-0000-4000-8000-000000000789",
+        operation: "payment.create@1",
+        state: "READY",
+      },
+    ]);
   });
 });

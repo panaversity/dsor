@@ -90,7 +90,23 @@ describe("C2: one attempt at a time, on the database (step 32's README, decision
     }
   });
 
-  it("DSOR-EXC-01: on the database, the release of the waiting attempt takes the invoice's lock and is not refused by itself", async () => {
+  // Found by a sweep of small breaks, M08: with line ⑧ writing no exclusive_over, the database's key
+  // never applied, and every test stayed green.
+  it("DSOR-EXC-01: on the database, the attempt's proposal names INV-9001 as the record it is exclusive over, for the key", async () => {
+    const first = await attempt();
+    const id = addressOf(first).split("/").at(-1)!;
+    const { rows } = await tryThenRollBack(
+      pool,
+      "SELECT exclusive_over FROM dsor.proposals WHERE tenant_id = 'org_456' AND id = $1",
+      "org_456",
+      [id],
+    );
+    expect(rows).toStrictEqual([{ exclusive_over: INV_9001 }]);
+  });
+
+  // Changed by step 32's review, finding X9: a release takes no lock of the invoice, since the
+  // proposal it releases stays in flight until the release ends.
+  it("DSOR-EXC-01: on the database, the release of the waiting attempt is not refused by itself", async () => {
     const first = await attempt();
     const released = await call(registry, log, keyed(SUPERVISOR), "proposal.execute", {
       proposal: addressOf(first),

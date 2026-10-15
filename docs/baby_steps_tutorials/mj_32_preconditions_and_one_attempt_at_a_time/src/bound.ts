@@ -139,7 +139,14 @@ export async function readBound(
     }
     const field = BIND.exec(String(path))![1]!;
     const uri = (copy as Record<string, unknown>)[field];
-    const { id } = parseUri(uri as string);
+    const { entity, id } = parseUri(uri as string);
+    // NEW IN STEP 32: and the address must be an invoice's. The store reads by id alone, so an
+    //   address of another kind with an invoice's id would read that invoice, and the look, which
+    //   searches the invoice's own address, would miss the attempt. Only the input schema's
+    //   /invoice/ stood in the way. Found by step 32's review, finding L1.
+    if (entity !== "invoice") {
+      throw new Refusal("RESOURCE_NOT_FOUND", `no invoice ${preview(id)}`, "internal");
+    }
     const { invoice, freshness } = await invoices.get(tenant, id);
     labels.push(freshness);
     // The same words as the code's refusal, so a dry run hears what the real call hears (step 23's

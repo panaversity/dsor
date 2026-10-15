@@ -324,10 +324,13 @@ export type KeptTransition = ProposalTransition & {
 export type MemoryProposals = ProposalStore & {
   transitions: () => Promise<KeptTransition[]>;
   all: () => Promise<Proposal[]>;
-  // NEW IN STEP 32: and the undo of one proposal, with its records, which memory's claims call
-  //   after an accident, as the database's rollback undoes both. A proposal left EXECUTING would
-  //   now hold its invoice for ever (step 32's README, decision D14).
-  undo: (uri: string) => Promise<void>;
+  // NEW IN STEP 32: and the undo of what one call did to one proposal, which memory's claims call
+  //   after an accident, as the database's rollback undoes it: the records that call wrote are
+  //   dropped, and the proposal goes back to the state of its last record left. A proposal that
+  //   call made, with no record left, is gone. A proposal left EXECUTING would now hold its invoice
+  //   for ever. Found by step 32's review, finding M1: the first undo deleted an approved proposal,
+  //   its whole history, when its release had an accident (step 32's README, decision D14).
+  undo: (uri: string, requestId: string) => Promise<"kept" | "restored" | "gone">;
 };
 
 // One proposal in memory, without its history, which the records hold.
@@ -548,10 +551,24 @@ export function memoryProposals(now: () => number = Date.now): MemoryProposals {
     },
     transitions: async (): Promise<KeptTransition[]> => structuredClone(records),
     all: async (): Promise<Proposal[]> => [...rows.values()].map(shown),
-    undo: async (uri: string): Promise<void> => {
-      for (const [key, row] of rows) if (proposalUri(row.tenant, row.id) === uri) rows.delete(key);
-      const kept = records.filter((made) => made.resources[0] !== uri);
-      records.splice(0, records.length, ...kept);
+    undo: async (uri: string, requestId: string): Promise<"kept" | "restored" | "gone"> => {
+      const mine = (made: KeptTransition): boolean =>
+        made.resources[0] === uri && made.correlation.request_id === requestId;
+      const undone = records.filter(mine);
+      if (undone.length === 0) return "kept";
+      records.splice(0, records.length, ...records.filter((made) => !mine(made)));
+      const entry = [...rows.entries()].find(([, row]) => proposalUri(row.tenant, row.id) === uri);
+      if (entry === undefined) return "gone";
+      const [key, row] = entry;
+      const left = records.filter((made) => made.resources[0] === uri);
+      if (left.length === 0) {
+        rows.delete(key);
+        return "gone";
+      }
+      row.state = left.at(-1)!.result as State;
+      // What it waits for was written by the move to PENDING_APPROVAL: undone with it.
+      if (undone.some((made) => made.result === "PENDING_APPROVAL")) delete row.requires;
+      return "restored";
     },
   });
 }

@@ -450,8 +450,11 @@ export async function call(
       } = await line(9, async () => {
         const bound = await readBound(contract, copy, invoices, tenant);
         // NEW IN STEP 32: each read as fresh as the contract asks, or no decision is made on it,
-        //   and no cache stands in (DSOR-FRS-02a, DSOR-FRS-02b; step 32's README, decision D5).
-        checkFreshness(contract, bound.labels);
+        //   and no cache stands in (DSOR-FRS-02a, DSOR-FRS-02b; step 32's README, decision D5). At a
+        //   release, CURRENT, whatever the contract permits: §26.4 re-evaluates "against CURRENT
+        //   state" (DSOR-APR-03a). Found by step 32's review, finding M2: a contract that permits
+        //   bounded staleness paid a suspended vendor from a cache four minutes old.
+        checkFreshness(contract, bound.labels, Date.now(), asked.release === true);
         // At a release, facts first: a request decided on another version of the
         //   record is refused before any rule is asked (DSOR-APR-03c; step 31's README, D5).
         // NEW IN STEP 32: and for a call of the company's code, the version its input names, so a
@@ -462,14 +465,17 @@ export async function call(
           asked.decidedOn ??
           (own === undefined ? decidedOnOf(contract, copy).decidedOn : undefined);
         if (decided !== undefined) checkDecidedOn(bound.invoices, decided);
-        // NEW IN STEP 32: one attempt at a time: inside a claim, the invoice's lock, then another
-        //   proposal in flight of this operation over it refuses with CONFLICT, naming it. A
-        //   release takes the lock too, and is left out of its own look (DSOR-EXC-01; step 32's
-        //   README, decisions D6 to D8).
-        await checkExclusive(contract, bound, proposals, tenant, reserveFor ?? asked.booked);
+        // NEW IN STEP 32: one attempt at a time: inside the claim of a new attempt, the invoice's
+        //   lock, then another proposal in flight of this operation over it refuses with CONFLICT,
+        //   naming it. A dry run takes no lock, and a release takes none either: it is left out of
+        //   its own look (DSOR-EXC-01; step 32's README, decisions D6 to D8). Found by step 32's
+        //   review, findings L4 and X9: on the database, a dry run took the lock on the pool, and
+        //   no test could show what a release's lock protected.
+        const locks = reserveFor !== undefined && asked.release !== true;
+        await checkExclusive(contract, bound, proposals, tenant, reserveFor ?? asked.booked, locks);
         // NEW IN STEP 32: what another proposal in flight spends is spent: the invoice's open
-        //   amount that a precondition reads, and what line ⑩ books. The proposal being decided
-        //   is left out of its own count (DSOR-EXC-02; step 32's README, decisions D9 and D11).
+        //   amount that a precondition reads. The proposal being decided is left out of its own
+        //   count (DSOR-EXC-02; step 32's README, decisions D9 and D11).
         const counted = await countInFlight(
           bound,
           proposals,
@@ -505,7 +511,11 @@ export async function call(
               permissionsOf(caller, registry.roles, tenant),
             ),
           );
-        return counted;
+        // Line ⑩ reads what DSoR read, never the count: the company's rules and the limits judge
+        //   the request's real amount. Found by a sweep of small breaks, M04: with the count, a
+        //   contract without the precondition over what is left met the CFO's rule with 0.00, and
+        //   was paid without the CFO (step 32's README, decision D9).
+        return bound;
       });
       boundInvoices = read;
       return await line(10, async () => {
@@ -657,6 +667,7 @@ export async function call(
         slip: asker.slip,
         ...decidedOnOf(target, loaded.payload),
         ...(inClaim ? {} : { booked: id }),
+        release: true,
       };
       if (loaded.requires !== undefined) {
         approvedUnderOfRecord = loaded.requires.map((r) => ({
@@ -1314,6 +1325,10 @@ type Asked = {
   decidedOn?: number;
   // And, in a dry run of a release, the proposal whose booking is made already.
   booked?: string;
+  // NEW IN STEP 32: and whether this is a release, in its claim or its dry run. A release reads
+  //   CURRENT state whatever the contract permits (§26.4), and takes no lock of the invoice: the
+  //   proposal it releases is in flight until the release ends (step 32's README, D7 and D11).
+  release?: true;
 };
 
 // A label without its record's version.
