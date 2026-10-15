@@ -5709,3 +5709,76 @@ failed two, because the tests of the wait notice a look at the claim by its INSE
 break a look begins with a SELECT; its third and fourth fail forty and thirty-three where they failed
 eighteen and thirteen, because every repeat the demo sends now waits thirty seconds, and all
 twenty-three of the demo's tests run out of time.
+
+## 159 · Step 26's decisions: money in any currency, compared exactly (2026-10-15)
+
+**Decided by:** the learner, on four questions put before any code, each answered with the
+recommendation. What was told and not asked is said as such below.
+
+**The problem.** Step 25 can compare two amounts only when they are in one currency. del_100 lets
+the agent pay up to 50,000.00 USD a payment and 200,000.00 USD a day. A bill from VENDOR-44 for
+2,800,000.00 PKR, which is 10,000.00 USD at 280 rupees to the dollar, is refused: "cannot be
+compared". A comparison that cannot convert resolves restrictively (`DSOR-MON-04`, decisions 127
+and 140), so this is safe, and no foreign bill can ever be paid, not even one rupee. Each quick fix
+is a hole, measured in Node on 2026-10-15:
+
+- **Compare the numbers and forget the currency:** 45,000.00 GBP goes through a limit of 50,000.00
+  USD, though at 0.80 pounds to the dollar it is 56,250.00 USD.
+- **Check only amounts in dollars:** 50,000,000.00 PKR, about 178,571 USD, goes through unchecked.
+  This is the hole §9 names.
+- **Convert with JavaScript numbers:** at 281.15 rupees to the dollar, 14,057,500.00 PKR is exactly
+  50,000.00 USD, and the division gives `50000.00000000001`, so a payment exactly at the limit is
+  refused.
+
+`DSOR-MON-02` asks for decimal arithmetic, `DSOR-MON-03` that a limit is compared only through the
+money functions, which convert with the company's rate source, and `DSOR-MON-04` that an amount
+that cannot be converted counts as over the limit.
+
+1. **Step 26 is money only. The four start-up gaps get a step of their own, 26b, built right after
+   it** (the first question). Decision 145 had sent them to step 26: a view the application may
+   write through, a rule on a tenant table, the read question asked of the application alone, and
+   the sequences behind proposals, moves and brakes (decisions 149, 153 and 156). They are a second
+   idea, and a step teaches one. Our step 27 stays the map's 27. **Rejected:** both in step 26, two
+   unrelated lessons in one README; and the gaps first, as 25b, which makes money wait and moves
+   them from where decision 145 put them.
+2. **The rates come from a fake rate service, built like step 19's company directory** (the
+   second). DSoR asks it, never the request, how many of each currency one US dollar buys, and when
+   that was published. A test or the demo can change a rate, make the rates old, or switch the
+   service off. The specification names the rate source as a part of its own, outside DSoR and
+   trusted (`DSOR-MOD-02`), as it names the role source; the reference profile's is the European
+   Central Bank's daily reference rates. **Rejected:** a table in DSoR's own store, which needs a
+   migration, a new start-up question, one more read for every check, and fresh rates loaded every
+   day, or the demo breaks three days after it is set up; and a fixed list in the code, which has no
+   dates, so the third case of `DSOR-MON-04`, a rate too old, could never happen or be tested.
+3. **The daily limit counts a payment in another currency, converted and rounded up** (the third).
+   When a payment is booked against the day, it is converted into the limit's currency at the rate
+   of that moment and rounded up to the cent: 1,000,000.00 PKR is 3,571.4285... USD, and it books
+   3,571.43. The day can count a fraction of a cent too much, never too little. A payment that fails
+   gives back exactly what it booked, whatever the rate does afterwards. This is `DSOR-MON-06`,
+   which the map gives to no step. **Rejected:** converting for the limit per payment only, which
+   leaves del_100, with its daily limit, refusing the rupee bill all the same.
+4. **A rate more than three days old is not used** (the fourth). This is the specification's own
+   example, `max_rate_age: P3D`, and in this step it holds for every company. Friday's rate still
+   serves on Monday. After a long holiday weekend, foreign bills are refused until the next rate
+   comes. **Rejected:** one day, which refuses every foreign bill every weekend; and seven, which
+   could compare with a rate a bad week has left far behind.
+
+**Told, not asked.**
+
+- **The comparison never divides.** "Is a above b?" is asked as a × (b's rate) against b × (a's
+  rate). Multiplying never needs rounding, so the answer is exact. Only the day's booking rounds,
+  and it rounds up.
+- **Two amounts in one currency need no rate.** A dollar payment against a dollar limit is compared
+  as before, even while the rate service is down.
+- **A rate of zero, below zero, or not a decimal is no rate.** A dollar rate of zero would make
+  every amount compare as nothing.
+- **A payment is still in its invoice's currency** (decision 126). Step 17 wrote "converting between
+  currencies is step 26's", meaning these comparisons. Paying a dollar invoice in pounds would need
+  an amount to pay, rounded, which is another idea.
+- **The refusal is still `LIMIT_EXCEEDED`** (decision 128), and it says why the amount could not be
+  converted: no rate for the currency, a rate too old, or no service to ask.
+- **The functions are `exceeds` and `covers`**, in TypeScript for now. Step 27 gives them to CEL as
+  `dsor_exceeds` and `dsor_covers`. `centsOf`, which compared cents within one currency, is removed,
+  so a limit has no other way to be compared (`DSOR-MON-03`).
+- **The rate a decision used is not yet recorded.** That is `DSOR-MON-05`, in the step that builds
+  the decision bundle.
