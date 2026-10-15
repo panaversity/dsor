@@ -1863,6 +1863,45 @@ predicted all four breaks before any code. The build followed in five pieces.
   - Start-up's own checks stop some breaks before they run. Report the break as the developer would
     really make it, and say which guards had to go.
 
+### Step 32, preconditions and one attempt at a time, built first by the learner's choice (2026-10-16)
+
+Copied from step 31, with a database of its own (port 55463, `dsor32`; from the review on, a second
+one, port 55464, `dsor32b`, after another session used the first). The learner said "implement
+32 now we will understand later", so every decision is Claude Code's, each with its downside, for
+the learner to review. Before the copy, staging's pull request #6 was merged in, and step 31's open
+questions became 132 to 134.
+
+- **The decisions:** D1 to D12 before any code; D13 (the version checked at line ⑨), D14 (memory
+  undoes what a call did), and D15 (each database test starts with nothing in flight) found while
+  building. D9 changed: drafts are not counted, only proposals in flight, as DSOR-EXC-02 says. D10
+  is withdrawn.
+- **The pieces:** A, vendors and the bind through the invoice (migration 028); B, the preconditions
+  and their freshness; C and D, what is left to pay and one attempt at a time, with the invoice's
+  lock and the key `proposals_one_attempt` (migration 029); E, the release reads the vendor again,
+  the map's "done when"; F, the program's three scenes.
+- **The breaks:** B1, the look gone: the count still refuses. B2, the release skips the
+  preconditions: a suspended VENDOR-44 is paid. B3, the look and the count gone: memory's copy of
+  the key holds, a third guard. B4, a release counts itself: it invalidates itself. B5, the status
+  precondition gone: a draft invoice is paid. B6, the database's lock gone: the key holds.
+- **The reviews:** a sweep of 30 breaks by a second session of this build: 8 survived, one a real
+  flaw, M04, the count reaching line ⑩, where the CFO's rule saw 0.00. Then the hostile review: no
+  high, four medium (M1, memory's undo deleted an approved proposal; M2, a release read at the
+  contract's freshness; M3, the refusal masked for a caller with no clearance; M4, the double
+  payment one attempt after the other, recorded for the learner's review of D9), six low, nine
+  breaks no test caught. Each fixed one, and each survivor, has a test.
+- **Counts:** unit 2286, database 503, at b1c51e1.
+- **Lessons for the next builds:**
+  - Two sessions of one build ran at once, on one folder and one database, for an hour. The first
+    sign was a test that failed with others and passed alone, and a scratch file that changed by
+    itself. When that happens, look at the sessions and the processes before anything else. Give
+    each run a database of its own, and make breaks in a copy of the folder, never in the folder.
+  - Never undo a break with `git checkout`: it takes the uncommitted work with it. Keep a copy.
+  - A count made for the preconditions must not reach the rules. Give each line the state it is
+    meant to read.
+  - An undo in memory undoes what one call wrote, found by its request id, never a whole record.
+  - A cleanup before each database test makes the tests independent, and hides what a defect left
+    behind. Say so where the cleanup is.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.

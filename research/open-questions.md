@@ -914,3 +914,31 @@ for a human. An agent may gather evidence; it does not settle these alone.
     agent, or a signer the directory lists as suspended, invalidates it for good, though both can be
     lifted within the hour. Should the specification separate a "no" that can be lifted from a "no"
     that cannot, at the release?
+
+135. **Who may hear which proposal holds an invoice?** DSOR-EXC-01 asks the refusal of a second
+    attempt to name the existing proposal. DSOR-ERR-01b keeps an error from revealing a resource the
+    caller may not read. In step 32's learner build, any caller of org_456 who asks to pay INV-1008
+    while a proposal for it is in flight hears that proposal's address and state, whoever asked for
+    it (its D8). Should the refusal name a proposal the caller could not read, or say only that an
+    attempt is in flight?
+
+136. **What does a proposal in flight commit, when its amount is worked out at its execution?**
+    DSOR-EXC-02 counts "amounts committed to in-flight proposals", and Appendix B's `dsor_in_flight`
+    sums them. In step 32's learner build, `payment.create` drafts the invoice's whole open amount,
+    read at its release, so one in flight is counted as committing all of it, and a second attempt
+    finds nothing left to pay (its D9). A command that pays part of an invoice would commit a part.
+    Should the proposal keep the amount it was decided on, so the count is a sum, or is "all of it"
+    right for a command whose amount is read late?
+
+137. **What is a second attempt over part of an `exclusive_over` list?** The contract schema lets
+    `in_flight.exclusive_over` name several resources. In step 32's learner build, a contract names
+    one at most (its D6). With two, such as a payment and its invoice, does a second proposal
+    conflict when it shares one of them, or only when it shares both?
+
+138. **Is a stale request refused at the decision, or only at the work?** §21 puts the concurrency
+    check at line 14, with the work. In step 32's learner build, the preconditions run at line ⑨,
+    before the work, and a request decided on another version of a draft invoice then heard the
+    precondition's `CONFLICT` before `STALE_STATE`. The build checks the version at line ⑨ too, for
+    every call and mode, so a stale request prepared in `propose_only` mode is refused at once,
+    where step 23 let it wait `READY` (its D13). Should DSOR-CON-01b apply at line 9 as well as at
+    line 14?
