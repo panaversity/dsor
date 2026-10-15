@@ -453,11 +453,16 @@ describe("a command's proposal, on the database", () => {
     ]);
   });
 
+  // Changed in step 32: a request decided on another version is refused at line ⑨ now, before the
+  //   code, so here the code itself refuses (step 32's README, decision D13).
   it("DSOR-APR-01a: a refusal from the code ends FAILED on the database, and keeps its records, though the code's work rolled back", async () => {
-    const answer = await call(registry, log, keyed(SUPERVISOR), "payment.create", {
-      ...INV_9001,
-      expected_version: 2,
+    const refusing = dbRegistry(pool, storyDirectories(), {
+      ...handlersFor(),
+      "payment.create": async () => {
+        throw new Refusal("STALE_STATE", "INV-9001 moved on, on purpose", "public");
+      },
     });
+    const answer = await call(refusing, log, keyed(SUPERVISOR), "payment.create", INV_9001);
     expect(answer).toMatchObject({ code: "STALE_STATE" });
     const uri = "proposal" in answer ? String(answer.proposal) : "";
     const proposal = await proposals.get("org_456", uri.slice("dsor://org_456/proposal/".length));

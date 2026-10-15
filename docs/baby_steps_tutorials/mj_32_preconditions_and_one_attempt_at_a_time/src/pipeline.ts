@@ -84,6 +84,7 @@ import {
   type RequestEnvelope,
 } from "./request.ts";
 import { semanticsOf } from "./semantics.ts";
+import { checkFreshness, checkPreconditions } from "./preconditions.ts";
 import { lookFor, type OwnWork } from "./revocation.ts";
 import { NO_SLIPS, type Slip, type SlipStore } from "./slips.ts";
 import { suspendThenRefuse } from "./suspensions.ts";
@@ -447,9 +448,24 @@ export async function call(
         spends,
       } = await line(9, async () => {
         const bound = await readBound(contract, copy, invoices, tenant);
+        // NEW IN STEP 32: each read as fresh as the contract asks, or no decision is made on it,
+        //   and no cache stands in (DSOR-FRS-02a, DSOR-FRS-02b; step 32's README, decision D5).
+        checkFreshness(contract, bound.labels);
         // At a release, facts first: a request decided on another version of the
         //   record is refused before any rule is asked (DSOR-APR-03c; step 31's README, D5).
-        if (asked.decidedOn !== undefined) checkDecidedOn(bound.invoices, asked.decidedOn);
+        // NEW IN STEP 32: and for a call of the company's code, the version its input names, so a
+        //   stale request is still stale before it is a conflict, now that the precondition below
+        //   comes before the code (DSOR-CON-01b; step 21's README, decision 7). Found while
+        //   building: INV-1005 decided on version 2 heard the precondition's CONFLICT.
+        const decided =
+          asked.decidedOn ??
+          (own === undefined ? decidedOnOf(contract, copy).decidedOn : undefined);
+        if (decided !== undefined) checkDecidedOn(bound.invoices, decided);
+        // NEW IN STEP 32: then the contract's preconditions, on what DSoR read, for the request
+        //   asked about: the call's own, or, at a release, the stored one, against the records as
+        //   they are now. The first that does not hold refuses, before any rule or booking
+        //   (DSOR-MOD-03, DSOR-CTL-08, DSOR-APR-03a; step 32's README, decisions D3, D4, and D11).
+        checkPreconditions(contract, factsOf(bound.state, asked));
         if (own !== undefined)
           await own.check(
             copy,

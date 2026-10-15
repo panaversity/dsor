@@ -166,11 +166,11 @@ describe("C2: a draft decided on another version of the invoice is refused", () 
       retry: "after_state_refresh",
     });
     expect(rows).toStrictEqual([]);
-    // The code ran, and refused: the record says ALLOW, with the refusal as its result.
-    // Line ⑧ since step 22, where the proposal is made.
-    // Since step 24, line ⑩ too: the limits, after line ⑨'s read (step 24's README, decision 6).
-    expect(lines).toStrictEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
-    expect(await log.records()).toMatchObject([{ authorization: "ALLOW", result: "STALE_STATE" }]);
+    // Changed in step 32: line ⑨ compares the version the request names with the one it read,
+    //   before the preconditions, the limits, and the code. So the refusal comes at line ⑨, as a
+    //   "no" before any work, and the record says DENY (step 32's README, decision D13).
+    expect(lines).toStrictEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 11]);
+    expect(await log.records()).toMatchObject([{ authorization: "DENY", result: "STALE_STATE" }]);
   });
 
   it("DSOR-CON-01b: the agent reads again, decides on version 2, and drafts the 10,000.00 USD that is open", async () => {
@@ -420,7 +420,7 @@ describe("C9: expected_version is required, a whole number from 1 to 2147483647"
 });
 
 describe("C10: a stale refusal is kept with its key", () => {
-  it("DSOR-IDM-01c: the same stale request with the same key hears STALE_STATE again, and the code runs once", async () => {
+  it("DSOR-IDM-01c: the same stale request with the same key hears STALE_STATE again, and the code never runs", async () => {
     let runs = 0;
     const counted: Handler = async (input, company) => {
       runs += 1;
@@ -444,7 +444,9 @@ describe("C10: a stale refusal is kept with its key", () => {
       request,
     );
     expect([heard(one), heard(two)]).toStrictEqual(["STALE_STATE", "STALE_STATE"]);
-    expect(runs).toBe(1);
+    // Changed in step 32: line ⑨ refuses the stale request, so the code never runs, and the
+    //   replay still runs nothing (step 32's README, decision D13).
+    expect(runs).toBe(0);
   });
 
   // Deciding again is a new request: its fingerprint holds the new version.

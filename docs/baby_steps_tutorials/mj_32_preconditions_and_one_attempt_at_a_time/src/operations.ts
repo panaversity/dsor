@@ -70,12 +70,9 @@ export function handlersFor(): Record<string, Handler> {
       if (invoice.version !== expected_version) {
         throw staleRefusal(record, invoice.version, expected_version);
       }
-      // A paid invoice has nothing to pay, and a draft invoice is not owed yet. The rule
-      // lives here until step 32 moves it to the contract (step 17's README, decision 13).
-      if (invoice.status !== "issued") {
-        const why = "is not issued, so no payment is drafted for it";
-        throw new Refusal("CONFLICT", `invoice ${preview(id)} ${why}`, "internal");
-      }
+      // NEW IN STEP 32: a paid invoice has nothing to pay, and a draft invoice is not owed yet.
+      //   The rule is the contract's precondition now, which line ⑨ evaluates before any work
+      //   (step 17's README, decision 13; step 32's README, decision D3).
       // The code writes after line ⑩, and the record follows at line ⑪, so a
       // record that fails leaves the draft behind. Step 36 makes them commit together (step 17's
       // README, decision 1).

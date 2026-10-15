@@ -4,7 +4,7 @@
 // README, decisions 4, 5, 12, and 13).
 import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { Answer } from "../src/envelope.ts";
+import { Refusal, type Answer } from "../src/envelope.ts";
 import { handlersFor } from "../src/operations.ts";
 import { call } from "../src/pipeline.ts";
 import { createDbLog, createDbProposals, createDbReservations } from "../src/postgres.ts";
@@ -147,10 +147,17 @@ describe("the day's limit, on the database", () => {
     expect(await usedToday()).toBe("188400.00");
   });
 
+  // Changed in step 32: a request decided on another version is refused at line ⑨ now, before any
+  //   reservation, so here the code itself refuses, after line ⑩ (step 32's README, decision D13).
   it("DSOR-DEL-06d: on the database, a draft the code refuses after its reservation is released, and the day gets its amount back", async () => {
-    const stale = (await version9001()) + 1;
-    const answer = await draft(registry, keyed(INTAKE), stale);
-    expect(answer).toMatchObject({ code: "STALE_STATE" });
+    const refusing = dbRegistry(pool, storyDirectories(), {
+      ...handlersFor(),
+      "payment.create": async () => {
+        throw new Refusal("CONFLICT", "INV-9001 cannot be paid today", "internal");
+      },
+    });
+    const answer = await draft(refusing);
+    expect(answer).toMatchObject({ code: "CONFLICT" });
     const id = proposalId(answer);
     expect((await proposals.get("org_456", id))?.state).toBe("FAILED");
     expect(
@@ -306,6 +313,9 @@ describe("from the review, on the database", () => {
   // amount, and the code drafted the next version's amount, which its caller had named. Here the
   // day's total is held, so the call waits at line ⑩, after line ⑨ read the invoice. Meanwhile the
   // accounts system raises INV-9001 to 120,000.00 USD. The work may draft only on what line ⑨ read.
+  // Changed in step 32: line ⑨ refuses a request decided on another version than it read, so the
+  //   call is decided on the version line ⑨ reads, and the code, which reads the raised invoice,
+  //   refuses it (step 32's README, decision D13).
   it("DSOR-CON-01b: on the database, a draft decided on the invoice's next version is refused when the invoice changes while the call waits at line ⑩ (step 24's README, decision 16)", async () => {
     const v = await version9001();
     // One honest draft first, so today's total has a row to hold.
@@ -324,7 +334,7 @@ describe("from the review, on the database", () => {
       // own call to start: line ⑨ has read INV-9001 by then, and the call waits on the held row.
       let reached = (): void => {};
       const atLineTen = new Promise<void>((resolve) => (reached = resolve));
-      const drafting = draft(registry, keyed(INTAKE), v + 1, (line) => {
+      const drafting = draft(registry, keyed(INTAKE), v, (line) => {
         if (line === 10) reached();
       });
       pending = drafting;
@@ -394,7 +404,9 @@ describe("from the review, on the database", () => {
 
   // Found by step 24's review (M3): a paid invoice's open amount is 0.00, and the database refused
   // to keep a reservation of nothing, as an accident.
-  it("Step 24: on the database, a draft of a paid invoice reserves nothing, and the code refuses it: CONFLICT, and its proposal ends FAILED", async () => {
+  // Changed in step 32: the contract's precondition refuses it at line ⑨, before line ⑩ and the
+  //   code, so its proposal ends DENIED (step 32's README, decision D3).
+  it("Step 24: on the database, a draft of a paid invoice reserves nothing, and line ⑨'s precondition refuses it: CONFLICT, and its proposal ends DENIED", async () => {
     const answer = await asIntake(() =>
       call(registry, log, keyed(INTAKE), "payment.create", {
         invoice: "dsor://org_456/invoice/INV-1001",
@@ -402,7 +414,7 @@ describe("from the review, on the database", () => {
       }),
     );
     expect(answer).toMatchObject({ code: "CONFLICT" });
-    expect((await proposals.get("org_456", proposalId(answer)))?.state).toBe("FAILED");
+    expect((await proposals.get("org_456", proposalId(answer)))?.state).toBe("DENIED");
     const kept = await rowsOf(
       "SELECT count(*)::int AS n FROM dsor.reservations WHERE proposal_id = $1",
       [proposalId(answer)],

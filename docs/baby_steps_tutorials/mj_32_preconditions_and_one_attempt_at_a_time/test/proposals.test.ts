@@ -350,13 +350,27 @@ describe("a command's proposal, through the checklist", () => {
     expect(rows.map((row) => row.id)).toStrictEqual(["PAY-901"]);
   });
 
+  // Changed in step 32: line ⑨ checks the version the request names before any work, so a request
+  //   decided on another version never reaches the code. Here INV-1008 changes between line ⑨'s
+  //   read and the code's own, as the accounts system may change it, and the code refuses (step
+  //   32's README, decision D13).
   it("DSOR-APR-01a: a refusal from the code ends the proposal FAILED, and the answer names it (step 22's README, decision 2)", async () => {
-    const { proposals, registry, log, rows } = story();
-    // Decided on version 2, and INV-1008 is at version 1: the code refuses at line ⑨.
-    const answer = await call(registry, log, keyed(AGENT), "payment.create", {
-      ...INV_1008,
-      expected_version: 2,
-    });
+    const proposals = memoryProposals();
+    const rows: Payment[] = [];
+    const ledger = structuredClone(invoices);
+    const inner = memoryInvoices(ledger);
+    let reads = 0;
+    const moving = {
+      ...inner,
+      get: async (tenant: string, id: string) => {
+        const read = await inner.get(tenant, id);
+        if (id === "INV-1008" && ++reads === 1) ledger.find((i) => i.id === id)!.version = 2;
+        return read;
+      },
+    };
+    const registry = proposalRegistry(rows, proposals, moving);
+    const log = createLog();
+    const answer = await call(registry, log, keyed(AGENT), "payment.create", INV_1008);
     expect("code" in answer && answer.code).toBe("STALE_STATE");
     const proposal = await proposals.get("org_456", idOf("proposal" in answer && answer.proposal));
     expect(proposal?.state).toBe("FAILED");
@@ -370,7 +384,9 @@ describe("a command's proposal, through the checklist", () => {
     expect(rows).toStrictEqual([]);
   });
 
-  it("DSOR-APR-01a: a business rule's refusal ends FAILED too, until step 32 moves the rule before the work", async () => {
+  // Changed in step 32: the rule is the contract's precondition now, before the work, as step 22
+  //   said it would be: the proposal ends DENIED, not FAILED (step 32's README, decision D3).
+  it("DSOR-APR-01a: a business rule's refusal, INV-1001 is paid, ends DENIED before the work, since step 32 moved the rule to line ⑨", async () => {
     const { proposals, registry, log } = story();
     // INV-1001 is paid, so no payment is drafted for it.
     const answer = await call(registry, log, keyed(SUPERVISOR), "payment.create", {
@@ -379,8 +395,8 @@ describe("a command's proposal, through the checklist", () => {
     });
     expect("code" in answer && answer.code).toBe("CONFLICT");
     const proposal = await proposals.get("org_456", idOf("proposal" in answer && answer.proposal));
-    expect(proposal?.state).toBe("FAILED");
-    expect(proposal?.transitions.at(-1)?.cause).toBe("the code refused: CONFLICT");
+    expect(proposal?.state).toBe("DENIED");
+    expect(proposal?.transitions.map((t) => t.to)).toStrictEqual(["PROPOSED", "DENIED"]);
   });
 
   it("DSOR-APR-01b: every move of the call is recorded, with its actor, its cause, and the call's correlation", async () => {

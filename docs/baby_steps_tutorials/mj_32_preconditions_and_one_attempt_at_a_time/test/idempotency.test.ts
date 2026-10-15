@@ -552,12 +552,17 @@ describe("decision 7: a kept refusal is masked as it leaves", () => {
 // §22: "A recorded DENY is replayed like any other result." A refusal from the code is a
 // decision about the request, so the claim keeps it. An accident is not, and the claim goes.
 describe("decision 9: a refusal from the code is an outcome, and an accident keeps no claim", () => {
-  it("DSOR-IDM-01c: a draft for INV-1005, which is not issued, is refused twice with one key, and the code runs once", async () => {
-    const { registry, runs } = countedRegistry([]);
+  // Changed in step 32: INV-1005, which is not issued, is refused at line ⑨ now, by the contract's
+  //   precondition, before the code. So here the code itself refuses INV-1008, as the company's code
+  //   may (step 32's README, decision D3).
+  it("DSOR-IDM-01c: a draft the code refuses is refused twice with one key, and the code runs once", async () => {
+    const { registry, runs } = countedRegistry([], () => {
+      throw new Refusal("CONFLICT", "INV-1008 cannot be paid today", "internal");
+    });
     const log = createLog();
-    const input = { invoice: "dsor://org_456/invoice/INV-1005" };
-    const first = keyed({ ...AGENT, request_id: "req_fri_0301" }, "pay-INV-1005");
-    const retry = keyed({ ...AGENT, request_id: "req_fri_0302" }, "pay-INV-1005");
+    const input = { invoice: "dsor://org_456/invoice/INV-1008" };
+    const first = keyed({ ...AGENT, request_id: "req_fri_0301" }, "pay-INV-1008");
+    const retry = keyed({ ...AGENT, request_id: "req_fri_0302" }, "pay-INV-1008");
     const one = await call(registry, log, first, "payment.create", {
       ...input,
       expected_version: 1,
@@ -570,8 +575,8 @@ describe("decision 9: a refusal from the code is an outcome, and an accident kee
     expect(two).toMatchObject({ message: (one as { message: string }).message });
     expect(runs.count).toBe(1);
     expect((await log.records()).map(ours)).toStrictEqual([
-      { key: "pay-INV-1005" },
-      { key: "pay-INV-1005", replay_of: "req_fri_0301" },
+      { key: "pay-INV-1008" },
+      { key: "pay-INV-1008", replay_of: "req_fri_0301" },
     ]);
   });
 

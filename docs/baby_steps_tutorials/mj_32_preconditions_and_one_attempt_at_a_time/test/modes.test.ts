@@ -184,12 +184,16 @@ describe("C2: propose_only prepares, and nothing runs", () => {
     expect(world.ledger).toStrictEqual(invoices);
   });
 
-  it("Step 23: a propose_only call runs no code, so it cannot see the code's refusals: a stale draft waits READY (step 23's README, decision 2)", async () => {
+  // Changed in step 32: line ⑨ compares the version the request names with the one it read, in
+  //   every mode, so a prepared stale draft no longer waits READY for a release that would refuse
+  //   it (step 32's README, decision D13). The code still never runs in propose_only mode.
+  it("Step 23: a propose_only call runs no code, and since step 32 line ⑨ sees a stale draft: STALE_STATE, as in execute mode, and nothing waits READY", async () => {
     const world = story();
-    // Decided on version 2, and INV-1008 is at version 1. In execute mode the code refuses.
+    // Decided on version 2, and INV-1008 is at version 1.
     const stale = { ...INV_1008, expected_version: 2 };
     const { answer } = await draft(world, inMode(keyed(AGENT), "propose_only"), stale);
-    expect("outcome" in answer && answer.outcome).toBe("READY");
+    expect("code" in answer && answer.code).toBe("STALE_STATE");
+    expect(world.rows).toStrictEqual([]);
     const executed = await draft(world, keyed(AGENT), stale);
     expect("code" in executed.answer && executed.answer.code).toBe("STALE_STATE");
   });
@@ -301,11 +305,13 @@ describe("C3 to C6: validate_only, a dry run", () => {
     });
   });
 
-  it("Step 23: a dry run runs no code, so it says ALLOW for a draft the code would refuse (step 23's README, decision 2)", async () => {
+  // Changed in step 32: a dry run still runs no code, and line ⑨ now sees a stale draft, so the dry
+  //   run hears what the real call hears (DSOR-OPR-06; step 32's README, decision D13).
+  it("Step 23: a dry run runs no code, and since step 32 it hears STALE_STATE for a stale draft, as the real call does", async () => {
     const world = story();
     const stale = { ...INV_1008, expected_version: 2 };
     const dry = await draft(world, inMode(AGENT, "validate_only"), stale);
-    expect(dry.answer).toMatchObject({ outcome: "VALIDATED", decision: "ALLOW" });
+    expect(dry.answer).toMatchObject({ code: "STALE_STATE" });
     const real = await draft(world, keyed(AGENT), stale);
     expect("code" in real.answer && real.answer.code).toBe("STALE_STATE");
   });

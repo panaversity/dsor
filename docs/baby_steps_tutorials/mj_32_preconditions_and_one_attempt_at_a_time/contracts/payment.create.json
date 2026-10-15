@@ -13,7 +13,14 @@
   "execution": { "semantics": "compensatable", "compensated_by": ["payment.cancel"] },
   "risk": { "level": "medium" },
   "bind": { "invoice": "input.invoice", "vendor": "state.invoice.vendor_id" },
-  "preconditions": { "freshness": "current", "predicates": [] },
+  "preconditions": {
+    "freshness": "current",
+    "predicates": [
+      "state.invoice.status == \"issued\"",
+      "state.vendor.status == \"approved\"",
+      "dsor_exceeds(state.invoice.open_amount, dsor_money(\"0.00\", state.invoice.open_amount.currency))"
+    ]
+  },
   "controls": [],
   "audit": { "level": "full" },
   "extensions": { "org.panaversity.steps": { "spends": "state.invoice.open_amount" } }

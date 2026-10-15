@@ -30,6 +30,7 @@ import {
   type MemoryControls,
 } from "../src/rulebook.ts";
 import { memorySlips } from "../src/slips.ts";
+import { vendors, type Vendor } from "../src/vendor.ts";
 import {
   AGENT,
   DEL_100,
@@ -83,6 +84,9 @@ export type RuleWorld = {
   //   an approval and its release, as the accounts system and the directory change them.
   bills: Invoice[];
   directories: Map<string, FakeDirectory>;
+  // Step 32: and the vendors, which a test suspends between an approval and its release, as the
+  //   accounts team would (step 32's README, decision D1).
+  vendors: Vendor[];
 };
 
 /** A world in memory: the story's slips, del_100 with step 24's limits, and these rules. */
@@ -105,7 +109,8 @@ export function ruleWorld(
 ): RuleWorld {
   const clock = { now: T0 };
   const bills = [...structuredClone(invoices), ...structuredClone(BILLS)];
-  const store = memoryInvoices(bills);
+  const suppliers = structuredClone(vendors);
+  const store = memoryInvoices(bills, suppliers);
   const directories = storyDirectories();
   const drafted: Payment[] = [];
   const payments = memoryPayments(drafted);
@@ -165,6 +170,7 @@ export function ruleWorld(
     ksors,
     bills,
     directories,
+    vendors: suppliers,
   };
 }
 

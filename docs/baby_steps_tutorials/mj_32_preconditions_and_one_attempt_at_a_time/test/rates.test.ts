@@ -32,7 +32,7 @@ import {
   FIRM_IN_789,
   keyed,
   refusal,
-  shipped,
+  shippedWithoutPredicates,
   shippedInputs,
   shippedLabels,
   shippedRoles,
@@ -53,7 +53,8 @@ function bill(id: string, value: string, currency: string, tenant = "org_456"): 
   return {
     tenant_id: tenant,
     id,
-    vendor_id: "VENDOR-44",
+    // Changed in step 32: each company's own vendor, which line ⑨ reads (step 32's README, D2).
+    vendor_id: tenant === "org_789" ? "VENDOR-77" : "VENDOR-44",
     amount,
     open_amount: amount,
     status: "issued",
@@ -104,8 +105,12 @@ function world({ policies = readMoneyPolicies(), limits = BOTH_LIMITS }: Setting
     { ...DEL_102, constraints: IN_EUR },
   ]);
   const brakes = memoryBrakes();
+  // Changed in step 32: this file is about the limits' rates, so payment.create's preconditions
+  //   are taken away, and an amount DSoR cannot read still reaches the limit, as before. With
+  //   them, its precondition "something is left to pay" cannot be evaluated, and refuses first
+  //   (step 32's README, decision D4).
   const registry = withoutControls(
-    shipped,
+    shippedWithoutPredicates,
     handlersFor(),
     shippedRoles,
     shippedInputs,

@@ -3,7 +3,8 @@
 // C5, and C6; DSOR-EXE-05c in specs/dsor/03-execution.md, section 24).
 import { describe, expect, it } from "vitest";
 import type { Company } from "../src/company.ts";
-import type { Answer } from "../src/envelope.ts";
+import { Refusal, type Answer } from "../src/envelope.ts";
+import { handlersFor } from "../src/operations.ts";
 import { createLog, type MemoryLog } from "../src/log.ts";
 import { memoryInvoices, type InvoiceStore } from "../src/invoice.ts";
 import { money } from "../src/money.ts";
@@ -151,6 +152,8 @@ describe("C5: a draft is made only for an issued invoice, with the amount and ve
 
   // A real run on 2026-10-04 read both: INV-1001 is paid, with 0.00 USD open, and INV-1005
   // is a draft that nobody issued (step 17's README, decision 13).
+  // Changed in step 32: the contract's precondition refuses both at line ⑨, before the code, and
+  //   names itself (step 32's README, decisions D3 and D4).
   it.each(["INV-1001", "INV-1005"])(
     "step 17's decision 13: %s is not issued, so it gets CONFLICT, and no draft",
     async (id) => {
@@ -158,7 +161,7 @@ describe("C5: a draft is made only for an issued invoice, with the amount and ve
       expect(await createFor(on, log, id)).toStrictEqual(
         refusedAfterProposal(
           "CONFLICT",
-          `invoice "${id}" is not issued, so no payment is drafted for it`,
+          'a precondition of payment.create does not hold: state.invoice.status == "issued"',
           THE_SUPERVISOR,
         ),
       );
@@ -437,9 +440,16 @@ describe("decision 17, changed in step 20: once a command's code has run, a fail
   });
 
   // The code refused, and the claim keeps the refusal, so a retry with the key hears it again.
+  // Changed in step 32: INV-1001 is refused at line ⑨ now, before the code, so here the code itself
+  //   refuses INV-1008 (step 32's README, decision D3).
   it("step 20's decision 10: a command whose code refused, with a failed record: the same answer", async () => {
-    const answer = await call(paymentRegistry([]), brokenLog, keyed(SUPERVISOR), "payment.create", {
-      invoice: "dsor://org_456/invoice/INV-1001",
+    const refusing: Handler = async () => {
+      throw new Refusal("CONFLICT", "INV-1008 cannot be paid today", "internal");
+    };
+    const code = { ...handlersFor(), "payment.create": refusing };
+    const registry = paymentRegistry([], undefined, code);
+    const answer = await call(registry, brokenLog, keyed(SUPERVISOR), "payment.create", {
+      invoice: "dsor://org_456/invoice/INV-1008",
       expected_version: 1,
     });
     expect(answer).toStrictEqual(lost(THE_SUPERVISOR));

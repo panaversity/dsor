@@ -11,6 +11,7 @@ import {
   type RoleSource,
 } from "./authority.ts";
 import { bindProblems } from "./bound.ts";
+import { freshnessProblems } from "./preconditions.ts";
 import { NO_BRAKES, type BrakeStore } from "./brakes.ts";
 import { keyProblems, memoryClaims, type ClaimStore } from "./claims.ts";
 import { concurrencyProblems } from "./concurrency.ts";
@@ -282,6 +283,9 @@ export function buildRegistry(
   // And every bind is a path line ⑨ can read, and every spends names a bound
   // invoice (step 24's README, decision 2).
   problems.push(...bindProblems(contracts.values()));
+  // NEW IN STEP 32: and a HIGH or CRITICAL command's preconditions are read current, unless its
+  //   contract permits bounded staleness with an age (DSOR-FRS-02a; step 32's README, decision D5).
+  problems.push(...freshnessProblems(contracts.values()));
   // And every command's strategy is one this step keeps, and an optimistic
   // command's input asks for the version its caller decided on (DSOR-CON-01a; step 21's README,
   // decision 10).
@@ -344,10 +348,12 @@ export function buildRegistry(
     return ruleProblems(ruleName(tenant, raw, place), raw, tenant, context, tests);
   };
   // And each contract's predicates are CEL in Appendix B's environment, as a
-  // control's condition is (DSOR-CTL-05). No step evaluates one before step 32's preconditions, so
-  // an operation that runs code may list none: a predicate that is never evaluated would let
-  // through a call that it should stop. Found by step 27's review, finding M3 (step 27's README,
-  // decision D20).
+  // control's condition is (DSOR-CTL-05).
+  // NEW IN STEP 32: line ⑨ evaluates a command's predicates now, so a command that runs code may
+  //   list them. A query's line ⑨ is its code's read, which evaluates none, so a query that runs
+  //   code still may not: a predicate that is never evaluated would let through a call that it
+  //   should stop. Step 27's review, finding M3, refused them on every operation that runs code
+  //   (step 27's README, decision D20).
   for (const contract of contracts.values()) {
     const listed = (contract["preconditions"] as { predicates?: unknown } | undefined)?.predicates;
     const predicates = Array.isArray(listed) ? (listed as unknown[]) : [];
@@ -357,8 +363,9 @@ export function buildRegistry(
       const said = broken.startsWith("it ") ? broken.slice(3) : broken;
       problems.push(`${contract.id}: its predicate ${JSON.stringify(predicate)} ${said}`);
     }
-    if (predicates.length > 0 && (code.has(contract.id) || ownWork.has(contract.id))) {
-      problems.push(`${contract.id}: it lists predicates, which no step evaluates before step 32`);
+    const runs = code.has(contract.id) || ownWork.has(contract.id);
+    if (predicates.length > 0 && runs && contract["kind"] !== "command") {
+      problems.push(`${contract.id}: it lists predicates, which no step evaluates for a query`);
     }
   }
 

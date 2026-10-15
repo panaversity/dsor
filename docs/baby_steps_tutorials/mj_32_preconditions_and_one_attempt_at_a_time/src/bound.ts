@@ -8,6 +8,7 @@
 //   The request never names a vendor: DSoR follows the invoice's own link (DSOR-MOD-03; step 32's
 //   README, decision D2).
 import { Refusal } from "./envelope.ts";
+import type { Freshness } from "./freshness.ts";
 import type { Invoice, InvoiceStore } from "./invoice.ts";
 import type { Money } from "./money.ts";
 import type { Draft, Drafted, PaymentStore } from "./payment.ts";
@@ -89,6 +90,8 @@ export type Bound = {
   state: Record<string, Invoice | Vendor>;
   invoices: Record<string, Invoice>;
   spends?: Money;
+  // And each read's label, which the contract's freshness is checked against (DSOR-FRS-02a).
+  labels: Freshness[];
 };
 
 /**
@@ -104,20 +107,23 @@ export async function readBound(
 ): Promise<Bound> {
   const state: Record<string, Invoice | Vendor> = {};
   const read: Record<string, Invoice> = {};
+  const labels: Freshness[] = [];
   for (const [alias, path] of bindsOf(contract)) {
     // NEW IN STEP 32: a link: the vendor of an invoice read above, in the call's own company. A
     //   vendor the accounts system does not list is not bound, and a condition that reads it cannot
     //   be evaluated (step 32's README, decision D4).
     const link = LINK.exec(String(path));
     if (link !== null) {
-      const { vendor } = await invoices.vendor(tenant, read[link[1]!]!.vendor_id);
+      const { vendor, freshness } = await invoices.vendor(tenant, read[link[1]!]!.vendor_id);
+      labels.push(freshness);
       if (vendor !== undefined) state[alias] = vendor;
       continue;
     }
     const field = BIND.exec(String(path))![1]!;
     const uri = (copy as Record<string, unknown>)[field];
     const { id } = parseUri(uri as string);
-    const { invoice } = await invoices.get(tenant, id);
+    const { invoice, freshness } = await invoices.get(tenant, id);
+    labels.push(freshness);
     // The same words as the code's refusal, so a dry run hears what the real call hears (step 23's
     // README, decision 3).
     if (invoice === undefined) {
@@ -127,9 +133,9 @@ export async function readBound(
     read[alias] = invoice;
   }
   const match = SPENDS.exec(String(spendsOf(contract)));
-  if (match === null) return { state, invoices: read };
+  if (match === null) return { state, invoices: read, labels };
   const spent = read[match[1]!]![match[2] as "open_amount" | "amount"];
-  return { state, invoices: read, spends: { ...spent } };
+  return { state, invoices: read, spends: { ...spent }, labels };
 }
 
 // The work writes only on what line ⑨ read. Line ⑩ checked the limits, and

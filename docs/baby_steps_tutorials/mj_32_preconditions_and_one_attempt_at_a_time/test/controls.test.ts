@@ -236,11 +236,21 @@ function predicatesIn(id: string, predicates: string[]) {
 
 describe("a contract's predicates (step 27's review, finding M3)", () => {
   // Found by step 27's review: payment.create's contract took the predicate false, start-up
-  // accepted it, and INV-2002 was paid. No step evaluates a predicate before step 32.
-  it("Step 27: start-up refuses a predicate on an operation that runs code, because no predicate is evaluated before step 32 (step 27's README, decision D20)", async () => {
+  // accepted it, and INV-2002 was paid. No step evaluated a predicate before step 32.
+  // Changed in step 32: line ⑨ evaluates a command's predicates now, so start-up takes them, and a
+  //   query's, which nothing evaluates, is still refused (step 32's README, decision D3).
+  it("Step 32: start-up takes the predicate false on payment.create, which line ⑨ now evaluates, and refuses one on a query that runs code", async () => {
     const contracts = predicatesIn("payment.create", ["false"]);
-    expect(await refusalAtStart(() => startWith(withOne({}), contracts))).toContain(
-      "payment.create: it lists predicates, which no step evaluates before step 32",
+    expect((await startWith(withOne({}), contracts)).contracts.has("payment.create")).toBe(true);
+    // A query's contract has no preconditions, so the test gives it the whole block.
+    const onQuery = shipped.map((s) => {
+      const data = JSON.parse(s.text) as Record<string, unknown>;
+      if (data["id"] !== "invoice.get") return s;
+      const preconditions = { freshness: "current", predicates: ["false"] };
+      return { file: s.file, text: JSON.stringify({ ...data, preconditions }) };
+    });
+    expect(await refusalAtStart(() => startWith(withOne({}), onQuery))).toContain(
+      "invoice.get: it lists predicates, which no step evaluates for a query",
     );
   });
 

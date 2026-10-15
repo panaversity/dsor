@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { readRoleSettings } from "../src/authority.ts";
 import { memoryClaims } from "../src/claims.ts";
-import type { Answer } from "../src/envelope.ts";
+import { Refusal, type Answer } from "../src/envelope.ts";
 import { readBound } from "../src/bound.ts";
 import { invoices, memoryInvoices, type Invoice, type InvoiceStore } from "../src/invoice.ts";
 import { memoryReservations, millionths, within } from "../src/limits.ts";
@@ -272,11 +272,15 @@ describe("C4 to C6: a reservation's life, with its proposal", () => {
     expect((await world.reservations.get("org_456", idOf(answer)))?.state).toBe("committed");
   });
 
+  // Changed in step 32: a request decided on another version is refused at line ⑨ now, before
+  //   any reservation, so here the code itself refuses, after line ⑩ (step 32's README, D13).
   it("DSOR-DEL-06d: a draft the code refuses after its reservation ends FAILED, and the day gets its amount back", async () => {
-    const world = story();
-    // Decided on version 2, and INV-1008 is at version 1: the code refuses, after line ⑩.
-    const { answer } = await draft(world, keyed(AGENT), { ...INV_1008, expected_version: 2 });
-    expect(answer).toMatchObject({ code: "STALE_STATE" });
+    const refusing: Handler = async () => {
+      throw new Refusal("CONFLICT", "INV-1008 cannot be paid today", "internal");
+    };
+    const world = story({ code: { ...handlersFor(), "payment.create": refusing } });
+    const { answer } = await draft(world);
+    expect(answer).toMatchObject({ code: "CONFLICT" });
     expect((await world.proposals.get("org_456", idOf(answer)))?.state).toBe("FAILED");
     expect((await world.reservations.get("org_456", idOf(answer)))?.state).toBe("released");
     expect(await world.reservations.used("org_456", "del_100", "USD")).toBe("0.00");
@@ -435,7 +439,10 @@ describe("C13 to C15, from the review, and the tests it asked for", () => {
     const { answer } = await draft(world, keyed(AGENT), { ...INV_1008, expected_version: 2 });
     expect(answer).toMatchObject({ code: "STALE_STATE" });
     expect(world.rows).toStrictEqual([]);
-    expect((await world.reservations.get("org_456", idOf(answer)))?.state).toBe("released");
+    // Changed in step 32: line ⑨ compares the version the request names with the one it read, so
+    //   the request decided on version 2 is refused there, before line ⑩ reserves anything. The
+    //   pin of the work's draft stays behind it (step 32's README, decision D13).
+    expect(await world.reservations.get("org_456", idOf(answer))).toBeUndefined();
     expect(await world.reservations.used("org_456", "del_100", "USD")).toBe("0.00");
   });
 
@@ -453,14 +460,16 @@ describe("C13 to C15, from the review, and the tests it asked for", () => {
 
   // Found by step 24's review (M3): a paid invoice's open amount is 0.00, and the database refused
   // a reservation of nothing, as an accident.
-  it("Step 24: a draft of a paid invoice, whose open amount is 0.00, reserves nothing, and the code refuses it (step 24's README, decision 18)", async () => {
+  // Changed in step 32: the contract's precondition refuses it at line ⑨, before line ⑩ and the
+  //   code, so the proposal ends DENIED (step 32's README, decision D3).
+  it("Step 24: a draft of a paid invoice, whose open amount is 0.00, reserves nothing, and line ⑨'s precondition refuses it (step 24's README, decision 18)", async () => {
     const world = story();
     const { answer } = await draft(world, keyed(AGENT), {
       invoice: "dsor://org_456/invoice/INV-1001",
       expected_version: 1,
     });
     expect(answer).toMatchObject({ code: "CONFLICT" });
-    expect((await world.proposals.get("org_456", idOf(answer)))?.state).toBe("FAILED");
+    expect((await world.proposals.get("org_456", idOf(answer)))?.state).toBe("DENIED");
     expect(await world.reservations.all()).toStrictEqual([]);
   });
 
