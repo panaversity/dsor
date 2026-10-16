@@ -76,7 +76,8 @@
             "connector",
             "identity",
             "delegation",
-            "controls"
+            "controls",
+            "decision_bundle"
           ]
         }
       }
@@ -227,6 +228,16 @@
         "table": ["SELECT"],
         "columns": {
           "INSERT": ["tenant_id", "id", "proposal_id", "approver", "approval"]
+        }
+      }
+    },
+    "dsor.decision_bundles": {
+      "kind": "append-only",
+      "tenant": "tenant_id",
+      "runtime": {
+        "table": ["SELECT"],
+        "columns": {
+          "INSERT": ["decision_id", "tenant_id", "bundle"]
         }
       }
     },

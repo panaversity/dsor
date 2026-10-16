@@ -57,8 +57,15 @@ const AUDIT_COLUMNS = [
   "delegation",
   // Migration 022 adds each control evaluated (step 27's README, decision D14).
   "controls",
+  // Changed in step 33: migration 030 adds the bundle a record names (step 33's README, D2).
+  "decision_bundle",
 ];
 const FILLED_BY_THE_DATABASE = ["sequence", "at"];
+
+// Changed in step 33: dsor.decision_bundles, as migration 030 makes it. dsor_runtime reads every
+//   column and adds a bundle through three. sealed_at is the database's to fill, and nothing
+//   changes or removes a bundle (step 33's README, decision D3).
+const BUNDLE_COLUMNS = ["decision_id", "tenant_id", "bundle", "sealed_at"];
 
 // The table dsor.delegations, as migration 010 makes it. dsor_runtime reads every
 // column and writes none (step 18's README, decision 3). Migration 012 lets it
@@ -336,6 +343,19 @@ export function today(): Catalog {
         rowSecurity: { enabled: true, forced: true },
         rules: [],
         triggers: [CONTROL_TRIGGER],
+      },
+      // The decision bundles, behind the company's lock, written once.
+      {
+        name: "dsor.decision_bundles",
+        kind: "table",
+        held: ["SELECT"],
+        columns: BUNDLE_COLUMNS.map((name) => {
+          const filled = name === "sealed_at";
+          return { name, held: filled ? ["SELECT"] : ["SELECT", "INSERT"], filled };
+        }),
+        rowSecurity: { enabled: true, forced: true },
+        rules: [],
+        triggers: [],
       },
       {
         name: "dsor.delegations",

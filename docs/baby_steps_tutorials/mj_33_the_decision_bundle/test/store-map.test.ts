@@ -41,7 +41,8 @@ describe("the shipped map", () => {
   // Changed in step 28b: and dsor.notices (step 28b's README, decision D5).
   // Changed in step 29: and a fourteenth, dsor.approvals (step 29's README, decision D8).
   // Changed in step 32: and app.vendors (step 32's README, decision D1).
-  it("step 16's decision 1: it names three schemas and fifteen tables", () => {
+  // Changed in step 33: and dsor.decision_bundles, a sixteenth (step 33's README, decision D3).
+  it("step 16's decision 1: it names three schemas and sixteen tables", () => {
     const { map } = checkStore(SHIPPED);
     expect([...map.schemas.keys()]).toStrictEqual(["app", "dsor", "public"]);
     expect([...map.tables.keys()]).toStrictEqual([
@@ -59,8 +60,22 @@ describe("the shipped map", () => {
       "dsor.controls",
       "dsor.notices",
       "dsor.approvals",
+      "dsor.decision_bundles",
       "dsor.migrations",
     ]);
+  });
+
+  // Step 33: a bundle is read inside its company, added through three named columns, and never
+  //   changed or removed. Its time is the database's to fill (step 33's README, decision D3).
+  it("step 33's decision D3: dsor.decision_bundles is read inside its company and added through named columns, and nothing changes one", () => {
+    const { map } = checkStore(SHIPPED);
+    expect(map.tables.get("dsor.decision_bundles")).toStrictEqual({
+      kind: "append-only",
+      tenant: "tenant_id",
+      runtime: { table: ["SELECT"], columns: { INSERT: ["decision_id", "tenant_id", "bundle"] } },
+      triggers: [],
+    });
+    expect(map.tables.get("dsor.audit")?.runtime.columns["INSERT"]).toContain("decision_bundle");
   });
 
   // A version of a rule is read inside its company, added as a draft through six

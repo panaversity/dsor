@@ -11,8 +11,10 @@ import type { Brake, BrakeBy, BrakeStore } from "./brakes.ts";
 import type { Freshness } from "./freshness.ts";
 import { millionths, type Reservation, type ReservationStore } from "./limits.ts";
 import type { Invoice, InvoiceStatus, InvoiceStore } from "./invoice.ts";
+import { checkBundle, type DecisionBundle, type SealedBundle } from "./bundle.ts";
 import {
   changeOf,
+  checkPair,
   controlChangeOf,
   controlOf,
   revocationOf,
@@ -218,15 +220,26 @@ type AuditRow = {
   delegation: string | null;
   // Each control line ⑩ evaluated. NULL when no control governed the call.
   controls: DecisionRecord["controls"] | null;
+  // NEW IN STEP 33: the decision's bundle, by its id. NULL for a call with none.
+  decision_bundle: string | null;
 };
 
 /** The log in the database: add a decision, and read the records of one company. */
-export type DbLog = DecisionLog & { records: (tenant: string) => Promise<DecisionRecord[]> };
+// NEW IN STEP 33: and read the bundles of one company (step 33's README, decision D14).
+export type DbLog = DecisionLog & {
+  records: (tenant: string) => Promise<DecisionRecord[]>;
+  bundles: (tenant: string) => Promise<SealedBundle[]>;
+};
 
 /** The log, as rows of dsor.audit. */
 export function createDbLog(pool: pg.Pool): DbLog {
   return Object.freeze({
-    add: async (decision: Decision): Promise<void> => {
+    add: async (decision: Decision, bundle?: DecisionBundle): Promise<void> => {
+      // NEW IN STEP 33: both checks before anything is written, as in memory: a record that names
+      //   another bundle than the one given, and a bundle that fails its schema, keep nothing
+      //   (step 33's README, decision D2).
+      checkPair(decision, bundle);
+      if (bundle !== undefined) checkBundle(bundle);
       // add finishes only after Postgres has committed the record, so when add returns,
       // the record survives a crash: "durably" in DSOR-EXE-02. The database gives the
       // record its number and its time (step 09's README, decision 6).
@@ -234,11 +247,25 @@ export function createDbLog(pool: pg.Pool): DbLog {
       // call was refused before line ②. The policy lets the record in only if it carries
       // exactly that company (DSOR-TEN-02a; step 11's README, decision 4).
       await inCompany(pool, decision.tenant, async (client) => {
+        // The bundle first, in the record's own transaction, so the record can name it: the
+        //   database's key refuses a record that names a bundle it does not keep. A bundle that
+        //   is kept and a record that is not roll back together (step 33's README, D2). The
+        //   database gives the bundle its time, the transaction's, which the record shares.
+        if (bundle !== undefined) {
+          const sealed = await client.query(
+            `INSERT INTO dsor.decision_bundles (decision_id, tenant_id, bundle) VALUES ($1, $2, $3)`,
+            [bundle.decision_id, bundle.tenant, JSON.stringify(bundle)],
+          );
+          if (sealed.rowCount !== 1) {
+            throw new Error(`the log kept ${sealed.rowCount ?? 0} bundles, not 1`);
+          }
+        }
         const { rowCount } = await client.query(
           `INSERT INTO dsor.audit
              (record_id, kind, operation, "authorization", result, reason, correlation, tenant,
-              extensions, resources, row_count, connector, identity, delegation, controls)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+              extensions, resources, row_count, connector, identity, delegation, controls,
+              decision_bundle)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
           [
             `aud_${randomUUID()}`,
             decision.kind,
@@ -265,6 +292,8 @@ export function createDbLog(pool: pg.Pool): DbLog {
             // an array as a PostgreSQL array, so the list goes as JSON text (step 27's README,
             // decision D14).
             decision.controls === undefined ? null : JSON.stringify(decision.controls),
+            // The bundle it names, in the audit record's own field (step 33's README, D2).
+            decision.decision_bundle ?? null,
           ],
         );
         // The database can take an INSERT and keep no row: a rule DO INSTEAD NOTHING on the
@@ -287,12 +316,25 @@ export function createDbLog(pool: pg.Pool): DbLog {
         client.query<AuditRow>(
           `SELECT record_id, sequence, at, kind, operation, "authorization", result, reason,
                   correlation, tenant, extensions, resources, row_count, connector, identity,
-                  delegation, controls
+                  delegation, controls, decision_bundle
              FROM dsor.audit WHERE tenant = $1 AND kind = 'decision' ORDER BY sequence`,
           [tenant],
         ),
       );
       return rows.map(recordOf);
+    },
+    // NEW IN STEP 33: the bundles of one company, in the order of the records that name them, each
+    //   with the time the database gave it (step 33's README, decisions D3 and D14).
+    bundles: async (tenant: string): Promise<SealedBundle[]> => {
+      const { rows } = await inCompany(pool, tenant, (client) =>
+        client.query<{ bundle: DecisionBundle; sealed_at: Date }>(
+          `SELECT b.bundle, b.sealed_at
+             FROM dsor.decision_bundles b JOIN dsor.audit a ON a.decision_bundle = b.decision_id
+            WHERE b.tenant_id = $1 ORDER BY a.sequence`,
+          [tenant],
+        ),
+      );
+      return rows.map((row) => ({ ...row.bundle, sealed_at: row.sealed_at.toISOString() }));
     },
   });
 }
@@ -317,6 +359,7 @@ function recordOf(row: AuditRow): DecisionRecord {
     ...(row.identity === null ? {} : { identity: row.identity }),
     ...(row.delegation === null ? {} : { delegation: row.delegation }),
     ...(row.controls === null ? {} : { controls: row.controls }),
+    ...(row.decision_bundle === null ? {} : { decision_bundle: row.decision_bundle }),
   };
 }
 

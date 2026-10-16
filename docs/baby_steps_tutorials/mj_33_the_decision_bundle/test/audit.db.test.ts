@@ -98,11 +98,12 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
         // served it (step 15's README, decision 7).
         // And step 18's identity and delegation, for an agent's call (step 18's README,
         // decision 8). And each control line ⑩ evaluated (step 27's README, decision D14).
-        held: "record_id kind operation authorization result reason correlation tenant extensions resources row_count connector identity delegation controls",
+        // Changed in step 33: and the bundle it names (step 33's README, decision D2).
+        held: "record_id kind operation authorization result reason correlation tenant extensions resources row_count connector identity delegation controls decision_bundle",
       },
       {
         object: "dsor.audit SELECT",
-        held: "sequence record_id at kind operation authorization result reason correlation tenant extensions resources row_count connector identity delegation controls",
+        held: "sequence record_id at kind operation authorization result reason correlation tenant extensions resources row_count connector identity delegation controls decision_bundle",
       },
       // The brakes. Read every column, add a brake through five named columns,
       // and write its lift through three. Nothing on pulled_at, which the database fills, and no
@@ -126,6 +127,12 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
         held: "tenant_id id version status rule compiled_by drafted_at reviewed_by effective_from stale_since in_force",
       },
       { object: "dsor.controls UPDATE", held: "status reviewed_by effective_from in_force" },
+      // Changed in step 33: the decision bundles. Read every column, add a bundle through three
+      //   named columns. Nothing on sealed_at, which the database fills, and no UPDATE or DELETE: a
+      //   bundle, once sealed, says what it said (step 33's README, decision D3).
+      { object: "dsor.decision_bundles", held: "SELECT" },
+      { object: "dsor.decision_bundles INSERT", held: "decision_id tenant_id bundle" },
+      { object: "dsor.decision_bundles SELECT", held: "decision_id tenant_id bundle sealed_at" },
       // Step 18's slips: read every column (step 18's README, decision 3).
       { object: "dsor.delegations", held: "SELECT" },
       {
@@ -566,11 +573,14 @@ describe("C4: if the database cannot take the record, the caller hears EVIDENCE_
     // step 18 the log writes two more, an agent's identity and slip (step 18's README,
     // decision 8). Found by step 18's run on a local PostgreSQL: with 12, the swapped INSERT
     // failed on its 14 values, so it kept no row for the wrong reason.
+    // Changed in step 33: and the bundle a record names, a sixteenth (step 33's README, D2).
     const keepsNothing = `INSERT INTO dsor.audit
         (record_id, kind, operation, "authorization", result, reason, correlation, tenant,
-         extensions, resources, row_count, connector, identity, delegation, controls)
+         extensions, resources, row_count, connector, identity, delegation, controls,
+         decision_bundle)
       SELECT $1::text, $2::text, $3::text, $4::text, $5::text, $6::text, $7::jsonb, $8::text,
-             $9::jsonb, $10::text[], $11::integer, $12::text, $13::jsonb, $14::text, $15::jsonb
+             $9::jsonb, $10::text[], $11::integer, $12::text, $13::jsonb, $14::text, $15::jsonb,
+             $16::text
        WHERE false`;
     // How many rows each swapped INSERT kept, so the test knows the fault fired once, and
     // that the statement ran. An INSERT that failed would pass for the wrong reason.
