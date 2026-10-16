@@ -1831,7 +1831,9 @@ predicted all four breaks before any code. The build followed in five pieces.
   Claude Code's, each with its downside, for the learner to review: DSoR's own work is not
   released (D14); a check that cannot be made now leaves the payment waiting (D15); a gone signer
   invalidates and suspends nothing yet (D16); a cause starts with its own code (D17); a rule the
-  request was never decided under is new, and invalidates (D18).
+  request was never decided under is new, and invalidates (D18). The learner reviewed them, each
+  after a short story, and kept all five: D14 on 2026-10-15, D15 to D18 on 2026-10-16, after step
+  32 was built. The visual story's online copies are gone; the link above no longer opens.
 - **The pieces:** A, the release's front, who may release, and what; B, the stored request runs,
   once; C, the check again on live data, whose 12 tests were all `COMMITTED` before it, the stale
   approval paid; D, the database, migration 027 and two releases at once; E, the program's four

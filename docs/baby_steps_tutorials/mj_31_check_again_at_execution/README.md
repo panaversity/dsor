@@ -59,8 +59,10 @@ Words this step uses, each from an earlier step:
 
 The learner designed this step on 2026-10-14 and 2026-10-15, one decision at a time, and asked for
 the build to follow. D1 to D13 are the learner's. D12 and D13 were found as building began, and the
-learner took them too. D14 to D18 were found later in the build. They are Claude Code's, each with
-its downside, for the learner to review. This folder is a copy of step 30.
+learner took them too. D14 to D18 were found later in the build, and were Claude Code's, each with
+its downside. The learner reviewed them one at a time, each after its story, on 2026-10-15 (D14)
+and 2026-10-16 (D15 to D18), and kept all five. So every decision below is the learner's. This
+folder is a copy of step 30.
 
 ### What each rule says
 
@@ -146,7 +148,10 @@ its downside, for the learner to review. This folder is a copy of step 30.
   that was only prepared would wait for another release. *Downside:* DSOR-OPR-05 says every command takes the three modes. This is the tutorial's
   choice against it, and a question for the specification.
 
-### Decisions found while building (Claude Code)
+### Decisions found while building (Claude Code's, then the learner's)
+
+Each was Claude Code's when it was found, and the learner reviewed and kept it.
+
 
 - **D14. Only a business request, such as a payment, is released.** DSoR's own work, such as a
   brake or a rule, can be prepared in `propose_only` mode too. Its release would have to run DSoR's
@@ -434,7 +439,7 @@ signed. Each question changes one thing before the release on Friday.
 
 - **Two more of the learner's decisions.** D12, that line ⑤ cannot check the caller of a release, and D13, a
   release's modes, were found as building began. The learner took both. D14 to D18 were found later,
-  and are Claude Code's.
+  were Claude Code's, and the learner reviewed and kept them.
 - **A world of its own for the story.** In step 30's world, two more rules were on, switched on after
   INV-1008 was approved. Its release there is invalidated, rightly. So D11's first scene, a release
   that pays, needs a world where only the CFO's rule is on at first.
