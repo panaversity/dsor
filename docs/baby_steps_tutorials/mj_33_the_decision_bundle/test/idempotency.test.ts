@@ -486,13 +486,15 @@ describe("C9: a retry after a lost record is safe with the same key", () => {
     const registry = paymentRegistry(rows);
     const kept = createLog();
     let broken = true;
+    // Changed in step 33: the log is given each decision's bundle too, and passes it on (step 33's
+    //   README, D2).
     const flaky: DecisionLog = {
-      add: async (decision) => {
+      add: async (decision, bundle) => {
         if (broken) {
           broken = false;
           throw new Error("disk full");
         }
-        return kept.add(decision);
+        return kept.add(decision, bundle);
       },
     };
     const lost = await call(registry, flaky, keyed(AGENT, "pay-INV-1008-a"), "payment.create", {

@@ -69,6 +69,13 @@ const A_COMMAND = [
   "invoice.issue, which has no code yet",
 ];
 
+// Changed in step 33: the refusals of a command after line ③, whose decisions have a bundle, which
+//   their records name (step 33's README, D1). The agent's refusal at line ③ has none.
+const WITH_A_BUNDLE = [
+  "cfo_100 calling invoice.issue, which no role of theirs grants",
+  "invoice.issue, which has no code yet",
+];
+
 // The agent's refusals that come after line ③ found its slip, del_100, so their records name
 // the slip and its person (step 18's README, decision 8).
 const UNDER_A_SLIP = [
@@ -150,6 +157,7 @@ describe("C1: every answer call gives has a record in the log", () => {
         ...(A_COMMAND.includes(why)
           ? { extensions: { [OUR_EXTENSIONS]: { invocation_mode: "execute" } } }
           : {}),
+        ...(WITH_A_BUNDLE.includes(why) ? { decision_bundle: expect.stringMatching(/^dec_/) } : {}),
         reason: message,
         correlation: answer.correlation,
       }),
@@ -502,7 +510,8 @@ describe("C5: the log only grows", () => {
     expect(await fresh.records()).toHaveLength(1);
   });
 
-  it("the log has two functions, and no way to change or remove a record", async () => {
-    expect(Object.keys(createLog()).sort()).toStrictEqual(["add", "records"]);
+  // Changed in step 33: and bundles, which reads a copy of every bundle (step 33's README, D3).
+  it("the log has three functions, and no way to change or remove a record or a bundle", async () => {
+    expect(Object.keys(createLog()).sort()).toStrictEqual(["add", "bundles", "records"]);
   });
 });

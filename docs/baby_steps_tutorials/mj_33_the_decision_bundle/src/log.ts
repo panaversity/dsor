@@ -4,6 +4,7 @@
 // table in the database: createDbLog in postgres.ts.
 import { randomUUID } from "node:crypto";
 import type { BrakeBy } from "./brakes.ts";
+import { checkBundle, type DecisionBundle, type SealedBundle } from "./bundle.ts";
 import type { Freshness, FreshnessMode } from "./freshness.ts";
 import type { Label } from "./labels.ts";
 import type { ControlOutcome, Denial, StaleOfRecord } from "./controls.ts";
@@ -84,6 +85,9 @@ export type Decision = {
   // outcome, the policy it came from, and the error when it could not be evaluated (DSOR-EXE-02;
   // step 27's README, decision D14).
   controls?: ControlOutcome[];
+  // NEW IN STEP 33: the decision's bundle, by its id, in the audit record's own field. A decision
+  //   about a command from line ④ on has one, and its record names it (step 33's README, D1, D2).
+  decision_bundle?: string;
 };
 
 // And where DSoR learned what the signer holds, and as of when: her
@@ -380,28 +384,56 @@ export type DecisionRecord = Decision & { record_id: string; sequence: number; a
 // read depends on where it is kept: the database log reads one company at a time (step
 // 11's README, decision 6).
 /** What call needs of a log: add a decision. */
-export type DecisionLog = { add: (decision: Decision) => Promise<void> };
+// NEW IN STEP 33: and its bundle, when it has one, kept with it or not at all (step 33's README, D2).
+export type DecisionLog = { add: (decision: Decision, bundle?: DecisionBundle) => Promise<void> };
 
 /** The log in memory, for the unit tests: add a decision, and read a copy of every record. */
-export type MemoryLog = DecisionLog & { records: () => Promise<DecisionRecord[]> };
+// And a copy of every bundle (step 33's README, D3).
+export type MemoryLog = DecisionLog & {
+  records: () => Promise<DecisionRecord[]>;
+  bundles: () => Promise<SealedBundle[]>;
+};
+
+/**
+ * Refuses a record and a bundle that do not belong together: a record that names another bundle
+ * than the one given, names one that is not given, or names none when one is given. Both logs
+ * check this before they keep anything (step 33's README, D2).
+ */
+export function checkPair(decision: Decision, bundle: DecisionBundle | undefined): void {
+  const named = decision.decision_bundle;
+  if (named === bundle?.decision_id) return;
+  const given = bundle === undefined ? "none" : bundle.decision_id;
+  throw new Error(
+    `the record names bundle ${String(named ?? "none")}, and the log was given ${given}`,
+  );
+}
 
 /** A new, empty log, held in memory. */
 export function createLog(): MemoryLog {
   // Only the two functions below can reach this list, so nothing else can change or
   // remove a record (step 08's README, decision 6).
   const kept: DecisionRecord[] = [];
+  // And the bundles, which only these functions reach too (step 33's README, D3).
+  const sealed: SealedBundle[] = [];
   // Frozen, so nobody who holds the log can replace add with a function that writes
   // nothing. Found by step 08's review.
   return Object.freeze({
-    add: async (decision: Decision): Promise<void> => {
+    add: async (decision: Decision, bundle?: DecisionBundle): Promise<void> => {
+      // Both checks before anything is kept, so a bundle the log cannot take keeps
+      //   neither it nor its record (step 33's README, D2).
+      checkPair(decision, bundle);
+      if (bundle !== undefined) checkBundle(bundle);
       // A copy, so a caller that changes its decision, or the answer that shares its
       // correlation, cannot change the record afterwards.
       const record_id = `aud_${randomUUID()}`;
       const at = new Date().toISOString();
       kept.push({ record_id, sequence: kept.length + 1, at, ...structuredClone(decision) });
+      // The record's time is the bundle's, as on the database, where one transaction gives both.
+      if (bundle !== undefined) sealed.push({ ...structuredClone(bundle), sealed_at: at });
     },
     // A copy too, so a reader cannot change what it read.
     records: async (): Promise<DecisionRecord[]> => structuredClone(kept),
+    bundles: async (): Promise<SealedBundle[]> => structuredClone(sealed),
   });
 }
 

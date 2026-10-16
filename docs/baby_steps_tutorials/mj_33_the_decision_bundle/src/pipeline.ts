@@ -3,6 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { pinned, readBound, type Bound } from "./bound.ts";
 import { checkBrake, holdBrake, NO_BRAKES, type BrakeStore } from "./brakes.ts";
+import { bundleOf, executedOf, newEvidence } from "./bundle.ts";
 import { freshSheet, NO_RATES, readOnce, type RateStore } from "./rates.ts";
 import { NO_CONTROLS, type ControlStore } from "./rulebook.ts";
 import { NotCanonical, payloadHash } from "./canonical.ts";
@@ -173,6 +174,9 @@ export async function call(
   // The label of each read the code makes, noted by the bound store. Only the
   // checklist holds this notebook (step 15's README, decision 5).
   const reads = newReads();
+  // NEW IN STEP 33: and the notebook of evidence, which line ⑪ seals into the decision's bundle:
+  //   who asks, once line ③ has passed, and how the work ended (step 33's README, D1, D4, and D9).
+  const evidence = newEvidence();
 
   // Every refusal is thrown as a Refusal, which names its code. The catch
   // below turns it, and anything else thrown, into an error envelope (step 04's README, C7).
@@ -288,6 +292,10 @@ export async function call(
         as_of: authority.as_of,
       };
     }
+    // NEW IN STEP 33: line ③ has passed, so DSoR knows who asks and under whose authority: the
+    //   slip's signer and its agent, or the person with the login DSoR gave them. From here on, a
+    //   command's decision has a bundle (step 33's README, D1).
+    evidence.asker = requesterOf(caller, under, tenant, new Date().toISOString());
     // ④ Check operational status (suspension, freeze, breaker).
     // The emergency brake. A command from an agent that a brake stops, its own or
     //   its company's freeze, is refused, in every mode, with AGENT_SUSPENDED. A query passes, and
@@ -1087,6 +1095,9 @@ export async function call(
             ),
           };
         });
+        // NEW IN STEP 33: how the work ended, for the bundle: committed, failed, or not executed. A
+        //   replay ran nothing (step 33's README, D9).
+        evidence.executed = executedOf(claimed);
         if (claimed.replay_of !== undefined) {
           // A replay passed every line its first call passed, so its record says what the first
           // call's said, and names the call whose outcome it gives back (step 20's README,
@@ -1243,28 +1254,32 @@ export async function call(
   // Await. The answer waits until the database has committed the record,
   // and a database that refuses it lands in the catch (step 09's README, C2 and C4).
   try {
-    await line(11, () =>
-      log.add(
-        decisionOf(
-          answer,
-          registry.contracts.get(name),
-          allowed,
-          tenantOfRecord,
-          claimedTenant,
-          read,
-          under,
-          keyOfRecord,
-          proposalOfRecord,
-          modeOfRecord,
-          conversionOfRecord,
-          unconvertibleOfRecord,
-          controlsOfRecord,
-          denialsOfRecord,
-          staleOfRecord,
-          approvedUnderOfRecord,
-        ),
-      ),
-    );
+    await line(11, () => {
+      const decision = decisionOf(
+        answer,
+        registry.contracts.get(name),
+        allowed,
+        tenantOfRecord,
+        claimedTenant,
+        read,
+        under,
+        keyOfRecord,
+        proposalOfRecord,
+        modeOfRecord,
+        conversionOfRecord,
+        unconvertibleOfRecord,
+        controlsOfRecord,
+        denialsOfRecord,
+        staleOfRecord,
+        approvedUnderOfRecord,
+      );
+      // NEW IN STEP 33: and the decision's bundle, for a command past line ③, sealed with its
+      //   record: the log keeps both or neither, and the record names its bundle (step 33's
+      //   README, D1 and D2). Built here, inside the try, so a bug in it gives no answer either.
+      const bundle = bundleOf(decision, evidence, registry.contracts.get(name));
+      if (bundle === undefined) return log.add(decision);
+      return log.add({ ...decision, decision_bundle: bundle.decision_id }, bundle);
+    });
   } catch {
     // A command whose code ran may have changed something, and DSoR cannot
     // prove it did not. Until step 20 its answer never said a retry was safe: with no key, a
