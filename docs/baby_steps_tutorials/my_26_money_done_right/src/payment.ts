@@ -165,19 +165,8 @@ export async function cancelPayment(
   return { kind: "not_draft", status: current.status };
 }
 
-/**
- * STEP 18: an amount in cents, exactly, for comparing two amounts in one currency. A BigInt,
- * never a `number`: "50000.01" must compare as above "50000.00" whatever the digits. For an amount
- * with at most two decimals, which is every amount a payment or a limit may hold.
- *
- * Placed above `paymentAmountFrom`, not between that function and its doc comment, where it first
- * went: the defect decision 126 fixed once, made again (decision 128).
- */
-export function centsOf(amount: Money): bigint {
-  const [whole = "0", fraction = ""] = amount.value.split(".");
-
-  return BigInt(whole) * 100n + BigInt(fraction.padEnd(2, "0").slice(0, 2));
-}
+// STEP 26: `centsOf`, which compared two amounts of one currency in cents, is gone. Every limit is
+// compared through `exceeds` in exchange.ts now, in any two currencies (DSOR-MON-03, decision 159).
 
 /**
  * An amount a payment may carry, or why not.

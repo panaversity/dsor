@@ -69,7 +69,7 @@ import type { Classification } from "./classification.ts";
 // STEP 15: how old an answer's data is, and the door's check that a read says so.
 import { cannotBeLabelled, type Freshness } from "./freshness.ts";
 import { formatUri, parseUri } from "./uri.ts";
-import { cancelPayment, centsOf, createPayment, paymentAmountFrom } from "./payment.ts";
+import { cancelPayment, createPayment, paymentAmountFrom } from "./payment.ts";
 // STEP 08: the log. operations.ts is where the pipeline lives, so it is where the stage that
 // writes a record lives too.
 import { audit, type DecisionToRecord, OutcomeUnknown } from "./audit.ts";
@@ -82,7 +82,7 @@ import { liftTheBrake, pullTheBrake, whatStops } from "./controls.ts";
 import { findPerson } from "./people.ts";
 import { money, type Money } from "./money.ts";
 // NEW IN STEP 26: two amounts compared in any two currencies, at the company's rates (decision 159).
-import { CannotConvert, exceeds, type RateOf } from "./exchange.ts";
+import { CannotConvert, convertUp, exceeds, plus, type RateOf } from "./exchange.ts";
 import { ratesOf } from "./rates.ts";
 // STEP 22: the proposal, made at §21.8 and moved by the door (decision 136).
 import {
@@ -2096,17 +2096,34 @@ const checkTheSlipsLimit: Stage["run"] = async (context) => {
     return carryOn(context);
   }
 
-  const overTheDay = `${amount.value} ${amount.currency} would take ${slip.id} past its limit of ${daily.value} ${daily.currency} a day`;
+  // NEW IN STEP 26: what the day counts, in the limit's currency: the amount converted at the
+  // company's rates of this moment, and rounded up to the cent, so that the day can count a fraction
+  // of a cent too much and never too little (DSOR-MON-06, decision 159). The reservation keeps this
+  // amount, so a payment that fails gives back exactly what it took, whatever the rate does next.
+  let counted: Money;
 
-  // Restrictively, as for one payment: an amount that cannot be compared is over (DSOR-MON-04).
-  if (amount.currency !== daily.currency) {
+  try {
+    counted = convertUp(amount, daily.currency, rates);
+  } catch (failure) {
+    if (!(failure instanceof CannotConvert)) {
+      throw failure;
+    }
+
+    // Restrictively, as for one payment: an amount that cannot be converted is over (DSOR-MON-04).
     return refuse(
       askedBy,
       "LIMIT_EXCEEDED",
-      `${amount.value} ${amount.currency} cannot be compared with ${slip.id}'s limit of ${daily.value} ${daily.currency} a day, so it is refused`,
+      `${amount.value} ${amount.currency} cannot be compared with ${slip.id}'s limit of ${daily.value} ${daily.currency} a day, so it is refused: ${failure.message}`,
       context.requestId,
     );
   }
+
+  // NEW IN STEP 26: an amount in another currency says what the day counted it as.
+  const asCounted =
+    counted === amount
+      ? `${amount.value} ${amount.currency}`
+      : `${amount.value} ${amount.currency}, ${counted.value} ${counted.currency},`;
+  const overTheDay = `${asCounted} would take ${slip.id} past its limit of ${daily.value} ${daily.currency} a day`;
 
   try {
     // A dry run reserves nothing (DSOR-OPR-06): it reads the room left and answers from it. The
@@ -2114,7 +2131,9 @@ const checkTheSlipsLimit: Stage["run"] = async (context) => {
     if (context.mode === "validate_only") {
       const used = money(await usedToday(tenant, slip.id), daily.currency);
 
-      return centsOf(used) + centsOf(amount) > centsOf(daily)
+      // NEW IN STEP 26: through `exceeds`, like every limit (DSOR-MON-03), with the amount as
+      // the day counts it.
+      return exceeds(plus(used, counted), daily, rates)
         ? refuse(askedBy, "LIMIT_EXCEEDED", overTheDay, context.requestId)
         : carryOn(context);
     }
@@ -2128,7 +2147,8 @@ const checkTheSlipsLimit: Stage["run"] = async (context) => {
       );
     }
 
-    const booked = await reserve(tenant, context.proposal, slip.id, amount, daily);
+    // NEW IN STEP 26: the amount as the day counts it, in the limit's currency.
+    const booked = await reserve(tenant, context.proposal, slip.id, counted, daily);
 
     if (booked.kind === "over") {
       return refuse(askedBy, "LIMIT_EXCEEDED", overTheDay, context.requestId);

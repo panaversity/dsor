@@ -602,7 +602,9 @@ describe("a reservation follows its proposal's history, as written", () => {
 describe("what reserve() keeps to itself", () => {
   it("DSOR-MON-04: an amount in another currency than the limit's is over it, and the day is not touched", async () => {
     // Decision 141: booked directly, EUR 150,000 went against the USD limit and stamped the day EUR,
-    // and USD 1.00 came back over for the rest of the day.
+    // and USD 1.00 came back over for the rest of the day. STEP 26: §21.10 converts an amount into
+    // the limit's currency before it books it (decision 159); reserve() itself still books nothing
+    // in any other.
     const euros = await aProposal();
     const dollars = await aProposal();
 
@@ -674,9 +676,10 @@ describe("what reserve() keeps to itself", () => {
     expect(await usedToday("org_456", "del_100")).toBe("0.00");
   });
 
-  it("DSOR-MON-04: a slip with only a daily limit refuses a payment in another currency, a day's limit", async () => {
+  it("DSOR-MON-04: a slip with only a daily limit refuses a payment in a currency with no rate, a day's limit", async () => {
     // Decision 141: never reached, because del_100's limit per payment refuses another currency
-    // first. Here del_100 has only its daily limit.
+    // first. Here del_100 has only its daily limit. STEP 26: other currencies are converted now, and
+    // the rate service has no rate for EUR (decision 159).
     await asTheOwner(() =>
       db.exec(`UPDATE dsor.delegations
                   SET per_transaction_limit_value = NULL, per_transaction_limit_currency = NULL
