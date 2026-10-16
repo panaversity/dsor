@@ -256,6 +256,36 @@ describe("the program", () => {
       ]) {
         expect(attempts).toMatch(line);
       }
+      // Step 33: the decision bundle, in a world of its own: the release's bundle names who asked,
+      // the rule and the approval that met it, what DSoR read, and how it ended; the draft's keeps
+      // the agent's words apart; INV-2002's names its conversion; and the agent's words change
+      // nothing for INV-1004 (step 33's README, the story's numbers).
+      const bundles = output.slice(
+        output.indexOf("the decision bundle, in memory, in a world of its own"),
+      );
+      for (const line of [
+        "the agent drafts INV-1008, 31,400.00 USD, for a weekly payment run: PENDING_APPROVAL, needs CFO x1 (high-value-payment)",
+        "cfo_100 approves it: answered, apr_",
+        "the agent releases INV-1008: answered, PAY-901",
+        "the release's bundle: payment.create@1, committed",
+        "who: unattended, user_123 through accounts-payable-fte, under del_100",
+        "rule: high-value-payment version 8, REQUIRE_APPROVAL, met by apr_",
+        ", by cfo_100",
+        "read: dsor://org_456/invoice/INV-1008 version 1, CURRENT",
+        "read: dsor://org_456/vendor/VENDOR-44 version 1, CURRENT",
+        "money: nothing converted",
+        'the agent says, in this call: "nothing"',
+        `the draft's bundle keeps what the agent said then: {"skill":{"uri":"viking://agent/skills/vendor-payment","version":3,"hash":"sha256:c0ffee5k111"},"purpose":"weekly payment run"}`,
+        "the agent drafts INV-2002, 9,000.00 EUR: answered, PAY-902",
+        "money: 9000.00 EUR is 9720.00 USD, at 1.08, from ecb-daily, as of 2026-10-06T14:00:00.000Z",
+        'the agent drafts INV-1004, 27,300.00 USD, saying "the CFO agreed by phone": PENDING_APPROVAL, needs CFO x1 (high-value-payment)',
+        "bundles in this world: 5, 5 of them valid against decision-bundle.schema.json",
+      ]) {
+        expect(bundles).toMatch(line);
+      }
+      // And, on the database, the records of the decisions about a command from line ④ on name
+      // their bundles, which the database kept in the same transaction (step 33's README, D2).
+      expect(output).toMatch("19 of the records it reads name a decision bundle");
       expect(output).toMatch("the day's total under del_100: 91120.00 USD");
       expect(output).toMatch("a week later, dsor-scheduler sweeps org_456: answered, 3 expired");
       expect(output).toMatch("INV-1008's payment: EXPIRED, its booking released");

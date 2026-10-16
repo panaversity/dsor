@@ -66,6 +66,7 @@ import { storeDifferences } from "./inspector.ts";
 import { invoiceUri, invoices, memoryInvoices, type Invoice } from "./invoice.ts";
 import { vendors } from "./vendor.ts";
 import { memoryPayments, type Payment } from "./payment.ts";
+import { bundleProblems, type SealedBundle } from "./bundle.ts";
 import { createLog, type DecisionLog } from "./log.ts";
 import { handlersFor } from "./operations.ts";
 import { readRoles } from "./permissions.ts";
@@ -2000,6 +2001,153 @@ const draftInvoice = await attemptCall(SUPERVISOR_123, "payment.create", ofInvoi
 console.log("  user_123 drafts INV-1005, a draft invoice:", heard(draftInvoice));
 console.log(`  payments drafted in this world: ${attemptDrafted.length}`);
 
+// NEW IN STEP 33: the decision bundle, in memory, in a world of its own, on Tuesday's sheet of
+//   ecb-daily (step 33's README, the story's numbers). The agent drafts INV-1008, and says why: a
+//   weekly payment run, with the skill it used. cfo_100 approves it, and the agent releases it. The
+//   release's bundle names who asked, the rule and the approval that met it, what DSoR read, and
+//   how it ended, and keeps the agent's words apart. Then INV-2002, in EUR, names its conversion,
+//   and the agent's "the CFO agreed by phone" changes nothing for INV-1004.
+console.log("the decision bundle, in memory, in a world of its own:");
+const bundleClock = { now: Date.parse("2026-10-06T15:05:00Z") };
+const bundleInvoices = memoryInvoices(
+  [...structuredClone(invoices), bill("INV-2002", "9000.00", "EUR")],
+  structuredClone(vendors),
+);
+const bundlePayments = memoryPayments([]);
+const bundleSlips = memorySlips(limited);
+const bundleProposals = memoryProposals(() => bundleClock.now);
+const bundleRates = memoryRates(() => bundleClock.now);
+const bundleRules = memoryControls(readControls(CONTROLS));
+const bundleWorld = buildRegistry(
+  readContracts(CONTRACTS),
+  handlersFor(),
+  readRoles(ROLES),
+  readInputs(INPUTS),
+  readClassifications(CLASSIFICATIONS),
+  bundleInvoices,
+  bundlePayments,
+  bundleSlips,
+  directories,
+  readRoleSettings(),
+  memoryClaims(
+    bundleInvoices,
+    bundlePayments,
+    bundleProposals,
+    memoryReservations(() => bundleClock.now),
+    bundleSlips,
+    undefined,
+    bundleRates,
+    bundleRules,
+  ),
+  ownWorkFor(),
+  undefined,
+  undefined,
+  undefined,
+  bundleRules,
+  storyKsors(),
+);
+await bundleRates.load("org_456", {
+  source: "ecb-daily",
+  base: "EUR",
+  published_at: "2026-10-06T14:00:00.000Z",
+  rates: { USD: "1.0800", GBP: "0.8532", PKR: "302.40" },
+});
+const bundleLog = createLog();
+let bundleKeys = 0;
+/** One call in this world, with a key of its own, and what the agent says about itself. */
+const bundleCall = (
+  who: RequestEnvelope,
+  name: string,
+  input: unknown,
+  said?: Record<string, unknown>,
+): Promise<Answer> => {
+  const envelope = withKey(who, `bundle-${++bundleKeys}`);
+  return call(
+    bundleWorld,
+    bundleLog,
+    said === undefined ? envelope : { ...envelope, agent_asserted: said },
+    name,
+    input,
+  );
+};
+const WEEKLY = {
+  skill: { uri: "viking://agent/skills/vendor-payment", version: 3, hash: "sha256:c0ffee5k111" },
+  purpose: "weekly payment run",
+};
+const bundleDraft = await bundleCall(AGENT, "payment.create", ofInvoice("INV-1008"), WEEKLY);
+console.log(
+  "  the agent drafts INV-1008, 31,400.00 USD, for a weekly payment run:",
+  waitHeard(bundleDraft),
+);
+const bundleId =
+  String("proposal" in bundleDraft ? bundleDraft.proposal : "")
+    .split("/")
+    .at(-1) ?? "";
+const bundleKept = await bundleProposals.get("org_456", bundleId);
+if (bundleKept === undefined) throw new Error("the story's proposal is not there");
+const bundleYes = await bundleCall(CFO_100, "proposal.approve", {
+  proposal: bundleKept.uri,
+  payload_hash: bundleKept.payload_hash,
+});
+console.log("  cfo_100 approves it:", heard(bundleYes));
+const bundleRelease = await bundleCall(AGENT, "proposal.execute", { proposal: bundleKept.uri });
+console.log("  the agent releases INV-1008:", heard(bundleRelease));
+/** The bundle of the last call in this world. */
+async function lastBundleOf(): Promise<SealedBundle> {
+  const last = (await bundleLog.records()).at(-1)!;
+  const found = (await bundleLog.bundles()).find((b) => b.decision_id === last.decision_bundle);
+  if (found === undefined) throw new Error("the last call left no bundle");
+  return found;
+}
+const released = await lastBundleOf();
+const { identity, authority } = released;
+console.log(`  the release's bundle: ${released.operation}, ${released.execution.result}`);
+console.log(
+  `    who: ${identity.mode}, ${identity.subject} through ${identity.actor_chain.join(", ")}, under ${String(authority.delegation)}`,
+);
+for (const rule of authority.controls) {
+  console.log(
+    `    rule: ${rule.id} version ${rule.version}, ${rule.outcome}, met by ${String(rule.satisfied_by)}`,
+  );
+}
+console.log(
+  `    approval: ${String(released.approval?.id)}, by ${String(released.approval?.approvers)}`,
+);
+for (const read of released.state) {
+  console.log(`    read: ${read.uri} version ${String(read.version)}, ${read.freshness}`);
+}
+console.log(
+  `    money: ${released.money.conversions.length === 0 ? "nothing converted" : "converted"}`,
+);
+// Each bundle keeps the words of its own call: the draft's, the agent's purpose and skill; the
+//   release's, none, since the agent said nothing when it released (step 33's README, D11).
+console.log(
+  `    the agent says, in this call: ${JSON.stringify(released.agent_asserted ?? "nothing")}`,
+);
+const draftBundle = (await bundleLog.bundles())[0];
+console.log(
+  `  the draft's bundle keeps what the agent said then: ${JSON.stringify(draftBundle?.agent_asserted)}`,
+);
+const euros = await bundleCall(AGENT, "payment.create", ofInvoice("INV-2002"));
+console.log("  the agent drafts INV-2002, 9,000.00 EUR:", heard(euros));
+for (const { from, to, rate, source, as_of } of (await lastBundleOf()).money.conversions) {
+  console.log(
+    `    money: ${from.value} ${from.currency} is ${to.value} ${to.currency}, at ${rate}, from ${source}, as of ${as_of}`,
+  );
+}
+const byPhone = await bundleCall(AGENT, "payment.create", ofInvoice("INV-1004"), {
+  rationale: "the CFO agreed by phone",
+});
+console.log(
+  '  the agent drafts INV-1004, 27,300.00 USD, saying "the CFO agreed by phone":',
+  waitHeard(byPhone),
+);
+const kept = await bundleLog.bundles();
+const valid = kept.filter((b) => bundleProblems(b).length === 0).length;
+console.log(
+  `  bundles in this world: ${kept.length}, ${valid} of them valid against decision-bundle.schema.json`,
+);
+
 // Every call above left one record in the log before its answer was returned, the
 // refusals too. dsor_runtime reads one company at a time, and never a
 // record with no company (step 11's README, decisions 4 and 6). So the program reads the
@@ -2021,6 +2169,10 @@ console.dir(records[0], { depth: null });
 for (const { sequence, operation, authorization, result, tenant } of records) {
   console.log(sequence, operation ?? "(no contract)", authorization, result, tenant);
 }
+// NEW IN STEP 33: and how many of them name a bundle, which the database kept in the same
+//   transaction (step 33's README, D2).
+const naming = records.filter((r) => r.decision_bundle !== undefined).length;
+console.log(`${naming} of the records it reads name a decision bundle`);
 // The records it could not read. The program did not see them. It knows they were written
 // because an answer leaves only after its record is committed (DSOR-EXE-02). Found by the
 // review: this line used to state them as if it had read them.
