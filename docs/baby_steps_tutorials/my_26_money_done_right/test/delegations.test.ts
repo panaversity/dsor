@@ -558,8 +558,10 @@ describe("up to a limit", () => {
     );
   });
 
-  it("DSOR-DEL-02: an amount in another currency cannot be compared with the limit, so it is refused", async () => {
+  it("DSOR-DEL-02: an amount in a currency with no rate cannot be compared with the limit, so it is refused", async () => {
     // DSOR-MON-04's rule for a comparison that cannot convert: the limit is treated as exceeded.
+    // STEP 26: other currencies are compared now, at the rate service's rates, and the service has
+    // none for EUR (decision 159). money-limits.test.ts has the bills it can convert.
     expect(refusalOf(await create(AGENT, { value: "10.00", currency: "EUR" })).code).toBe(
       "LIMIT_EXCEEDED",
     );

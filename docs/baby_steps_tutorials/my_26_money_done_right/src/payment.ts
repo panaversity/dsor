@@ -74,7 +74,8 @@ export type CreateOutcome =
  * status are the database's: a sequence gives the next number, and a new payment is a draft.
  *
  * STEP 17, decision 126: and only in the invoice's currency. A USD invoice was paid in EUR,
- * and in ZZZ, which is no currency; converting is step 26's.
+ * and in ZZZ, which is no currency. STEP 26 converts to compare an amount with a limit, never to
+ * pay one: a payment is still in its invoice's currency (decision 159).
  */
 export async function createPayment(
   tenantId: string,

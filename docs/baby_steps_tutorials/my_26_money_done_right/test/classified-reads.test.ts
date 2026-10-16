@@ -63,7 +63,7 @@ describe("a confidential read is written down", () => {
   });
 
   it("DSOR-CLS-05: a page — every address on it, and how many", async () => {
-    const answer = await callOperation(SUPERVISOR, "invoice.list", { limit: 3 });
+    const answer = await callOperation(SUPERVISOR, "invoice.list", { limit: 5 });
 
     expect(answer.kind).toBe("page");
 
@@ -71,13 +71,16 @@ describe("a confidential read is written down", () => {
 
     expect(read.kind).toBe("classified_read");
     expect(read.operation).toBe("invoice.list@1");
-    // Three asked for, two given: the story's org_456 holds INV-1008 and INV-1009. The record says
-    // what was returned, not what was asked.
+    // Five asked for, four given: the story's org_456 holds INV-1008 to INV-1011 (STEP 26: two
+    // more, VENDOR-44's bills in rupees and pounds, so five is asked where three was). The record
+    // says what was returned, not what was asked.
     expect(read.resources).toStrictEqual([
       "dsor://org_456/invoice/INV-1008",
       "dsor://org_456/invoice/INV-1009",
+      "dsor://org_456/invoice/INV-1010",
+      "dsor://org_456/invoice/INV-1011",
     ]);
-    expect(rowCountOf(read)).toBe(2);
+    expect(rowCountOf(read)).toBe(4);
   });
 });
 

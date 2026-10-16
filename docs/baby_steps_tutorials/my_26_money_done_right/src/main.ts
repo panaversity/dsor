@@ -301,8 +301,9 @@ for (const [id, contract] of loadRegistry(contractsFromDisk())) {
 
 // STEP 13, and this is the step. The first query that returns many rows, and the size of
 // the answer is the server's. One invoice a page, so the page and its cursor can be seen on two
-// invoices; then the cursor sent back; then a request for a million, which gets one page. With two
-// invoices the page holds both, so the ceiling of a hundred is not visible here — the tests seed
+// invoices; then the cursor sent back; then a request for a million, which gets one page. With four
+// invoices (STEP 26: two more, in rupees and pounds) the page holds all four, so the ceiling of a
+// hundred is not visible here — the tests seed
 // three hundred and watch it bite. What is visible is that the caller's number did not decide.
 console.log();
 console.log("A list, one page at a time, and the ceiling:");

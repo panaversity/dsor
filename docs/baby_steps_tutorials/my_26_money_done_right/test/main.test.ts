@@ -328,9 +328,10 @@ describe("the program a learner runs", () => {
 
     expect(lines).toHaveLength(3);
     expect(lines[0]).toMatch(/1 invoices, next after dsor:\/\/org_456\/invoice\/INV-1008$/);
-    expect(lines[1]).toMatch(/1 invoices, the last page$/);
-    // Two invoices in the story, so the million gets both — and "the last page", not a million.
-    expect(lines[2]).toMatch(/2 invoices, the last page$/);
+    // STEP 26: four invoices in the story, so the second page of one has a next too.
+    expect(lines[1]).toMatch(/1 invoices, next after dsor:\/\/org_456\/invoice\/INV-1009$/);
+    // Four invoices in the story, so the million gets all four — and "the last page", not a million.
+    expect(lines[2]).toMatch(/4 invoices, the last page$/);
   });
 
   it("DSOR-TEN-02b: the demo refuses every operation in the registry another company's address", () => {

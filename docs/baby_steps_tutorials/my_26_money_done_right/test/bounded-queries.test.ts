@@ -307,8 +307,8 @@ describe("the next page", () => {
       }
     }
 
-    // 300 seeded here, and the story's INV-1008 and INV-1009: every one of them, once, in the
-    // database's own order. Its order and not JavaScript's `sort()`, because the two agree on
+    // 300 seeded here, and the story's INV-1008 to INV-1011 (STEP 26: INV-1010 and INV-1011 are
+    // VENDOR-44's bills in rupees and pounds): every one of them, once, in the database's own order. Its order and not JavaScript's `sort()`, because the two agree on
     // this PGlite and need not on a server whose collation ignores punctuation (a review's point).
     const { rows } = await asTheOwner(() =>
       db.query<{ id: string }>(
@@ -316,7 +316,7 @@ describe("the next page", () => {
       ),
     );
 
-    expect(seen).toHaveLength(302);
+    expect(seen).toHaveLength(304);
     expect(seen).toStrictEqual(rows.map((r) => r.id));
   });
 

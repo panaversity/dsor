@@ -194,7 +194,8 @@ describe("payment.create", () => {
 
   it("a payment in another currency than its invoice is refused before anything is written", async () => {
     // STEP 17, decision 126: a USD invoice was paid in EUR, and in ZZZ, which is no currency.
-    // Converting between currencies is step 26's; until then a payment is in its invoice's.
+    // STEP 26 converts only to compare an amount with a limit: a payment is still in its invoice's
+    // currency (decision 159).
     for (const currency of ["EUR", "ZZZ"]) {
       const refusal = refusalOf(
         await callOperation(SUPERVISOR, "payment.create", {

@@ -37,6 +37,8 @@ export function storyStatements(): readonly string[] {
     "DELETE FROM dsor.delegations WHERE tenant IN ('org_456', 'org_789')",
     "DELETE FROM public.invoices WHERE tenant_id IN ('org_456', 'org_789')",
     rowsFrom("004_running_example.sql"),
+    // NEW IN STEP 26: and VENDOR-44's bills in rupees and in pounds.
+    rowsFrom("027_bills_in_rupees_and_pounds.sql"),
     rowsFrom("010_payments_running_example.sql"),
     rowsFrom("014_delegations_running_example.sql"),
     // STEP 19: and del_100's mode, which 015's default does not give it (decision 130).

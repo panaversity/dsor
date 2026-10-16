@@ -61,9 +61,12 @@ describe("every invoice and payment has a version", () => {
       throw new Error(`expected a page, got ${JSON.stringify(page)}`);
     }
 
+    // STEP 26: and VENDOR-44's bills in rupees and pounds, which start at 1 too.
     expect(page.page.invoices.map((i) => `${i.id} ${i.version}`)).toStrictEqual([
       "INV-1008 1",
       "INV-1009 1",
+      "INV-1010 1",
+      "INV-1011 1",
     ]);
   });
 

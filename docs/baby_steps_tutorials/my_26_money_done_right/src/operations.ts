@@ -80,7 +80,10 @@ import { reserve, settleReservation, usedToday } from "./reservation.ts";
 // STEP 25: the brake, asked at §21.4 and again as a proposal moves to EXECUTING.
 import { liftTheBrake, pullTheBrake, whatStops } from "./controls.ts";
 import { findPerson } from "./people.ts";
-import { money } from "./money.ts";
+import { money, type Money } from "./money.ts";
+// NEW IN STEP 26: two amounts compared in any two currencies, at the company's rates (decision 159).
+import { CannotConvert, exceeds, type RateOf } from "./exchange.ts";
+import { ratesOf } from "./rates.ts";
 // STEP 22: the proposal, made at §21.8 and moved by the door (decision 136).
 import {
   type ForTheRecord,
@@ -1981,16 +1984,40 @@ function forTheRecord(context: Context): ForTheRecord | undefined {
   };
 }
 
+/** NEW IN STEP 26: where an amount stands against a limit, perhaps in another currency. */
+type AgainstTheLimit =
+  | { readonly kind: "within" }
+  | { readonly kind: "above" }
+  /** The two cannot be compared, and why: no rate, rates too old, or no service to ask. */
+  | { readonly kind: "cannot_compare"; readonly why: string };
+
+/**
+ * NEW IN STEP 26: an amount against a limit, through `exceeds` and nothing else (DSOR-MON-03,
+ * decision 159). The caller treats "cannot_compare" as above the limit (DSOR-MON-04).
+ */
+function againstTheLimit(amount: Money, limit: Money, rates: RateOf): AgainstTheLimit {
+  try {
+    return { kind: exceeds(amount, limit, rates) ? "above" : "within" };
+  } catch (failure) {
+    if (failure instanceof CannotConvert) {
+      return { kind: "cannot_compare", why: failure.message };
+    }
+
+    throw failure;
+  }
+}
+
 /**
  * STEP 18: part of §21.10 — the slip's limit on one payment (DSOR-DEL-02, decision 127).
  *
  * After the input is validated, because the amount is the validated copy's: the one the payload hash
  * describes. Only under a slip with a limit, and only for a request that carries an amount; one that
- * is malformed is the handler's to refuse. An amount in another currency than the limit cannot be
- * compared with it, and a comparison that cannot convert resolves restrictively (DSOR-MON-04): the
- * limit is treated as exceeded. Either way the code is LIMIT_EXCEEDED, which DSOR-DEL-06e names for
- * a command that would exceed a limit; it was AUTHORIZATION_DENIED, for no reason (decision 128).
- * The rest of §21.10, controls and limits over time, is steps 24 and 27's.
+ * is malformed is the handler's to refuse. STEP 26: an amount in another currency than the limit is
+ * compared with it at the company's rates, through `exceeds` (DSOR-MON-03), and one that cannot be
+ * converted is treated as above it (DSOR-MON-04, decision 159). Either way the code is
+ * LIMIT_EXCEEDED, which DSOR-DEL-06e names for a command that would exceed a limit; it was
+ * AUTHORIZATION_DENIED, for no reason (decision 128). The rest of §21.10, controls and limits over
+ * time, is steps 24 and 27's.
  */
 const checkTheSlipsLimit: Stage["run"] = async (context) => {
   const slip = context.delegation;
@@ -2015,23 +2042,45 @@ const checkTheSlipsLimit: Stage["run"] = async (context) => {
   }
 
   const askedBy = context.principal?.id ?? "(nobody)";
+  const tenant = context.tenant;
 
-  if (limit !== undefined && amount.currency !== limit.currency) {
+  // NEW IN STEP 26: asked before any limit now, because the rates are the company's. It was asked
+  // only before the daily limit, which books against the company's day.
+  if (tenant === undefined) {
     return refuse(
       askedBy,
-      "LIMIT_EXCEEDED",
-      `${amount.value} ${amount.currency} cannot be compared with ${slip.id}'s limit of ${limit.value} ${limit.currency} a payment, so it is refused`,
+      "INTERNAL_ERROR",
+      "the slip's limit was checked without a tenant",
       context.requestId,
     );
   }
 
-  if (limit !== undefined && centsOf(amount) > centsOf(limit)) {
-    return refuse(
-      askedBy,
-      "LIMIT_EXCEEDED",
-      `${amount.value} ${amount.currency} is above ${slip.id}'s limit of ${limit.value} ${limit.currency} a payment`,
-      context.requestId,
-    );
+  // NEW IN STEP 26: the company's rates, from its rate service and never from the request, asked
+  // only if an amount and a limit are in two currencies (DSOR-MON-03, decision 159).
+  const rates = ratesOf(tenant);
+
+  if (limit !== undefined) {
+    const against = againstTheLimit(amount, limit, rates);
+
+    // NEW IN STEP 26: an amount that cannot be converted is treated as above the limit, and the
+    // refusal says why (DSOR-MON-04).
+    if (against.kind === "cannot_compare") {
+      return refuse(
+        askedBy,
+        "LIMIT_EXCEEDED",
+        `${amount.value} ${amount.currency} cannot be compared with ${slip.id}'s limit of ${limit.value} ${limit.currency} a payment, so it is refused: ${against.why}`,
+        context.requestId,
+      );
+    }
+
+    if (against.kind === "above") {
+      return refuse(
+        askedBy,
+        "LIMIT_EXCEEDED",
+        `${amount.value} ${amount.currency} is above ${slip.id}'s limit of ${limit.value} ${limit.currency} a payment`,
+        context.requestId,
+      );
+    }
   }
 
   // STEP 24: and the slip's daily limit, a running total, booked in one statement and keyed
@@ -2055,17 +2104,6 @@ const checkTheSlipsLimit: Stage["run"] = async (context) => {
       askedBy,
       "LIMIT_EXCEEDED",
       `${amount.value} ${amount.currency} cannot be compared with ${slip.id}'s limit of ${daily.value} ${daily.currency} a day, so it is refused`,
-      context.requestId,
-    );
-  }
-
-  const tenant = context.tenant;
-
-  if (tenant === undefined) {
-    return refuse(
-      askedBy,
-      "INTERNAL_ERROR",
-      "the slip's limit was checked without a tenant",
       context.requestId,
     );
   }
