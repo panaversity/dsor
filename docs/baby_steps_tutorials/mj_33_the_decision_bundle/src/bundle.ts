@@ -7,6 +7,7 @@
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { Ajv2020 } from "ajv/dist/2020.js";
+import type { AgentAsserted } from "./asserted.ts";
 import type { BoundRead } from "./bound.ts";
 import type { Claimed } from "./claims.ts";
 import type { ControlOutcome } from "./controls.ts";
@@ -77,6 +78,9 @@ export type SealedBundle = DecisionBundle & { sealed_at: string };
  * bundle. Only the checklist holds it, as only the checklist holds the notebook of reads (step 15).
  */
 export type Evidence = {
+  // What the agent said about itself, as line ① checked it. Only the record and the bundle are
+  //   given it, never a check (D11, D12).
+  asserted?: AgentAsserted;
   // Who asks, and under whose authority, once line ③ has passed. Before then there is no bundle
   //   (D1).
   asker?: Requester;
@@ -171,6 +175,10 @@ export function bundleOf(
     state: structuredClone(evidence.state),
     ...(counted === undefined ? {} : approvalOf(counted)),
     sod_mode: "standard",
+    // What the agent said about itself, apart from every fact above and below (D11).
+    ...(evidence.asserted === undefined
+      ? {}
+      : { agent_asserted: structuredClone(evidence.asserted) }),
     execution: {
       // The proposal's id is the key of its execution (DSOR-IDM-04). A dry run has none.
       ...(proposal === undefined ? {} : { idempotency_key: parseUri(proposal).id }),

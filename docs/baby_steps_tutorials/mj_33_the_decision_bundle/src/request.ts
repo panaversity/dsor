@@ -12,12 +12,15 @@ import { Refusal } from "./envelope.ts";
 // And the command's idempotency key, which its caller chose (step 20's README,
 // decision 1).
 // And the way the command is called, its mode (step 23's README, decision 4).
+// NEW IN STEP 33: and what the agent says about itself, which line ① checks in asserted.ts (step
+//   33's README, decision D10).
 export type RequestEnvelope = {
   token?: unknown;
   tenant?: unknown;
   request_id?: unknown;
   idempotency_key?: unknown;
   mode?: unknown;
+  agent_asserted?: unknown;
 };
 
 // The three ways to call a command (§7.3). execute does it, propose_only prepares
@@ -48,9 +51,17 @@ const CONTROL = /\p{Cc}/u;
 // decision 11).
 // And idempotency_key (step 20's README, decision 1).
 // And mode.
-const ENVELOPE_FIELDS = ["token", "tenant", "request_id", "idempotency_key", "mode"];
+// And agent_asserted (step 33's README, decision D10).
+const ENVELOPE_FIELDS = [
+  "token",
+  "tenant",
+  "request_id",
+  "idempotency_key",
+  "mode",
+  "agent_asserted",
+];
 
-/** Refuses an envelope that carries any field besides token, tenant, request_id, idempotency_key, and mode. */
+/** Refuses an envelope that carries any field besides token, tenant, request_id, idempotency_key, mode, and agent_asserted. */
 export function checkEnvelopeFields(request: RequestEnvelope): void {
   // The envelope comes from outside the program, so it may not even be an object.
   if (typeof request !== "object" || request === null) return;
@@ -58,7 +69,7 @@ export function checkEnvelopeFields(request: RequestEnvelope): void {
   if (extra !== undefined) {
     // The name is the caller's text, so only a short piece of it is shown.
     const allowed =
-      "the request envelope may carry only token, tenant, request_id, idempotency_key, and mode";
+      "the request envelope may carry only token, tenant, request_id, idempotency_key, mode, and agent_asserted";
     throw new Refusal("VALIDATION_FAILED", `${allowed}, not ${JSON.stringify(extra.slice(0, 60))}`);
   }
 }

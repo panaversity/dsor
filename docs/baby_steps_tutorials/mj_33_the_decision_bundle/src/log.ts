@@ -3,6 +3,7 @@
 // This file holds the log in memory, for the unit tests. The log the program uses is a
 // table in the database: createDbLog in postgres.ts.
 import { randomUUID } from "node:crypto";
+import type { AgentAsserted } from "./asserted.ts";
 import type { BrakeBy } from "./brakes.ts";
 import { checkBundle, type DecisionBundle, type SealedBundle } from "./bundle.ts";
 import type { Freshness, FreshnessMode } from "./freshness.ts";
@@ -61,8 +62,11 @@ export type Decision = {
       stale?: StaleOfRecord[];
       // At a release, the version of each rule the request was decided under,
       //   beside the version the controls field names now, which DSOR-APR-03d puts in the decision
-      //   bundle, which step 33 builds (step 31's README, decision D3).
+      //   bundle (step 31's README, decision D3; step 33's README, decision D13).
       approved_under?: { control: string; version: number }[];
+      // NEW IN STEP 33: what the agent said about itself, as line ① checked it, under the name the
+      //   bundle uses, so a call with no bundle keeps it too (DSOR-AUD-06; step 33's README, D11).
+      agent_asserted?: AgentAsserted;
     };
   };
   // What a read returned, in the audit record's own fields (DSOR-CLS-05).
@@ -470,6 +474,8 @@ export function decisionOf(
   stale?: StaleOfRecord[],
   // And, at a release, the versions the request was decided under.
   approvedUnder?: { control: string; version: number }[],
+  // And what the agent said about itself, when it said something (step 33's README, D11).
+  asserted?: AgentAsserted,
 ): Decision {
   const refused = "code" in answer;
   // This tutorial's own fields, gathered in one place, so a command's record can name both
@@ -500,6 +506,7 @@ export function decisionOf(
     ...(deniedBy === undefined ? {} : { denied_by: structuredClone(deniedBy) }),
     ...(stale === undefined || stale.length === 0 ? {} : { stale: structuredClone(stale) }),
     ...(approvedUnder === undefined ? {} : { approved_under: structuredClone(approvedUnder) }),
+    ...(asserted === undefined ? {} : { agent_asserted: structuredClone(asserted) }),
   };
   return {
     kind: "decision",

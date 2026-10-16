@@ -3,6 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { pinned, readBound, type Bound, type BoundRead } from "./bound.ts";
 import { checkBrake, holdBrake, NO_BRAKES, type BrakeStore } from "./brakes.ts";
+import { checkedAssertion } from "./asserted.ts";
 import { bundleOf, executedOf, newEvidence, stateReadOf } from "./bundle.ts";
 import { freshSheet, NO_RATES, readOnce, type RateStore } from "./rates.ts";
 import { NO_CONTROLS, type ControlStore } from "./rulebook.ts";
@@ -215,6 +216,11 @@ export async function call(
       // And nothing in the envelope that DSoR does not read (step 10's
       // README, decision 11).
       checkEnvelopeFields(request);
+      // NEW IN STEP 33: and what the agent says about itself, checked for its shape and read once,
+      //   last, into the notebook of evidence. Nothing but the record and the bundle is given it:
+      //   no slip, permission, fingerprint, condition, limit, or mask reads it (DSOR-AUD-06,
+      //   DSOR-AUD-07; step 33's README, decisions D10 to D12).
+      evidence.asserted = checkedAssertion(request, found);
       // Once line ① has passed, a command's record names the mode: execute, when
       // none is named (step 23's README, decision 10).
       modeOfRecord = named ?? "execute";
@@ -1293,6 +1299,7 @@ export async function call(
         denialsOfRecord,
         staleOfRecord,
         approvedUnderOfRecord,
+        evidence.asserted,
       );
       // NEW IN STEP 33: and the decision's bundle, for a command past line ③, sealed with its
       //   record: the log keeps both or neither, and the record names its bundle (step 33's
