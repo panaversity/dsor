@@ -133,7 +133,13 @@ export function timeCame(found: Proposal): Refusal {
 }
 
 /** The roles the person or agent that asked holds now, and, for an agent, the slip it works under now. */
-export type AskerNow = { roles: readonly string[]; slip: Slip | undefined };
+// NEW IN STEP 33: and where DSoR learned what the asker holds now, and as of when, so a release's
+//   bundle names the request it decided as it was checked (step 33's README, decision D15).
+export type AskerNow = {
+  roles: readonly string[];
+  slip: Slip | undefined;
+  authority: { source: "token" | "role_source"; as_of: string };
+};
 
 /**
  * Lines ③ to ⑤ again, for the person or agent that asked for the stored request, not for the
@@ -182,7 +188,11 @@ export async function askerNow(
       await checkBrake(agent, target, stores.brakes, tenant);
     }
     checkPermission(agent, target, roles, tenant, slip, authority.roles, found.mode);
-    return { roles: authority.roles, slip };
+    return {
+      roles: authority.roles,
+      slip,
+      authority: { source: authority.source, as_of: authority.as_of },
+    };
   }
   // A person who asked for herself: what she holds in DSoR's own table now.
   const person = principalNamed(requester.subject);
@@ -194,6 +204,7 @@ export async function askerNow(
   return {
     roles: person.memberships.find((m) => m.tenant_id === tenant)?.roles ?? [],
     slip: undefined,
+    authority: { source: "token", as_of: new Date().toISOString() },
   };
 }
 
@@ -283,17 +294,19 @@ export async function checkApprovals(
     a.satisfies.some(
       (line) => line.control === r.control && line.requirement.role === r.approval.role,
     );
-  const satisfied: Record<string, string[]> = {};
+  // A Map, never a plain object: a rule's id is the company's text, and a rule named constructor
+  //   found Object's own constructor in a plain one. Found by step 33's review, findings 1 and 2.
+  const satisfied = new Map<string, string[]>();
   for (const now of requires) {
     const ids = counted.filter((a) => metBy(a, now)).map((a) => a.id);
-    satisfied[now.control] = [...new Set([...(satisfied[now.control] ?? []), ...ids])];
+    satisfied.set(now.control, [...new Set([...(satisfied.get(now.control) ?? []), ...ids])]);
   }
   const approvals = counted.filter((a) => requires.some((now) => metBy(a, now)));
   return { approvals: structuredClone(approvals), satisfied };
 }
 
 /** What a release counted: each approval that met a rule, in the order given, and the ids that met each rule. */
-export type Counted = { approvals: Approval[]; satisfied: Record<string, string[]> };
+export type Counted = { approvals: Approval[]; satisfied: ReadonlyMap<string, string[]> };
 
 /**
  * The version an optimistic stored request was decided on, its expected_version, when it names

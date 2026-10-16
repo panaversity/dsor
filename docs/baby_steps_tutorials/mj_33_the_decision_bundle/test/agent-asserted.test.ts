@@ -117,11 +117,21 @@ describe("C4: the agent's words are kept under agent_asserted, as sent (step 33'
     expect((await lastFiles(w)).bundle?.agent_asserted).toStrictEqual({ rationale });
   });
 
+  // Changed by step 33's review, finding 12: a field that is not one of the four is refused without
+  //   its name.
   it.each([
     ["not an object", ["weekly payment run"], "agent_asserted must be an object"],
     ["null", null, "agent_asserted must be an object"],
-    ["a field that is not one of the four", { reasoning: "step 1: the CFO" }, '"reasoning"'],
-    ["the model's reasoning, by another name", { chain_of_thought: "..." }, '"chain_of_thought"'],
+    [
+      "a field that is not one of the four",
+      { reasoning: "step 1: the CFO" },
+      "agent_asserted may carry only",
+    ],
+    [
+      "the model's reasoning, by another name",
+      { chain_of_thought: "..." },
+      "agent_asserted may carry only",
+    ],
     [
       "a rationale of 2,001 characters",
       { rationale: "a".repeat(2001) },

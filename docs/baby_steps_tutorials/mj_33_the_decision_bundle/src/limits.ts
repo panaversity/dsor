@@ -390,10 +390,17 @@ export async function checkLimits(check: LimitCheck): Promise<void> {
         ? undefined
         : convertUp(spends, daily.currency, sheet);
   if (booking === undefined) throw new Refusal("LIMIT_EXCEEDED", noRate(forOneDay), "public");
-  // The booking, converted into the limit's currency, for the bundle (step 33's README, D6).
-  if (daily.currency !== spends.currency)
+  // A release finds its proposal's booking again, and books nothing more (step 31's README, D4),
+  //   in its claim by the proposal's id, and in its dry run by the booking named.
+  //   Changed in step 33: the claim looks for its booking too, so a release that books nothing names
+  //   no booking's conversion. Found by step 33's review, finding 3: the bundle named a conversion
+  //   at Wednesday's rate, and the booking kept Tuesday's.
+  const own = check.booked ?? reserveFor;
+  const held = own === undefined ? undefined : await store.get(tenant, own);
+  // The booking, converted into the limit's currency, for the bundle, when this call books it or
+  //   checks the day with it (step 33's README, D6).
+  if (held?.state !== "held" && daily.currency !== spends.currency)
     check.noted?.({ from: { ...spends }, to: daily.currency });
-  const held = check.booked === undefined ? undefined : await store.get(tenant, check.booked);
   const fits =
     held?.state === "held"
       ? true

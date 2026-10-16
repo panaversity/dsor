@@ -84,9 +84,13 @@ export type Evidence = {
   // Who asks, and under whose authority, once line ③ has passed. Before then there is no bundle
   //   (D1).
   asker?: Requester;
-  // At a release, once line ⑧ has loaded the proposal: the contract of the stored request, which
-  //   the release decides (D8).
-  decided?: Contract;
+  // At a release, once line ⑧ has loaded the proposal: the stored request's operation, as the
+  //   proposal keeps it, its contract, and the proposal, which the release decides (D8). Changed
+  //   by step 33's review, finding 17: the bundle named the contract's version now.
+  decided?: { operation: string; contract: Contract; proposal: string };
+  // And at a release, who released it, when they are not the one who asked: the bundle names the
+  //   request it decided, and the releaser in this tutorial's extensions (D15).
+  releasedBy?: Requester;
   // Each record line ⑨ read, as it read it, a record that was not there too (D5).
   state: StateRead[];
   // Each amount line ⑩ converted, and the currency it went into, as the rules and the limits
@@ -144,13 +148,16 @@ export function bundleOf(
     return undefined;
   }
   const ours = decision.extensions?.[OURS] ?? {};
-  const proposal = ours.proposal;
+  // The proposal of the call, which its record names. A dry run of a release has none of its own,
+  //   and names the one it would release (step 33's review, finding 17).
+  const keyed = ours.proposal;
+  const proposal = keyed ?? evidence.decided?.proposal;
   // The request decided: at a release, the stored one, once line ⑧ has loaded it (D8).
-  const decided = evidence.decided ?? called;
-  const { counted } = evidence;
+  const { decided, counted } = evidence;
+  const contract = decided?.contract ?? called;
   return {
     decision_id: `dec_${randomUUID()}`,
-    operation: `${decided.id}@${String(decided["version"])}`,
+    operation: decided?.operation ?? `${called.id}@${String(called["version"])}`,
     ...(proposal === undefined ? {} : { proposal }),
     tenant: decision.tenant,
     identity: {
@@ -164,7 +171,7 @@ export function bundleOf(
       authorization: decision.authorization,
       // Each rule, with the approvals that met it at a release (D7).
       controls: (decision.controls ?? []).map((control) => {
-        const met = counted?.satisfied[control.id] ?? [];
+        const met = counted?.satisfied.get(control.id) ?? [];
         return {
           ...structuredClone(control),
           ...(met.length === 0 ? {} : { satisfied_by: [...met] }),
@@ -181,11 +188,11 @@ export function bundleOf(
       : { agent_asserted: structuredClone(evidence.asserted) }),
     execution: {
       // The proposal's id is the key of its execution (DSOR-IDM-04). A dry run has none.
-      ...(proposal === undefined ? {} : { idempotency_key: parseUri(proposal).id }),
-      semantics: semanticsOf(decided),
+      ...(keyed === undefined ? {} : { idempotency_key: parseUri(keyed).id }),
+      semantics: semanticsOf(contract),
       result: evidence.executed,
     },
-    extensions: { [OURS]: ownFields(decision) },
+    extensions: { [OURS]: ownFields(decision, evidence.releasedBy) },
   };
 }
 
@@ -216,7 +223,12 @@ function conversionsOf(
   converted: readonly Converted[],
   sheet: Conversion | undefined,
 ): MoneyConversion[] {
-  if (sheet === undefined) return [];
+  // A conversion noted with no sheet to name is a bug, and never a list left empty: a bundle that
+  //   cannot say what it converted is no bundle. Found by step 33's review, finding 16.
+  if (sheet === undefined) {
+    if (converted.length > 0) throw new Error("the decision converted with no sheet to name");
+    return [];
+  }
   const seen = new Set<string>();
   const named: MoneyConversion[] = [];
   for (const { from, to } of converted) {
@@ -240,7 +252,7 @@ function conversionsOf(
 }
 
 /** What the schema has no field for, under this tutorial's own name, as in the record (D13). */
-function ownFields(decision: Decision): Record<string, unknown> {
+function ownFields(decision: Decision, releasedBy: Requester | undefined): Record<string, unknown> {
   const ours = decision.extensions?.[OURS] ?? {};
   const { invocation_mode, idempotency, denied_by, stale, approved_under } = ours;
   const { conversion, unconvertible } = ours;
@@ -265,6 +277,16 @@ function ownFields(decision: Decision): Record<string, unknown> {
     // At a release, the version of each rule the request was decided under, beside the version in
     //   controls: both versions, as DSOR-APR-03d asks.
     ...(approved_under === undefined ? {} : { approved_under: structuredClone(approved_under) }),
+    // And who released the request, when it was someone else's (D15).
+    ...(releasedBy === undefined
+      ? {}
+      : {
+          released_by: {
+            mode: releasedBy.identity_mode,
+            subject: releasedBy.subject,
+            actor_chain: [...releasedBy.actor_chain],
+          },
+        }),
   };
 }
 

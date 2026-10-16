@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { pinned, readBound, type Bound, type BoundRead } from "./bound.ts";
 import { checkBrake, holdBrake, NO_BRAKES, type BrakeStore } from "./brakes.ts";
 import { checkedAssertion } from "./asserted.ts";
-import { bundleOf, executedOf, newEvidence, stateReadOf } from "./bundle.ts";
+import { bundleOf, checkBundle, executedOf, newEvidence, stateReadOf } from "./bundle.ts";
 import { freshSheet, NO_RATES, readOnce, type RateStore } from "./rates.ts";
 import { NO_CONTROLS, type ControlStore } from "./rulebook.ts";
 import { NotCanonical, payloadHash } from "./canonical.ts";
@@ -185,6 +185,37 @@ export async function call(
   // Lines ① to ⑩ are one function, decide, which only works out the answer, so a
   // dry run and a propose_only call return theirs where they stop. The answer is returned after
   // line ⑪, which every call reaches.
+  // NEW IN STEP 33: the bundle the work will be sealed into, built and checked before any work, so
+  //   a bundle DSoR could not keep stops the work, as a record it cannot keep stops the answer
+  //   (DSOR-EXE-03b). The answer and how the work ended are filled at line ⑪, in DSoR's own words.
+  //   Found by step 33's review, finding 1: a bundle that failed at line ⑪ left a drafted payment
+  //   with no record and no bundle (step 33's README, D17).
+  const presealed = (proposal: string): void => {
+    const sure = { outcome: "COMMITTED", correlation } as unknown as Answer;
+    const contract = registry.contracts.get(name);
+    const decision = decisionOf(
+      sure,
+      contract,
+      true,
+      tenantOfRecord,
+      claimedTenant,
+      undefined,
+      under,
+      keyOfRecord,
+      proposal,
+      modeOfRecord,
+      conversionOfRecord,
+      unconvertibleOfRecord,
+      controlsOfRecord,
+      denialsOfRecord,
+      staleOfRecord,
+      approvedUnderOfRecord,
+      evidence.asserted,
+    );
+    const bundle = bundleOf(decision, { ...evidence, executed: "committed" }, contract);
+    if (bundle !== undefined) checkBundle(bundle);
+  };
+
   async function decide(): Promise<Answer> {
     // ① Authenticate; build the request security context. Who is calling comes from the
     //   token and DSoR's own table only (DSOR-IDN-01, DSOR-SRC-02a). Then any principal the
@@ -654,8 +685,9 @@ export async function call(
         const target = targetOf(registry.contracts, loaded);
         if (target === undefined)
           throw new Error(`proposal ${id} holds an operation with no contract`);
-        // The bundle names the request the release decides from here on (step 33's README, D8).
-        evidence.decided = target;
+        // The bundle names the request the release decides from here on: the operation as the
+        //   proposal keeps it, and the proposal (step 33's README, D8).
+        evidence.decided = { operation: loaded.operation, contract: target, proposal: loaded.uri };
         await mayRelease(loaded, target, releaser, () => proposals.isDue(tenant, id));
         // The company's code runs the stored request. DSoR's own work, a brake or a rule prepared
         //   in propose_only mode, is not released in this step: its own look at line ⑨ would
@@ -690,6 +722,12 @@ export async function call(
       const asker = await line(9, () =>
         askerNow(loaded, target, registry.roles, registry.roleSource, stores, tenant, inClaim),
       );
+      // NEW IN STEP 33: the bundle names the request the release decides, for whom lines ③ to ⑤
+      //   checked it again just now, and who released it, in this tutorial's extensions. Found by
+      //   step 33's review, finding 4: a person's release named no slip, though line ⑩ judged the
+      //   agent's (step 33's README, D15).
+      evidence.releasedBy ??= evidence.asker;
+      evidence.asker = { ...loaded.requester, subject_authority: { ...asker.authority } };
       const asked: Asked = {
         contract: target,
         copy: loaded.payload,
@@ -985,6 +1023,9 @@ export async function call(
                   if (await stores.proposals.isDue(tenant, id)) {
                     return { proposal: released, refused: timeCame(loaded) };
                   }
+                  // NEW IN STEP 33: the bundle is checked before the work runs (step 33's README,
+                  //   D17).
+                  presealed(released);
                   // The move to EXECUTING names who released it. It moves only a proposal still in
                   //   the state the gate read, so of two releases at once, one moves it, and the
                   //   other hears CONFLICT (D10).
@@ -1092,6 +1133,9 @@ export async function call(
                       proposals,
                       reserveFor,
                     );
+                    // NEW IN STEP 33: when the work will run, its bundle is checked first
+                    //   (step 33's README, D17).
+                    if (requires === undefined && mode === "execute") presealed(proposal);
                     // A control's approval stops the proposal at PENDING_APPROVAL.
                     return requires === undefined ? undefined : { requires };
                   } catch (thrown) {
@@ -1183,6 +1227,9 @@ export async function call(
             throw new Error("a release that ran has no proposal, or no operation");
           }
           answered = { hash: ran.payload_hash, contract: target };
+          // NEW IN STEP 33: and the bundle names what was released, a replay's too. Found by step
+          //   33's review, finding 5: a replay's bundle named proposal.execute@1.
+          evidence.decided = { operation: ran.operation, contract: target, proposal: ran.uri };
         }
       }
     } catch (thrown) {

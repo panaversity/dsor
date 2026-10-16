@@ -273,7 +273,10 @@ describe("C2: a release's bundle names the request it decided, and the approvals
       approval: { id: approvals[0]!.id, approvers: ["cfo_100"] },
       execution: { result: "not_executed" },
     });
-    expect(bundle).not.toHaveProperty("proposal");
+    // Changed by step 33's review, finding 17: the dry run names the proposal it would release,
+    //   and still no key of execution.
+    expect(bundle.proposal).toBe(uri);
+    expect(bundle.execution).not.toHaveProperty("idempotency_key");
     expect((await w.proposals.get("org_456", id))?.state).toBe("APPROVED");
   });
 });

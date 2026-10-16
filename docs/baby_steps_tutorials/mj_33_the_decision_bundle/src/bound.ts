@@ -13,7 +13,7 @@ import type { Invoice, InvoiceStore } from "./invoice.ts";
 import type { Money } from "./money.ts";
 import type { Draft, Drafted, PaymentStore } from "./payment.ts";
 import { preview, type Contract } from "./registry.ts";
-import { parseUri } from "./uri.ts";
+import { formatUri, parseUri } from "./uri.ts";
 import type { Vendor } from "./vendor.ts";
 
 // This tutorial's own field names, under its own namespace (DSOR-SCH-02).
@@ -99,6 +99,15 @@ export function bindProblems(contracts: Iterable<Contract>): string[] {
   return problems;
 }
 
+/** A record's canonical address, or none when its id cannot be part of one (step 33's review, finding 1). */
+function addressOf(tenant: string, entity: string, id: string): string | undefined {
+  try {
+    return formatUri({ tenant_id: tenant, entity, id });
+  } catch {
+    return undefined;
+  }
+}
+
 /** What line ⑨ read: each bound invoice by its alias, and what the command spends, when it spends. */
 // And each bound vendor. The state, which a condition reads, holds both. The
 //   invoices, the records the request names, are kept apart: a check of the version the request
@@ -141,9 +150,14 @@ export async function readBound(
     const link = LINK.exec(String(path));
     if (link !== null) {
       const vendorId = read[link[1]!]!.vendor_id;
+      // A vendor id that no address can name, such as one with a space, is not followed: no
+      //   vendor is bound, and a condition that reads it cannot be evaluated. Found by step 33's
+      //   review, finding 1: its address failed the bundle's schema after the payment was drafted
+      //   (step 33's README, decision D16).
+      const at = addressOf(tenant, "vendor", vendorId);
+      if (at === undefined) continue;
       const { vendor, freshness } = await invoices.vendor(tenant, vendorId);
       labels.push(freshness);
-      const at = `dsor://${tenant}/vendor/${vendorId}`;
       note(
         vendor === undefined
           ? { uri: at, label: freshness }
@@ -164,7 +178,8 @@ export async function readBound(
     }
     const { invoice, freshness } = await invoices.get(tenant, id);
     labels.push(freshness);
-    const at = `dsor://${tenant}/invoice/${id}`;
+    // The input's own address, which line ⑥ checked, so formatUri never refuses it here.
+    const at = formatUri({ tenant_id: tenant, entity: "invoice", id });
     note(
       invoice === undefined
         ? { uri: at, label: freshness }

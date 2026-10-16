@@ -34,9 +34,11 @@ const LONGEST: Readonly<Record<string, number>> = {
 const HASH = /^sha256:[A-Za-z0-9+/=_\-]+$/;
 
 // Control characters, a new line among them, which no text of agent_asserted may hold, as a request
-// id may hold none (step 09's README, decision 16).
+// id may hold none (step 09's README, decision 16). And the other characters that break a line or
+// hide what a text says: the line and paragraph separators, and the format characters, such as a
+// right-to-left override or a zero-width space. Found by step 33's review, finding 11.
 // not copied: this tutorial's own rule (step 33's README, decision D10).
-const CONTROL = /\p{Cc}/u;
+const CONTROL = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
 
 // The largest version the database's integer column holds, as for an invoice's (step 21's README,
 // decision 10).
@@ -96,15 +98,11 @@ export function checkedAssertion(
     const why = "only an agent's call may carry agent_asserted";
     throw new Refusal("VALIDATION_FAILED", why, "public");
   }
-  const extra = Object.keys(sent).find((field) => !FIELDS.includes(field));
-  if (extra !== undefined) {
-    // The name is the agent's text, so only a short piece of it is shown.
+  // The name of a field is the agent's text too, so the refusal does not repeat it: the record's
+  //   reason keeps no word of the agent's. Found by step 33's review, finding 12.
+  if (Object.keys(sent).some((field) => !FIELDS.includes(field))) {
     const allowed = "agent_asserted may carry only skill, rationale, purpose, and task_id";
-    throw new Refusal(
-      "VALIDATION_FAILED",
-      `${allowed}, not ${JSON.stringify(extra.slice(0, 60))}`,
-      "public",
-    );
+    throw new Refusal("VALIDATION_FAILED", allowed, "public");
   }
   const { skill, rationale, purpose, task_id } = sent;
   const checked: AgentAsserted = {};

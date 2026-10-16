@@ -7,7 +7,7 @@ import { bundleProblems, type SealedBundle } from "../src/bundle.ts";
 import type { Answer } from "../src/envelope.ts";
 import { createLog, type Decision, type DecisionRecord } from "../src/log.ts";
 import { AGENT, CFO, OUR_EXTENSIONS, SUPERVISOR, keyed } from "./helpers.ts";
-import { ruleWorldOnTuesday, type RuleWorld } from "./rule-world.ts";
+import { ruleWorldOnTuesday, textOf, version9, type RuleWorld } from "./rule-world.ts";
 
 /** The URI of the proposal an answer names, and its id. */
 function proposalOf(answer: Answer): { uri: string; id: string } {
@@ -189,6 +189,59 @@ describe("C1: every decision about a command from line ④ on has one bundle (st
     const ids = files.flatMap((f) => (f.bundle === undefined ? [] : [f.bundle.decision_id]));
     expect(new Set(ids).size).toBe(ids.length);
     expect((await w.log.bundles()).length).toBe(ids.length);
+  });
+
+  // Found by the review of the README, finding 33: no test looked at the bundle of a refusal at line
+  //   ④, or of a brake, a rule's draft, or a sheet of rates, so the bundle could have begun after line
+  //   ④ with every test green.
+  it("DSOR-AUD-03a: user_123's brake on the agent, the agent's draft refused at line ④ by it, cfo_100's draft of a rule, and dsor-rates' sheet each leave one valid bundle", async () => {
+    const w = await ruleWorldOnTuesday();
+    const answers: Answer[] = [];
+    answers.push(
+      await w.ask(keyed(SUPERVISOR), "control.suspend", {
+        target: "dsor://org_456/agent/accounts-payable-fte",
+        reason: "the agent paid twice last week",
+      }),
+    );
+    answers.push(
+      await w.ask(keyed(AGENT), "payment.create", {
+        invoice: "dsor://org_456/invoice/INV-1002",
+        expected_version: 1,
+      }),
+    );
+    answers.push(
+      await w.ask(keyed(CFO), "rule.draft", {
+        rule: "dsor://org_456/rule/high-value-payment",
+        draft: textOf(version9()),
+        reason: "the board lowered the line to 20,000 USD",
+      }),
+    );
+    answers.push(
+      await w.ask(keyed({ token: "tok_3b8f", tenant: "org_456" }), "rate.load", {
+        company: "dsor://org_456/tenant/org_456",
+        source: "ecb-daily",
+        base: "EUR",
+        published_at: "2026-10-06T14:30:00Z",
+        rates: { USD: "1.0810", GBP: "0.8530", PKR: "302.50" },
+      }),
+    );
+    expect(
+      answers.map((a) => ("code" in a ? a.code : "outcome" in a ? a.outcome : undefined)),
+    ).toStrictEqual(["COMMITTED", "AGENT_SUSPENDED", "COMMITTED", "COMMITTED"]);
+    const files = await filesOf(w);
+    expect(files.map((f) => f.bundle?.operation)).toStrictEqual([
+      "control.suspend@1",
+      "payment.create@1",
+      "rule.draft@1",
+      "rate.load@1",
+    ]);
+    for (const { bundle } of files) expect(bundleProblems(bundle)).toStrictEqual([]);
+    expect(files[1]!.bundle).toMatchObject({
+      identity: { mode: "unattended", subject: "user_123" },
+      authority: { delegation: "del_100", authorization: "DENY" },
+      execution: { result: "not_executed" },
+    });
+    expect(files[3]!.bundle?.identity).toMatchObject({ mode: "direct", subject: "dsor-rates" });
   });
 
   it("DSOR-AUD-03a: the log refuses a bundle that does not validate, and keeps neither it nor its record", async () => {
