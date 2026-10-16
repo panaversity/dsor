@@ -15,9 +15,14 @@ import { aDirectory, useDirectory } from "./directory.ts";
 import { activeSlipFor } from "./delegation.ts";
 import { moveProposal, movesOf, proposalsByRecord, proposalsOf } from "./proposal.ts";
 import { usedToday } from "./reservation.ts";
+// NEW IN STEP 26: org_456's rate service, which the demo makes old for a moment.
+import { aRateService, useRateService } from "./rates.ts";
 
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
 const INV_1009 = "dsor://org_456/invoice/INV-1009";
+// NEW IN STEP 26: VENDOR-44's bills in rupees and in pounds (migration 027).
+const INV_1010 = "dsor://org_456/invoice/INV-1010";
+const INV_1011 = "dsor://org_456/invoice/INV-1011";
 
 const THEIR_INV_1008 = "dsor://org_789/invoice/INV-1008";
 
@@ -801,6 +806,74 @@ console.log(
     ),
   ),
 );
+
+// NEW IN STEP 26: money in any currency (decision 159). VENDOR-44 bills in rupees and in pounds,
+// and DSoR compares each bill with del_100's limits at the rates of org_456's rate service, never at
+// a rate the agent sends. Exactly, so 2,800,000.00 PKR is 10,000.00 USD, not a hair more. The day
+// counts the rupees in dollars. And rates more than three days old are no rates: a bill in rupees
+// cannot be compared, so it counts as over the limit, while a bill in dollars needs no rate at all.
+console.log();
+console.log("VENDOR-44 bills in rupees and in pounds. One US dollar buys 280 PKR, or 0.80 GBP:");
+console.log();
+
+const dayBeforeTheBills = await usedToday("org_456", "del_100");
+
+console.log(
+  show(
+    await callOperation(
+      AGENT,
+      "payment.create",
+      { invoice: INV_1010, amount: { value: "2800000.00", currency: "PKR" } },
+      keyFor("rupees"),
+    ),
+  ),
+);
+console.log(
+  show(
+    await callOperation(
+      AGENT,
+      "payment.create",
+      { invoice: INV_1011, amount: { value: "45000.00", currency: "GBP" } },
+      keyFor("pounds"),
+    ),
+  ),
+);
+console.log(
+  `  the day had used ${dayBeforeTheBills} USD, and has used ${await usedToday("org_456", "del_100")} USD of 200000.00`,
+);
+console.log();
+console.log(
+  "The rate service has published nothing for four days. A bill in rupees, and one in dollars:",
+);
+console.log();
+
+const FOUR_DAYS = 4 * 24 * 60 * 60 * 1000;
+
+useRateService(
+  "org_456",
+  aRateService("org_456", { asOf: new Date(Date.now() - FOUR_DAYS).toISOString() }),
+);
+console.log(
+  show(
+    await callOperation(
+      AGENT,
+      "payment.create",
+      { invoice: INV_1010, amount: { value: "28000.00", currency: "PKR" } },
+      keyFor("old-rates-rupees"),
+    ),
+  ),
+);
+console.log(
+  show(
+    await callOperation(
+      AGENT,
+      "payment.create",
+      { invoice: INV_1009, amount: { value: "100.00", currency: "USD" } },
+      keyFor("old-rates-dollars"),
+    ),
+  ),
+);
+useRateService("org_456", undefined);
 
 // STEP 08: everything above already happened; this is what was written down while it did. Read the
 // `authorization` column: the DENY lines are the ones a program that logged only its successes would

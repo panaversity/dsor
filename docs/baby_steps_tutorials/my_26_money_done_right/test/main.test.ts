@@ -155,7 +155,9 @@ describe("the program a learner runs", () => {
       // address; and 61, with the brake's eight: pulled, the agent refused, its read, lifted, its
       // payment, the freeze, the agent refused again, the freeze lifted.
       // Decision 152: 62, with the agent's read of INV-1009 before it issues it.
-      expect(rows).toHaveLength(62);
+      // STEP 26: 66, with the money section's four: the rupees paid, the pounds refused, the rupees
+      // refused at rates four days old, and the dollars paid.
+      expect(rows).toHaveLength(66);
 
       // Denials recorded, which is step 08's point: a program that logged only its successes
       // would have lost every one of them. Five of the nine are this step's — four refusals for being
@@ -163,8 +165,8 @@ describe("the program a learner runs", () => {
       // Ten since the review: a principal planted in the arguments that is not the caller is refused
       // (DSOR-SRC-02b) where step 05 ignored it, so the demo's third request is a DENY now. Twelve
       // since step 12: one refusal per operation from the generated section.
-      expect(rows.filter((r) => r.includes("DENY"))).toHaveLength(28); // STEP 24: four over the day; STEP 25: the brake's and the slip's addresses, and the agent stopped twice
-      expect(rows.filter((r) => r.includes("ALLOW"))).toHaveLength(34); // STEP 13: three pages read; STEP 23: three ways; STEP 24: six made; STEP 25: six of the brake's; decision 152: the agent's read of INV-1009
+      expect(rows.filter((r) => r.includes("DENY"))).toHaveLength(30); // STEP 24: four over the day; STEP 25: the brake's and the slip's addresses, and the agent stopped twice; STEP 26: the pounds, and the rupees at old rates
+      expect(rows.filter((r) => r.includes("ALLOW"))).toHaveLength(36); // STEP 13: three pages read; STEP 23: three ways; STEP 24: six made; STEP 25: six of the brake's; decision 152: the agent's read of INV-1009; STEP 26: the rupees, and the dollars at old rates
 
       // Sequences for org_456 and then 0..1 for org_789: each chain counts from zero.
       // STEP 14: the gaps — 1, 5, 26, 28, 30 since decision 152 — are the records of reads, which
@@ -175,11 +177,12 @@ describe("the program a learner runs", () => {
       expect(rows.map((r) => Number(r.trim().split(/\s+/)[0]))).toEqual([
         0, 2, 3, 4, 6, 7, 9, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 31,
         33, 36, 41, 46, 51, 53, 54, 55, 57, 61, 63, 68, 73, 78, 82, 84, 87, 92, 97, 102, 107, 112,
-        117, 122, 125, 128, 131, 134, 138, 139, 141, 146, 151, 155, 157, 0, 1,
+        117, 122, 125, 128, 131, 134, 138, 139, 141, 146, 151, 155, 157, 162, 167, 170, 173, 0, 1,
       ]);
 
       // Decision 152: 60 decisions, 5 reads. STEP 22, decision 157: and 96 records of moves.
-      expect(out).toContain("org_456: 161 records, chain verifies against the head: true");
+      // STEP 26: 64 decisions and 108 moves, with the money section.
+      expect(out).toContain("org_456: 177 records, chain verifies against the head: true");
       expect(out).toContain("org_789: 2 records, chain verifies against the head: true");
       expect(out).toContain("2 refusals counted without a record");
 
@@ -234,25 +237,27 @@ describe("the program a learner runs", () => {
       const first = demo().report;
 
       // Decision 152: 60 decisions and 5 reads. STEP 22, decision 157: and 96 records of moves.
-      expect(records(first, "org_456")).toBe(161);
+      // STEP 26: 64 decisions and 108 moves, with the money section.
+      expect(records(first, "org_456")).toBe(177);
       expect(records(first, "org_789")).toBe(2);
-      expect(first).toContain("org_456: 161 records, chain verifies against the head: true");
+      expect(first).toContain("org_456: 177 records, chain verifies against the head: true");
 
       // A second process. Nothing is shared with the first but the directory on disk.
       const second = demo().report;
 
       // STEP 24: run two's day is nearly full, so its 31,400.00 payment and the two cancels of it
-      // never happen. STEP 22, decision 157: 137 more records, moves included.
-      expect(records(second, "org_456")).toBe(298);
+      // never happen. STEP 22, decision 157: 137 more records, moves included. STEP 26: 151 more,
+      // with the money section, whose rupees run two's day refuses: 10,000.00 USD would pass it.
+      expect(records(second, "org_456")).toBe(328);
       expect(records(second, "org_789")).toBe(4);
-      expect(second).toContain("org_456: 298 records, chain verifies against the head: true");
+      expect(second).toContain("org_456: 328 records, chain verifies against the head: true");
       expect(second).toContain("org_789: 4 records, chain verifies against the head: true");
 
       // Run one's records are still there, unchanged, among run two's.
       expect(second).toContain(" 0  ALLOW  invoice.get@1");
       expect(
         second.split("\n").filter((line) => /^\s*\d+\s+(ALLOW|DENY)\s/.test(line)),
-      ).toHaveLength(122);
+      ).toHaveLength(130);
 
       // STEP 10: the invoices are durable too. Run one issued INV-1009; run two finds it
       // issued and the agent's second attempt is CONFLICT, where in step 09 — invoices in a list that
@@ -292,8 +297,9 @@ describe("the program a learner runs", () => {
       const hashesOf = (text: string): string[] => text.match(/sha256:[0-9a-f]+/g) ?? [];
 
       // Decision 152: 65 and 2, reads included. STEP 22, decision 157: 161 and 2, moves included.
-      expect(hashesOf(first.raw)).toHaveLength(163);
-      expect(hashesOf(second.raw)).toHaveLength(163);
+      // STEP 26: 177 and 2, with the money section.
+      expect(hashesOf(first.raw)).toHaveLength(179);
+      expect(hashesOf(second.raw)).toHaveLength(179);
       expect(hashesOf(second.raw)).not.toEqual(hashesOf(first.raw));
     }));
 
@@ -568,7 +574,8 @@ describe("the program a learner runs", () => {
     // and the three ways to call one payment: none for the dry run, two for the prepared one, and
     // four for the one carried out. STEP 24: and del_100's day, six payments made, four moves each,
     // and four refused over the day, two each. STEP 25: and the brake's and the slip's commands.
-    expect(lines.filter((l) => /^\s*\d+\s+move\s/.test(l))).toHaveLength(96);
+    // STEP 26: and the money section's, two payments made, four moves each, and two refused, two each.
+    expect(lines.filter((l) => /^\s*\d+\s+move\s/.test(l))).toHaveLength(108);
     expect(lines).toContain(line("77", "move", "PROPOSED prop_10"));
     expect(lines).toContain(line("78", "ALLOW", "ALLOWED"));
     expect(lines).toContain(line("79", "move", "READY prop_10"));
@@ -607,6 +614,44 @@ describe("the program a learner runs", () => {
       );
       expect(out).toContain("  the day has used 184500.00 USD of 200000.00");
     }));
+
+  it("DSOR-MON-03: the demo pays the bill in rupees, refuses the one in pounds, and the day counts the rupees in dollars", (context) =>
+    onOneDay(context, () => {
+      // NEW IN STEP 26 (decision 159). The day's two numbers are the day before and after the
+      // rupees: 10,000.00 USD apart, exactly, whatever the day held before.
+      const out = demo().raw;
+      const section =
+        out.split("VENDOR-44 bills in rupees and in pounds.")[1]?.split("The audit log")[0] ?? "";
+      const refused = (what: string): string =>
+        `${"accounts-payable-fte".padEnd(21)} ${"LIMIT_EXCEEDED".padEnd(24)} retry: ${"after_delay".padEnd(20)} ${what}`;
+
+      expect(section).toMatch(
+        /^accounts-payable-fte {2}COMMITTED {16}dsor:\/\/org_456\/payment\/PAY-\d+ {2}draft/m,
+      );
+      expect(section).toContain(
+        refused("45000.00 GBP is above del_100's limit of 50000.00 USD a payment"),
+      );
+
+      const day =
+        /the day had used (\d+\.\d\d) USD, and has used (\d+\.\d\d) USD of 200000\.00/.exec(
+          section,
+        );
+
+      expect(day).not.toBeNull();
+      expect(Math.round((Number(day?.[2]) - Number(day?.[1])) * 100)).toBe(1_000_000);
+    }));
+
+  it("DSOR-MON-04: the demo's rates four days old refuse a bill in rupees, and a bill in dollars needs none", () => {
+    // NEW IN STEP 26 (decision 159).
+    const out = demo().raw;
+    const section = out.split("The rate service has published nothing for four days.")[1] ?? "";
+    const lines = section.split("\n").filter((line) => line.startsWith("accounts-payable-fte"));
+
+    expect(lines[0]).toContain(
+      "28000.00 PKR cannot be compared with del_100's limit of 50000.00 USD a payment, so it is refused: org_456's newest rates are more than three days old",
+    );
+    expect(lines[1]).toMatch(/COMMITTED {16}dsor:\/\/org_456\/payment\/PAY-\d+ {2}draft/);
+  });
 
   it("DSOR-OPS-01a: the demo pulls the brake on the agent and releases it, and freezes every agent", () => {
     // STEP 25 (decision 142). The map's "done when": a suspended agent is refused, and
