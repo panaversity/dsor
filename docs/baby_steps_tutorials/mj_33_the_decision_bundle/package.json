@@ -1,0 +1,31 @@
+{
+  "name": "@dsor-steps/mj-33-the-decision-bundle",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Step 33 of the DSoR baby steps, a learner build: the decision bundle. For each consequential command DSoR seals one file of facts: who asked, under which slip, which rules ran at which version, which records it read at which version, which rate it used, who approved, and what happened. What the agent says about itself is kept apart, under agent_asserted, and no rule reads it.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "start": "node src/main.ts",
+    "migrate": "node src/migrate.ts",
+    "test": "vitest run",
+    "test:db": "vitest run --config vitest.db.config.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "pnpm typecheck && pnpm test"
+  },
+  "dependencies": {
+    "@marcbachmann/cel-js": "8.0.0",
+    "ajv": "8.20.0",
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/pg": "8.23.1",
+    "typescript": "7.0.2",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "packageManager": "pnpm@11.22.0"
+}
