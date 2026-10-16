@@ -14,7 +14,7 @@
 // Rule DSOR-IDN-06: when the delegator's current authority cannot be established within the
 // staleness bound, DSoR MUST deny the command.
 
-import { Ajv2020 } from "ajv/dist/2020.js";
+import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
 import addFormatsModule, { type FormatsPlugin } from "ajv-formats";
 import { directoryOf } from "./directory.ts";
 
@@ -40,7 +40,9 @@ export const CLOCK_SKEW_MS: number = 5 * 60 * 1000;
  */
 // not copied: the specification's timestamp is the JSON Schema format date-time, which has no pattern
 // to copy; this one asks for the zone that format requires.
-const WITH_ITS_ZONE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
+// NEW IN STEP 26: exported, so that the rate service's time is asked the same (decision 159).
+export const WITH_ITS_ZONE: RegExp =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
 
 // ajv-formats is CommonJS; under nodenext the callable sits on `.default`. Same cast, same reason,
 // as in audit.ts.
@@ -54,7 +56,11 @@ addFormats(ajv);
  * Beside the zone, it asks that the day exist. JavaScript does not: it reads 31 September as
  * 1 October, a day the directory never said (decision 150).
  */
-const isARecordTime = ajv.compile<string>({ type: "string", format: "date-time" });
+// NEW IN STEP 26: exported, for the rate service's time too (decision 159).
+export const isARecordTime: ValidateFunction<string> = ajv.compile<string>({
+  type: "string",
+  format: "date-time",
+});
 
 /**
  * A person's authority could not be established: the case `DSOR-IDN-06` refuses.
