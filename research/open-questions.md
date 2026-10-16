@@ -942,3 +942,42 @@ for a human. An agent may gather evidence; it does not settle these alone.
     every call and mode, so a stale request prepared in `propose_only` mode is refused at once,
     where step 23 let it wait `READY` (its D13). Should DSOR-CON-01b apply at line 9 as well as at
     line 14?
+
+139. **What is a consequential command?** DSOR-AUD-03a asks a decision bundle "for each
+    consequential command", and the specification does not define the word. In step 33's learner
+    build, every decision about a command from line ④ on has one: every mode and every outcome, a
+    refusal, a dry run, a replay, and DSoR's own commands too. A call refused at lines ① to ③ has
+    none, since a bundle must name under whose authority the call asked (its D1). Should the
+    specification say which decisions need a bundle, and whether a dry run or a replay is one?
+
+140. **How is a conversion's rate written when neither currency is the sheet's base?**
+    DSOR-MON-05 asks a bundle to record "the rate". A sheet of the ECB says how much of each
+    currency 1 EUR buys, so GBP to USD is 1.0800 ÷ 0.8532, which does not end. Step 33's learner
+    build writes it to at most twelve places, rounded half up, and keeps the sheet's own lines in its
+    extensions, so the exact answer can be worked out again (its D6). Should the specification say
+    how a rate is written, or ask for the sheet's lines?
+
+141. **Which approval does a bundle name when several people approved?** `decision-bundle.schema.json`
+    has one `approval`, with one `id`, and `approvers` as a list, so one approval may hold several
+    approvers. `approval.schema.json` lets each person's yes be an approval of its own, as in step
+    29's learner build. With two, step 33's learner build names the first in `approval.id`, every
+    approver in `approvers`, and each approval in its rule's `satisfied_by` (its D7). Should
+    `approval` be a list?
+
+142. **Which operation does a release's bundle name?** §26.4 runs steps 9 and 10 of a release "for
+    the target command", and §29's example bundle names `payment.execute@1` with its proposal. In
+    step 33's learner build, a release's bundle names the stored request's operation, such as
+    `payment.create@1`, and its record names the operation called, `proposal.execute@1` (its D8).
+    Should the specification say which one a bundle names?
+
+143. **May the agent's free text hold a restricted value?** DSOR-AUD-06 asks DSoR to record what the
+    agent says about itself, its rationale too, and DSOR-AUD-05a keeps raw `RESTRICTED` values out
+    of audit records. Free text has no classification, so an agent may write a bank account into
+    its rationale, and DSoR cannot tell. Step 33's learner build keeps the words as sent, bounded in
+    length, and on one line (its D10 and D11). Should the specification bound or mask
+    `agent_asserted`, or let DSoR keep only a hash of it?
+
+144. **Where does a bundle keep the answer the caller heard?** `decision-bundle.schema.json` has
+    `authorization` and `execution.result`, and no field for the code the caller heard, such as
+    `LIMIT_EXCEEDED`, or its reason, which DSOR-EXE-02 asks the decision to record. Step 33's
+    learner build keeps both in its extensions (its D13). Should the bundle have a field for them?

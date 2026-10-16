@@ -50,8 +50,8 @@ function facts(value: unknown): unknown {
     if (key === "agent_asserted") return undefined;
     if (typeof field !== "string") return field;
     if (/^(req|dec|aud|prop|apr)_[0-9a-f-]{36}$/.test(field)) return `${field.slice(0, 4)}…`;
-    if (/^dsor:\/\/org_456\/proposal\//.test(field)) return "the proposal";
-    if (/^k-test-/.test(field)) return "the key";
+    if (field.startsWith("dsor://org_456/proposal/")) return "the proposal";
+    if (field.startsWith("k-test-")) return "the key";
     if (/^\d{4}-\d{2}-\d{2}T/.test(field)) return "a time";
     return field;
   });

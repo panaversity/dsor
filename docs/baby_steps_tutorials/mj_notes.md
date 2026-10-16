@@ -1906,6 +1906,52 @@ questions became 132 to 134.
   - A cleanup before each database test makes the tests independent, and hides what a defect left
     behind. Say so where the cleanup is.
 
+### Step 33, the decision bundle, built first by the learner's choice (2026-10-16)
+
+Copied from step 32, with a database of its own (port 55465, `dsor33`). In the middle of the Part 4
+understanding session, the learner said "maybe do 33 so part 4 is done, then we do the full story
+in a better way". So every decision is Claude Code's, each with its downside, for the learner to
+review, and the better story of Part 4 comes next.
+
+- **The decisions:** D1 to D14 before any code. D1 reads "consequential" as every command, from line
+  ④ on, in every mode. D2 and D3: a bundle and its record in one transaction, append-only. D4 to D9:
+  facts only; what line ⑨ read; each conversion once; the approvals a release counted; a release's
+  bundle names the stored request; how the work ended. D10 to D12: the agent's words in the
+  envelope's own field, kept apart, and read by no check. D13: the specification's schema and this
+  tutorial's extensions. D14: no operation reads a bundle yet.
+- **The pieces:** A, a bundle for each command decision, sealed with its record; B, what line ⑨ read
+  and what a release counted; C, each conversion; D, the agent's words; E, the database's table and
+  one transaction (migration 030); F, the program's story.
+- **Found while building:** since step 32, an approval named VENDOR-44 by an invoice's address
+  (fixed, DSOR-APR-02a). Seven breaks of the pieces survived at first and became tests, or showed
+  dead code.
+- **The breaks:** B1, the reads forgotten: every bundle still validates, so the schema cannot prove
+  a bundle complete. B2, the rules read the agent's words: the agent that says "emergency" is paid
+  without the CFO; it took three changes, and the test that compares decisions did not catch it,
+  the structural tests did. B3, the words in the fingerprint: a retry hears `IDEMPOTENCY_CONFLICT`
+  and every release is invalidated. B4, the bundle in its own transaction: a bundle with no record.
+  B5, the approvals forgotten: step 32's gap comes back.
+- **The reviews:** the README's reviewer, 43 findings, all fixed: the largest, the clerk analogy
+  turned around from start-here's. The code's reviewer broke the code 94 times: one high finding, a
+  bundle checked only at line ⑪, after the work had committed, so a vendor named "VENDOR 44" or a
+  rule named constructor left a drafted payment with no record and no bundle. Fixed with D16, a Map,
+  and D17, the bundle checked before the work. Four medium findings fixed (a release's booking
+  conversion, a person's release, a replay of a release, and the counted approvals' Map), and a test
+  for each break that survived.
+- **Counts:** unit 2379, database 515, at 77a766c.
+- **Lessons for the next builds:**
+  - A demonstration must differ between the broken and the unbroken code. S4 said "0 bundles" on
+    both, because the caller had no slip and stopped at line ③.
+  - A test that matches with `toMatchObject` lets extra keys through. Where a field must hold
+    exactly what is named, use `toStrictEqual`: F2 hid behind that for a step.
+  - A break of a guarantee may need more than one change to show its danger: B2 needed the rule's
+    own tests to be fooled too. Run the danger to its end before writing what a break does.
+  - Evidence that is checked after the work is evidence that can be lost after the work. Check
+    what will be kept before the work runs, from the same facts.
+  - A plain object keyed by the company's text, such as a rule's id, meets Object's own names. Use
+    a Map.
+  - A new test file can overwrite one the copy carried: check the name before writing.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.
