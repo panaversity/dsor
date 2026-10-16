@@ -6,7 +6,7 @@
 // The program keeps the day's totals and the reservations in dsor.limit_counters and
 // dsor.reservations (postgres.ts); the unit tests keep them in memory (memoryReservations below).
 import { Refusal } from "./envelope.ts";
-import { convertUp, exceeds, type RateSheet } from "./exchange.ts";
+import { convertUp, exceeds, type Converted, type RateSheet } from "./exchange.ts";
 import type { Money } from "./money.ts";
 import type { MoneyPolicy } from "./policies.ts";
 import type { RateStore } from "./rates.ts";
@@ -265,6 +265,9 @@ export type LimitCheck = {
   // And who to tell which currency had no usable rate, and why, for the decision's record only
   // (step 26's review, finding H1).
   unconvertible?: (cause: Unconvertible) => void;
+  // NEW IN STEP 33: and who to tell of each amount converted, and the currency it went into, for
+  //   the decision's bundle (DSOR-MON-05; step 33's README, D6).
+  noted?: (one: Converted) => void;
 };
 
 /** What a conversion used, for its decision's record: the sheet, and its rates for the currencies converted (decision L7). */
@@ -357,12 +360,18 @@ export async function checkLimits(check: LimitCheck): Promise<void> {
     // Exactly, by multiplying across: no division, so no rounding (DSOR-MON-02; decision L5). A
     // rate that cannot be used, such as a zero, which only a store with no CHECK can hold, fits no
     // limit.
+    const across =
+      limit.currency === spends.currency || sheet === undefined
+        ? undefined
+        : exceeds(spends, limit, sheet);
+    // The amount, converted into the limit's currency, for the bundle (step 33's README, D6).
+    if (across !== undefined) check.noted?.({ from: { ...spends }, to: limit.currency });
     const over =
       limit.currency === spends.currency
         ? !within(spends, limit)
         : sheet === undefined
           ? undefined
-          : (exceeds(spends, limit, sheet) ?? true);
+          : (across ?? true);
     if (over === undefined) throw new Refusal("LIMIT_EXCEEDED", noRate(forOnePayment), "public");
     if (over) throw new Refusal("LIMIT_EXCEEDED", forOnePayment, "public");
   }
@@ -381,6 +390,9 @@ export async function checkLimits(check: LimitCheck): Promise<void> {
         ? undefined
         : convertUp(spends, daily.currency, sheet);
   if (booking === undefined) throw new Refusal("LIMIT_EXCEEDED", noRate(forOneDay), "public");
+  // The booking, converted into the limit's currency, for the bundle (step 33's README, D6).
+  if (daily.currency !== spends.currency)
+    check.noted?.({ from: { ...spends }, to: daily.currency });
   const held = check.booked === undefined ? undefined : await store.get(tenant, check.booked);
   const fits =
     held?.state === "held"

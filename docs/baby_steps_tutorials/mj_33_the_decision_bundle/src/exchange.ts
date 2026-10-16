@@ -104,6 +104,35 @@ export function convertUp(amount: Money, to: string, sheet: RateSheet): Money | 
   return { value: decimalOf(millionths), currency: to };
 }
 
+// NEW IN STEP 33: one amount that a decision converted, and the currency it went into, as a
+//   comparison or a booking used it, for the decision's bundle (DSOR-MON-05; step 33's README, D6).
+/** One amount a decision converted, and the currency it converted it into. */
+export type Converted = { from: Money; to: string };
+
+// The most places a rate is written to in a bundle. The quotient of two lines of a sheet may not
+//   end: GBP to USD on Tuesday's sheet is 1.0800 ÷ 0.8532 (step 33's README, D6).
+const RATE_PLACES = 12;
+
+/**
+ * How much of `to` one unit of `from` buys by this sheet, as a decimal of at most twelve places,
+ * rounded half up. None when the sheet has no usable rate for either. The conversions themselves
+ * never use it: they multiply across, or divide once and round up, as above.
+ */
+export function rateBetween(from: string, to: string, sheet: RateSheet): string | undefined {
+  const f = rateOf(from, sheet);
+  const t = rateOf(to, sheet);
+  if (f === undefined || t === undefined) return undefined;
+  // t ÷ f, in units of 10^-12: t.digits × 10^(f.scale + 12) ÷ (f.digits × 10^t.scale).
+  const top = t.digits * 10n ** BigInt(f.scale + RATE_PLACES);
+  const bottom = f.digits * 10n ** BigInt(t.scale);
+  // Half up: half of the divisor is added before the division. Every rate here is above zero.
+  const units = (2n * top + bottom) / (2n * bottom);
+  const text = units.toString().padStart(RATE_PLACES + 1, "0");
+  const fraction = text.slice(-RATE_PLACES).replace(/0+$/, "");
+  const whole = text.slice(0, -RATE_PLACES);
+  return fraction === "" ? whole : `${whole}.${fraction}`;
+}
+
 /** Millionths as a decimal with two to six places after the point. */
 function decimalOf(millionths: bigint): string {
   const text = millionths.toString().padStart(SCALE + 1, "0");

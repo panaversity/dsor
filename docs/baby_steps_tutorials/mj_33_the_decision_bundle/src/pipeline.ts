@@ -31,6 +31,7 @@ import {
   type Requirement,
 } from "./envelope.ts";
 import { checkInput, jsonCopy, NOT_JSON, refuseInput } from "./inputs.ts";
+import type { Converted } from "./exchange.ts";
 import { newReads, stalest, type Freshness } from "./freshness.ts";
 import type { InvoiceStore } from "./invoice.ts";
 import {
@@ -551,7 +552,9 @@ export async function call(
         let answer: ControlAnswer = "ALLOW";
         if (book.length > 0) {
           const sheet = await freshSheet(once, tenant, registry.moneyPolicies.get(tenant));
-          const used = new Set<string>();
+          // Changed in step 33: each amount a condition converts, and the currency it goes into
+          //   (step 33's README, D6).
+          const used: Converted[] = [];
           // One set of facts for the evaluation and for the reasons of a refusal, so both read one
           //   time (step 28b's README, decision D9).
           const facts = factsOf(state, asked);
@@ -561,11 +564,14 @@ export async function call(
           // The record names the sheet and the rates a condition converted with, as it names a
           //   limit's (step 26's README, decision L7). Found by step 27's review, finding H2: a
           //   person's draft, which no limit counts, named no sheet at all.
-          if (sheet !== undefined && used.size > 0) {
+          if (sheet !== undefined && used.length > 0) {
             const { source, published_at, base } = sheet;
-            const usedRates = Object.fromEntries([...used].map((c) => [c, sheet.rates[c]!]));
+            const currencies = new Set(used.flatMap((one) => [one.from.currency, one.to]));
+            const usedRates = Object.fromEntries([...currencies].map((c) => [c, sheet.rates[c]!]));
             conversionOfRecord = { source, published_at, base, rates: usedRates };
           }
+          // And each conversion, for the bundle (step 33's README, D6).
+          evidence.converted.push(...used);
           answer = mostRestrictive(outcomes.map((outcome) => outcome.outcome));
           if (answer === "DENY") {
             denialsOfRecord = denialsOf(book, outcomes, facts);
@@ -594,6 +600,10 @@ export async function call(
           },
           unconvertible: (cause) => {
             unconvertibleOfRecord = cause;
+          },
+          // And each conversion a limit makes, for the bundle (step 33's README, D6).
+          noted: (one) => {
+            evidence.converted.push(one);
           },
         });
         // DSoR's own work never waits for an approval. No rule may govern it,

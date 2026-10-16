@@ -5,7 +5,7 @@
 // money functions, which compare and convert as step 26 does. When a condition cannot be
 // evaluated, it gives an error, never true or false, and the control's effect applies.
 import { Environment } from "@marcbachmann/cel-js";
-import { compareAcross, isReadable, type RateSheet } from "./exchange.ts";
+import { compareAcross, isReadable, type Converted, type RateSheet } from "./exchange.ts";
 import { money, type Money } from "./money.ts";
 import type { MoneyPolicy } from "./policies.ts";
 
@@ -69,7 +69,9 @@ function compared(
   a: unknown,
   b: unknown,
   sheet: RateSheet | undefined,
-  used: Set<string>,
+  // Changed in step 33: told of the two amounts when their currencies differ, so each function
+  //   notes the conversion it made, in its own direction (step 33's README, D6).
+  converted: (left: Money, right: Money) => void,
 ): -1 | 0 | 1 {
   const left = moneyOf(a);
   const right = moneyOf(b);
@@ -85,13 +87,15 @@ function compared(
     throw new Error(`${NO_RATE} compares ${left.currency} with ${right.currency}`);
   }
   // Two currencies were converted with the sheet, so the decision's record names their rates
-  // (step 27's review, finding H2). One currency needs no rate.
-  if (left.currency !== right.currency) used.add(left.currency).add(right.currency);
+  // (step 27's review, finding H2), and its bundle names the conversion. One currency needs none.
+  if (left.currency !== right.currency) converted(left, right);
   return answer;
 }
 
 /** The environment, with the money functions bound to this sheet of rates, or to none. */
-function environmentFor(sheet: RateSheet | undefined, used: Set<string> = new Set()): Environment {
+// Changed in step 33: each conversion a function makes is noted in used, the amount and the
+//   currency it went into, where step 27 noted the two currencies (step 33's README, D6).
+function environmentFor(sheet: RateSheet | undefined, used: Converted[] = []): Environment {
   return (
     new Environment()
       .registerVariable("input", "map")
@@ -110,12 +114,14 @@ function environmentFor(sheet: RateSheet | undefined, used: Set<string> = new Se
       // exactly (step 26's README, decision L5).
       .registerFunction(
         "dsor_exceeds(map, map): bool",
-        (a: unknown, b: unknown) => compared(a, b, sheet, used) === 1,
+        (a: unknown, b: unknown) =>
+          compared(a, b, sheet, (l, r) => used.push({ from: l, to: r.currency })) === 1,
       )
       // a >= b, after converting b to a's currency.
       .registerFunction(
         "dsor_covers(map, map): bool",
-        (a: unknown, b: unknown) => compared(a, b, sheet, used) !== -1,
+        (a: unknown, b: unknown) =>
+          compared(a, b, sheet, (l, r) => used.push({ from: r, to: l.currency })) !== -1,
       )
   );
 }
@@ -172,8 +178,8 @@ export function evaluateCondition(
   condition: string,
   facts: Facts,
   sheet: RateSheet | undefined,
-  // Each currency it converted with the sheet is added here, for the decision's record.
-  used: Set<string> = new Set(),
+  // Each amount it converted with the sheet is added here, for the decision's record and bundle.
+  used: Converted[] = [],
 ): Evaluated {
   try {
     const answer: unknown = environmentFor(sheet, used).evaluate(condition, facts);

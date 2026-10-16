@@ -13,7 +13,7 @@ import { Ajv2020 } from "ajv/dist/2020.js";
 import { millisecondsOf } from "./authority.ts";
 import { checkCondition, evaluateCondition, NO_RATE, tenantOf, type Facts } from "./cel.ts";
 import type { Requirement } from "./envelope.ts";
-import type { RateSheet } from "./exchange.ts";
+import type { Converted, RateSheet } from "./exchange.ts";
 import { keysWrittenTwice } from "./json.ts";
 import type { Roles } from "./permissions.ts";
 import type { MoneyPolicy } from "./policies.ts";
@@ -138,7 +138,7 @@ export function answerOf(
   control: Control,
   facts: Facts,
   sheet: RateSheet | undefined,
-  used?: Set<string>,
+  used?: Converted[],
 ): { answer: ControlAnswer; error?: string } {
   const evaluated = evaluateCondition(control.condition, facts, sheet, used);
   // A condition that cannot be evaluated applies the effect (DSOR-CTL-07).
@@ -241,9 +241,9 @@ export function evaluateControls(
   operation: string,
   facts: Facts,
   sheet: RateSheet | undefined,
-  // Each currency a condition converted with the sheet is added here, for the decision's record
-  // (step 27's review, finding H2).
-  used?: Set<string>,
+  // Each amount a condition converted with the sheet is added here, for the decision's record
+  // (step 27's review, finding H2), and its bundle (step 33's README, D6).
+  used?: Converted[],
 ): ControlOutcome[] {
   return controls
     .filter((control) => control.operation === operation)

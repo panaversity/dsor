@@ -10,6 +10,8 @@ import { Ajv2020 } from "ajv/dist/2020.js";
 import type { BoundRead } from "./bound.ts";
 import type { Claimed } from "./claims.ts";
 import type { ControlOutcome } from "./controls.ts";
+import { convertUp, rateBetween, type Converted } from "./exchange.ts";
+import type { Conversion } from "./limits.ts";
 import type { Decision } from "./log.ts";
 import type { Money } from "./money.ts";
 import type { Requester } from "./proposals.ts";
@@ -83,6 +85,9 @@ export type Evidence = {
   decided?: Contract;
   // Each record line ⑨ read, as it read it, a record that was not there too (D5).
   state: StateRead[];
+  // Each amount line ⑩ converted, and the currency it went into, as the rules and the limits
+  //   converted them (D6).
+  converted: Converted[];
   // At a release, the approvals it counted (D7).
   counted?: Counted;
   // How the work ended, once the claim has given its outcome back (D9).
@@ -91,7 +96,7 @@ export type Evidence = {
 
 /** A new, empty notebook of evidence, for one call. */
 export function newEvidence(): Evidence {
-  return { state: [], executed: "not_executed" };
+  return { state: [], converted: [], executed: "not_executed" };
 }
 
 /** One read of line ⑨, as the bundle names it: its label's mode in capitals, as the schema writes it. */
@@ -162,7 +167,7 @@ export function bundleOf(
         };
       }),
     },
-    money: { conversions: [] },
+    money: { conversions: conversionsOf(evidence.converted, ours.conversion) },
     state: structuredClone(evidence.state),
     ...(counted === undefined ? {} : approvalOf(counted)),
     sod_mode: "standard",
@@ -194,10 +199,43 @@ function approvalOf(counted: Counted): { approval?: DecisionBundle["approval"] }
   };
 }
 
+/**
+ * Each conversion the decision used, once, in the order it was made: the amount, the amount in the
+ * other currency rounded up at the sixth place as a booking is, the rate to at most twelve places,
+ * and the sheet's source and time (DSOR-MON-05). None without the sheet line ⑩ converted with.
+ */
+function conversionsOf(
+  converted: readonly Converted[],
+  sheet: Conversion | undefined,
+): MoneyConversion[] {
+  if (sheet === undefined) return [];
+  const seen = new Set<string>();
+  const named: MoneyConversion[] = [];
+  for (const { from, to } of converted) {
+    const key = `${from.value} ${from.currency} ${to}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const into = convertUp(from, to, sheet);
+    const rate = rateBetween(from.currency, to, sheet);
+    // The sheet converted this amount a moment ago, so neither can be missing but by a bug.
+    if (into === undefined || rate === undefined)
+      throw new Error(`no rate from ${from.currency} to ${to}`);
+    named.push({
+      from: { ...from },
+      to: into,
+      rate,
+      source: sheet.source,
+      as_of: sheet.published_at,
+    });
+  }
+  return named;
+}
+
 /** What the schema has no field for, under this tutorial's own name, as in the record (D13). */
 function ownFields(decision: Decision): Record<string, unknown> {
   const ours = decision.extensions?.[OURS] ?? {};
   const { invocation_mode, idempotency, denied_by, stale, approved_under } = ours;
+  const { conversion, unconvertible } = ours;
   return {
     // The call, so its bundle and its record can be found together.
     correlation: structuredClone(decision.correlation),
@@ -208,6 +246,10 @@ function ownFields(decision: Decision): Record<string, unknown> {
     },
     ...(invocation_mode === undefined ? {} : { invocation_mode }),
     ...(idempotency === undefined ? {} : { idempotency: { ...idempotency } }),
+    // The sheet's own lines that line ⑩ converted with, so the exact answer can be worked out
+    //   again, and which currency had no usable rate, and why (step 26's D7 and L7; D6).
+    ...(conversion === undefined ? {} : { sheet: structuredClone(conversion) }),
+    ...(unconvertible === undefined ? {} : { unconvertible: { ...unconvertible } }),
     // Each rule that refused, with its own reason, and each stale rule with the version of its
     //   policy in force, as the record names them (step 27's D13, step 28b's D11).
     ...(denied_by === undefined ? {} : { denied_by: structuredClone(denied_by) }),
