@@ -398,9 +398,14 @@ describe("C4: an approval counts only while it lasts, and only for its request (
     await expect(
       checkApprovals(kept, kept.requires ?? [], other, w.registry.delegations, "org_456"),
     ).rejects.toThrow("high-value-payment version 8 asks for an approval by CFO, and 0 counts");
+    // Changed in step 33: the check answers what it counted, for the decision's bundle (step 33's
+    //   README, D7).
     await expect(
       checkApprovals(kept, kept.requires ?? [], given, w.registry.delegations, "org_456"),
-    ).resolves.toBeUndefined();
+    ).resolves.toStrictEqual({
+      approvals: given,
+      satisfied: { "high-value-payment": [given[0]!.id] },
+    });
   });
 });
 

@@ -1,9 +1,9 @@
 // The checklist every call goes through. DSOR-EXE-01a in specs/dsor/03-execution.md,
 // section 21, and DSOR-OPR-04a in specs/dsor/01-model.md, section 7.
 import { randomUUID } from "node:crypto";
-import { pinned, readBound, type Bound } from "./bound.ts";
+import { pinned, readBound, type Bound, type BoundRead } from "./bound.ts";
 import { checkBrake, holdBrake, NO_BRAKES, type BrakeStore } from "./brakes.ts";
-import { bundleOf, executedOf, newEvidence } from "./bundle.ts";
+import { bundleOf, executedOf, newEvidence, stateReadOf } from "./bundle.ts";
 import { freshSheet, NO_RATES, readOnce, type RateStore } from "./rates.ts";
 import { NO_CONTROLS, type ControlStore } from "./rulebook.ts";
 import { NotCanonical, payloadHash } from "./canonical.ts";
@@ -456,7 +456,13 @@ export async function call(
         invoices: read,
         spends,
       } = await line(9, async () => {
-        const bound = await readBound(contract, copy, invoices, tenant);
+        // Each record line ⑨ reads goes into the notebook of evidence as it is read, one that
+        //   is not there too, before any refusal. One call reads at line ⑨ once (step 33's README,
+        //   D5).
+        const noted = (read: BoundRead): void => {
+          evidence.state.push(stateReadOf(read));
+        };
+        const bound = await readBound(contract, copy, invoices, tenant, noted);
         // Each read as fresh as the contract asks, or no decision is made on it,
         //   and no cache stands in (DSOR-FRS-02a, DSOR-FRS-02b; step 32's README, decision D5). At a
         //   release, CURRENT, whatever the contract permits: §26.4 re-evaluates "against CURRENT
@@ -632,6 +638,8 @@ export async function call(
         const target = targetOf(registry.contracts, loaded);
         if (target === undefined)
           throw new Error(`proposal ${id} holds an operation with no contract`);
+        // The bundle names the request the release decides from here on (step 33's README, D8).
+        evidence.decided = target;
         await mayRelease(loaded, target, releaser, () => proposals.isDue(tenant, id));
         // The company's code runs the stored request. DSoR's own work, a brake or a rule prepared
         //   in propose_only mode, is not released in this step: its own look at line ⑨ would
@@ -711,7 +719,10 @@ export async function call(
         throw thrown;
       });
       const given = await proposals.approvals(tenant, id);
-      await line(10, () => checkApprovals(loaded, requires ?? [], given, slips, tenant));
+      // And what it counted, for the bundle (step 33's README, D7).
+      evidence.counted = await line(10, () =>
+        checkApprovals(loaded, requires ?? [], given, slips, tenant),
+      );
     };
     if (released !== undefined) {
       // An address whose id is not a proposal's names no proposal. Line ⑥'s schema lets any id

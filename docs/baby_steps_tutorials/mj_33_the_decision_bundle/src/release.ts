@@ -232,6 +232,8 @@ export function causeOf(refusal: Refusal): string {
  * invalidates. A rule that was, in this version or another, counts the people whose approval met
  * its role, and needs its quorum of them now.
  */
+// NEW IN STEP 33: and it answers what it counted, for the decision's bundle: each approval that met
+//   a rule, in the order they were given, and the ids that met each rule (step 33's README, D7).
 export async function checkApprovals(
   found: Proposal,
   // What the rules ask for now: line ⑩'s answer for the stored request, or none.
@@ -239,7 +241,7 @@ export async function checkApprovals(
   given: readonly Approval[],
   slips: Pick<SlipStore, "get">,
   tenant: string,
-): Promise<void> {
+): Promise<Counted> {
   for (const approval of given) {
     for (const { principal } of approval.approvers) {
       const why = await inChain(found.requester, principal, slips, tenant);
@@ -275,7 +277,23 @@ export async function checkApprovals(
       throw new Refusal("APPROVAL_REQUIRED", why, "internal");
     }
   }
+  // What counted, once every rule has its quorum: the same test as the count above, so the bundle
+  //   names no approval that the count did not take.
+  const metBy = (a: Approval, r: Requirement): boolean =>
+    a.satisfies.some(
+      (line) => line.control === r.control && line.requirement.role === r.approval.role,
+    );
+  const satisfied: Record<string, string[]> = {};
+  for (const now of requires) {
+    const ids = counted.filter((a) => metBy(a, now)).map((a) => a.id);
+    satisfied[now.control] = [...new Set([...(satisfied[now.control] ?? []), ...ids])];
+  }
+  const approvals = counted.filter((a) => requires.some((now) => metBy(a, now)));
+  return { approvals: structuredClone(approvals), satisfied };
 }
+
+/** What a release counted: each approval that met a rule, in the order given, and the ids that met each rule. */
+export type Counted = { approvals: Approval[]; satisfied: Record<string, string[]> };
 
 /**
  * The version an optimistic stored request was decided on, its expected_version, when it names

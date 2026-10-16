@@ -7,12 +7,14 @@
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { Ajv2020 } from "ajv/dist/2020.js";
+import type { BoundRead } from "./bound.ts";
 import type { Claimed } from "./claims.ts";
 import type { ControlOutcome } from "./controls.ts";
 import type { Decision } from "./log.ts";
 import type { Money } from "./money.ts";
 import type { Requester } from "./proposals.ts";
 import type { Contract } from "./registry.ts";
+import type { Counted } from "./release.ts";
 import { semanticsOf, type Semantics } from "./semantics.ts";
 import { parseUri } from "./uri.ts";
 
@@ -76,13 +78,31 @@ export type Evidence = {
   // Who asks, and under whose authority, once line ③ has passed. Before then there is no bundle
   //   (D1).
   asker?: Requester;
+  // At a release, once line ⑧ has loaded the proposal: the contract of the stored request, which
+  //   the release decides (D8).
+  decided?: Contract;
+  // Each record line ⑨ read, as it read it, a record that was not there too (D5).
+  state: StateRead[];
+  // At a release, the approvals it counted (D7).
+  counted?: Counted;
   // How the work ended, once the claim has given its outcome back (D9).
   executed: Executed;
 };
 
 /** A new, empty notebook of evidence, for one call. */
 export function newEvidence(): Evidence {
-  return { executed: "not_executed" };
+  return { state: [], executed: "not_executed" };
+}
+
+/** One read of line ⑨, as the bundle names it: its label's mode in capitals, as the schema writes it. */
+export function stateReadOf(read: BoundRead): StateRead {
+  const freshness = read.label.mode.toUpperCase() as StateRead["freshness"];
+  return {
+    uri: read.uri,
+    ...(read.version === undefined ? {} : { version: read.version }),
+    observed_at: read.label.observed_at,
+    freshness,
+  };
 }
 
 /**
@@ -116,9 +136,12 @@ export function bundleOf(
   }
   const ours = decision.extensions?.[OURS] ?? {};
   const proposal = ours.proposal;
+  // The request decided: at a release, the stored one, once line ⑧ has loaded it (D8).
+  const decided = evidence.decided ?? called;
+  const { counted } = evidence;
   return {
     decision_id: `dec_${randomUUID()}`,
-    operation: `${called.id}@${String(called["version"])}`,
+    operation: `${decided.id}@${String(decided["version"])}`,
     ...(proposal === undefined ? {} : { proposal }),
     tenant: decision.tenant,
     identity: {
@@ -130,25 +153,51 @@ export function bundleOf(
     authority: {
       ...(asker.delegation === undefined ? {} : { delegation: asker.delegation }),
       authorization: decision.authorization,
-      controls: structuredClone(decision.controls ?? []),
+      // Each rule, with the approvals that met it at a release (D7).
+      controls: (decision.controls ?? []).map((control) => {
+        const met = counted?.satisfied[control.id] ?? [];
+        return {
+          ...structuredClone(control),
+          ...(met.length === 0 ? {} : { satisfied_by: [...met] }),
+        };
+      }),
     },
     money: { conversions: [] },
-    state: [],
+    state: structuredClone(evidence.state),
+    ...(counted === undefined ? {} : approvalOf(counted)),
     sod_mode: "standard",
     execution: {
       // The proposal's id is the key of its execution (DSOR-IDM-04). A dry run has none.
       ...(proposal === undefined ? {} : { idempotency_key: parseUri(proposal).id }),
-      semantics: semanticsOf(called),
+      semantics: semanticsOf(decided),
       result: evidence.executed,
     },
     extensions: { [OURS]: ownFields(decision) },
   };
 }
 
+/**
+ * The approvals a release counted, as the bundle's one approval: the first, by id, the fingerprint
+ * they all bind, and every approver, in the order given. One person approves a proposal once (step
+ * 29's D3), so no approver is named twice. None when nothing was counted (D7).
+ */
+function approvalOf(counted: Counted): { approval?: DecisionBundle["approval"] } {
+  const [first] = counted.approvals;
+  if (first === undefined) return {};
+  const approvers = counted.approvals.flatMap((a) => a.approvers.map((who) => who.principal));
+  return {
+    approval: {
+      id: first.id,
+      payload_hash: first.payload_hash,
+      approvers,
+    },
+  };
+}
+
 /** What the schema has no field for, under this tutorial's own name, as in the record (D13). */
 function ownFields(decision: Decision): Record<string, unknown> {
   const ours = decision.extensions?.[OURS] ?? {};
-  const { invocation_mode, idempotency } = ours;
+  const { invocation_mode, idempotency, denied_by, stale, approved_under } = ours;
   return {
     // The call, so its bundle and its record can be found together.
     correlation: structuredClone(decision.correlation),
@@ -159,6 +208,13 @@ function ownFields(decision: Decision): Record<string, unknown> {
     },
     ...(invocation_mode === undefined ? {} : { invocation_mode }),
     ...(idempotency === undefined ? {} : { idempotency: { ...idempotency } }),
+    // Each rule that refused, with its own reason, and each stale rule with the version of its
+    //   policy in force, as the record names them (step 27's D13, step 28b's D11).
+    ...(denied_by === undefined ? {} : { denied_by: structuredClone(denied_by) }),
+    ...(stale === undefined ? {} : { stale: structuredClone(stale) }),
+    // At a release, the version of each rule the request was decided under, beside the version in
+    //   controls: both versions, as DSOR-APR-03d asks.
+    ...(approved_under === undefined ? {} : { approved_under: structuredClone(approved_under) }),
   };
 }
 

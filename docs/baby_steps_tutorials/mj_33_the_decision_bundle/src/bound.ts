@@ -112,6 +112,11 @@ export type Bound = {
   labels: Freshness[];
 };
 
+// NEW IN STEP 33: one read line ⑨ made, for the decision's bundle: the record's address, its
+//   version when the store had the record, and the read's label (step 33's README, D5).
+/** One read of a bound record, as line ⑨ made it, whether or not the record was there. */
+export type BoundRead = { uri: string; version?: number; label: Freshness };
+
 /**
  * Line ⑨: reads each invoice the contract binds, itself, through the company's store, and works out
  * what the command spends. A bound invoice that is not there is refused as the code refuses it.
@@ -122,6 +127,9 @@ export async function readBound(
   copy: unknown,
   invoices: InvoiceStore,
   tenant: string,
+  // And who hears of each read as it is made, a read that finds nothing too, before any refusal
+  //   (step 33's README, D5).
+  note: (read: BoundRead) => void = () => {},
 ): Promise<Bound> {
   const state: Record<string, Invoice | Vendor> = {};
   const read: Record<string, Invoice> = {};
@@ -132,8 +140,15 @@ export async function readBound(
     //   be evaluated (step 32's README, decision D4).
     const link = LINK.exec(String(path));
     if (link !== null) {
-      const { vendor, freshness } = await invoices.vendor(tenant, read[link[1]!]!.vendor_id);
+      const vendorId = read[link[1]!]!.vendor_id;
+      const { vendor, freshness } = await invoices.vendor(tenant, vendorId);
       labels.push(freshness);
+      const at = `dsor://${tenant}/vendor/${vendorId}`;
+      note(
+        vendor === undefined
+          ? { uri: at, label: freshness }
+          : { uri: at, version: vendor.version, label: freshness },
+      );
       if (vendor !== undefined) state[alias] = vendor;
       continue;
     }
@@ -149,6 +164,12 @@ export async function readBound(
     }
     const { invoice, freshness } = await invoices.get(tenant, id);
     labels.push(freshness);
+    const at = `dsor://${tenant}/invoice/${id}`;
+    note(
+      invoice === undefined
+        ? { uri: at, label: freshness }
+        : { uri: at, version: invoice.version, label: freshness },
+    );
     // The same words as the code's refusal, so a dry run hears what the real call hears (step 23's
     // README, decision 3).
     if (invoice === undefined) {

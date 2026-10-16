@@ -5,14 +5,13 @@
 // approval, and the move to APPROVED when it is the last one the proposal waits for.
 import { randomUUID } from "node:crypto";
 import { stillOpen, type Approving, type Offer, type Risk } from "./approvals.ts";
-import { readBound } from "./bound.ts";
+import { readBound, type BoundRead } from "./bound.ts";
 import { Refusal } from "./envelope.ts";
 import { approvePermissionOf } from "./permissions.ts";
 import { isProposalOf, proposalIdOf, type MoveBy, type Proposal } from "./proposals.ts";
 import { preview, type Contract } from "./registry.ts";
 import type { OwnLook, OwnStores, OwnWork } from "./revocation.ts";
 import { inChain } from "./segregation.ts";
-import { formatUri } from "./uri.ts";
 
 /** The input that line ⑥ checked: the proposal's URI, and the fingerprint the approver saw. */
 type ApproveInput = { proposal: string; payload_hash: string };
@@ -148,12 +147,13 @@ async function approve(input: unknown, work: OwnStores): Promise<unknown> {
   // Decision D7: the state that the target's contract binds, as DSoR reads it now: the version of
   // each invoice the proposal names. A critical operation's approval binds it strictly, as
   // approval.schema.json asks.
-  const { state } = await readBound(target, found.payload, stores.invoices, tenant);
+  // Changed in step 33: each bound record by its own address, as line ⑨ reads it, so the vendor is
+  //   bound as a vendor. Since step 32 every record of the state was named as an invoice, VENDOR-44
+  //   too (step 33's README, found while building). A record that is not there has no version.
+  const read: BoundRead[] = [];
+  await readBound(target, found.payload, stores.invoices, tenant, (one) => read.push(one));
   const versions = Object.fromEntries(
-    Object.values(state).map((invoice) => [
-      formatUri({ tenant_id: tenant, entity: "invoice", id: invoice.id }),
-      invoice.version,
-    ]),
+    read.flatMap((one) => (one.version === undefined ? [] : [[one.uri, one.version]])),
   );
   const risk = riskOf(target);
   const roles = caller.memberships.find((m) => m.tenant_id === tenant)?.roles ?? [];
