@@ -80,8 +80,10 @@ Words this step uses:
 ### How this step was made
 
 The learner chose to build first and understand afterwards, as for steps 27 to 30: "implement 32
-now we will understand later". So every decision below is Claude Code's, for the learner to
-review, and each one says what it costs. This folder is a copy of step 31.
+now we will understand later". So every decision below was Claude Code's, and each one says what
+it costs. On 2026-10-16, after the step's visual story, the learner reviewed them: D9, D8, D13,
+D5, and D11 one at a time, each after its story, and the other nine as one list. The learner kept
+every one, so every decision below is the learner's now. This folder is a copy of step 31.
 
 ### What each rule says
 
@@ -100,7 +102,7 @@ review, and each one says what it costs. This folder is a copy of step 31.
   preconditions read only what DSoR reads itself. And DSOR-APR-03a and DSOR-APR-03c from step 31:
   the release checks the preconditions again, and one that fails invalidates.
 
-### Decisions (Claude Code)
+### Decisions (Claude Code's, then the learner's)
 
 - **D1. Vendors are the accounts system's records, beside its invoices.** A new table,
   `app.vendors`, holds each company's vendors with a status, `approved` or `suspended`. DSoR reads
@@ -177,7 +179,7 @@ review, and each one says what it costs. This folder is a copy of step 31.
   INV-1005, a draft invoice, is refused by its precondition. *Downside:* a longer program run to
   read.
 
-### Decisions found while building (Claude Code)
+### Decisions found while building (Claude Code's, then the learner's)
 
 - **D13. Line ⑨ checks the version a call names, before the preconditions.** Step 21 checked it in
   the code, and step 31 at the release. With the preconditions before the code, a request decided
@@ -228,12 +230,12 @@ review, and each one says what it costs. This folder is a copy of step 31.
 
 | Break | What we expect | The learner predicted |
 |---|---|---|
-| B1. The look for a proposal in flight is gone | the second attempt on INV-1008 is still refused, by the count of what is left to pay: two checks stop the same thing | (asked at the review) |
-| B2. The release does not read the vendor again | INV-1008's payment is drafted to a suspended VENDOR-44 | (asked at the review) |
-| B3. The look and the count are both gone | both attempts on INV-1008 wait, and both payments are drafted: step 31's failure comes back | (asked at the review) |
-| B4. The proposal being released counts against itself | INV-1008's own release finds nothing left to pay, and is `INVALIDATED` | (asked at the review) |
-| B5. `payment.create` loses its precondition on the invoice's status | INV-1005, a draft invoice, gets a payment drafted | (asked at the review) |
-| B6. On the database, the invoice's lock is gone | two attempts at once both pass the look, and the database's key refuses the second | (asked at the review) |
+| B1. The look for a proposal in flight is gone | the second attempt on INV-1008 is still refused, by the count of what is left to pay: two checks stop the same thing | none: built first |
+| B2. The release does not read the vendor again | INV-1008's payment is drafted to a suspended VENDOR-44 | none: built first |
+| B3. The look and the count are both gone | both attempts on INV-1008 wait, and both payments are drafted: step 31's failure comes back | none: built first |
+| B4. The proposal being released counts against itself | INV-1008's own release finds nothing left to pay, and is `INVALIDATED` | none: built first |
+| B5. `payment.create` loses its precondition on the invoice's status | INV-1005, a draft invoice, gets a payment drafted | none: built first |
+| B6. On the database, the invoice's lock is gone | two attempts at once both pass the look, and the database's key refuses the second | none: built first |
 
 ### Left open, and not this step's idea
 

@@ -1891,6 +1891,8 @@ questions became 132 to 134.
   contract's freshness; M3, the refusal masked for a caller with no clearance; M4, the double
   payment one attempt after the other, recorded for the learner's review of D9), six low, nine
   breaks no test caught. Each fixed one, and each survivor, has a test.
+- **The learner's review:** after the story's act 7, the learner kept every decision: D9, D8, D13,
+  D5, and D11 one at a time, each after its story, and the other nine as one list.
 - **Counts:** unit 2286, database 503, at b1c51e1.
 - **Lessons for the next builds:**
   - Two sessions of one build ran at once, on one folder and one database, for an hour. The first
