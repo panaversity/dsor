@@ -31,7 +31,7 @@ const LONGEST: Readonly<Record<string, number>> = {
 };
 
 // copied from packages/spec/schemas/common.schema.json#/$defs/hash/pattern
-const HASH = /^sha256:[A-Za-z0-9+\/=_\-]+$/;
+const HASH = /^sha256:[A-Za-z0-9+/=_\-]+$/;
 
 // Control characters, a new line among them, which no text of agent_asserted may hold, as a request
 // id may hold none (step 09's README, decision 16).
