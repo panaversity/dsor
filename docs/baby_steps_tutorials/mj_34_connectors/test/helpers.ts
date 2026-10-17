@@ -1,4 +1,5 @@
 // What the contract, registry, and envelope tests share. Not a test file itself.
+import type { Plugs } from "../src/connectors.ts";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -324,6 +325,16 @@ export function extraField(field: string): string {
 
 // The name under which a record keeps the company a caller claimed (step 10's decision 6).
 export const OUR_EXTENSIONS = "org.panaversity.steps";
+
+// No connector at all: no operation is routed, so line ④ looks at none. Only for a registry a test
+// builds by hand, so it lives here and not in src, where it would let every call through (step
+// 34's review, F6).
+export const NO_PLUGS: Plugs = Object.freeze({
+  connectorOf: () => "*",
+  outOfService: () => undefined,
+  needs: new Map(),
+  warnings: [],
+});
 
 // The story's KSoR, typed out again from step 28b's README rather than read from src. org_456
 // keeps its payment-approval policy, version 4 in force, with the short fingerprint that version 8

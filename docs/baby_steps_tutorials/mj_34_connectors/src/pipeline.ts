@@ -344,7 +344,7 @@ export async function call(
     // NEW IN STEP 34: and the breaker of §10.2, after the brake: an operation on the company's
     //   records is refused while that company's connector is out of service, before any claim, so
     //   a retry with the same key is safe. A query too: its read goes there (step 34's README,
-    //   decision D3).
+    //   decision D4).
     await line(4, async () => {
       await checkBrake(caller, contract, registry.brakes, tenant);
       checkConnector(registry.plugs, tenant, contract);

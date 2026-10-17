@@ -131,13 +131,14 @@ describe("C2: an operation goes only to a connector that has what it needs", () 
         ["freshness:current"],
         ["shares_dsor_transaction"],
       ],
+      "proposal.approve": [["transactions"], ["freshness:current"], ["shares_dsor_transaction"]],
       "proposal.execute": [["transactions"], ["freshness:current"], ["shares_dsor_transaction"]],
     });
   });
 
   it("DSOR-CNR-01b: DSoR's own commands are routed to no connector: they work on DSoR's own store", async () => {
     const w = await ruleWorldOnTuesday();
-    for (const own of ["rule.draft", "proposal.approve", "rate.load", "control.suspend"]) {
+    for (const own of ["rule.draft", "rate.load", "control.suspend", "delegation.revoke"]) {
       expect(w.registry.plugs.needs.has(own)).toBe(false);
     }
   });
@@ -197,8 +198,9 @@ describe("C2: an operation goes only to a connector that has what it needs", () 
       expected_version: 1,
     });
     expect(refused).toMatchObject({ code: "CONNECTOR_UNAVAILABLE", retry: "safe_same_key" });
-    expect((refused as { message: string }).message).toContain(
-      'payment.create: org_789\'s connector is out of service: connector "accounting-789" cannot serve',
+    // Fixed words: the caller hears that the connector is out, never why (step 34's review, F2).
+    expect((refused as { message: string }).message).toBe(
+      "payment.create: org_789's connector is out of service",
     );
     // Before line ⑦: no claim, no proposal, nothing drafted.
     expect((await w.proposals.all()).filter((p) => p.tenant === "org_789")).toStrictEqual([]);

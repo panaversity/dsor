@@ -18,6 +18,7 @@ import { keyProblems, memoryClaims, type ClaimStore } from "./claims.ts";
 import { concurrencyProblems } from "./concurrency.ts";
 import {
   checkConnectors,
+  READS_COMPANY_RECORDS,
   readConnectors,
   type ConnectorsSource,
   type Plugs,
@@ -128,7 +129,7 @@ export type Registry = {
   // in force (step 28b's README, decisions D1 and D2).
   ksors: Ksors;
   // NEW IN STEP 34: which connector holds each company's records, and whether it is in service.
-  //   Line ④ reads it (DSOR-CNR-01b; step 34's README, decision D3).
+  //   Line ④ reads it (DSOR-CNR-01b; step 34's README, decision D4).
   plugs: Plugs;
 };
 
@@ -221,7 +222,7 @@ export function buildRegistry(
   // README, decision D1).
   ksors: Ksors = NO_KSORS,
   // NEW IN STEP 34: the connectors, and the companies each one serves. This step's own file,
-  //   unless the caller gives another (step 34's README, decisions D1 and D3).
+  //   unless the caller gives another (step 34's README, decisions D1 and D4).
   connectorSource: ConnectorsSource = readConnectors(),
 ): Registry {
   // Every problem is collected first, and the refusal names them all (step 03's
@@ -413,9 +414,11 @@ export function buildRegistry(
 
   // NEW IN STEP 34: every connector's declaration, against connector.schema.json, and against what
   //   each operation on the company's records needs: an operation with the company's code, and the
-  //   release, which runs one (DSOR-CNR-01a, DSOR-CNR-01b; step 34's README, decisions D2 and D3).
-  //   DSoR's own commands work on DSoR's own store, and no connector serves them.
-  const routed = (contract: Contract): boolean => code.has(contract.id) || releases(contract);
+  //   release, which runs one, and an approval, which reads the state it binds (DSOR-CNR-01a,
+  //   DSOR-CNR-01b; step 34's README, decisions D2 to D4). DSoR's other commands work on DSoR's own
+  //   store, and no connector serves them.
+  const routed = (contract: Contract): boolean =>
+    code.has(contract.id) || releases(contract) || READS_COMPANY_RECORDS.has(contract.id);
   const { plugs, problems: connectorProblems } = checkConnectors(
     connectorSource,
     contracts.values(),

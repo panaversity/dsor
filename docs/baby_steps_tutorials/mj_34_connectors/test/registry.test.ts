@@ -1,6 +1,5 @@
 // The registry at start-up, and calls by name, by step 03's claims (C1 to C7 in step 03's
 // README). From step 04, call answers with an envelope instead of throwing.
-import { NO_PLUGS } from "../src/connectors.ts";
 import { memoryClaims } from "../src/claims.ts";
 import { describe, expect, it, vi } from "vitest";
 import type { ErrorEnvelope } from "../src/envelope.ts";
@@ -32,6 +31,7 @@ import {
   without,
   testSlips,
   storyDirectories,
+  NO_PLUGS,
 } from "./helpers.ts";
 
 // Every call carries the agent's login token (step 05's README, decision 1).

@@ -2220,16 +2220,20 @@ const split = JSON.stringify({
   companies: { "*": "accounting", org_789: "accounting-789" },
 });
 const splitWorld = await connectorWorld({ file: "connectors.json", text: split });
+// Why org_789's connector is out of service is for the people who run DSoR: start-up says it, and
+//   no caller hears it (step 34's review, F3).
+for (const warning of splitWorld.plugs.warnings) console.log(`  start-up warns: ${warning}`);
 const splitLog = createLog();
 let splitKeys = 0;
 const splitCall = (who: RequestEnvelope, name: string, input: unknown): Promise<Answer> =>
   call(splitWorld, splitLog, withKey(who, `connector-${++splitKeys}`), name, input);
+// user_700, a person of org_789, so line ③ passes and line ④ is the line that answers.
+const USER_700: RequestEnvelope = { token: "tok_e1a7", tenant: "org_789" };
 console.log(
-  "  org_789's connector cannot undo a job; firm-ap-fte drafts org_789's INV-2002:",
+  "  org_789's connector cannot undo a job; user_700 reads org_789's INV-2002:",
   heard(
-    await splitCall(FIRM_IN_789, "payment.create", {
+    await call(splitWorld, splitLog, USER_700, "invoice.get", {
       invoice: "dsor://org_789/invoice/INV-2002",
-      expected_version: 1,
     }),
   ),
 );

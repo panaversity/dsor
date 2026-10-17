@@ -108,7 +108,7 @@ export function ruleWorld(
   // decision D1).
   ksors: Map<string, FakeKsor> = storyKsors(),
   // And the connectors: this step's own file, unless a test gives another (step 34's README,
-  // decision D3).
+  // decision D4).
   connectors: ConnectorsSource = readConnectors(),
 ): RuleWorld {
   const clock = { now: T0 };

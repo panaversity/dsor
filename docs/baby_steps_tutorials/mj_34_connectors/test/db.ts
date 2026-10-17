@@ -66,7 +66,7 @@ export function dbRegistry(
   // decision D1).
   ksors: Ksors = storyKsors(),
   // And the connectors: the shipped file, unless the test gives another (step 34's README,
-  // decision D3).
+  // decision D4).
   connectors: ConnectorsSource = readConnectors(),
 ): Registry {
   // The registry holds the store (step 10's README, decision 13).

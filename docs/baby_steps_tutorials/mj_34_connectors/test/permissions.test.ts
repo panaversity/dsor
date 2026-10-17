@@ -638,7 +638,7 @@ describe("C4: an operation nobody was granted is denied to everyone", () => {
         checkRule: registry.checkRule,
         // And the shared registry's KSoR (step 28b's README, decision D1).
         ksors: registry.ksors,
-        // And the shipped connectors (step 34's README, decision D3).
+        // And the shipped connectors (step 34's README, decision D4).
         plugs: registry.plugs,
       };
       expect(
