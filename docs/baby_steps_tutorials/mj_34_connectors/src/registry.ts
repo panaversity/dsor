@@ -17,6 +17,12 @@ import { NO_BRAKES, type BrakeStore } from "./brakes.ts";
 import { keyProblems, memoryClaims, type ClaimStore } from "./claims.ts";
 import { concurrencyProblems } from "./concurrency.ts";
 import {
+  checkConnectors,
+  readConnectors,
+  type ConnectorsSource,
+  type Plugs,
+} from "./connectors.ts";
+import {
   checkClassifications,
   readClassifications,
   type ClassificationSource,
@@ -121,6 +127,9 @@ export type Registry = {
   // Each company's KSoR, which DSoR's own work asks which version of a policy is
   // in force (step 28b's README, decisions D1 and D2).
   ksors: Ksors;
+  // NEW IN STEP 34: which connector holds each company's records, and whether it is in service.
+  //   Line ④ reads it (DSOR-CNR-01b; step 34's README, decision D3).
+  plugs: Plugs;
 };
 
 // The specification's own schemas, copied byte for byte (step 03's README, decision 3).
@@ -211,6 +220,9 @@ export function buildRegistry(
   // known: no version that cites one can be switched on, and the sweep hears no answer (step 28b's
   // README, decision D1).
   ksors: Ksors = NO_KSORS,
+  // NEW IN STEP 34: the connectors, and the companies each one serves. This step's own file,
+  //   unless the caller gives another (step 34's README, decisions D1 and D3).
+  connectorSource: ConnectorsSource = readConnectors(),
 ): Registry {
   // Every problem is collected first, and the refusal names them all (step 03's
   // README, decision 2).
@@ -399,6 +411,18 @@ export function buildRegistry(
     }
   }
 
+  // NEW IN STEP 34: every connector's declaration, against connector.schema.json, and against what
+  //   each operation on the company's records needs: an operation with the company's code, and the
+  //   release, which runs one (DSOR-CNR-01a, DSOR-CNR-01b; step 34's README, decisions D2 and D3).
+  //   DSoR's own commands work on DSoR's own store, and no connector serves them.
+  const routed = (contract: Contract): boolean => code.has(contract.id) || releases(contract);
+  const { plugs, problems: connectorProblems } = checkConnectors(
+    connectorSource,
+    contracts.values(),
+    routed,
+  );
+  problems.push(...connectorProblems);
+
   if (problems.length > 0) {
     throw new Error(`the registry refused to start:\n  ${problems.join("\n  ")}`);
   }
@@ -420,6 +444,7 @@ export function buildRegistry(
     controls,
     checkRule,
     ksors,
+    plugs,
   };
 }
 

@@ -1,6 +1,7 @@
 // What the database tests share. Not a test file itself.
 // The tests look at the database with pg directly, never through src, so a broken log
 // cannot vouch for itself.
+import { readConnectors, type ConnectorsSource } from "../src/connectors.ts";
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -64,6 +65,9 @@ export function dbRegistry(
   // And each company's KSoR: the story's, unless the test gives another (step 28b's README,
   // decision D1).
   ksors: Ksors = storyKsors(),
+  // And the connectors: the shipped file, unless the test gives another (step 34's README,
+  // decision D3).
+  connectors: ConnectorsSource = readConnectors(),
 ): Registry {
   // The registry holds the store (step 10's README, decision 13).
   return buildRegistry(
@@ -92,6 +96,7 @@ export function dbRegistry(
     undefined,
     controls === "database" ? createDbControls(pool) : controls,
     ksors,
+    connectors,
   );
 }
 

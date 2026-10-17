@@ -1,5 +1,6 @@
 // The registry at start-up, and calls by name, by step 03's claims (C1 to C7 in step 03's
 // README). From step 04, call answers with an envelope instead of throwing.
+import { NO_PLUGS } from "../src/connectors.ts";
 import { memoryClaims } from "../src/claims.ts";
 import { describe, expect, it, vi } from "vitest";
 import type { ErrorEnvelope } from "../src/envelope.ts";
@@ -147,6 +148,8 @@ describe("C1: nothing can be called without a contract", () => {
       checkRule: () => [],
       // And no KSoR, since this registry asks about no policy (step 28b's README, decision D1).
       ksors: NO_KSORS,
+      // And no connector, since this registry routes nothing (step 34's README, decision D3).
+      plugs: NO_PLUGS,
     };
     // The refusal is an envelope, not a throw.
     expect(await call(handMade, log, AGENT, "invoice.delete", {})).toMatchObject({

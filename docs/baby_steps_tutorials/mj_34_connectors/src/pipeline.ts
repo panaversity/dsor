@@ -3,6 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { pinned, readBound, type Bound, type BoundRead } from "./bound.ts";
 import { checkBrake, holdBrake, NO_BRAKES, type BrakeStore } from "./brakes.ts";
+import { checkConnector } from "./connectors.ts";
 import { checkedAssertion } from "./asserted.ts";
 import { bundleOf, checkBundle, executedOf, newEvidence, stateReadOf } from "./bundle.ts";
 import { freshSheet, NO_RATES, readOnce, type RateStore } from "./rates.ts";
@@ -340,7 +341,14 @@ export async function call(
     //   so does every call from a person (§18; step 25b's README, decisions L7 and D3). Read from
     //   the store at every call, with no cache, so a brake reaches the next decision
     //   (DSOR-OPS-01b). An operation freeze and a breaker: not built yet.
-    await line(4, () => checkBrake(caller, contract, registry.brakes, tenant));
+    // NEW IN STEP 34: and the breaker of §10.2, after the brake: an operation on the company's
+    //   records is refused while that company's connector is out of service, before any claim, so
+    //   a retry with the same key is safe. A query too: its read goes there (step 34's README,
+    //   decision D3).
+    await line(4, async () => {
+      await checkBrake(caller, contract, registry.brakes, tenant);
+      checkConnector(registry.plugs, tenant, contract);
+    });
 
     // ⑤ Authorize: the caller must hold the permission the contract names (DSOR-AUT-01b).
     // Only the caller's roles in the active company count.

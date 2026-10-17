@@ -5,6 +5,7 @@ import { readRoleSettings } from "../src/authority.ts";
 import { memoryBrakes } from "../src/brakes.ts";
 import { memoryClaims } from "../src/claims.ts";
 import { readControls, type Control, type ControlsSource } from "../src/controls.ts";
+import { readConnectors, type ConnectorsSource } from "../src/connectors.ts";
 import type { Answer } from "../src/envelope.ts";
 import type { FakeDirectory } from "../src/directory.ts";
 import { invoices, memoryInvoices, type Invoice } from "../src/invoice.ts";
@@ -106,6 +107,9 @@ export function ruleWorld(
   // And each company's KSoR: the story's, unless a test gives another (step 28b's README,
   // decision D1).
   ksors: Map<string, FakeKsor> = storyKsors(),
+  // And the connectors: this step's own file, unless a test gives another (step 34's README,
+  // decision D3).
+  connectors: ConnectorsSource = readConnectors(),
 ): RuleWorld {
   const clock = { now: T0 };
   const bills = [...structuredClone(invoices), ...structuredClone(BILLS)];
@@ -146,6 +150,7 @@ export function ruleWorld(
     readMoneyPolicies(),
     given,
     ksors,
+    connectors,
   );
   const log = createLog();
   const ask = (who: RequestEnvelope, name: string, input: unknown): Promise<Answer> =>
@@ -183,8 +188,9 @@ export async function ruleWorldOnTuesday(
   around?: (rules: MemoryControls) => ControlStore,
   roles?: RoleTableSource,
   ksors?: Map<string, FakeKsor>,
+  connectors?: ConnectorsSource,
 ): Promise<RuleWorld> {
-  const w = ruleWorld(controls, more, inputs, contracts, around, roles, ksors);
+  const w = ruleWorld(controls, more, inputs, contracts, around, roles, ksors, connectors);
   await w.rates.load("org_456", {
     source: "ecb-daily",
     base: "EUR",

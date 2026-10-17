@@ -56,6 +56,7 @@
 // header described step 13's program, and left out the masking and cfo_100's read.
 // The log and the invoices are tables in the database named by
 // DSOR_DB_URL, in this step's .env. Run `pnpm migrate` once first.
+import { readConnectors, type ConnectorsSource } from "./connectors.ts";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { readRoleSettings } from "./authority.ts";
@@ -2147,6 +2148,108 @@ const valid = kept.filter((b) => bundleProblems(b).length === 0).length;
 console.log(
   `  bundles in this world: ${kept.length}, ${valid} of them valid against decision-bundle.schema.json`,
 );
+
+// NEW IN STEP 34: connectors, in memory, in worlds of their own (step 34's README, the story's
+//   numbers). The shipped declaration, and what each operation on the company's records needs from
+//   it. Then org_789 keeps its records behind a connector of its own, which cannot undo a
+//   half-finished job: org_789's calls are refused at line ④, and org_456's are not. Then the
+//   default connector cannot undo one: DSoR does not start.
+console.log("connectors, in memory, in worlds of their own:");
+const shippedConnectors = JSON.parse(readConnectors().text) as {
+  connectors: Record<string, unknown>[];
+};
+const accounting = shippedConnectors.connectors[0]!;
+const says = Object.entries(accounting["capabilities"] as Record<string, unknown>)
+  .map(([name, value]) => `${name} ${Array.isArray(value) ? value.join("/") : String(value)}`)
+  .join(", ");
+console.log(`  ${String(accounting["id"])}, ${String(accounting["write_exclusivity"])}: ${says}`);
+/** A world whose connectors file is this one, with the story's rule, on Tuesday's sheet. */
+async function connectorWorld(connectors: ConnectorsSource) {
+  const clock = { now: Date.parse("2026-10-06T15:05:00Z") };
+  const store = memoryInvoices(structuredClone(invoices), structuredClone(vendors));
+  const paid = memoryPayments([]);
+  const slips = memorySlips(limited);
+  const rates = memoryRates(() => clock.now);
+  const rules = memoryControls(readControls(CONTROLS));
+  const world = buildRegistry(
+    readContracts(CONTRACTS),
+    handlersFor(),
+    readRoles(ROLES),
+    readInputs(INPUTS),
+    readClassifications(CLASSIFICATIONS),
+    store,
+    paid,
+    slips,
+    directories,
+    readRoleSettings(),
+    memoryClaims(
+      store,
+      paid,
+      memoryProposals(() => clock.now),
+      memoryReservations(() => clock.now),
+      slips,
+      undefined,
+      rates,
+      rules,
+    ),
+    ownWorkFor(),
+    undefined,
+    undefined,
+    undefined,
+    rules,
+    storyKsors(),
+    connectors,
+  );
+  await rates.load("org_456", {
+    source: "ecb-daily",
+    base: "EUR",
+    published_at: "2026-10-06T14:00:00.000Z",
+    rates: { USD: "1.0800", GBP: "0.8532", PKR: "302.40" },
+  });
+  return world;
+}
+const shippedWorld = await connectorWorld(readConnectors());
+for (const [operation, needs] of shippedWorld.plugs.needs) {
+  const listed = needs.map((need) => need.join(" or ")).join(", ");
+  console.log(`  ${operation} needs: ${listed === "" ? "nothing beyond a read" : listed}`);
+}
+const cannotUndo = { ...(accounting["capabilities"] as object), transactions: false };
+const own789 = { ...accounting, id: "accounting-789", capabilities: cannotUndo };
+const split = JSON.stringify({
+  connectors: [accounting, own789],
+  companies: { "*": "accounting", org_789: "accounting-789" },
+});
+const splitWorld = await connectorWorld({ file: "connectors.json", text: split });
+const splitLog = createLog();
+let splitKeys = 0;
+const splitCall = (who: RequestEnvelope, name: string, input: unknown): Promise<Answer> =>
+  call(splitWorld, splitLog, withKey(who, `connector-${++splitKeys}`), name, input);
+console.log(
+  "  org_789's connector cannot undo a job; firm-ap-fte drafts org_789's INV-2002:",
+  heard(
+    await splitCall(FIRM_IN_789, "payment.create", {
+      invoice: "dsor://org_789/invoice/INV-2002",
+      expected_version: 1,
+    }),
+  ),
+);
+console.log(
+  "  the agent drafts org_456's INV-1008, 31,400.00 USD:",
+  waitHeard(await splitCall(AGENT, "payment.create", ofInvoice("INV-1008"))),
+);
+const brokenDefault = JSON.stringify({
+  connectors: [{ ...accounting, capabilities: cannotUndo }],
+  companies: { "*": "accounting" },
+});
+try {
+  await connectorWorld({ file: "connectors.json", text: brokenDefault });
+  console.log("  the default connector cannot undo a job: DSoR started");
+} catch (error) {
+  const [, first] = (error as Error).message.split("\n");
+  console.log(
+    `  the default connector cannot undo a job: DSoR does not start:\n  ${String(first)}`,
+  );
+}
 
 // Every call above left one record in the log before its answer was returned, the
 // refusals too. dsor_runtime reads one company at a time, and never a
