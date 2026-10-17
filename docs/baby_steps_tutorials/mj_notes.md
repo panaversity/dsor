@@ -179,6 +179,21 @@ when the real call would be refused. **Proposed by the learner (2026-10-10):** Â
 suspension or a freeze refuses a command in every invocation mode, `validate_only` included. No
 code changes: step 25b does this already (open question 104).
 
+### May a connector use a system's own MCP server?
+
+Raised by the learner on 2026-10-17, before step 34: "won't most banks make their own MCP as
+well, and MCP is more like an API call, so why redefine?" Our reading: MCP is how a call travels;
+a connector is DSoR's contract for one system, which holds its keys and states what it guarantees.
+A bank's MCP server could sit underneath a connector, never beside the agent. The specification is
+silent, so this is open question 145.
+
+### Who should pick a stale rule's `on_stale`?
+
+The learner's view on step 28b (2026-10-17): `require_approval` during a stale rule's grace makes
+even a 640 USD invoice wait for the CFO for up to seven days, and "it's a problem". Our reply: it is
+the price of not guessing, and the fix is a fast new version and a short grace, not a softer rule.
+Still open: whether the rule's owner or the company should choose `on_stale` and the grace.
+
 ## Our builds, compared with another learner's
 
 Another learner builds the same steps on the branch `wania/dev-DSoR-in-baby-steps`
@@ -1951,6 +1966,28 @@ review, and the better story of Part 4 comes next.
   - A plain object keyed by the company's text, such as a rule's id, meets Object's own names. Use
     a Map.
   - A new test file can overwrite one the copy carried: check the name before writing.
+
+### Step 34, connectors, built first by the learner's choice (2026-10-17)
+
+Copied from step 33. Before it, the learner asked to rework the teaching (fast and slow, their own
+world, more pictures, and Claude Code runs the code), heard steps 02 to 04 and 27 to 30 that way,
+then asked for step 33 as one story and the whole journey without jargon, and moved to step 34.
+
+- **The question that shaped the step:** "won't most banks make their own MCP as well, so why
+  redefine?" Answer: MCP is how a call travels, a connector is DSoR's contract with one system. A
+  bank's MCP server may sit under a connector, never beside the agent (open question 145).
+- **Production first:** six choices were checked against how real systems run before any code.
+  Two changed: a company's own connector refuses at line â‘£ instead of stopping start-up, and the
+  password test is an alarm, not the lock. The learner then chose to build first.
+- **Changed during the build (F1):** the connector keeps DSoR's login, because a login of its own
+  would break step 33's one transaction. Separate keys wait for step 36.
+- **The review:** `proposal.approve` was not routed; a refusal repeated a declaration's text, so a
+  URL could reach the agent; three fields could carry a key; fifteen breaks survived. Each fixed red
+  first, with a test.
+- **On a throwaway PostgreSQL** (port 55474): two database tests fail on it, for step 33 as well,
+  because it accepts any password and its owner belongs to no other role.
+- **Left open:** routing by name only; the shared-transaction flag is the connector's own word;
+  a replay during an outage (147); fallback semantics (146); a warning nobody is sent.
 
 ## Still unknown
 

@@ -981,3 +981,24 @@ for a human. An agent may gather evidence; it does not settle these alone.
     `authorization` and `execution.result`, and no field for the code the caller heard, such as
     `LIMIT_EXCEEDED`, or its reason, which DSOR-EXE-02 asks the decision to record. Step 33's
     learner build keeps both in its extensions (its D13). Should the bundle have a field for them?
+
+145. **May a connector reach its system through that system's own MCP server?** §35 says what a
+    connector must declare and keep (its capabilities, its credentials), and §38 makes MCP the
+    agent's way into DSoR. Payment providers already publish MCP servers, and banks will follow.
+    The specification never says whether a connector may use one as its transport. If it may, the
+    connector still holds the credentials (DSOR-CNR-02) and still states its capabilities itself:
+    an MCP tool's `idempotentHint` is a hint, never a guarantee (§38.2). Should §35 say so, and
+    should it say that the agent must never be connected to the same MCP server (DSOR-CNR-04)?
+    Raised by the learner on 2026-10-17, before step 34.
+
+146. **Where does a contract define fallback semantics?** DSOR-CNR-01b lets an operation go to a
+    connector that lacks a capability "unless the contract defines fallback semantics", and
+    `operation-contract.schema.json` has no field for them. Step 34's learner build routes no
+    operation to a connector that lacks a need (its D6). Should the contract gain a field, or
+    should the clause go?
+
+147. **Is a replay refused while its connector is out of service?** DSOR-IDM-01c gives back the
+    recorded answer of a request already run. Step 34's learner build checks the connector at line
+    ④, before line ⑦'s claim, so a replay during an outage hears `CONNECTOR_UNAVAILABLE` though its
+    answer is in DSoR's own store, as a replay under the brake does. Should a replay that reads
+    nothing from the connector pass the breaker?
