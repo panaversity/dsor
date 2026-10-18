@@ -246,6 +246,13 @@ export function ownerProposals(...args: string[]): unknown {
   return asOwner("owner-proposals.ts", args);
 }
 
+// Step 36: the owner tries to change a note, or takes dsor_runtime's INSERT on the notes away and
+//   gives it back (test/owner-intents.ts; step 36's README, decision D1 and claim C2).
+/** What the owner's intents program printed, for these words. */
+export function ownerIntents(...args: string[]): unknown {
+  return asOwner("owner-intents.ts", args);
+}
+
 /** Every row of dsor.audit with this request id, read by the owner. */
 export function ownerRowsFor(request_id: string): Record<string, unknown>[] {
   return asOwner("owner-reads.ts", [request_id]) as Record<string, unknown>[];

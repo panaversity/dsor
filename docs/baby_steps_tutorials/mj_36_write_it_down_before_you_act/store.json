@@ -241,6 +241,30 @@
         }
       }
     },
+    "dsor.intents": {
+      "kind": "control-moved",
+      "tenant": "tenant_id",
+      "runtime": {
+        "table": ["SELECT"],
+        "columns": {
+          "INSERT": [
+            "proposal_id",
+            "tenant_id",
+            "operation",
+            "payload_hash",
+            "principal",
+            "claim_operation",
+            "idempotency_key",
+            "connector",
+            "security_context"
+          ],
+          "UPDATE": ["outcome"]
+        }
+      },
+      "triggers": [
+        "CREATE TRIGGER intents_end BEFORE UPDATE ON dsor.intents FOR EACH ROW EXECUTE FUNCTION dsor.intent_ends()"
+      ]
+    },
     "dsor.migrations": {
       "kind": "bookkeeping",
       "tenant": null,

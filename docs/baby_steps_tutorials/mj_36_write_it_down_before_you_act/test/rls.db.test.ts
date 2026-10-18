@@ -110,7 +110,8 @@ describe("C1: every table with a company column has its lock", () => {
   // And dsor.controls, each company's rules (step 28's README, decision D2).
   // And dsor.notices, the notices to each rule's owner (step 28b's README, decision D5).
   // And dsor.approvals (step 29's README, decision D8).
-  it("DSOR-RP-01b: app.invoices, app.payments, app.vendors, dsor.approvals, dsor.audit, dsor.brakes, dsor.controls, dsor.decision_bundles, dsor.delegations, dsor.idempotency, dsor.limit_counters, dsor.notices, dsor.proposals, dsor.rates, and dsor.reservations have row-level security enabled, forced, and policies", async () => {
+  // And dsor.intents, the notes (step 36's README, decision D1).
+  it("DSOR-RP-01b: app.invoices, app.payments, app.vendors, dsor.approvals, dsor.audit, dsor.brakes, dsor.controls, dsor.decision_bundles, dsor.delegations, dsor.idempotency, dsor.intents, dsor.limit_counters, dsor.notices, dsor.proposals, dsor.rates, and dsor.reservations have row-level security enabled, forced, and policies", async () => {
     const { rows } = await observer.query(TENANT_TABLES);
     expect(rows).toStrictEqual([
       { table: "app.invoices", enabled: true, forced: true, policies: 1 },
@@ -129,6 +130,8 @@ describe("C1: every table with a company column has its lock", () => {
       { table: "dsor.delegations", enabled: true, forced: true, policies: 2 },
       // The company's rule, and answer_once (step 20's README, decision 12).
       { table: "dsor.idempotency", enabled: true, forced: true, policies: 2 },
+      // Step 36: the notes, with the company's rule; the trigger guards the end.
+      { table: "dsor.intents", enabled: true, forced: true, policies: 1 },
       // The day's totals, and the reservations, with starts_held and ends_once
       // (step 24's README, decision 13).
       { table: "dsor.limit_counters", enabled: true, forced: true, policies: 1 },
@@ -317,6 +320,16 @@ describe("C1: every table with a company column has its lock", () => {
       },
       {
         table: "dsor.idempotency",
+        name: "tenant_isolation",
+        command: "ALL",
+        roles: ["public"],
+        using: `(tenant_id = ${company})`,
+        check: null,
+        kind: "PERMISSIVE",
+      },
+      // Step 36: the company's rule on the notes.
+      {
+        table: "dsor.intents",
         name: "tenant_isolation",
         command: "ALL",
         roles: ["public"],

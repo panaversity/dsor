@@ -11,6 +11,7 @@ import { call } from "../src/pipeline.ts";
 import { createDbLog } from "../src/postgres.ts";
 import {
   CONTROL_TRIGGER,
+  INTENT_TRIGGER,
   INVOICE_TRIGGER,
   PAYMENT_TRIGGER,
   PROPOSAL_TRIGGER,
@@ -329,6 +330,8 @@ describe("C8 and C11: the version in a read, and the triggers in the catalog", (
     // And, since step 28, the guard on a version's moves (step 28's review, finding L14).
     expect(rows.map((row) => row["def"])).toStrictEqual([
       CONTROL_TRIGGER,
+      // And, since step 36, the guard on a note's end (step 36's README, decision D1).
+      INTENT_TRIGGER,
       INVOICE_TRIGGER,
       PAYMENT_TRIGGER,
       PROPOSAL_TRIGGER,

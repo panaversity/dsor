@@ -42,7 +42,8 @@ describe("the shipped map", () => {
   // Changed in step 29: and a fourteenth, dsor.approvals (step 29's README, decision D8).
   // Changed in step 32: and app.vendors (step 32's README, decision D1).
   // Changed in step 33: and dsor.decision_bundles, a sixteenth (step 33's README, decision D3).
-  it("step 16's decision 1: it names three schemas and sixteen tables", () => {
+  // Changed in step 36: and dsor.intents, a seventeenth (step 36's README, decision D1).
+  it("step 16's decision 1: it names three schemas and seventeen tables", () => {
     const { map } = checkStore(SHIPPED);
     expect([...map.schemas.keys()]).toStrictEqual(["app", "dsor", "public"]);
     expect([...map.tables.keys()]).toStrictEqual([
@@ -61,8 +62,39 @@ describe("the shipped map", () => {
       "dsor.notices",
       "dsor.approvals",
       "dsor.decision_bundles",
+      "dsor.intents",
       "dsor.migrations",
     ]);
+  });
+
+  // Step 36: a note is read inside its company, added through nine named columns, and ended
+  //   through one, guarded by its trigger. Nothing removes one (step 36's README, decision D1).
+  it("DSOR-EXE-03a: dsor.intents is read inside its company, added through named columns, ended through its outcome only, and guarded by its trigger", () => {
+    const { map } = checkStore(SHIPPED);
+    expect(map.tables.get("dsor.intents")).toStrictEqual({
+      kind: "control-moved",
+      tenant: "tenant_id",
+      runtime: {
+        table: ["SELECT"],
+        columns: {
+          INSERT: [
+            "proposal_id",
+            "tenant_id",
+            "operation",
+            "payload_hash",
+            "principal",
+            "claim_operation",
+            "idempotency_key",
+            "connector",
+            "security_context",
+          ],
+          UPDATE: ["outcome"],
+        },
+      },
+      triggers: [
+        "CREATE TRIGGER intents_end BEFORE UPDATE ON dsor.intents FOR EACH ROW EXECUTE FUNCTION dsor.intent_ends()",
+      ],
+    });
   });
 
   // Step 33: a bundle is read inside its company, added through three named columns, and never

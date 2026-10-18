@@ -34,6 +34,10 @@ export const PROPOSAL_TRIGGER =
 // The guard on a version's moves (step 28's review, finding L14).
 export const CONTROL_TRIGGER =
   "CREATE TRIGGER controls_move BEFORE UPDATE ON dsor.controls FOR EACH ROW EXECUTE FUNCTION dsor.control_moves()";
+// Step 36: the guard on a note, which lets only its outcome be written, once (step 36's README,
+//   decision D1).
+export const INTENT_TRIGGER =
+  "CREATE TRIGGER intents_end BEFORE UPDATE ON dsor.intents FOR EACH ROW EXECUTE FUNCTION dsor.intent_ends()";
 // The log's columns. dsor_runtime may INSERT every one but sequence and at, which the
 // database fills in (step 09's README, decision 6).
 const AUDIT_COLUMNS = [
@@ -66,6 +70,25 @@ const FILLED_BY_THE_DATABASE = ["sequence", "at"];
 //   column and adds a bundle through three. sealed_at is the database's to fill, and nothing
 //   changes or removes a bundle (step 33's README, decision D3).
 const BUNDLE_COLUMNS = ["decision_id", "tenant_id", "bundle", "sealed_at"];
+
+// Step 36: dsor.intents, as migration 032 makes it. dsor_runtime reads every column, adds a note
+//   through nine, and writes its outcome. written_at has a default; ended_at has none, and the
+//   trigger writes it with the outcome (step 36's README, decision D1).
+const INTENT_COLUMNS = [
+  "proposal_id",
+  "tenant_id",
+  "operation",
+  "payload_hash",
+  "principal",
+  "claim_operation",
+  "idempotency_key",
+  "connector",
+  "security_context",
+  "written_at",
+  "outcome",
+  "ended_at",
+];
+const INTENT_READ_ONLY = ["written_at", "ended_at"];
 
 // The table dsor.delegations, as migration 010 makes it. dsor_runtime reads every
 // column and writes none (step 18's README, decision 3). Migration 012 lets it
@@ -382,6 +405,21 @@ export function today(): Catalog {
         rowSecurity: { enabled: true, forced: true },
         rules: [],
         triggers: [],
+      },
+      // Step 36: the notes, behind the company's lock, each ended once.
+      {
+        name: "dsor.intents",
+        kind: "table",
+        held: ["SELECT"],
+        columns: INTENT_COLUMNS.map((name) => {
+          const filled = name === "written_at";
+          if (name === "outcome") return { name, held: ["SELECT", "UPDATE"], filled };
+          const held = INTENT_READ_ONLY.includes(name) ? ["SELECT"] : ["SELECT", "INSERT"];
+          return { name, held, filled };
+        }),
+        rowSecurity: { enabled: true, forced: true },
+        rules: [],
+        triggers: [INTENT_TRIGGER],
       },
       // The day's totals, behind the company's lock.
       {

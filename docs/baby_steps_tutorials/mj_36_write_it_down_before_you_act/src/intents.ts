@@ -5,6 +5,8 @@
 // outcome is OUTCOME_UNKNOWN (DSOR-EXE-04b). The program keeps notes in dsor.intents
 // (postgres.ts); the unit tests keep them in memory (step 36's README, decisions D1 to D3).
 
+import { Refusal } from "./envelope.ts";
+
 /** One note, as it is written before the side effect. */
 export type Intent = {
   proposal_id: string;
@@ -12,8 +14,11 @@ export type Intent = {
   // The operation and its version, as the record names it: payment.execute@1.
   operation: string;
   payload_hash: string;
-  // The claim the note belongs to: its principal and its idempotency key.
+  // The claim the note belongs to: its principal, its operation, and its idempotency key. The
+  //   claim's operation is the call's own: proposal.execute for a release, whose note names the
+  //   operation it runs.
   principal: string;
+  claim_operation: string;
   idempotency_key: string;
   connector: string;
   // Who asked, under whose authority, as line ③ found it: the requester DSoR stored.
@@ -24,7 +29,11 @@ export type Intent = {
 export type IntentOutcome = "committed" | "failed" | "outcome_unknown";
 
 /** A note as it is kept: with its time, and its outcome once it has ended. */
-export type KeptIntent = Intent & { written_at: string; outcome?: IntentOutcome; ended_at?: string };
+export type KeptIntent = Intent & {
+  written_at: string;
+  outcome?: IntentOutcome;
+  ended_at?: string;
+};
 
 /** Where DSoR keeps its notes, one company at a time. */
 export type IntentStore = {
@@ -34,10 +43,11 @@ export type IntentStore = {
   end: (tenant: string, proposalId: string, outcome: IntentOutcome) => Promise<void>;
   /** One note, by its proposal. */
   get: (tenant: string, proposalId: string) => Promise<KeptIntent | undefined>;
-  /** The note of one claim, by its principal and key, if the claim wrote one. */
+  /** The note of one claim, by its principal, operation, and key, if the claim wrote one. */
   forClaim: (
     tenant: string,
     principal: string,
+    operation: string,
     idempotencyKey: string,
   ) => Promise<KeptIntent | undefined>;
   /** Every note of one company that has no outcome yet. */
@@ -71,11 +81,12 @@ export function memoryIntents(): MemoryIntents {
       const found = find(tenant, proposalId);
       return found === undefined ? undefined : structuredClone(found);
     },
-    forClaim: async (tenant, principal, idempotencyKey) => {
+    forClaim: async (tenant, principal, operation, idempotencyKey) => {
       const found = rows.find(
         (row) =>
           row.tenant_id === tenant &&
           row.principal === principal &&
+          row.claim_operation === operation &&
           row.idempotency_key === idempotencyKey,
       );
       return found === undefined ? undefined : structuredClone(found);
@@ -98,3 +109,13 @@ export const NO_INTENTS: IntentStore = Object.freeze({
   forClaim: async () => undefined,
   open: async () => [],
 });
+
+/**
+ * The answer for a note with no outcome: nobody knows whether the bank sent the payment. The
+ * proposal stays in flight, and only a reconciliation may say more (DSOR-EXE-04b, DSOR-UNK-01b).
+ */
+export function unknownFromNote(): Refusal {
+  const why =
+    "DSoR wrote down that it would pay, and has no outcome for it, so the payment may or may not have been sent";
+  return new Refusal("OUTCOME_UNKNOWN", why, "internal");
+}

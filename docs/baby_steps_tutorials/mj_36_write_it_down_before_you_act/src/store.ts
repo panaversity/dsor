@@ -105,7 +105,8 @@ export const KINDS: ReadonlyMap<string, Kind> = new Map<string, Kind>([
   // kind on DSoR's side that may have a trigger: the guard that refuses a move the picture of
   // §26.2 does not draw. The map names it in full, as it names the company's triggers, so no other
   // trigger passes start-up, and it returns the row, so it never swallows a write (step 22's
-  // README, decision 3).
+  // README, decision 3). Since step 36, the intent records are one too: a note moves once, from
+  // open to its outcome, and its trigger refuses any other change (step 36's README, decision D1).
   [
     "control-moved",
     { side: "dsor", table: ["SELECT"], columns: ["INSERT", "UPDATE"], key: true, triggers: true },

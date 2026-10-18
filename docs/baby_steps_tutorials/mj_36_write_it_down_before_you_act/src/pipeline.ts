@@ -956,6 +956,8 @@ export async function call(
                       if (noted) throw new Error("the work sent a second order for one proposal");
                       const proposal = await stores.proposals.get(tenant, id);
                       if (proposal === undefined) throw new Error(`proposal ${id} is not kept`);
+                      if (keyOfRecord === undefined)
+                        throw new Error("a bank was asked with no claim");
                       const now = new Date().toISOString();
                       try {
                         await stores.intents.write(tenant, {
@@ -964,7 +966,8 @@ export async function call(
                           operation: proposal.operation,
                           payload_hash: proposal.payload_hash,
                           principal: caller.id,
-                          idempotency_key: keyOfRecord?.key ?? "",
+                          claim_operation: contract.id,
+                          idempotency_key: keyOfRecord.key,
                           connector: registry.plugs.connectorOf(tenant).bank,
                           security_context: { ...requesterOf(caller, under, tenant, now) },
                         });
@@ -975,6 +978,15 @@ export async function call(
                       }
                       await stores.checkpoint();
                       noted = true;
+                      // The checkpoint's COMMIT let go of the payment's lock. It is taken again
+                      //   before the bank is asked, and the payment must still be a draft: a cancel
+                      //   that came in between ends the work FAILED, and the bank is never asked.
+                      //   Found while building: without it, a cancel landed during the send.
+                      const again = await stores.payments.get(tenant, order.payment);
+                      if (again?.status !== "draft") {
+                        const why = `payment ${preview(order.payment)} changed while DSoR wrote its note, so it was not sent`;
+                        throw new Refusal("CONFLICT", why, "internal");
+                      }
                       try {
                         await sendThrough(bankLine, key, order);
                         sent = true;

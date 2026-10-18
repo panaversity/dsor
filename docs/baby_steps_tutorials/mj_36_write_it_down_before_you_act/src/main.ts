@@ -77,6 +77,7 @@ import { readInputs } from "./inputs.ts";
 import {
   createDbBrakes,
   createDbClaims,
+  sweepIntents,
   createDbControls,
   createDbInvoices,
   createDbLog,
@@ -286,6 +287,18 @@ if (storedRules.length > 0) {
 console.log(
   "dsor.controls passed its checks too; the program's stories keep their rules in memory",
 );
+
+// NEW IN STEP 36: before any call, and after the login and the map are checked, every note with
+//   no outcome, left by a program that stopped while it paid, is ended OUTCOME_UNKNOWN, with its
+//   proposal and its claim (DSOR-EXE-04b; step 36's README, decision D4).
+try {
+  const swept = await sweepIntents(pool, registry.lifetimes.keys());
+  console.log(`start-up: ${swept} note(s) with no outcome, each now OUTCOME_UNKNOWN`);
+} catch (error) {
+  console.error(`The notes could not be swept. Refused: ${(error as Error).message}`);
+  await pool.end().catch(() => {});
+  process.exit(1);
+}
 
 // The log every decision is written to is the table dsor.audit.
 const log = createDbLog(pool);

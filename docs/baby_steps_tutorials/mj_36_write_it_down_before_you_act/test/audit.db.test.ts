@@ -155,6 +155,19 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
         held: "tenant_id principal operation idempotency_key payload_hash request_id answer claimed_at mode",
       },
       { object: "dsor.idempotency UPDATE", held: "answer" },
+      // Step 36: the notes. Read every column, add a note through nine named columns, and write its
+      //   outcome. Nothing on written_at or ended_at, which the database and the trigger fill, and no
+      //   change to what a note says (step 36's README, decision D1).
+      { object: "dsor.intents", held: "SELECT" },
+      {
+        object: "dsor.intents INSERT",
+        held: "proposal_id tenant_id operation payload_hash principal claim_operation idempotency_key connector security_context",
+      },
+      {
+        object: "dsor.intents SELECT",
+        held: "proposal_id tenant_id operation payload_hash principal claim_operation idempotency_key connector security_context written_at outcome ended_at",
+      },
+      { object: "dsor.intents UPDATE", held: "outcome" },
       // The day's totals. Read every column, add a total through named columns,
       // and change only what it has used (step 24's README, decision 13).
       { object: "dsor.limit_counters", held: "SELECT" },

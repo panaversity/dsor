@@ -1,7 +1,12 @@
 // Everything that talks to PostgreSQL. The log is the table dsor.audit,
 // which dsor_runtime can add to and read, and never change (DSOR-AUD-04a in
 // specs/dsor/03-execution.md, section 30). The invoices are the table app.invoices.
-import type { IntentOutcome, IntentStore, KeptIntent } from "./intents.ts";
+import {
+  unknownFromNote,
+  type IntentOutcome,
+  type IntentStore,
+  type KeptIntent,
+} from "./intents.ts";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -54,6 +59,7 @@ import { approvalOf, stillOpen, type Approval, type Approving, type Offer } from
 import {
   checkMove,
   checkRequires,
+  dsorMover,
   isProposalOf,
   proposalUri,
   transitionFrom,
@@ -1219,7 +1225,18 @@ function storesIn(
     // NEW IN STEP 36: and the intent records, written inside the claim's transaction, which the
     //   checkpoint then commits (step 36's README, decision D2).
     intents: intentsThrough(run),
-    checkpoint: async () => {},
+    // The claim, its proposal at EXECUTING, the code's reads so far, and the note commit here,
+    //   before the bank is asked. A crash after this leaves all four behind, and the note says
+    //   what was about to happen. The work goes on in a new transaction, in the same company,
+    //   inside a new savepoint, so a refusal still undoes the code's later writes and keeps the
+    //   claim (DSOR-EXE-03a, DSOR-EXE-04b; decision D2).
+    checkpoint: async () => {
+      const committed = await client.query("COMMIT");
+      if (committed.command !== "COMMIT") throw new Error("the note was rolled back");
+      await client.query("BEGIN ISOLATION LEVEL READ COMMITTED");
+      await client.query("SELECT set_config('dsor.tenant_id', $1, true)", [tenant]);
+      await client.query("SAVEPOINT work");
+    },
     // And the company's rules, so line ⑩ reads them and DSoR's own work changes
     // one inside the claim's transaction, with its record (step 28's README, decisions D14 and
     // D15).
@@ -1240,6 +1257,7 @@ type IntentRow = {
   operation: string;
   payload_hash: string;
   principal: string;
+  claim_operation: string;
   idempotency_key: string;
   connector: string;
   security_context: Record<string, unknown>;
@@ -1249,7 +1267,7 @@ type IntentRow = {
 };
 
 const INTENT_COLUMNS =
-  "proposal_id, tenant_id, operation, payload_hash, principal, idempotency_key, connector, security_context, written_at, outcome, ended_at";
+  "proposal_id, tenant_id, operation, payload_hash, principal, claim_operation, idempotency_key, connector, security_context, written_at, outcome, ended_at";
 
 function intentOf(row: IntentRow): KeptIntent {
   const { written_at, outcome, ended_at, ...rest } = row;
@@ -1268,14 +1286,15 @@ function intentsThrough(run: Runner): IntentStore {
       run(tenant, async (client) => {
         await client.query(
           `INSERT INTO dsor.intents (proposal_id, tenant_id, operation, payload_hash, principal,
-                                     idempotency_key, connector, security_context)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)`,
+                                     claim_operation, idempotency_key, connector, security_context)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)`,
           [
             intent.proposal_id,
             tenant,
             intent.operation,
             intent.payload_hash,
             intent.principal,
+            intent.claim_operation,
             intent.idempotency_key,
             intent.connector,
             JSON.stringify(intent.security_context),
@@ -1298,12 +1317,13 @@ function intentsThrough(run: Runner): IntentStore {
         );
         return rows[0] === undefined ? undefined : intentOf(rows[0]);
       }),
-    forClaim: async (tenant, principal, idempotencyKey) =>
+    forClaim: async (tenant, principal, operation, idempotencyKey) =>
       run(tenant, async (client) => {
         const { rows } = await client.query<IntentRow>(
           `SELECT ${INTENT_COLUMNS} FROM dsor.intents
-            WHERE tenant_id = $1 AND principal = $2 AND idempotency_key = $3`,
-          [tenant, principal, idempotencyKey],
+            WHERE tenant_id = $1 AND principal = $2 AND claim_operation = $3
+              AND idempotency_key = $4`,
+          [tenant, principal, operation, idempotencyKey],
         );
         return rows[0] === undefined ? undefined : intentOf(rows[0]);
       }),
@@ -1317,6 +1337,50 @@ function intentsThrough(run: Runner): IntentStore {
         return rows.map(intentOf);
       }),
   };
+}
+
+// NEW IN STEP 36: the sweep at start-up. A note with no outcome is OUTCOME_UNKNOWN (DSOR-EXE-04b).
+//   For each one, in one transaction: its proposal moves from EXECUTING to OUTCOME_UNKNOWN with
+//   its record, its claim keeps OUTCOME_UNKNOWN as its answer, and the note ends outcome_unknown.
+//   The money may have left, so nothing is undone and nothing is sent again: finding out is a
+//   reconciliation, step 37's (decision D4). It must run before this program takes calls, and
+//   while no other program on this database takes them: a note of a call still running looks
+//   the same as a note left by a crash. Open question 150.
+/** Ends every note with no outcome as OUTCOME_UNKNOWN, for these companies. How many it ended. */
+export async function sweepIntents(pool: pg.Pool, tenants: Iterable<string>): Promise<number> {
+  let ended = 0;
+  for (const tenant of tenants) {
+    for (const note of await createDbIntents(pool).open(tenant)) {
+      await inCompany(pool, tenant, async (client) => {
+        const run = inClaim(client, tenant);
+        const proposals = proposalsThrough(run);
+        const id = note.proposal_id;
+        const proposal = await proposals.get(tenant, id);
+        if (proposal === undefined)
+          throw new Error(`a note names proposal ${id}, which is not kept`);
+        const unknown = unknownFromNote();
+        if (proposal.state === "EXECUTING") {
+          const by: MoveBy = {
+            mover: dsorMover(proposal.requester),
+            cause: `the outcome is unknown: ${unknown.message}`,
+            correlation: { request_id: `req_${randomUUID()}` },
+          };
+          if (!(await proposals.move(tenant, id, "EXECUTING", "OUTCOME_UNKNOWN", by))) {
+            throw new Error(`proposal ${id} moved while the sweep moved it`);
+          }
+        }
+        const answer = `{"refused":${keptText(keptOf(unknown))},"proposal":${keptText(proposalUri(tenant, id))}}`;
+        await client.query(
+          `UPDATE dsor.idempotency SET answer = $5::json
+            WHERE ${IN_SCOPE} AND answer IS NULL`,
+          [tenant, note.principal, note.claim_operation, note.idempotency_key, answer],
+        );
+        await intentsThrough(run).end(tenant, id, "outcome_unknown");
+      });
+      ended += 1;
+    }
+  }
+  return ended;
 }
 
 // Each company's sheets of rates, in dsor.rates (step 26's README, decisions L1,
@@ -1810,7 +1874,25 @@ async function replay(
   // Found by the review: with no company in the WHERE, the owner's replay read two rows.
   if (rows.length !== 1) throw new Error(`the scope names ${rows.length} claims, not 1`);
   const found = rows[0]!;
-  if (found.unanswered) throw new Error("a claim was found with no outcome");
+  // NEW IN STEP 36: a claim with no outcome that wrote a note was committed with it, before
+  //   the bank was asked, and has not ended: it is still running, or it crashed. Either way
+  //   nobody knows whether the money left, so the answer is OUTCOME_UNKNOWN, never a second run
+  //   (DSOR-EXE-04b; decision D4). A claim with no outcome and no note is still a bug.
+  if (found.unanswered) {
+    if (found.payload_hash !== payloadHash) return { conflict: "request" };
+    const { rows: notes } = await client.query<{ proposal_id: string }>(
+      `SELECT proposal_id FROM dsor.intents
+        WHERE tenant_id = $1 AND principal = $2 AND claim_operation = $3 AND idempotency_key = $4`,
+      ids,
+    );
+    if (notes[0] === undefined) throw new Error("a claim was found with no outcome");
+    if (found.mode !== mode) return { conflict: "mode", first: found.mode };
+    return {
+      refused: unknownFromNote(),
+      proposal: proposalUri(ids[0]!, notes[0].proposal_id),
+      replay_of: found.request_id,
+    };
+  }
   if (found.payload_hash !== payloadHash) return { conflict: "request" };
   if (found.mode !== mode) return { conflict: "mode", first: found.mode };
   const kept = found.answer as {
