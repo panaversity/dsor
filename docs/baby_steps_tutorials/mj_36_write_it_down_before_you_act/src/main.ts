@@ -91,6 +91,7 @@ import {
 } from "./postgres.ts";
 import { memoryBrakes } from "./brakes.ts";
 import { memoryClaims } from "./claims.ts";
+import { memoryIntents, type MemoryIntents } from "./intents.ts";
 import { memoryReservations } from "./limits.ts";
 import { money } from "./money.ts";
 import { memoryProposals } from "./proposals.ts";
@@ -2180,6 +2181,7 @@ console.log(`  ${String(accounting["id"])}, ${String(accounting["write_exclusivi
 /** A world whose connectors file is this one, with the story's rule, on Tuesday's sheet. */
 // Changed in step 35: and this fake bank, these payments, and these proposals, which step 35's
 //   scene reads.
+// Changed in step 36: and these notes, which step 36's scene reads.
 async function connectorWorld(
   connectors: ConnectorsSource,
   fake: FakeBank = createFakeBank(),
@@ -2187,6 +2189,7 @@ async function connectorWorld(
   kept: ReturnType<typeof memoryProposals> = memoryProposals(() =>
     Date.parse("2026-10-06T15:05:00Z"),
   ),
+  notes: MemoryIntents = memoryIntents(),
 ) {
   const clock = { now: Date.parse("2026-10-06T15:05:00Z") };
   const store = memoryInvoices(structuredClone(invoices), structuredClone(vendors));
@@ -2214,6 +2217,7 @@ async function connectorWorld(
       undefined,
       rates,
       rules,
+      notes,
     ),
     ownWorkFor(),
     undefined,
@@ -2289,11 +2293,21 @@ try {
 //   user_123 sends PAY-901 through the bank, on a good day. On a silent day, PAY-902 of INV-1002 is
 //   OUTCOME_UNKNOWN, and a second attempt is refused. On a broken day, PAY-903 of INV-1009 is safe
 //   to send again with the same key.
+// Changed in step 36: the same key gives the broken day's answer back, because the claim was
+//   committed with the note; a new key pays. Then the notes DSoR wrote before each send, and how
+//   each ended (step 36's README, decision D5).
 console.log("a fake bank, in memory, in a world of its own:");
 const fakeBank = createFakeBank();
 const bankDrafted: Payment[] = [];
 const bankKept = memoryProposals(() => Date.parse("2026-10-06T15:05:00Z"));
-const bankWorld = await connectorWorld(readConnectors(), fakeBank, bankDrafted, bankKept);
+const bankNotes = memoryIntents();
+const bankWorld = await connectorWorld(
+  readConnectors(),
+  fakeBank,
+  bankDrafted,
+  bankKept,
+  bankNotes,
+);
 const bankLog = createLog();
 let bankKeys = 0;
 const bankCall = (who: RequestEnvelope, name: string, input: unknown, key?: string) =>
@@ -2360,9 +2374,22 @@ console.log(
     await bankCall(SUPERVISOR_123, "payment.execute", toPay("INV-1009", "PAY-903"), "send-903"),
   ),
 );
+console.log(
+  "  the same request with a new key:",
+  heard(await bankCall(SUPERVISOR_123, "payment.execute", toPay("INV-1009", "PAY-903"))),
+);
 console.log(`    the bank sent ${lastTransfer()}`);
 console.log(`  transfers the bank made: ${fakeBank.transfers().length}`);
 console.log(`  payments: ${bankDrafted.map((p) => `${p.id} ${p.status}`).join(", ")}`);
+// NEW IN STEP 36: the note DSoR wrote before each call to the bank, and how each ended. A command
+//   that reaches no bank, such as a draft, wrote none (DSOR-EXE-03a; step 36's README, claim C1).
+console.log("  the notes DSoR wrote before it asked the bank:");
+for (const note of bankNotes.all()) {
+  const { proposal_id, operation, principal, connector, outcome } = note;
+  console.log(
+    `    ${proposal_id.slice(0, 13)}…: ${operation} by ${principal} through ${connector}, ended ${outcome ?? "never"}`,
+  );
+}
 
 // Every call above left one record in the log before its answer was returned, the
 // refusals too. dsor_runtime reads one company at a time, and never a
