@@ -2007,6 +2007,24 @@ the CFO's rule stays on the draft).
 - **Left open:** nothing written before the call (36); nothing held, nobody asks the bank (37); no
   rule runs again at the sending.
 
+### Step 36, write it down before you act, decided by the learner (2026-10-18)
+
+Copied from step 35. The learner decided four choices one at a time (a table of its own; only
+commands that reach a bank; a start-up sweep and every read; kill a real process) and split the step:
+36 is the note before a bank, 36b the decision record committed with records-only work.
+
+- **Memory red first; the database half before its tests.** Nine breaks in copies, each caught.
+  Two of them, a note never committed and a note committed after the bank, change nothing in
+  memory: only the database and a real crash show them.
+- **Found while building:** the checkpoint's COMMIT lets go of the payment's lock, so a cancel
+  slipped into a send; a release's note must name the release's own claim.
+- **Claude Code's choice to watch:** after the note, "the bank sent nothing" is kept, so the same
+  key gives it back and only a new key pays (open question 149).
+- **The review found no way to pay twice.** It found an accident after the checkpoint answered
+  `INTERNAL_ERROR` (H1), and an unknown outcome gave its booking back, a step 35 bug (H2). Fixed.
+- **Left open:** the sweep and a second server (150); records-only commands (36b); nobody asks the
+  bank (37).
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.

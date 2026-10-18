@@ -1008,3 +1008,18 @@ for a human. An agent may gather evidence; it does not settle these alone.
     one, and DSOR-IDM-04 makes the proposal's id the idempotency key of its execution. Step 35's
     learner build derives the bank's key from the company and the proposal's id, so every attempt
     at one proposal carries one key (its D3). Should DSOR-IDM-03 name the proposal's key?
+
+149. **What does `safe_same_key` promise once a failure is recorded?** §28 gives
+    `CONNECTOR_UNAVAILABLE` the retry class `safe_same_key`. DSOR-IDM-01c makes a claimed key with
+    the same payload return "the recorded status or result without re-execution". Step 36's learner
+    build commits the claim with the intent record before the bank is asked, so a bank that then
+    says "sent nothing" is a recorded failure: a retry with the same key is safe, and gives the same
+    failure back (its D5). The caller needs a new key to try again. Should the retry class mean
+    "safe and useful with the same key", and should an error recorded after the intent record carry
+    a class that says "safe with a new key"?
+150. **How does the start-up sweep tell a crash from a call still running?** DSOR-EXE-04b treats an
+    intent record with no final outcome as `OUTCOME_UNKNOWN`. Step 36's learner build ends every
+    open record at start-up (its D4). A record of a call that another server is still running looks
+    the same as one a crash left behind, so the sweep is safe only while no other program serves the
+    same database. Should an intent record carry an owner and a lease, so the sweep ends only the
+    records whose owner is gone?
