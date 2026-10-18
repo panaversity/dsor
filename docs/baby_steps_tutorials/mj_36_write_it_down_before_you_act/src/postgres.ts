@@ -54,7 +54,7 @@ import {
 } from "./rulebook.ts";
 import type { Control } from "./controls.ts";
 import type { FoundSlip, SlipStore } from "./slips.ts";
-import type { Requirement } from "./envelope.ts";
+import { Refusal, type Requirement } from "./envelope.ts";
 import { approvalOf, stillOpen, type Approval, type Approving, type Offer } from "./approvals.ts";
 import {
   checkMove,
@@ -1091,86 +1091,102 @@ export function createDbClaims(
       // together, or none of them does (decision 6).
       // And the proposal, with the records of its moves (step 22's README,
       // decision 9).
-      const claimed = await inCompany(pool, scope.tenant, async (client) => {
-        const ids = [scope.tenant, scope.principal, scope.operation, scope.key];
-        // The claim is one INSERT, and the primary key picks the winner. A second request with
-        // the same key waits here until this transaction ends. Then it adds nothing, and reads
-        // the row below. Never "look, then add": two requests could both look first (§22,
-        // "Common mistake").
-        // With the call's mode, which the claim keeps (step 23's README, decision 4).
-        const added = await client.query(
-          `INSERT INTO dsor.idempotency
+      // NEW IN STEP 36: unless the work calls a bank. Then the checkpoint commits the claim, the
+      //   proposal, and the note first, and an accident after it undoes only what came after.
+      const noted = { yes: false };
+      let made: string | undefined;
+      let claimed: Claimed | { conflict: "request" } | { conflict: "mode"; first: ProposalMode };
+      try {
+        claimed = await inCompany(pool, scope.tenant, async (client) => {
+          const ids = [scope.tenant, scope.principal, scope.operation, scope.key];
+          // The claim is one INSERT, and the primary key picks the winner. A second request with
+          // the same key waits here until this transaction ends. Then it adds nothing, and reads
+          // the row below. Never "look, then add": two requests could both look first (§22,
+          // "Common mistake").
+          // With the call's mode, which the claim keeps (step 23's README, decision 4).
+          const added = await client.query(
+            `INSERT INTO dsor.idempotency
              (tenant_id, principal, operation, idempotency_key, payload_hash, mode, request_id)
            VALUES ($1, $2, $3, $4, $5, $6, $7)
            ON CONFLICT (tenant_id, principal, operation, idempotency_key) DO NOTHING`,
-          [...ids, payloadHash, mode, requestId],
-        );
-        if (added.rowCount === 0) return replay(client, ids, payloadHash, mode);
-        if (added.rowCount !== 1) throw new Error(`the claim added ${added.rowCount} rows, not 1`);
-        const stores = storesIn(client, scope.tenant, controls);
-        // Line ⑧, before the savepoint, so a refusal that undoes the code's work
-        // keeps the proposal (step 22's README, decision 9).
-        const opened = steps === undefined ? undefined : await steps.open(stores);
-        const proposal = opened?.proposal;
-        // A proposal that lines ⑨ and ⑩ refused ended DENIED. The claim keeps that
-        // refusal with it, as it keeps a refusal of the code, and runs no work (step 24's README,
-        // decision 6).
-        if (opened?.refused !== undefined) {
-          const refused = keptText(keptOf(opened.refused));
-          await keepAnswer(
-            client,
-            ids,
-            `{"refused":${refused},"proposal":${keptText(opened.proposal)},"denied":true}`,
+            [...ids, payloadHash, mode, requestId],
           );
-          return { refused: opened.refused, proposal: opened.proposal, denied: true as const };
-        }
-        // A proposal that a control stopped waits for its approval, in every mode,
-        // and the work never runs. The claim keeps what it waits for, so a replay gives the same
-        // answer (step 27's README, decision D10).
-        if (opened?.pending !== undefined) {
-          const pending = keptText(opened.pending);
-          await keepAnswer(
-            client,
-            ids,
-            `{"pending":${pending},"proposal":${keptText(opened.proposal)}}`,
-          );
-          return { pending: opened.pending, proposal: opened.proposal };
-        }
-        // In propose_only mode the proposal waits READY, and the work never runs.
-        // The claim keeps that as its answer, so a replay names the same waiting proposal (step
-        // 23's README, decision 12).
-        if (mode === "propose_only") {
-          if (proposal === undefined) throw new Error("a propose_only claim made no proposal");
-          await keepAnswer(client, ids, `{"ready":true,"proposal":${keptText(proposal)}}`);
-          return { ready: true as const, proposal };
-        }
-        // The work runs inside a savepoint, so a refusal can undo the work and keep the claim.
-        await client.query("SAVEPOINT work");
-        let outcome: Ended;
-        try {
-          outcome = { value: await work(stores) };
-        } catch (thrown) {
-          // An accident is thrown on, and inCompany rolls back everything: the claim goes too.
-          if (!isOutcome(thrown)) throw thrown;
-          await client.query("ROLLBACK TO SAVEPOINT work");
-          outcome = { refused: thrown };
-        }
-        // The proposal's last move, after the savepoint, so a refusal's FAILED
-        // and its record are kept with the claim.
-        if (steps !== undefined && proposal !== undefined) {
-          await steps.close(stores, proposal, outcome);
-        }
-        // Checked before the UPDATE, so a value that JSON cannot keep rolls the claim back, as
-        // it does in memory. Found by the review: JSON wrote it as {}, and every retry failed.
-        // With the proposal's URI, so a replay names it.
-        const named = proposal === undefined ? "" : `,"proposal":${keptText(proposal)}`;
-        const text =
-          "value" in outcome
-            ? `{"value":${keptText(outcome.value)}${named}}`
-            : `{"refused":${keptText(keptOf(outcome.refused))}${named}}`;
-        await keepAnswer(client, ids, text);
-        return proposal === undefined ? outcome : { ...outcome, proposal };
-      });
+          if (added.rowCount === 0) return replay(client, ids, payloadHash, mode);
+          if (added.rowCount !== 1)
+            throw new Error(`the claim added ${added.rowCount} rows, not 1`);
+          const stores = storesIn(client, scope.tenant, controls, noted);
+          // Line ⑧, before the savepoint, so a refusal that undoes the code's work
+          // keeps the proposal (step 22's README, decision 9).
+          const opened = steps === undefined ? undefined : await steps.open(stores);
+          const proposal = opened?.proposal;
+          made = proposal;
+          // A proposal that lines ⑨ and ⑩ refused ended DENIED. The claim keeps that
+          // refusal with it, as it keeps a refusal of the code, and runs no work (step 24's README,
+          // decision 6).
+          if (opened?.refused !== undefined) {
+            const refused = keptText(keptOf(opened.refused));
+            await keepAnswer(
+              client,
+              ids,
+              `{"refused":${refused},"proposal":${keptText(opened.proposal)},"denied":true}`,
+            );
+            return { refused: opened.refused, proposal: opened.proposal, denied: true as const };
+          }
+          // A proposal that a control stopped waits for its approval, in every mode,
+          // and the work never runs. The claim keeps what it waits for, so a replay gives the same
+          // answer (step 27's README, decision D10).
+          if (opened?.pending !== undefined) {
+            const pending = keptText(opened.pending);
+            await keepAnswer(
+              client,
+              ids,
+              `{"pending":${pending},"proposal":${keptText(opened.proposal)}}`,
+            );
+            return { pending: opened.pending, proposal: opened.proposal };
+          }
+          // In propose_only mode the proposal waits READY, and the work never runs.
+          // The claim keeps that as its answer, so a replay names the same waiting proposal (step
+          // 23's README, decision 12).
+          if (mode === "propose_only") {
+            if (proposal === undefined) throw new Error("a propose_only claim made no proposal");
+            await keepAnswer(client, ids, `{"ready":true,"proposal":${keptText(proposal)}}`);
+            return { ready: true as const, proposal };
+          }
+          // The work runs inside a savepoint, so a refusal can undo the work and keep the claim.
+          await client.query("SAVEPOINT work");
+          let outcome: Ended;
+          try {
+            outcome = { value: await work(stores) };
+          } catch (thrown) {
+            // An accident is thrown on, and inCompany rolls back everything: the claim goes too.
+            if (!isOutcome(thrown)) throw thrown;
+            await client.query("ROLLBACK TO SAVEPOINT work");
+            outcome = { refused: thrown };
+          }
+          // The proposal's last move, after the savepoint, so a refusal's FAILED
+          // and its record are kept with the claim.
+          if (steps !== undefined && proposal !== undefined) {
+            await steps.close(stores, proposal, outcome);
+          }
+          // Checked before the UPDATE, so a value that JSON cannot keep rolls the claim back, as
+          // it does in memory. Found by the review: JSON wrote it as {}, and every retry failed.
+          // With the proposal's URI, so a replay names it.
+          const named = proposal === undefined ? "" : `,"proposal":${keptText(proposal)}`;
+          const text =
+            "value" in outcome
+              ? `{"value":${keptText(outcome.value)}${named}}`
+              : `{"refused":${keptText(keptOf(outcome.refused))}${named}}`;
+          await keepAnswer(client, ids, text);
+          return proposal === undefined ? outcome : { ...outcome, proposal };
+        });
+      } catch (thrown) {
+        // NEW IN STEP 36: after the checkpoint, the claim, the proposal at EXECUTING, and the open
+        //   note are committed, and the bank may have sent. So an accident, a lost connection, or
+        //   a COMMIT that rolled back is OUTCOME_UNKNOWN, the answer a replay of this claim gives,
+        //   never INTERNAL_ERROR. Found by step 36's review, H1.
+        if (!noted.yes || made === undefined) throw thrown;
+        return { refused: unknownFromNote(), proposal: made };
+      }
       // The conflict is refused after the transaction ends, which only read, and committed. So
       // the connection goes back to the pool. Found by the review: a refusal thrown inside
       // closed a working connection, and any caller could make DSoR open a new one every time.
@@ -1204,6 +1220,8 @@ function storesIn(
   client: pg.PoolClient,
   tenant: string,
   controls: ControlStore | "database",
+  // NEW IN STEP 36: set once the checkpoint has committed.
+  noted: { yes: boolean } = { yes: false },
 ): WorkStores {
   const run = inClaim(client, tenant);
   return {
@@ -1230,9 +1248,19 @@ function storesIn(
     //   what was about to happen. The work goes on in a new transaction, in the same company,
     //   inside a new savepoint, so a refusal still undoes the code's later writes and keeps the
     //   claim (DSOR-EXE-03a, DSOR-EXE-04b; decision D2).
+    //   A COMMIT that fails or rolls back is EVIDENCE_STORE_UNAVAILABLE, and the bank is never
+    //   asked (DSOR-EXE-03b). If it did commit after all, the same key hears OUTCOME_UNKNOWN.
+    //   Found by step 36's review, M1.
     checkpoint: async () => {
-      const committed = await client.query("COMMIT");
-      if (committed.command !== "COMMIT") throw new Error("the note was rolled back");
+      const why = "DSoR could not commit what it was about to do, so it did not ask the bank";
+      let committed: pg.QueryResult;
+      try {
+        committed = await client.query("COMMIT");
+      } catch {
+        throw new Refusal("EVIDENCE_STORE_UNAVAILABLE", why);
+      }
+      if (committed.command !== "COMMIT") throw new Refusal("EVIDENCE_STORE_UNAVAILABLE", why);
+      noted.yes = true;
       await client.query("BEGIN ISOLATION LEVEL READ COMMITTED");
       await client.query("SELECT set_config('dsor.tenant_id', $1, true)", [tenant]);
       await client.query("SAVEPOINT work");

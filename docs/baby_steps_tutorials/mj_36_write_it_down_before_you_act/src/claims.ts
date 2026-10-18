@@ -4,7 +4,7 @@
 // request is refused (DSOR-IDM-01b to DSOR-IDM-01d in specs/dsor/03-execution.md, section 22;
 // step 20's README, decisions 4, 6, 7, and 9). The program keeps its claims in the table
 // dsor.idempotency (postgres.ts); the unit tests keep them in memory (memoryClaims below).
-import { memoryIntents, type IntentStore } from "./intents.ts";
+import { memoryIntents, unknownFromNote, type IntentStore } from "./intents.ts";
 import { NO_BRAKES, type BrakeStore } from "./brakes.ts";
 import { RETRY, Refusal, type ErrorCode } from "./envelope.ts";
 import type { InvoiceStore } from "./invoice.ts";
@@ -304,6 +304,8 @@ export function memoryClaims(
       let made: string | undefined;
       // The locks this claim holds, each given back when the claim ends.
       const held: (() => void)[] = [];
+      // NEW IN STEP 36: whether the checkpoint passed, so the claim and its note count as kept.
+      let noted = false;
       const holdOver = async (tenant: string, operation: string, uri: string): Promise<void> => {
         const key = JSON.stringify([tenant, operation, uri]);
         const before = locks.get(key) ?? Promise.resolve();
@@ -326,8 +328,11 @@ export function memoryClaims(
         rates,
         controls,
         intents,
-        // Memory has no transaction to commit, and keeps the note as it is written.
-        checkpoint: async () => {},
+        // Memory has no transaction to commit, and keeps the note as it is written. From here
+        //   on the claim is kept, as the database's is once its checkpoint commits.
+        checkpoint: async () => {
+          noted = true;
+        },
       };
       const outcome = Promise.resolve().then(async (): Promise<Kept> => {
         const opened = steps === undefined ? undefined : await steps.open(stores);
@@ -350,14 +355,22 @@ export function memoryClaims(
         }
         let ended: Ended;
         try {
-          ended = { value: copyOf(await work(stores)) };
+          try {
+            ended = { value: copyOf(await work(stores)) };
+          } catch (thrown) {
+            if (!isOutcome(thrown)) throw thrown;
+            ended = { refused: thrown };
+          }
+          if (steps === undefined || proposal === undefined) return ended;
+          await steps.close(stores, proposal, ended);
+          return { ...ended, proposal };
         } catch (thrown) {
-          if (!isOutcome(thrown)) throw thrown;
-          ended = { refused: thrown };
+          // NEW IN STEP 36: an accident after the checkpoint undoes nothing: the note, the claim,
+          //   and the proposal at EXECUTING stay, as on the database, and the answer is
+          //   OUTCOME_UNKNOWN. Found by step 36's review, H1.
+          if (!noted || proposal === undefined) throw thrown;
+          return { refused: unknownFromNote(), proposal };
         }
-        if (steps === undefined || proposal === undefined) return ended;
-        await steps.close(stores, proposal, ended);
-        return { ...ended, proposal };
       });
       claims.set(id, { payloadHash, mode, requestId, outcome });
       // The claim's locks are given back once its work has ended, either way.

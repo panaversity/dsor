@@ -280,3 +280,85 @@ describe("C5 and C6: a process killed while the bank holds the payment", () => {
     },
   );
 });
+
+// The review's findings on the database (step 36's README, "What the review found").
+describe("the review, on the database", () => {
+  it("DSOR-EXE-04b: H1: the bank sent, then the note cannot be ended: OUTCOME_UNKNOWN, never INTERNAL_ERROR; the same key hears it again, and the bank sent once", async () => {
+    const id = await draft();
+    const envelope = keyed(SUPERVISOR);
+    ownerIntents("break-end");
+    let unknown: Answer;
+    try {
+      unknown = await execute(id, envelope);
+    } finally {
+      ownerIntents("mend-end");
+    }
+    expect(unknown).toMatchObject({ code: "OUTCOME_UNKNOWN", retry: "after_reconciliation" });
+    const proposal = idOf(unknown);
+    expect((await proposals.get("org_456", proposal))?.state).toBe("EXECUTING");
+    expect(await intents.get("org_456", proposal)).not.toHaveProperty("outcome");
+    expect(await execute(id, envelope)).toMatchObject({
+      code: "OUTCOME_UNKNOWN",
+      proposal: `dsor://org_456/proposal/${proposal}`,
+    });
+    expect(sentFor(id)).toBe(1);
+    expect(await sweepIntents(pool, ["org_456"])).toBe(1);
+    settle.push(proposal);
+  });
+
+  it("DSOR-EXE-03b: M1: the checkpoint's COMMIT fails: EVIDENCE_STORE_UNAVAILABLE, the bank never asked, nothing kept, and the same key later pays once", async () => {
+    const id = await draft();
+    const envelope = keyed(SUPERVISOR);
+    ownerIntents("break-commit");
+    let refused: Answer;
+    try {
+      refused = await execute(id, envelope);
+    } finally {
+      ownerIntents("mend-commit");
+    }
+    expect(refused).toMatchObject({ code: "EVIDENCE_STORE_UNAVAILABLE", retry: "safe_same_key" });
+    expect(sentFor(id)).toBe(0);
+    expect(
+      await intents.forClaim("org_456", "user_123", "payment.execute", envelope.idempotency_key),
+    ).toBeUndefined();
+    expect(await execute(id, envelope)).toMatchObject({ outcome: "COMMITTED" });
+    expect(sentFor(id)).toBe(1);
+  });
+
+  it(
+    "DSOR-EXE-04b: M2: a release killed while the bank holds the payment: the note names the release's own claim; the same release key hears OUTCOME_UNKNOWN; the sweep answers that claim",
+    { timeout: 120_000 },
+    async () => {
+      const id = await draft();
+      const prepared = await call(
+        registry,
+        log,
+        { ...keyed(SUPERVISOR), mode: "propose_only" },
+        "payment.execute",
+        { invoice: INV_9001, payment: `dsor://org_456/payment/${id}`, expected_version: 1 },
+      );
+      expect(prepared).toMatchObject({ outcome: "READY" });
+      const uri = String("proposal" in prepared ? prepared.proposal : "");
+      const release = keyed(SUPERVISOR);
+      const child = spawnSync(process.execPath, [CRASH, id, release.idempotency_key, uri], {
+        encoding: "utf8",
+        timeout: 60_000,
+      });
+      expect(child.signal).toBe("SIGKILL");
+      const note = await intents.forClaim(
+        "org_456",
+        "user_123",
+        "proposal.execute",
+        release.idempotency_key,
+      );
+      expect(note).toMatchObject({ proposal_id: idOf(prepared), operation: "payment.execute@1" });
+      const again = () => call(registry, log, release, "proposal.execute", { proposal: uri });
+      expect(await again()).toMatchObject({ code: "OUTCOME_UNKNOWN", proposal: uri });
+      expect(await sweepIntents(pool, ["org_456"])).toBe(1);
+      settle.push(idOf(prepared));
+      expect((await proposals.get("org_456", idOf(prepared)))?.state).toBe("OUTCOME_UNKNOWN");
+      expect(await again()).toMatchObject({ code: "OUTCOME_UNKNOWN", proposal: uri });
+      expect(sentFor(id)).toBe(0);
+    },
+  );
+});

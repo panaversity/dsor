@@ -987,6 +987,11 @@ export async function call(
                         const why = `payment ${preview(order.payment)} changed while DSoR wrote its note, so it was not sent`;
                         throw new Refusal("CONFLICT", why, "internal");
                       }
+                      //   And the brake's lock and the slip's, which the COMMIT let go too, so a pull
+                      //   or a tear-up still waits for the send. One that came in between ends the
+                      //   work FAILED, and the bank is never asked. Found by step 36's review, M3.
+                      await holdBrake(caller, contract, stores.brakes, tenant);
+                      await holdSlip(caller, contract, under?.delegation, stores.slips, tenant);
                       try {
                         await sendThrough(bankLine, key, order);
                         sent = true;
@@ -1180,7 +1185,7 @@ export async function call(
                 // NEW IN STEP 36: and its note, if the work wrote one.
                 await endNote(stores, tenant, id, outcome);
                 if ("value" in outcome) await stores.reservations.commit(tenant, id);
-                else await stores.reservations.release(tenant, id);
+                else if (!isUnknown(outcome)) await stores.reservations.release(tenant, id);
               },
             };
             const running = (stores: WorkStores): Promise<unknown> => {
@@ -1281,7 +1286,7 @@ export async function call(
               // NEW IN STEP 36: and its note, if the work wrote one.
               await endNote(stores, tenant, id, outcome);
               if ("value" in outcome) await stores.reservations.commit(tenant, id);
-              else await stores.reservations.release(tenant, id);
+              else if (!isUnknown(outcome)) await stores.reservations.release(tenant, id);
             },
           };
           return {
@@ -1579,6 +1584,13 @@ function lifetimeOf(registry: Registry, tenant: string): string {
   const found = registry.lifetimes.get(tenant);
   if (found === undefined) throw new Error(`company ${tenant} has no READY lifetime`);
   return found.lifetime;
+}
+
+// NEW IN STEP 36: an unknown outcome keeps its booking, as the sweep does: the money may have
+//   left, so the day's limit does not get it back. Changed in step 36; step 35 gave it back.
+//   Found by step 36's review, H2 (DSOR-DEL-06c).
+function isUnknown(outcome: Ended): boolean {
+  return "refused" in outcome && outcome.refused.code === "OUTCOME_UNKNOWN";
 }
 
 // NEW IN STEP 36: a note ends with its proposal, in the same transaction: committed, failed, or
