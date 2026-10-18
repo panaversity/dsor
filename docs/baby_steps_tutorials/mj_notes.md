@@ -2025,6 +2025,22 @@ commands that reach a bank; a start-up sweep and every read; kill a real process
 - **Left open:** the sweep and a second server (150); records-only commands (36b); nobody asks the
   bank (37).
 
+### Step 36b, the record and the work together, decided by the learner (2026-10-18)
+
+Split from 36 at the learner's request; four choices one at a time (every command that runs;
+whatever the claim keeps commits with its record; no record, no change; both attacks).
+
+- **Red first, for real.** Seven tests red on step 36's code; the crash test showed the orphan: a
+  proposal that outlived its record.
+- **Found while building:** a proposal's moves write into `dsor.audit` too, so the first trigger
+  and watcher made tests pass for the wrong reason; a release read through the pool inside the
+  claim and deadlocked a two-connection pool.
+- **A break that passed:** a log writing in its own transaction (B2) passed until the crash test
+  killed the claim's own COMMIT.
+- **The review:** what the seal noted for the record leaked when its work was not kept (F2), and
+  "kept nothing" could be said after the bank sent (F1). Fixed with a copy put back.
+- **Left open:** the outbox (40); a COMMIT whose answer is lost (F4).
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.
