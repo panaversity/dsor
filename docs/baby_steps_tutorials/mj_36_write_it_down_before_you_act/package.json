@@ -1,0 +1,31 @@
+{
+  "name": "@dsor-steps/mj-36-write-it-down-before-you-act",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Step 36 of the DSoR baby steps, a learner build: write it down before you act. Before a command calls a bank, DSoR commits an intent record in dsor.intents, append-only, with the proposal, the operation, the fingerprint, the key, the connector, and who asked (DSOR-EXE-03a); if it cannot, the bank is never called (DSOR-EXE-03b). A note with no outcome, after a crash, is OUTCOME_UNKNOWN: at start-up, on a replay, and when the proposal is read (DSOR-EXE-04b). Proved by killing a real process between the note and the result.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "start": "node src/main.ts",
+    "migrate": "node src/migrate.ts",
+    "test": "vitest run",
+    "test:db": "vitest run --config vitest.db.config.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "pnpm typecheck && pnpm test"
+  },
+  "dependencies": {
+    "@marcbachmann/cel-js": "8.0.0",
+    "ajv": "8.20.0",
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/pg": "8.23.1",
+    "typescript": "7.0.2",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "packageManager": "pnpm@11.22.0"
+}

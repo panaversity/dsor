@@ -1,0 +1,650 @@
+// rule.activate: the rule's owner switches a version on (step 28's README, claims C2, C4, C6, and
+// C7, decisions D10, D12, D15, and D16). Only the version's own owner, who is the rule's owner of
+// record too, in person. The switch-on runs the version's tests first (DSOR-CTL-02c). It retires
+// the live version, and the next call meets the new one. An agent switches nothing on.
+import { describe, expect, it } from "vitest";
+import { fakeKsor, fingerprintOf } from "../src/ksor.ts";
+import type { RequestEnvelope } from "../src/request.ts";
+import type { ControlStore } from "../src/rulebook.ts";
+import {
+  ADMIN,
+  CFO,
+  contract,
+  DEL_101,
+  FIRM_IN_456,
+  keyed,
+  OUR_EXTENSIONS,
+  POLICY,
+  rolesFile,
+  shippedWith,
+  STARTING_ROLES,
+  SUPERVISOR,
+  V5_TEXT,
+} from "./helpers.ts";
+import {
+  ADMIN_700,
+  heard,
+  RULE,
+  ruleCall,
+  ruleWorldOnTuesday,
+  shippedRule,
+  text789,
+  textOf,
+  version9,
+  type RuleWorld,
+} from "./rule-world.ts";
+
+/** Someone drafts a version with this text, and DSoR answers with its number. */
+async function drafted(w: RuleWorld, who = CFO, text = textOf(version9())): Promise<number> {
+  const answer = await ruleCall(w, who, "rule.draft", { draft: text });
+  if (!("data" in answer)) throw new Error(`the draft was refused: ${heard(answer)}`);
+  return (answer.data as { version: number }).version;
+}
+
+/** Someone switches this version of the story's rule on. */
+function activate(w: RuleWorld, version: number, who = CFO) {
+  return ruleCall(w, who, "rule.activate", { version });
+}
+
+/** Each version the store keeps of the story's rule, with its status. */
+async function statuses(w: RuleWorld): Promise<unknown[]> {
+  const versions = await w.rules.versions("org_456", "high-value-payment");
+  return versions.map((v) => [v.version, v.status]);
+}
+
+// Step 27's quick rule, version 11: it compares the number and forgets the currency.
+const QUICK =
+  'double(state.invoice.open_amount.value) > 20000.0 && state.invoice.open_amount.currency == "USD"';
+
+describe("C4: the owner switches a version on (step 28's README, decisions D10 and D12)", () => {
+  it("DSOR-CTL-02a: cfo_100, the rule's owner, switches version 9 on: it is active, names cfo_100 its reviewer and DSoR's time, version 8 is retired, and the agent's next draft, INV-2007's 21,000.00 USD, waits for the CFO", async () => {
+    const w = await ruleWorldOnTuesday();
+    expect(heard(await w.draft("INV-1012"))).toBe("COMMITTED");
+    const v9 = await drafted(w);
+    expect(await activate(w, v9)).toMatchObject({
+      outcome: "COMMITTED",
+      data: { tenant_id: "org_456", id: "high-value-payment", version: 9, status: "active" },
+    });
+    expect(await statuses(w)).toStrictEqual([
+      [8, "retired"],
+      [9, "active"],
+    ]);
+    const [, active] = await w.rules.versions("org_456", "high-value-payment");
+    expect(active).toMatchObject({ reviewed_by: "cfo_100", effective_from: expect.any(String) });
+    expect(heard(await w.draft("INV-2007"))).toBe("PENDING_APPROVAL");
+  });
+
+  it("DSOR-CTL-02a: admin_100 may not switch on version 10, the condition false, which names admin_100 its owner: the rule's owner of record is cfo_100, so INV-1008 still waits for the CFO", async () => {
+    const w = await ruleWorldOnTuesday();
+    await drafted(w);
+    const text = { ...textOf(version9()), condition: "false", owner: "admin_100" };
+    const v10 = await drafted(w, ADMIN, { ...text, tests: [{ expect: "ALLOW" }] });
+    expect(await activate(w, v10, ADMIN)).toMatchObject({
+      code: "AUTHORIZATION_DENIED",
+      message:
+        '"rule.activate": admin_100 may not change rule "high-value-payment": only its owner may, in person',
+    });
+    expect(await statuses(w)).toStrictEqual([
+      [8, "active"],
+      [9, "draft"],
+      [10, "draft"],
+    ]);
+    expect(heard(await w.draft("INV-1008"))).toBe("PENDING_APPROVAL");
+    // At line ⑨, before any work: the proposal ends DENIED.
+    const refused = await activate(w, v10, ADMIN);
+    const id = String("proposal" in refused ? refused.proposal : "")
+      .split("/")
+      .at(-1)!;
+    expect((await w.proposals.get("org_456", id))?.state).toBe("DENIED");
+  });
+
+  it("DSOR-CTL-02a: cfo_100, the owner of record, may not switch on version 10 either: it names admin_100, and a rule never passes to a new owner in this step", async () => {
+    const w = await ruleWorldOnTuesday();
+    await drafted(w);
+    const text = { ...textOf(version9()), owner: "admin_100" };
+    const v10 = await drafted(w, ADMIN, text);
+    expect(await activate(w, v10)).toMatchObject({
+      code: "AUTHORIZATION_DENIED",
+      message:
+        '"rule.activate": version 10 of rule high-value-payment names another owner, and only its own owner may switch it on',
+    });
+    expect(await statuses(w)).toStrictEqual([
+      [8, "active"],
+      [9, "draft"],
+      [10, "draft"],
+    ]);
+  });
+
+  it("DSOR-CTL-02a: a rule that was never switched on has no owner of record, so each version's own owner decides: admin_100 switches on version 1 of a new rule, and cfo_100 may not", async () => {
+    const w = await ruleWorldOnTuesday();
+    const rule = "dsor://org_456/rule/board-above-45000";
+    const text = { ...textOf(version9()), owner: "admin_100" };
+    // Changed by step 28's review, finding M4: admin_100 writes the draft that admin_100 owns.
+    expect(await ruleCall(w, ADMIN, "rule.draft", { draft: text }, rule)).toMatchObject({
+      data: { version: 1 },
+    });
+    expect(heard(await ruleCall(w, CFO, "rule.activate", { version: 1 }, rule))).toBe(
+      "AUTHORIZATION_DENIED",
+    );
+    const on = await ruleCall(w, ADMIN, "rule.activate", { version: 1 }, rule);
+    expect(on).toMatchObject({ data: { id: "board-above-45000", version: 1, status: "active" } });
+    // Found by step 28's review, finding L9: the reviewer and the record name admin_100, who acted.
+    const [v1] = await w.rules.versions("org_456", "board-above-45000");
+    expect(v1).toMatchObject({ reviewed_by: "admin_100", compiled_by: "admin_100" });
+    const records = (await w.rules.records()).filter(
+      (r) => r.correlation.request_id === on.correlation.request_id,
+    );
+    expect(records.map((r) => [r.result, r.identity.subject])).toStrictEqual([
+      ["active", "admin_100"],
+    ]);
+  });
+});
+
+// Found by step 28's sweep, L08: with the owner of record taken from the first version ever
+// switched on, every test passed, because every version switched on named cfo_100.
+describe("C4: the owner of record is the owner of the newest version ever switched on (step 28's README, decision D10)", () => {
+  it("DSOR-CTL-02a: a rule whose retired version 7 named admin_100 and whose active version 8 names cfo_100: cfo_100 decides now, and admin_100 no longer does", async () => {
+    const v7 = {
+      ...shippedRule(),
+      version: 7,
+      status: "retired",
+      owner: "admin_100",
+      reviewed_by: "admin_100",
+      effective_from: "2026-08-01T00:00:00Z",
+    };
+    const file = { file: "controls.json", text: JSON.stringify({ org_456: [v7, shippedRule()] }) };
+    const w = await ruleWorldOnTuesday(file);
+    const text = { ...textOf(version9()), owner: "admin_100" };
+    const v10 = await drafted(w, ADMIN, text);
+    expect(heard(await activate(w, v10, ADMIN))).toBe("AUTHORIZATION_DENIED");
+    const v11 = await drafted(w);
+    expect(await activate(w, v11)).toMatchObject({ data: { version: v11, status: "active" } });
+  });
+});
+
+// Found by step 28's sweep, G03: with line ⑨'s look reading org_456's rules in every company, every
+// test passed, because no test changed a rule of org_789.
+describe("C4: each company's rules are its own (DSOR-TEN-01b)", () => {
+  it("DSOR-TEN-01b: admin_700 drafts and switches on a rule of org_789's own, in org_789: it is active there, and org_456's rules do not move", async () => {
+    const w = await ruleWorldOnTuesday();
+    const rule = "dsor://org_789/rule/board-above-10000";
+    expect(await ruleCall(w, ADMIN_700, "rule.draft", { draft: text789() }, rule)).toMatchObject({
+      data: { tenant_id: "org_789", id: "board-above-10000", version: 1, status: "draft" },
+    });
+    expect(await ruleCall(w, ADMIN_700, "rule.activate", { version: 1 }, rule)).toMatchObject({
+      data: { tenant_id: "org_789", version: 1, status: "active" },
+    });
+    expect((await w.rules.inForce("org_789", "payment.create")).map((v) => v.id)).toStrictEqual([
+      "board-above-10000",
+    ]);
+    expect(await statuses(w)).toStrictEqual([[8, "active"]]);
+  });
+});
+
+// Found by step 28's review, finding M4: a switch-on named a version by its number only, and DSoR
+// shows no version's text. admin_100 wrote a version 9 that said false and named cfo_100 its owner,
+// cfo_100 switched it on by its number, and INV-1008 was paid without the CFO.
+describe("C4: the owner switches on only a draft the owner wrote (step 28's README, decision D20)", () => {
+  it("DSOR-CTL-02a: admin_100 writes a version 9 that says false and names cfo_100 its owner: cfo_100 may not switch it on, and INV-1008 still waits for the CFO", async () => {
+    const w = await ruleWorldOnTuesday();
+    const text = { ...textOf(version9()), condition: "false", tests: [{ expect: "ALLOW" }] };
+    const v9 = await drafted(w, ADMIN, text);
+    expect(await activate(w, v9)).toMatchObject({
+      code: "AUTHORIZATION_DENIED",
+      message:
+        '"rule.activate": version 9 of rule high-value-payment was written by another person, and its owner switches on only a draft the owner wrote',
+    });
+    expect(await statuses(w)).toStrictEqual([
+      [8, "active"],
+      [9, "draft"],
+    ]);
+    expect(heard(await w.draft("INV-1008"))).toBe("PENDING_APPROVAL");
+  });
+
+  it("Step 28: a version that was switched on before is switched on again by its owner, whoever wrote it: cfo_100 suspends version 8, which policy-compiler-fte wrote, and switches it on again", async () => {
+    const w = await ruleWorldOnTuesday();
+    expect(heard(await ruleCall(w, CFO, "rule.suspend", { version: 8 }))).toBe("COMMITTED");
+    expect(await activate(w, 8)).toMatchObject({ data: { version: 8, status: "active" } });
+  });
+});
+
+// Found by step 28's review, finding M6: with the owner of record counted from active versions
+// only, or from versions not retired, every test passed. A suspension or a retirement must not
+// make the rule anyone's.
+describe("C4: the owner of record stays after a suspension and after a retirement (step 28's README, decision D10)", () => {
+  it.each([
+    ["suspends", "rule.suspend", "suspended"],
+    ["retires", "rule.retire", "retired"],
+  ] as const)(
+    "DSOR-CTL-02a: after cfo_100 %s version 8, admin_100 still may not switch on a version that names admin_100: cfo_100 is still the owner of record",
+    async (_what, name, status) => {
+      const w = await ruleWorldOnTuesday();
+      const text = { ...textOf(version9()), owner: "admin_100" };
+      const v9 = await drafted(w, ADMIN, text);
+      expect(heard(await ruleCall(w, CFO, name, { version: 8 }))).toBe("COMMITTED");
+      expect(heard(await activate(w, v9, ADMIN))).toBe("AUTHORIZATION_DENIED");
+      expect(await statuses(w)).toStrictEqual([
+        [8, status],
+        [9, "draft"],
+      ]);
+    },
+  );
+});
+
+describe("C4: a switch-on runs the version's tests first (DSOR-CTL-02c)", () => {
+  it("DSOR-CTL-02c: a version with the quick rule fails its test 3, 50,000,000.00 PKR: the switch-on is refused VALIDATION_FAILED, before any work, nothing changes, and rupees still wait for the CFO under version 8", async () => {
+    const w = await ruleWorldOnTuesday();
+    const quick = await drafted(w, CFO, { ...textOf(version9()), condition: QUICK });
+    const answer = await activate(w, quick);
+    expect(answer).toMatchObject({ code: "VALIDATION_FAILED" });
+    expect("message" in answer && answer.message).toContain(
+      "org_456's control high-value-payment v9 fails its test 3: expects REQUIRE_APPROVAL, gives ALLOW",
+    );
+    expect(await statuses(w)).toStrictEqual([
+      [8, "active"],
+      [9, "draft"],
+    ]);
+    expect(heard(await w.draft("INV-2004"))).toBe("PENDING_APPROVAL");
+  });
+
+  // Found by step 28's review, finding M7: with the tests run for a draft only, every test passed.
+  // Start-up runs the tests of active versions only, so a suspended version meets its tests again
+  // at its second switch-on.
+  it("DSOR-CTL-02c: a suspended version whose test now fails is not switched on again: VALIDATION_FAILED, before any work, and it stays suspended", async () => {
+    const v8 = { ...shippedRule(), status: "suspended" };
+    v8.tests = [{ ...v8.tests[0]!, expect: "REQUIRE_APPROVAL" }];
+    const w = await ruleWorldOnTuesday({
+      file: "controls.json",
+      text: JSON.stringify({ org_456: [v8] }),
+    });
+    const answer = await activate(w, 8);
+    expect(answer).toMatchObject({ code: "VALIDATION_FAILED" });
+    expect("message" in answer && answer.message).toContain(
+      "org_456's control high-value-payment v8 fails its test 1: expects REQUIRE_APPROVAL, gives ALLOW",
+    );
+    expect(await statuses(w)).toStrictEqual([[8, "suspended"]]);
+  });
+
+  it("DSOR-CTL-02c: a dry run of a switch-on runs the tests too, and changes nothing: VALIDATED for version 9, refused for the quick rule", async () => {
+    const w = await ruleWorldOnTuesday();
+    const v9 = await drafted(w);
+    const v10 = await drafted(w, CFO, { ...textOf(version9()), condition: QUICK });
+    const dry = (version: number) =>
+      w.ask({ ...CFO, mode: "validate_only" }, "rule.activate", {
+        rule: RULE,
+        version,
+        reason: "a dry run",
+      });
+    expect(await dry(v9)).toMatchObject({ outcome: "VALIDATED", decision: "ALLOW" });
+    expect(await dry(v10)).toMatchObject({ code: "VALIDATION_FAILED" });
+    expect(await statuses(w)).toStrictEqual([
+      [8, "active"],
+      [9, "draft"],
+      [10, "draft"],
+    ]);
+  });
+});
+
+describe("C4: the answers of a switch-on that cannot happen (step 28's README, decision D16)", () => {
+  it("Step 28: the owner hears RESOURCE_NOT_FOUND for a version that is not there, and CONFLICT for a version active already or retired; a person who may not change the rule hears AUTHORIZATION_DENIED for each, and for a rule that is not there", async () => {
+    const w = await ruleWorldOnTuesday();
+    const v9 = await drafted(w);
+    await activate(w, v9);
+    expect(await activate(w, 12)).toMatchObject({
+      code: "RESOURCE_NOT_FOUND",
+      message: "no version 12 of rule high-value-payment",
+    });
+    expect(await activate(w, 9)).toMatchObject({
+      code: "CONFLICT",
+      message: "version 9 of rule high-value-payment is active, so it cannot be active",
+    });
+    expect(await activate(w, 8)).toMatchObject({
+      code: "CONFLICT",
+      message: "version 8 of rule high-value-payment is retired, so it cannot be active",
+    });
+    for (const version of [12, 9, 8]) {
+      expect(heard(await activate(w, version, ADMIN))).toBe("AUTHORIZATION_DENIED");
+    }
+    const nowhere = "dsor://org_456/rule/no-such-rule";
+    expect(heard(await ruleCall(w, CFO, "rule.activate", { version: 1 }, nowhere))).toBe(
+      "AUTHORIZATION_DENIED",
+    );
+  });
+});
+
+describe("C6: an agent switches nothing on (DSOR-CTL-02b; step 28's README, decision D9)", () => {
+  // firm-ap-fte, under a slip that cfo_100 signed, which lists rule:manage.
+  const slip = { ...DEL_101, delegator: "cfo_100", permissions: ["rule:draft", "rule:manage"] };
+
+  it.each(["execute", "propose_only", "validate_only"])(
+    "DSOR-CTL-02b: in %s mode, line ⑤ refuses an agent that asks to switch a version on, though cfo_100 signed it a slip that lists rule:manage",
+    async (mode) => {
+      const w = await ruleWorldOnTuesday(undefined, [slip]);
+      const v9 = await drafted(w);
+      const envelope =
+        mode === "validate_only" ? { ...FIRM_IN_456, mode } : { ...keyed(FIRM_IN_456), mode };
+      const answer = await w.ask(envelope, "rule.activate", {
+        rule: RULE,
+        version: v9,
+        reason: "the agent's own idea",
+      });
+      expect(answer).toMatchObject({ code: "AUTHORIZATION_DENIED" });
+      expect("message" in answer && answer.message).toContain("for people only");
+      expect(await statuses(w)).toStrictEqual([
+        [8, "active"],
+        [9, "draft"],
+      ]);
+    },
+  );
+
+  it("DSOR-CTL-02b: past line ⑤ too, an agent is never the owner: with rule.activate open to agents, the agent under cfo_100's slip passes line ⑤, and line ⑨ refuses it", async () => {
+    const open = { ...contract("rule.activate"), extensions: {} };
+    const w = await ruleWorldOnTuesday(undefined, [slip], undefined, shippedWith(open));
+    const v9 = await drafted(w);
+    const answer = await ruleCall(w, FIRM_IN_456, "rule.activate", { version: v9 });
+    expect(answer).toMatchObject({
+      code: "AUTHORIZATION_DENIED",
+      message:
+        '"rule.activate": firm-ap-fte may not change rule "high-value-payment": only its owner may, in person',
+    });
+    expect(await statuses(w)).toStrictEqual([
+      [8, "active"],
+      [9, "draft"],
+    ]);
+  });
+
+  // Found by step 28's own break: with "in person" gone, every other test passed. An agent can name
+  // itself a version's owner only by a hand edit, which the draft's check and start-up refuse.
+  it("DSOR-CTL-02b: a person decides, never an agent: a version that a hand edit gave firm-ap-fte as its owner, of a rule never switched on, is not switched on by firm-ap-fte, even with rule.activate open to agents", async () => {
+    const open = { ...contract("rule.activate"), extensions: {} };
+    const w = await ruleWorldOnTuesday(undefined, [slip], undefined, shippedWith(open));
+    const planted = { ...version9(), id: "agent-made", version: 1, owner: "firm-ap-fte" };
+    await w.rules.add("org_456", planted, byOther());
+    const rule = "dsor://org_456/rule/agent-made";
+    const answer = await ruleCall(w, FIRM_IN_456, "rule.activate", { version: 1 }, rule);
+    expect(answer).toMatchObject({
+      code: "AUTHORIZATION_DENIED",
+      message:
+        '"rule.activate": firm-ap-fte may not change rule "agent-made": only its owner may, in person',
+    });
+    const [kept] = await w.rules.versions("org_456", "agent-made");
+    expect(kept?.status).toBe("draft");
+  });
+
+  // Found by step 28's review, finding L12: with "in person" refusing agents only, every test
+  // passed. dsor-scheduler, a login of the subject type system, is no person either.
+  it("DSOR-CTL-02a: a person decides, never a system login: a version planted with dsor-scheduler as its owner is not switched on by dsor-scheduler, even with rule.activate open and rule:manage in its role", async () => {
+    const open = { ...contract("rule.activate"), extensions: {} };
+    const roles = rolesFile({ ...STARTING_ROLES, scheduler: ["proposal:expire", "rule:manage"] });
+    const w = await ruleWorldOnTuesday(
+      undefined,
+      [],
+      undefined,
+      shippedWith(open),
+      undefined,
+      roles,
+    );
+    const planted = { ...version9(), id: "system-made", version: 1, owner: "dsor-scheduler" };
+    await w.rules.add("org_456", planted, byOther());
+    const scheduler = { token: "tok_5c4e", tenant: "org_456" };
+    const rule = "dsor://org_456/rule/system-made";
+    expect(await ruleCall(w, scheduler, "rule.activate", { version: 1 }, rule)).toMatchObject({
+      code: "AUTHORIZATION_DENIED",
+      message:
+        '"rule.activate": dsor-scheduler may not change rule "system-made": only its owner may, in person',
+    });
+  });
+
+  it("Step 28: user_123, who holds no rule:manage, is refused at line ⑤", async () => {
+    const w = await ruleWorldOnTuesday();
+    const v9 = await drafted(w);
+    const answer = await activate(w, v9, SUPERVISOR);
+    expect(answer).toMatchObject({ code: "AUTHORIZATION_DENIED" });
+    expect("message" in answer && answer.message).toContain("rule:manage");
+  });
+});
+
+describe("C7: a switch-on and its records (step 28's README, decisions D14 and D15)", () => {
+  // Not titled DSOR-AUD-01: the tutorial's records do not yet pass audit-record.schema.json, as step
+  // 22's tests note. Changed by step 28's review, finding L18.
+  it("Step 28: a switch-on leaves two control_change records, version 8 retired and version 9 switched on, each naming cfo_100, the reason, and the status it left", async () => {
+    const w = await ruleWorldOnTuesday();
+    const v9 = await drafted(w);
+    const answer = await activate(w, v9);
+    const records = (await w.rules.records()).filter(
+      (r) => r.correlation.request_id === answer.correlation.request_id,
+    );
+    expect(records.map((r) => [r.result, r.extensions[OUR_EXTENSIONS]])).toStrictEqual([
+      ["retired", { version: 8, from: "active" }],
+      ["active", { version: 9, from: "draft" }],
+    ]);
+    for (const record of records) {
+      expect(record).toMatchObject({
+        reason: "rule.activate by a test",
+        resources: [RULE],
+        identity: { mode: "direct", subject: "cfo_100" },
+      });
+    }
+    expect(answer).toMatchObject({ data: { retired: 8 } });
+  });
+
+  it("Step 28: the change checks again under the rule's lock: a version switched on by another call after line ⑨ looked is refused CONFLICT, and nothing moves twice (step 28's README, decision D15)", async () => {
+    const w = await ruleWorldOnTuesday();
+    const v9 = await drafted(w);
+    // A store whose look at line ⑨ is a moment old: it still sees version 9 as a draft, while the
+    // change, under the lock, sees that another call switched it on meanwhile.
+    const store = w.rules;
+    const before = await store.versions("org_456", "high-value-payment");
+    await store.move("org_456", "high-value-payment", 8, "active", "retired", byOther());
+    await store.move("org_456", "high-value-payment", v9, "draft", "active", byOther());
+    const late: ControlStore = { ...store, versions: async () => structuredClone(before) };
+    (w.registry as { controls: ControlStore }).controls = late;
+    const answer = await activate(w, v9);
+    expect(answer).toMatchObject({
+      code: "CONFLICT",
+      message: "version 9 of rule high-value-payment is active, so it cannot be active",
+    });
+    expect(await statuses(w)).toStrictEqual([
+      [8, "retired"],
+      [9, "active"],
+    ]);
+    expect((await store.records()).filter((r) => r.result === "active")).toHaveLength(1);
+  });
+});
+
+// Found by step 28's sweep, L18 and L19: with a failed move ignored, every test passed, because no
+// move fails under the rule's lock. A store that refuses the switch-on shows what the change does
+// then. Changed by step 28's review, finding H1: the switch-on is one step of the store, so a
+// refusal leaves version 8 as it was too.
+describe("C7: a switch-on the store refuses ends the call (step 28's README, decision D15)", () => {
+  it("Step 28: when the store refuses the switch-on, the answer is CONFLICT, and nothing moved: version 8 still active, version 9 a draft", async () => {
+    const w = await ruleWorldOnTuesday(undefined, [], undefined, undefined, (store) => ({
+      ...store,
+      switchOn: async () => false,
+    }));
+    const v9 = await drafted(w);
+    expect(await activate(w, v9)).toMatchObject({
+      code: "CONFLICT",
+      message: "rule high-value-payment changed while it was being changed",
+    });
+    expect(await statuses(w)).toStrictEqual([
+      [8, "active"],
+      [9, "draft"],
+    ]);
+  });
+});
+
+// Found by step 28's review, finding H1: in memory a switch-on was two moves, with a wait between
+// them. A retirement at the same moment left both versions retired, and a payment read the rules
+// between the two moves and met no rule at all. The switch-on is one step of the store now.
+describe("C4: a switch-on is one change, even in memory (step 28's README, decision D4)", () => {
+  it("Step 28: cfo_100 switches version 9 on and retires it at the same moment: one of the two wins, and the rule still has a live version", async () => {
+    const w = await ruleWorldOnTuesday();
+    const v9 = await drafted(w);
+    const [on, off] = await Promise.all([
+      activate(w, v9),
+      ruleCall(w, CFO, "rule.retire", { version: v9 }),
+    ]);
+    expect([heard(on), heard(off)].sort()).toStrictEqual(["COMMITTED", "CONFLICT"]);
+    const live = (await w.rules.versions("org_456", "high-value-payment")).filter(
+      (v) => v.status === "active",
+    );
+    expect(live).toHaveLength(1);
+    expect(heard(await w.draft("INV-1008"))).toBe("PENDING_APPROVAL");
+  });
+
+  it("Step 28: the agent's draft of INV-1008, 31,400.00 USD, at the same moment as the switch-on of version 9, meets version 8 or version 9, never no rule", async () => {
+    const w = await ruleWorldOnTuesday();
+    const v9 = await drafted(w);
+    const [on, paid] = await Promise.all([activate(w, v9), w.draft("INV-1008")]);
+    expect(heard(on)).toBe("COMMITTED");
+    expect(heard(paid)).toBe("PENDING_APPROVAL");
+  });
+});
+
+/** cfo_100, on another call. */
+function byOther() {
+  const correlation = { request_id: "req_other", principal_id: "cfo_100" };
+  return { person: "cfo_100", as_of: new Date().toISOString(), words: "another call", correlation };
+}
+
+// The finance team's version 5 of the payment-approval policy, with its fingerprint.
+const V5 = { version: 5, content_hash: fingerprintOf(V5_TEXT) };
+// dsor-scheduler, which sweeps (step 25c's README, decision D1).
+const SCHEDULER: RequestEnvelope = { token: "tok_5c4e", tenant: "org_456" };
+
+/** Version 9's text, with its citation changed. */
+function citing(changes: Record<string, unknown>): Record<string, unknown> {
+  const text = textOf(version9());
+  return { ...text, authority: { ...(text["authority"] as object), ...changes } };
+}
+
+/** The proposal of a refused call, and the state it ended in. */
+async function stateOf(w: RuleWorld, refused: unknown): Promise<string | undefined> {
+  const named = (refused as { proposal?: string }).proposal ?? "";
+  return (await w.proposals.get("org_456", named.split("/").at(-1)!))?.state;
+}
+
+describe("C8: a switch-on asks KSoR first (step 28b's README, decision D12)", () => {
+  it("DSOR-CTL-03a: once KSoR has version 5 in force, cfo_100 cannot switch on version 9, which cites version 4: VALIDATION_FAILED at line ⑨, its proposal DENIED, and version 8 stays active", async () => {
+    const w = await ruleWorldOnTuesday();
+    const v9 = await drafted(w);
+    w.ksors.get("org_456")!.publish(POLICY, V5_TEXT);
+    const refused = await activate(w, v9);
+    expect(refused).toMatchObject({
+      code: "VALIDATION_FAILED",
+      message:
+        '"rule.activate": version 9 of rule high-value-payment cites version 4 of "ksor://org_456/finance/payment-approval-policy", and KSoR has version 5 in force',
+    });
+    expect(await stateOf(w, refused)).toBe("DENIED");
+    expect(await statuses(w)).toStrictEqual([
+      [8, "active"],
+      [9, "draft"],
+    ]);
+  });
+
+  it("DSOR-CTL-03a: a version that cites version 5 with its fingerprint switches on, and retires version 8, which the sweep marked stale: INV-1006's 640.00 USD is paid again, and INV-2007's 21,000.00 USD waits for the CFO", async () => {
+    const w = await ruleWorldOnTuesday();
+    w.ksors.get("org_456")!.publish(POLICY, V5_TEXT);
+    const company = { company: "dsor://org_456/tenant/org_456" };
+    expect(await w.ask(keyed(SCHEDULER), "rule.check_authority", company)).toMatchObject({
+      data: { marked: 1 },
+    });
+    const v9 = await drafted(w, CFO, citing(V5));
+    expect(await activate(w, v9)).toMatchObject({
+      data: { version: 9, status: "active", retired: 8 },
+    });
+    expect(await statuses(w)).toStrictEqual([
+      [8, "retired"],
+      [9, "active"],
+    ]);
+    expect(heard(await w.draft("INV-1006"))).toBe("COMMITTED");
+    expect(heard(await w.draft("INV-2007"))).toBe("PENDING_APPROVAL");
+  });
+
+  it("Step 28b: a version that cites version 4 with another fingerprint is refused: KSoR's version 4 has another text", async () => {
+    const w = await ruleWorldOnTuesday();
+    const v9 = await drafted(w, CFO, citing({ content_hash: "sha256:0000" }));
+    expect(await activate(w, v9)).toMatchObject({
+      code: "VALIDATION_FAILED",
+      message:
+        '"rule.activate": version 9 of rule high-value-payment cites version 4 of "ksor://org_456/finance/payment-approval-policy" with the fingerprint sha256:0000, and KSoR\'s version 4 has sha256:9f2c1e7ab4d0',
+    });
+  });
+
+  it("Step 28b: with KSoR off, a switch-on is refused FRESHNESS_UNSATISFIABLE and nothing moves; once KSoR answers again, the same version switches on", async () => {
+    const w = await ruleWorldOnTuesday();
+    const v9 = await drafted(w);
+    w.ksors.get("org_456")!.turn("off");
+    expect(await activate(w, v9)).toMatchObject({
+      code: "FRESHNESS_UNSATISFIABLE",
+      message:
+        '"rule.activate": DSoR cannot confirm with KSoR the policy that version 9 of rule high-value-payment cites: the KSoR of org_456 gave no answer within 2 seconds',
+    });
+    expect(await statuses(w)).toStrictEqual([
+      [8, "active"],
+      [9, "draft"],
+    ]);
+    w.ksors.get("org_456")!.turn("on");
+    expect(heard(await activate(w, v9))).toBe("COMMITTED");
+  });
+
+  it("Step 28b: a version that cites a policy KSoR does not list yet waits too: FRESHNESS_UNSATISFIABLE, which says why", async () => {
+    const w = await ruleWorldOnTuesday();
+    const v9 = await drafted(w, CFO, citing({ uri: "ksor://org_456/finance/payments-2027" }));
+    expect(await activate(w, v9)).toMatchObject({
+      code: "FRESHNESS_UNSATISFIABLE",
+      message:
+        '"rule.activate": DSoR cannot confirm with KSoR the policy that version 9 of rule high-value-payment cites: the KSoR of org_456 does not list "ksor://org_456/finance/payments-2027"',
+    });
+  });
+
+  it("DSOR-CTL-01b: a version that cites local is never asked about: admin_700 switches on org_789's own rule while org_789's KSoR is off", async () => {
+    const w = await ruleWorldOnTuesday();
+    const theirs = fakeKsor("org_789", {});
+    theirs.turn("off");
+    w.ksors.set("org_789", theirs);
+    const rule = "dsor://org_789/rule/board-above-10000";
+    await ruleCall(w, ADMIN_700, "rule.draft", { draft: text789() }, rule);
+    expect(heard(await ruleCall(w, ADMIN_700, "rule.activate", { version: 1 }, rule))).toBe(
+      "COMMITTED",
+    );
+    expect(theirs.asked()).toBe(0);
+  });
+
+  it("Step 28b: a dry run of the switch-on asks KSoR too, and hears the same refusal", async () => {
+    const w = await ruleWorldOnTuesday();
+    const v9 = await drafted(w);
+    w.ksors.get("org_456")!.publish(POLICY, V5_TEXT);
+    const dry = { ...CFO, mode: "validate_only" as const };
+    const input = { rule: RULE, version: v9, reason: "a dry run" };
+    expect(heard(await w.ask(dry, "rule.activate", input))).toBe("VALIDATION_FAILED");
+  });
+
+  // Found by step 28b's review, finding M3: with KSoR asked for a draft only, every test passed. The
+  // sweep never marks a suspended version, so this question is the only one asked of it (step
+  // 28b's README, decision D6).
+  it("DSOR-CTL-03a: cfo_100 suspends version 8, and the finance team publishes version 5: the sweep leaves the suspended version alone, and switching it on again is refused, because it cites version 4", async () => {
+    const w = await ruleWorldOnTuesday();
+    expect(heard(await ruleCall(w, CFO, "rule.suspend", { version: 8 }))).toBe("COMMITTED");
+    w.ksors.get("org_456")!.publish(POLICY, V5_TEXT);
+    const company = { company: "dsor://org_456/tenant/org_456" };
+    expect(await w.ask(keyed(SCHEDULER), "rule.check_authority", company)).toMatchObject({
+      data: { asked: 0, marked: 0 },
+    });
+    expect(await activate(w, 8)).toMatchObject({
+      code: "VALIDATION_FAILED",
+      message:
+        '"rule.activate": version 8 of rule high-value-payment cites version 4 of "ksor://org_456/finance/payment-approval-policy", and KSoR has version 5 in force',
+    });
+    expect(await statuses(w)).toStrictEqual([[8, "suspended"]]);
+  });
+
+  it("Step 28b: KSoR is asked after the version's own checks: step 27's quick rule is refused for its tests, and KSoR is not asked", async () => {
+    const w = await ruleWorldOnTuesday();
+    const v9 = await drafted(w, CFO, { ...textOf(version9()), condition: QUICK });
+    const before = w.ksors.get("org_456")!.asked();
+    expect(heard(await activate(w, v9))).toBe("VALIDATION_FAILED");
+    expect(w.ksors.get("org_456")!.asked()).toBe(before);
+  });
+});
