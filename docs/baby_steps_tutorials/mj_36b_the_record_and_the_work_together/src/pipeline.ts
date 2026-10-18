@@ -198,6 +198,10 @@ export async function call(
   let sealedAnswer: Answer | undefined;
   let recordKept = false;
   let nothingKept = false;
+  // What undoes a seal whose work was not kept, while one may need undoing, and the one refusal
+  //   that says nothing of the work was kept (the review's F1 and F2).
+  let undoSeal: (() => void) | undefined;
+  const keptNothing = new Refusal("EVIDENCE_STORE_UNAVAILABLE", KEPT_NOTHING);
   // At a release, the rule versions the stored request was decided under.
   let approvedUnderOfRecord: { control: string; version: number }[] | undefined;
   // The mode line ① read, or execute when the envelope names none. A command's
@@ -1270,17 +1274,31 @@ export async function call(
       stores: WorkStores,
       claimed: Claimed,
     ): Promise<void> => {
+      // What the record says, as it was before the seal, to put back if the work is not kept.
+      const before = {
+        allowed,
+        keyOfRecord,
+        proposalOfRecord,
+        failedProposal,
+        read,
+        returned,
+        answered,
+        executed: evidence.executed,
+        decided: evidence.decided,
+      };
+      undoSeal = () => {
+        ({ allowed, keyOfRecord, proposalOfRecord, failedProposal, read, returned, answered } =
+          before);
+        evidence.executed = before.executed;
+        evidence.decided = before.decided;
+        sealedAnswer = undefined;
+        undoSeal = undefined;
+      };
       const answer = await finish(scope, claimed, stores.proposals);
       try {
         await line(11, () => keep(recordOf(answer), stores.transaction));
       } catch {
-        // Nothing of the work is kept, so the record of the refusal names none of it.
-        proposalOfRecord = undefined;
-        failedProposal = undefined;
-        read = undefined;
-        evidence.executed = "not_executed";
-        nothingKept = true;
-        throw new Refusal("EVIDENCE_STORE_UNAVAILABLE", KEPT_NOTHING);
+        throw keptNothing;
       }
       sealedAnswer = answer;
     };
@@ -1305,106 +1323,210 @@ export async function call(
           checkpoint: async () => {},
         });
       } else {
-        const { scope, claimed } = await line(7, async () => {
-          const scope = claimScope(contract, key, tenant, caller.id);
-          // Named in the record from here on, a refusal of the key too.
-          keyOfRecord = { key: scope.key };
-          // A release's line ⑧ loads the proposal, and line ⑨'s gate decides,
-          //   inside the claim. A refusal there is kept with the claim, beside the loaded
-          //   proposal, which it leaves where it was. A release that passes reads the state the
-          //   stored request binds, moves the proposal to EXECUTING, and runs the stored request
-          //   with the code of the operation it holds, pinned to what it read. Its last move and
-          //   its booking's end follow, as a draft's do (DSOR-APR-10; step 31's README, decisions D4
-          //   and D10).
-          if (released !== undefined) {
-            let job: (Job & { loaded: Proposal; target: Contract }) | undefined;
-            const steps: ProposalSteps = {
-              open: (stores) =>
-                line(8, async () => {
-                  let gated: Awaited<ReturnType<typeof gate>>;
-                  try {
-                    gated = await gate(stores.proposals, released);
-                  } catch (thrown) {
-                    if (isOutcome(thrown)) return { proposal: released, refused: thrown };
-                    throw thrown;
-                  }
-                  const { loaded, target, code } = gated;
-                  const id = proposalIdOf(tenant, released);
-                  // The release runs the proposal it loaded.
-                  executing = released;
-                  // The check again, on live data, for the stored request and whoever asked for it:
-                  //   its fingerprint, lines ③ to ⑤ for the asker, line ⑨'s read, line ⑩'s rules and
-                  //   limits, and the approvals against what the rules ask for now. A "no" moves the
-                  //   proposal to INVALIDATED, gives its booking back, and is what the caller hears.
-                  //   A check that cannot be made now leaves it waiting (DSOR-APR-03a, DSOR-APR-03b,
-                  //   DSOR-APR-03c; step 31's README, decisions D1, D3, D5, D6, D8, and D15).
-                  try {
-                    await checkAgain(stores, loaded, target, true);
-                  } catch (thrown) {
-                    if (!isOutcome(thrown) || !invalidates(thrown)) throw thrown;
-                    const by = {
-                      mover: dsorMover(loaded.requester),
-                      cause: `the check at the release refused it: ${thrown.code}`,
-                      correlation,
-                    };
-                    if (
-                      !(await stores.proposals.move(tenant, id, loaded.state, "INVALIDATED", by))
-                    ) {
+        // NEW IN STEP 36B: a seal that ran, and whose work was not kept, undoes what it set for the
+        //   record. Found by step 36b's review, F2: a COMMIT that failed after the seal left the
+        //   record naming a proposal that was rolled back.
+        let seven: { scope: ClaimScope; claimed: Claimed };
+        try {
+          seven = await line(7, async () => {
+            const scope = claimScope(contract, key, tenant, caller.id);
+            // Named in the record from here on, a refusal of the key too.
+            keyOfRecord = { key: scope.key };
+            // A release's line ⑧ loads the proposal, and line ⑨'s gate decides,
+            //   inside the claim. A refusal there is kept with the claim, beside the loaded
+            //   proposal, which it leaves where it was. A release that passes reads the state the
+            //   stored request binds, moves the proposal to EXECUTING, and runs the stored request
+            //   with the code of the operation it holds, pinned to what it read. Its last move and
+            //   its booking's end follow, as a draft's do (DSOR-APR-10; step 31's README, decisions D4
+            //   and D10).
+            if (released !== undefined) {
+              let job: (Job & { loaded: Proposal; target: Contract }) | undefined;
+              const steps: ProposalSteps = {
+                open: (stores) =>
+                  line(8, async () => {
+                    let gated: Awaited<ReturnType<typeof gate>>;
+                    try {
+                      gated = await gate(stores.proposals, released);
+                    } catch (thrown) {
+                      if (isOutcome(thrown)) return { proposal: released, refused: thrown };
+                      throw thrown;
+                    }
+                    const { loaded, target, code } = gated;
+                    const id = proposalIdOf(tenant, released);
+                    // The release runs the proposal it loaded.
+                    executing = released;
+                    // The check again, on live data, for the stored request and whoever asked for it:
+                    //   its fingerprint, lines ③ to ⑤ for the asker, line ⑨'s read, line ⑩'s rules and
+                    //   limits, and the approvals against what the rules ask for now. A "no" moves the
+                    //   proposal to INVALIDATED, gives its booking back, and is what the caller hears.
+                    //   A check that cannot be made now leaves it waiting (DSOR-APR-03a, DSOR-APR-03b,
+                    //   DSOR-APR-03c; step 31's README, decisions D1, D3, D5, D6, D8, and D15).
+                    try {
+                      await checkAgain(stores, loaded, target, true);
+                    } catch (thrown) {
+                      if (!isOutcome(thrown) || !invalidates(thrown)) throw thrown;
+                      const by = {
+                        mover: dsorMover(loaded.requester),
+                        cause: `the check at the release refused it: ${thrown.code}`,
+                        correlation,
+                      };
+                      if (
+                        !(await stores.proposals.move(tenant, id, loaded.state, "INVALIDATED", by))
+                      ) {
+                        const why = `proposal ${id} was released by another call`;
+                        const refused = new Refusal("CONFLICT", why, "internal");
+                        return { proposal: released, refused };
+                      }
+                      await stores.reservations.release(tenant, id);
+                      const why = `proposal ${id} is INVALIDATED: ${causeOf(thrown)}`;
+                      const refused = new Refusal("APPROVAL_INVALIDATED", why, "internal");
+                      return { proposal: released, refused };
+                    }
+                    // The proposal's time is read again, by the store's clock, after the check again,
+                    //   which may wait for the company's directory: an approval expires with its
+                    //   proposal (DSOR-APR-04a). Found by step 31's review, finding M2: a release that
+                    //   began a moment before the expiry ran after it.
+                    if (await stores.proposals.isDue(tenant, id)) {
+                      return { proposal: released, refused: timeCame(loaded) };
+                    }
+                    // The bundle is checked before the work runs (step 33's README,
+                    //   D17).
+                    presealed(released);
+                    // The move to EXECUTING names who released it. It moves only a proposal still in
+                    //   the state the gate read, so of two releases at once, one moves it, and the
+                    //   other hears CONFLICT (D10).
+                    const now = new Date().toISOString();
+                    const mover = callerMover(requesterOf(caller, under, tenant, now));
+                    const by = { mover, cause: `released by ${caller.id}`, correlation };
+                    if (!(await stores.proposals.move(tenant, id, loaded.state, "EXECUTING", by))) {
                       const why = `proposal ${id} was released by another call`;
                       const refused = new Refusal("CONFLICT", why, "internal");
                       return { proposal: released, refused };
                     }
-                    await stores.reservations.release(tenant, id);
-                    const why = `proposal ${id} is INVALIDATED: ${causeOf(thrown)}`;
-                    const refused = new Refusal("APPROVAL_INVALIDATED", why, "internal");
-                    return { proposal: released, refused };
-                  }
-                  // The proposal's time is read again, by the store's clock, after the check again,
-                  //   which may wait for the company's directory: an approval expires with its
-                  //   proposal (DSOR-APR-04a). Found by step 31's review, finding M2: a release that
-                  //   began a moment before the expiry ran after it.
-                  if (await stores.proposals.isDue(tenant, id)) {
-                    return { proposal: released, refused: timeCame(loaded) };
-                  }
-                  // The bundle is checked before the work runs (step 33's README,
-                  //   D17).
-                  presealed(released);
-                  // The move to EXECUTING names who released it. It moves only a proposal still in
-                  //   the state the gate read, so of two releases at once, one moves it, and the
-                  //   other hears CONFLICT (D10).
-                  const now = new Date().toISOString();
-                  const mover = callerMover(requesterOf(caller, under, tenant, now));
-                  const by = { mover, cause: `released by ${caller.id}`, correlation };
-                  if (!(await stores.proposals.move(tenant, id, loaded.state, "EXECUTING", by))) {
-                    const why = `proposal ${id} was released by another call`;
-                    const refused = new Refusal("CONFLICT", why, "internal");
-                    return { proposal: released, refused };
-                  }
-                  job = { handler: code, own: undefined, input: loaded.payload, loaded, target };
-                  return { proposal: released };
-                }),
-              // The proposal's last move, COMMITTED or FAILED, by DSoR, as a draft's. Then its
-              //   booking: committed with COMMITTED, so it stays counted on the day it was drafted,
-              //   and released with FAILED (D4).
+                    job = { handler: code, own: undefined, input: loaded.payload, loaded, target };
+                    return { proposal: released };
+                  }),
+                // The proposal's last move, COMMITTED or FAILED, by DSoR, as a draft's. Then its
+                //   booking: committed with COMMITTED, so it stays counted on the day it was drafted,
+                //   and released with FAILED (D4).
+                close: async (stores, proposal, outcome) => {
+                  if (job === undefined)
+                    throw new Error("a release closed a proposal it never ran");
+                  const ending: Opening = {
+                    tenant,
+                    draft: job.loaded,
+                    correlation,
+                    lifetime: lifetimeOf(registry, tenant),
+                  };
+                  await closeProposal(stores.proposals, ending, proposal, outcome);
+                  const id = proposalIdOf(tenant, proposal);
+                  // And its note, if the work wrote one.
+                  await endNote(stores, tenant, id, outcome);
+                  if ("value" in outcome) await stores.reservations.commit(tenant, id);
+                  else if (!isUnknown(outcome)) await stores.reservations.release(tenant, id);
+                },
+              };
+              const running = (stores: WorkStores): Promise<unknown> => {
+                if (job === undefined) throw new Error("a release ran before its proposal opened");
+                return runCode(stores, job);
+              };
+              return {
+                scope,
+                claimed: await registry.claims.run(
+                  scope,
+                  hash,
+                  mode,
+                  correlation.request_id,
+                  running,
+                  steps,
+                  (stores, claimed) => sealWith(scope, stores, claimed),
+                ),
+              };
+            }
+            // What line ⑧ writes, made here, so the claim's work never reads the request again.
+            const opening: Opening = {
+              tenant,
+              draft: {
+                operation: `${contract.id}@${String(contract["version"])}`,
+                mode,
+                payload: copy,
+                payload_hash: hash,
+                resources: urisIn(copy),
+                requester: requesterOf(caller, under, tenant, new Date().toISOString()),
+                idempotency_key: scope.key,
+                // And the record its operation is exclusive over, for the database's
+                //   key (DSOR-EXC-01; step 32's README, decision D7).
+                ...(exclusiveOf(contract, copy) === undefined
+                  ? {}
+                  : { exclusive_over: exclusiveOf(contract, copy)! }),
+              },
+              correlation,
+              // The company's READY lifetime. Start-up refused a registry without
+              // one for every company where a login works (step 25c's README, claim C6).
+              lifetime: lifetimeOf(registry, tenant),
+            };
+            // Line ⑧ makes the proposal, PROPOSED. Then lines ⑨ and ⑩ decide it,
+            //   inside the claim's transaction. Their refusal ends the proposal DENIED, and the claim
+            //   keeps it, as it keeps a refusal of the code. An accident is thrown on, and rolls the
+            //   claim back (step 24's README, decision 6). Line ⑩ reserves in propose_only mode too:
+            //   §21 takes no reservation only for a dry run, and §26.4 finds "the reservation taken
+            //   when the proposal was created" again at the release. Found by step 24's review
+            //   (decision 9).
+            const steps: ProposalSteps = {
+              open: (stores) =>
+                line(8, () =>
+                  openProposal(stores.proposals, opening, async (proposal) => {
+                    try {
+                      const reserveFor = proposalIdOf(tenant, proposal);
+                      // The work, if it runs, runs for this proposal.
+                      executing = proposal;
+                      // Line ④ again, right after line ⑧, inside the claim's
+                      //   transaction, under the brake's lock. A draft that passed line ④ a moment
+                      //   before a brake waits for the pull, then is refused, and its proposal ends
+                      //   DENIED. A pull waits for a draft that is past this point. So no proposal of
+                      //   a braked agent enters EXECUTING after the brake takes effect (DSOR-OPS-01c;
+                      //   step 25b's README, decisions L8, D4, and D8).
+                      const { invoices, reservations, slips, brakes, rates, controls, proposals } =
+                        stores;
+                      await holdBrake(caller, contract, brakes, tenant);
+                      // And line ③ again, under the slip's lock. A draft that passed
+                      //   line ③ a moment before a tear-up waits for it, then is refused, and its
+                      //   proposal ends DENIED. A tear-up waits for a draft that is past this point.
+                      //   So the tear-up cancels a prepared draft, never leaves it READY (step 25c's
+                      //   README, decision D12).
+                      await holdSlip(caller, contract, under?.delegation, slips, tenant);
+                      const requires = await decideBeforeWork(
+                        invoices,
+                        reservations,
+                        slips,
+                        brakes,
+                        rates,
+                        controls,
+                        proposals,
+                        reserveFor,
+                      );
+                      // When the work will run, its bundle is checked first
+                      //   (step 33's README, D17).
+                      if (requires === undefined && mode === "execute") presealed(proposal);
+                      // A control's approval stops the proposal at PENDING_APPROVAL.
+                      return requires === undefined ? undefined : { requires };
+                    } catch (thrown) {
+                      if (isOutcome(thrown)) return thrown;
+                      throw thrown;
+                    }
+                  }),
+                ),
+              // And the reservation's end, with the proposal's: committed with
+              //   COMMITTED, so it stays counted, and released with FAILED, so the day gets it back
+              //   (DSOR-DEL-06c, DSOR-DEL-06d; step 24's README, decision 7).
               close: async (stores, proposal, outcome) => {
-                if (job === undefined) throw new Error("a release closed a proposal it never ran");
-                const ending: Opening = {
-                  tenant,
-                  draft: job.loaded,
-                  correlation,
-                  lifetime: lifetimeOf(registry, tenant),
-                };
-                await closeProposal(stores.proposals, ending, proposal, outcome);
+                await closeProposal(stores.proposals, opening, proposal, outcome);
                 const id = proposalIdOf(tenant, proposal);
                 // And its note, if the work wrote one.
                 await endNote(stores, tenant, id, outcome);
                 if ("value" in outcome) await stores.reservations.commit(tenant, id);
                 else if (!isUnknown(outcome)) await stores.reservations.release(tenant, id);
               },
-            };
-            const running = (stores: WorkStores): Promise<unknown> => {
-              if (job === undefined) throw new Error("a release ran before its proposal opened");
-              return runCode(stores, job);
             };
             return {
               scope,
@@ -1413,117 +1535,29 @@ export async function call(
                 hash,
                 mode,
                 correlation.request_id,
-                running,
+                runCode,
                 steps,
                 (stores, claimed) => sealWith(scope, stores, claimed),
               ),
             };
-          }
-          // What line ⑧ writes, made here, so the claim's work never reads the request again.
-          const opening: Opening = {
-            tenant,
-            draft: {
-              operation: `${contract.id}@${String(contract["version"])}`,
-              mode,
-              payload: copy,
-              payload_hash: hash,
-              resources: urisIn(copy),
-              requester: requesterOf(caller, under, tenant, new Date().toISOString()),
-              idempotency_key: scope.key,
-              // And the record its operation is exclusive over, for the database's
-              //   key (DSOR-EXC-01; step 32's README, decision D7).
-              ...(exclusiveOf(contract, copy) === undefined
-                ? {}
-                : { exclusive_over: exclusiveOf(contract, copy)! }),
-            },
-            correlation,
-            // The company's READY lifetime. Start-up refused a registry without
-            // one for every company where a login works (step 25c's README, claim C6).
-            lifetime: lifetimeOf(registry, tenant),
-          };
-          // Line ⑧ makes the proposal, PROPOSED. Then lines ⑨ and ⑩ decide it,
-          //   inside the claim's transaction. Their refusal ends the proposal DENIED, and the claim
-          //   keeps it, as it keeps a refusal of the code. An accident is thrown on, and rolls the
-          //   claim back (step 24's README, decision 6). Line ⑩ reserves in propose_only mode too:
-          //   §21 takes no reservation only for a dry run, and §26.4 finds "the reservation taken
-          //   when the proposal was created" again at the release. Found by step 24's review
-          //   (decision 9).
-          const steps: ProposalSteps = {
-            open: (stores) =>
-              line(8, () =>
-                openProposal(stores.proposals, opening, async (proposal) => {
-                  try {
-                    const reserveFor = proposalIdOf(tenant, proposal);
-                    // The work, if it runs, runs for this proposal.
-                    executing = proposal;
-                    // Line ④ again, right after line ⑧, inside the claim's
-                    //   transaction, under the brake's lock. A draft that passed line ④ a moment
-                    //   before a brake waits for the pull, then is refused, and its proposal ends
-                    //   DENIED. A pull waits for a draft that is past this point. So no proposal of
-                    //   a braked agent enters EXECUTING after the brake takes effect (DSOR-OPS-01c;
-                    //   step 25b's README, decisions L8, D4, and D8).
-                    const { invoices, reservations, slips, brakes, rates, controls, proposals } =
-                      stores;
-                    await holdBrake(caller, contract, brakes, tenant);
-                    // And line ③ again, under the slip's lock. A draft that passed
-                    //   line ③ a moment before a tear-up waits for it, then is refused, and its
-                    //   proposal ends DENIED. A tear-up waits for a draft that is past this point.
-                    //   So the tear-up cancels a prepared draft, never leaves it READY (step 25c's
-                    //   README, decision D12).
-                    await holdSlip(caller, contract, under?.delegation, slips, tenant);
-                    const requires = await decideBeforeWork(
-                      invoices,
-                      reservations,
-                      slips,
-                      brakes,
-                      rates,
-                      controls,
-                      proposals,
-                      reserveFor,
-                    );
-                    // When the work will run, its bundle is checked first
-                    //   (step 33's README, D17).
-                    if (requires === undefined && mode === "execute") presealed(proposal);
-                    // A control's approval stops the proposal at PENDING_APPROVAL.
-                    return requires === undefined ? undefined : { requires };
-                  } catch (thrown) {
-                    if (isOutcome(thrown)) return thrown;
-                    throw thrown;
-                  }
-                }),
-              ),
-            // And the reservation's end, with the proposal's: committed with
-            //   COMMITTED, so it stays counted, and released with FAILED, so the day gets it back
-            //   (DSOR-DEL-06c, DSOR-DEL-06d; step 24's README, decision 7).
-            close: async (stores, proposal, outcome) => {
-              await closeProposal(stores.proposals, opening, proposal, outcome);
-              const id = proposalIdOf(tenant, proposal);
-              // And its note, if the work wrote one.
-              await endNote(stores, tenant, id, outcome);
-              if ("value" in outcome) await stores.reservations.commit(tenant, id);
-              else if (!isUnknown(outcome)) await stores.reservations.release(tenant, id);
-            },
-          };
-          return {
-            scope,
-            claimed: await registry.claims.run(
-              scope,
-              hash,
-              mode,
-              correlation.request_id,
-              runCode,
-              steps,
-              (stores, claimed) => sealWith(scope, stores, claimed),
-            ),
-          };
-        });
+          });
+        } catch (thrown) {
+          undoSeal?.();
+          // Only the claim's own "kept nothing" means that nothing was kept. Found by step 36b's
+          //   review, F1: after the bank was asked, a seal's refusal is not what the claim says.
+          if (thrown === keptNothing) nothingKept = true;
+          throw thrown;
+        }
+        const { scope, claimed } = seven;
         // NEW IN STEP 36B: a first call whose record committed with its claim is answered as it
         //   was sealed, and line ⑪ below keeps nothing more. A replay, and an outcome nobody
         //   could seal, go on as before.
         if (claimed.sealed === true && sealedAnswer !== undefined) {
           recordKept = true;
+          undoSeal = undefined;
           return sealedAnswer;
         }
+        undoSeal?.();
         const early = await afterClaim(scope, claimed);
         if (early !== undefined) return early;
       }

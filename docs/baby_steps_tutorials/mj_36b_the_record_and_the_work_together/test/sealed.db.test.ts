@@ -83,8 +83,12 @@ function draft(who: { idempotency_key: string }): Promise<Answer> {
 }
 
 /** Whatever the test did to dsor.audit is taken away again, however the call went. */
-async function whileRefusing(operation: string, run: () => Promise<Answer>): Promise<Answer> {
-  ownerRecords("refuse", operation);
+async function whileRefusing(
+  operation: string,
+  run: () => Promise<Answer>,
+  how: "refuse" | "refuse-at-commit" = "refuse",
+): Promise<Answer> {
+  ownerRecords(how, operation);
   try {
     return await run();
   } finally {
@@ -173,5 +177,58 @@ describe("C3: after the bank was asked, a refused record cannot undo the money",
     );
     expect(await sweepIntents(pool, ["org_456"])).toBe(1);
     settle.push(proposal);
+  });
+});
+
+// Step 36b's review: each finding, with its test (step 36b's README, "What the review found").
+describe("the review, on the database", () => {
+  it("DSOR-EXE-04a: F2: the record is written and the claim's COMMIT fails: nothing is kept, and the record that follows names no proposal, no draft, and no execution", async () => {
+    ownerInvoices("add");
+    const before = await draftsOf9001();
+    const envelope = keyed(SUPERVISOR);
+    const request = requestId("f2-commit");
+    const failed = await whileRefusing(
+      "payment.create@1",
+      () =>
+        call(registry, log, { ...envelope, request_id: request }, "payment.create", {
+          invoice: INV_9001,
+          expected_version: 1,
+        }),
+      "refuse-at-commit",
+    );
+    expect(failed).not.toHaveProperty("outcome");
+    expect(failed).not.toHaveProperty("proposal");
+    expect(await madeWith(envelope.idempotency_key)).toStrictEqual([]);
+    expect(await draftsOf9001()).toBe(before);
+    const record = (await log.records("org_456")).find(
+      (r) => r.correlation.request_id === request && r.kind === "decision",
+    );
+    expect(record).toBeDefined();
+    expect(JSON.stringify(record)).not.toContain("dsor://org_456/proposal/");
+    expect(JSON.stringify(record)).not.toContain("dsor://org_456/payment/");
+    const bundle = (await log.bundles("org_456")).find(
+      (b) => b.decision_id === record?.decision_bundle,
+    );
+    expect(bundle?.execution.result).not.toBe("committed");
+  });
+
+  it("DSOR-EXE-04a: N1: the record of a call DENIED at line ⑨, a stale version, is refused: no DENIED proposal is kept", async () => {
+    ownerInvoices("add");
+    const envelope = keyed(SUPERVISOR);
+    const refused = await whileRefusing("payment.create@1", () =>
+      call(registry, log, envelope, "payment.create", { invoice: INV_9001, expected_version: 2 }),
+    );
+    expect(refused).toMatchObject({ code: "EVIDENCE_STORE_UNAVAILABLE" });
+    expect(await madeWith(envelope.idempotency_key)).toStrictEqual([]);
+  });
+
+  it("DSOR-EXE-04a: N1: the record of a payment prepared in propose_only mode is refused: no READY proposal is kept", async () => {
+    ownerInvoices("add");
+    const envelope = { ...keyed(SUPERVISOR), mode: "propose_only" as const };
+    const refused = await whileRefusing("payment.create@1", () =>
+      call(registry, log, envelope, "payment.create", { invoice: INV_9001, expected_version: 1 }),
+    );
+    expect(refused).toMatchObject({ code: "EVIDENCE_STORE_UNAVAILABLE" });
+    expect(await madeWith(envelope.idempotency_key)).toStrictEqual([]);
   });
 });

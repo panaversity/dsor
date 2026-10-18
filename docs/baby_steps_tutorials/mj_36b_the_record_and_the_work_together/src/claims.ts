@@ -354,6 +354,8 @@ export function memoryClaims(
       };
       // Set when an accident after the checkpoint made the outcome unknown: nobody seals that one.
       let broke = false;
+      // Set when the work's own outcome was sealed before its last move.
+      let sealedFirst = false;
       const body = async (): Promise<Kept> => {
         const opened = steps === undefined ? undefined : await steps.open(stores);
         const proposal = opened?.proposal;
@@ -382,6 +384,13 @@ export function memoryClaims(
             ended = { refused: thrown };
           }
           if (steps === undefined || proposal === undefined) return ended;
+          // NEW IN STEP 36B: memory seals before the proposal's last move, so a seal that fails
+          //   after the checkpoint leaves the proposal EXECUTING and its note open, as the
+          //   database's rollback does. Found by step 36b's review, F3.
+          if (seal !== undefined) {
+            await seal(stores, { ...ended, proposal });
+            sealedFirst = true;
+          }
           await steps.close(stores, proposal, ended);
           return { ...ended, proposal };
         } catch (thrown) {
@@ -401,6 +410,7 @@ export function memoryClaims(
       const outcome = Promise.resolve().then(async (): Promise<Kept> => {
         const kept = await body();
         if (seal === undefined || broke) return kept;
+        if (sealedFirst) return { ...kept, sealed: true };
         try {
           await seal(stores, fresh(kept));
         } catch (thrown) {
