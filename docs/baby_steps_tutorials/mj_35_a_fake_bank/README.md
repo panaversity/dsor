@@ -1,184 +1,186 @@
-# Step 34 · Connectors
+# Step 35 · A fake bank
 
-**New in this step:** the company's records sit behind a *connector* that says honestly what its
-system can do, and DSoR sends an operation only to a connector that can do what the operation needs
-(DSOR-CNR-01a, DSOR-CNR-01b, DSOR-CNR-02).
+**New in this step:** a second connector, a pretend bank, and `payment.execute`, the first command
+that cannot be undone. It goes only to a bank that refuses a repeated key or answers whether a
+payment went through, with a key derived from the proposal (DSOR-UNK-03a, DSOR-IDM-03).
 
 ## In plain words
 
-Until now, DSoR read and wrote the company's records, its invoices, vendors, and payments, straight
-from its own database, in the same code as its own records: slips, rules, proposals, and the log.
-DSoR never asked what that database could do. It assumed.
+Until now, a payment was a *draft*: PAY-901 was a row in DSoR's own records that said "VENDOR-44 is
+to be paid 31,400.00 USD". A draft can be cancelled. No money moved.
 
-A **connector** is DSoR's adapter for one outside system: a database, a bank, an accounting system
-such as Xero. Every connector publishes a **declaration**: a short file that says what its system
-can do. Can it undo a half-finished job (a *transaction*)? Can it tell a record's version? Will it
-refuse a duplicate when it is given the same key twice? Can it be asked later whether a payment went
-through? The specification gives the declaration a fixed shape, `connector.schema.json`.
+This step moves money. A new command, `payment.execute`, sends a drafted payment through the
+company's **bank**. A bank is an outside system, so DSoR reaches it through a connector, as it
+reaches the company's records since step 34. And a bank cannot undo a payment. Once the money has
+left, no command of DSoR's brings it back. The specification calls such a command
+**non-compensatable**.
 
-Each operation needs some of those things. A command that must happen all or nothing needs
-transactions. A command that runs only "if the invoice is still version 1" needs versions. DSoR
-works out what each operation needs from the operation's own contract, its spec sheet since step
-03. It compares the needs with the declarations, and it never sends an operation to a connector
-that cannot do what the operation needs.
+So the bank's declaration matters more than any before it. It must say at least one of two things:
 
-In this step there is one connector, `accounting`: the company's records, in the same database as
-DSoR's own store. Nothing a caller sees changes. INV-1008 still waits for the CFO. What changes is
-that DSoR now *knows* what it relies on, and checks it before any caller arrives. From step 35 on,
-every new system, starting with a bank, is one more connector.
+- **It refuses a repeat** (`downstream_idempotency`). DSoR sends a key with each payment. If the
+  same key arrives twice, the bank answers with the first receipt and sends nothing more.
+- **It answers a lookup** (`outcome_lookup`). DSoR can ask later: "did the payment with this key
+  go through?"
 
-**A connector is not MCP.** MCP is how a call travels, the way an AI agent calls DSoR from the
-outside (step 46). A connector is DSoR's own contract with one system behind it: it holds the keys,
-and it states what the system guarantees. A connector could even use a bank's own MCP server to
-reach the bank. The agent never reaches that server, only DSoR does (DSOR-CNR-04). Whether the
-specification allows this is open question 145.
+The bank in this step is a fake, inside the program, with four switches: **good**, **slow**,
+**broken**, and **silent**. It does both of the two things above, as real payment services do.
+Stripe, for example, takes an `Idempotency-Key` with each request and lets a payment be looked up
+afterwards.
 
 ## Why it matters
 
-**A guess about a system is a guess about money.** In step 35 a bank arrives. A bank cannot undo a
-payment, and it may not answer whether one went through. Suppose DSoR sent `payment.execute` to it
-anyway, assuming what a database can do. The bank stays silent, and DSoR has no way to find out
-whether VENDOR-44 was paid 31,400.00 USD. The connector's declaration says this before any money
-moves, and DSoR refuses to route there.
+**A slow bank, and a payment sent twice.** user_123 sends PAY-901. The bank takes long to answer.
+The caller gives up and sends again. If the bank cannot tell the second request from a new payment,
+VENDOR-44 is paid 62,800.00 USD. The key stops this, but only if every attempt at PAY-901 carries
+the *same* key. A caller's own key would not do: a caller that retries often makes a new one. So
+DSoR derives the bank's key from the proposal, the record of this one attempt to send PAY-901.
 
-**One company's mistake must not stop another.** In a real deployment, each company plugs in its
-own system: org_456 its database, org_789 perhaps its own Xero. Suppose org_789's declaration is
-wrong, and DSoR refused to start because of it. Then org_456 could not pay INV-1008 either. So a
-broken connector that serves only org_789 takes only org_789's calls out of service. Only a broken
-*default* connector, which serves every company, stops DSoR from starting.
+**A silent bank, and a false "failed".** The bank takes the payment and never answers. If DSoR
+said "failed", someone would send PAY-901 again, and the money would leave twice. If DSoR said
+"sent", nobody would check. The truth is "we don't know", and step 04 already gave it a code:
+`OUTCOME_UNKNOWN`, retried only after someone has found out what happened.
 
-**A key must never reach the agent.** To reach a database or a bank, DSoR holds a password or a
-token. §35 says a connector *publishes* its declaration, so the declaration is no place for a
-secret. And a refusal goes back to the caller. If a key ever travelled in either, an agent tricked
-by a cleverly worded invoice could use it, and go around DSoR. In this step nothing hands a
-declaration to anyone yet. The rule is kept so that nothing has to be taken back when something
-does.
+**A bank that can help with neither.** If the bank refused no repeat and answered no lookup, a
+silent moment could never be cleared up. DSoR refuses to send a payment through such a bank at all.
 
-**Common mistake:** a connector that says what its author hopes, such as `transactions: true` for a
-bank. The declaration is a promise DSoR routes money on, so a capability that is not there is
-written `false`, and the operation that needs it is not routed there.
+**Common mistake:** treating a timeout like a refusal, "the bank did not answer, so nothing was
+sent". A bank that says "I sent nothing" can be retried. A bank that says nothing cannot.
 
 ## The design, before any code
 
 ### How this step was made
 
-The learner asked to think about what works in production before deciding, then chose to build
-first with those choices (2026-10-17). So every decision below is Claude Code's, for the learner to
-review, and each says what it costs.
+The learner decided four of the six choices, one at a time, then said "assume all and build" for
+the last two (2026-10-18). Choices 1 to 4 below are the learner's; D5 and D6 are Claude Code's,
+taken as recommended. The code was written before its tests in this step, against the rule of red
+first. To make up for it, each new test was then shown to fail against a break of the line it
+guards ("Break it").
 
-The circled numbers are lines of DSoR's checklist (§21). Line ④ checks whether the caller and the
-operation may run at all now: the brake since step 25b, and in this step the connector. Line ⑦
-claims the idempotency key. Line ⑨ reads the bound records.
+The circled numbers are lines of DSoR's checklist (§21). Line ④ checks whether the call may run
+now: the brake, and since step 34 the connectors. Line ⑦ claims the idempotency key, line ⑧ makes
+the proposal, and line ⑨ reads the bound records.
 
 ### What each rule says
 
-- **DSOR-CNR-01a:** "Every connector MUST publish a declaration that validates against
-  `connector.schema.json`." ([§35](../../../specs/dsor/05-bindings.md#35-connector-contract))
-- **DSOR-CNR-01b:** "An operation MUST NOT be routed to a connector that lacks a capability the
-  contract requires, unless the contract defines fallback semantics."
-- **DSOR-CNR-02:** "Connector credentials, refresh tokens, private keys, and database passwords MUST
-  NOT be exposed to the model or the agent runtime."
-- **DSOR-CNR-03a**, met by the schema: "Every connector MUST declare its `write_exclusivity`." It
-  says whether DSoR is the only writer (`exclusive`) or others write too (`shared`).
+- **DSOR-UNK-03a:** "A `NON_COMPENSATABLE` operation MUST be routed only to a connector that
+  declares downstream idempotency or outcome lookup."
+  ([§25.2](../../../specs/dsor/03-execution.md#252-unknown-outcomes))
+- **DSOR-IDM-03:** "Where the connector declares downstream idempotency, DSoR MUST pass a key
+  derived from its own idempotency key to the underlying system."
+  ([§22](../../../specs/dsor/03-execution.md#22-idempotency))
+- **DSOR-UNK-01b**, step 04's rule, used for real now: an unknown outcome is never reported as
+  success, as failure, or with a retry class that allows a new attempt.
 
-### Decisions (Claude Code's)
+### Decisions
 
-- **D1. The company's records go behind the connector, and DSoR's own records stay.** Invoices,
-  vendors, and payments are the company's: later they live in Xero or a bank. Slips, rules,
-  proposals, approvals, and the log are DSoR's own store, which the specification keeps apart from
-  every connector. The `accounting` connector still shares one database, and one transaction, with
-  DSoR's own store. Its declaration says so, in this step's own flag
-  `org.panaversity.steps.shares_dsor_transaction`. Step 33's promise depends on it: the claim, the
-  payment, and the record commit together, or none of them does (DSOR-EXE-04a). *Downside:* one
-  login for both, so the connector has no password of its own yet. A separate login would break
-  that one transaction, and a payment and its record could then part. That waits for step 36's
-  intent record, the note DSoR writes before an action it cannot take back. This step chose
-  separate keys at first and dropped them when the build showed the cost (Think it through, F1).
-- **D2. What an operation needs comes from its contract.** First, what the contract's own
-  `connector_requirements` asks, where a key such as `downstream_idempotency_or_outcome_lookup`
-  asks for either of two, as §7's example does. Then what follows from the contract's other lines:
-  `atomic` execution needs `transactions`, `optimistic` concurrency needs `optimistic_concurrency`,
-  a `current` precondition needs a connector that reads `current` state, and every command needs a
-  connector that shares DSoR's transaction (D1). A requirement that names no capability stops
-  start-up. *Downside:* the derived needs are this tutorial's reading, not the specification's
-  words. A test pins the table, so a change shows in review.
-- **D3. Which operations go to a connector.** Each operation with the company's code
-  (`invoice.get`, `invoice.list`, `payment.create`, `payment.cancel`); the release,
-  `proposal.execute`, which runs one; and the approval, `proposal.approve`, which reads the invoice
-  and the vendor it binds. DSoR's other commands, such as `rule.draft`, `rate.load`, and
-  `control.suspend`, work on DSoR's own store, and no connector serves them, so they still run while
-  a company's connector is out: a person can still pull the brake. *Downside:* the approval is
-  named by hand, in `READS_COMPANY_RECORDS`, and the first version of this step forgot it (Think it
-  through, F2). A later DSoR command that reads the company's records must be added there.
-- **D4. Start-up for the default, line ④ for one company.** The file `connectors.json` lists the
-  connectors, and names the one that serves each company, with `"*"` for every company it does not
-  name. Start-up checks every declaration against `connector.schema.json` and against the needs.
-  A broken default connector stops start-up, because every company would be broken. A broken
-  connector that serves named companies only puts those companies out of service, and start-up
-  names it as a warning for the people who run DSoR. Line ④ then refuses those companies' calls
-  with `CONNECTOR_UNAVAILABLE`, after the brake and before line ⑦ claims the key, so nothing is
-  claimed and a retry with the same key is safe once the connector is fixed. That is the retry
-  class §28 gives the code, `safe_same_key`. The caller hears fixed words, "org_789's connector is
-  out of service", never why: the reason is the declaration's own text. *Downside:* one missing
-  capability takes all of that company's operations on its records out of service, queries too,
-  not only the one operation that needs it.
-- **D5. Nothing in a declaration can carry a key.** An id and a region must be short lowercase
-  names, a form of this tutorial's own, stricter than the schema's strings, so neither can hold a
-  URL with a password in it. So must every entity and field that `field_fidelity` names. The
-  extensions may hold only D1's flag, and the flag is `true` or `false`. `change_detection` may
-  hold only its method and its lag. A refusal at start-up never repeats an unknown field's name,
-  which may itself be a URL. The database password stays in `DSOR_DB_URL`, in `.env`, as since step
-  09, and no answer, record, or bundle names it: a bug's own message never reaches the caller (step
-  04, decision 8). *Downside:* a vendor's own extension field is refused until a step needs it.
-- **D6. No fallback semantics.** DSOR-CNR-01b allows a contract to define what happens instead,
-  but the specification gives no field for it. This step routes no operation to a connector that
-  lacks a need, and records the question.
+- **D1. The fake bank lives inside the program** (the learner's choice). It is a piece of code
+  with a switch a test can turn: `bank.mode = "silent"`. How long DSoR waits for an answer is
+  DSoR's setting, not the bank's: 200 ms in the program, 50 ms in the tests. *Downside:* no real
+  network, so real timeouts and real HTTP errors are only imitated until the HTTP steps.
+- **D2. The bank refuses a repeat and answers a lookup** (the learner's choice). What
+  `payment.execute` needs of the bank comes from its contract: its own `connector_requirements`,
+  `downstream_idempotency_or_outcome_lookup`, as §7's example asks, and its `non_compensatable`
+  semantics, which DSOR-UNK-03a reads the same way. The release, `proposal.execute`, may run a
+  `payment.execute`, so it needs the same of the bank. *Downside:* the lookup is declared and
+  built, and nothing asks it until step 37.
+- **D3. The bank's key comes from the proposal** (the learner's choice): a SHA-256 of the company
+  and the proposal's id. DSOR-IDM-04 already makes the proposal's id the key of its execution, so
+  every attempt at one proposal carries one bank key, whatever key the caller sent. The command's
+  code never sees the key or the bank: it sends an order, DSoR adds the key and waits, and the
+  code hears nothing back but success or a refusal, so no receipt with the key reaches it.
+  *Downside:* the words of DSOR-IDM-03 say "derived from its own idempotency key". This step
+  reads "its own" as the proposal's, the key of the execution (open question 148).
+- **D4. Each company names its bank** (the learner's choice). `connectors.json` gives each company
+  two connectors: `{ "records": "accounting", "bank": "fake-bank" }`. Each is checked against what
+  its own role needs: the records against what reading and marking need, the bank against
+  DSOR-UNK-03a. A company whose bank is out of service cannot send payments, and can still read
+  its invoices. Which operations send money is a list in the code, as step 34's list of operations
+  that read records is: no field of a contract says which system a side effect reaches. A command
+  that cannot be undone and is not on that list stops start-up, so DSOR-UNK-03a always has a bank
+  to ask. Only an operation on the list gets a bank at all; a release gets one when the request it
+  runs is on the list. *Downside:* step 34's file shape changed, and its tests moved with it.
+- **D5. A bad day** (Claude Code's, as recommended).
+  - *Broken:* the bank says it sent nothing. The call hears `CONNECTOR_UNAVAILABLE`, safe to retry
+    with the same key, and the claim is undone, as for any accident.
+  - *Slow:* an answer within DSoR's wait is a success.
+  - *Silent:* no answer within the wait. The call hears `OUTCOME_UNKNOWN`, retried only after
+    reconciliation. The proposal ends `OUTCOME_UNKNOWN`, which is still in flight, so step 32's
+    one attempt at a time refuses a second attempt. A replay gives back the same answer.
+  - *Anything else* the bank does without saying whether it sent the money, such as an error of
+    its own, or a refusal it makes up, is `OUTCOME_UNKNOWN` too. Only a bank that says "I sent
+    nothing" is safe to retry.
+  - *After the bank was asked*, the work ends `COMMITTED` or `OUTCOME_UNKNOWN`, never anything
+    else. If the payment store fails after the bank has answered, the call is unknown, not an
+    accident: an accident would undo the proposal and its key, and a retry would pay again.
+
+  *Downside:* nothing holds the payment or asks the bank afterwards yet. That is step 37.
+- **D6. The CFO rule stays on the draft** (Claude Code's, as recommended). `payment.create` is
+  where the CFO approves, and a draft exists only once its rules allowed it. `payment.execute`
+  needs only its own permission, `payment:execute`, which only the AP supervisor's role holds. No
+  slip lists it, so no agent sends money in this step. *Downside:* the specification's own example
+  puts the CFO rule on `payment.execute`. A company whose rules change between the draft and the
+  sending has nothing that checks them again at the sending.
+- **D7. How `payment.execute` works** (Claude Code's). Its input names the invoice, the payment,
+  and the invoice's version, as `payment.create`'s does. Line ⑨ reads the invoice and its vendor,
+  checks that the invoice is issued and the vendor approved, and holds the invoice for this one
+  attempt (step 32). The code reads the payment, which on the database locks its row, checks that
+  it pays that invoice and is still a draft, and that no other payment of that invoice is paid
+  already: an invoice is paid once. Then it sends it, and only then marks it `paid`. A bank that
+  says no, or nothing, leaves it a draft. Migration 031 allows the status `paid`. *Downside:* the
+  bank is asked inside the claim's database transaction, which holds its locks for as long as DSoR
+  waits. An invoice is paid in one payment: no part payments, which no step has yet.
 
 ### The story's numbers
 
-| Who | Asks | The connector | DSoR answers |
-|---|---|---|---|
-| the agent, org_456 | drafts INV-1008, 31,400.00 USD | `accounting`, can undo a job | `PENDING_APPROVAL`, for the CFO, as in step 33 |
-| firm-ap-fte, org_789 | drafts INV-2002, 3,300.00 EUR | `accounting-789`, cannot undo a job | `CONNECTOR_UNAVAILABLE` at line ④; nothing claimed, no proposal |
-| user_700, org_789 | reads INV-2002 | `accounting-789` | `CONNECTOR_UNAVAILABLE`, in fixed words; the record says DENY |
-| cfo_100, org_456 | approves INV-1008, after a restart that took `accounting` out for org_456 | `accounting-456` | `CONNECTOR_UNAVAILABLE`; INV-1008 still `PENDING_APPROVAL` |
-| DSoR, at start-up | the default connector cannot undo a job | `accounting`, for every company | refuses to start, naming `payment.cancel` and `proposal.execute` |
+| When | Who | Asks | The bank | DSoR answers |
+|---|---|---|---|---|
+| Tuesday | the agent | drafts INV-1008, 31,400.00 USD | | `PENDING_APPROVAL`, for the CFO |
+| Tuesday | cfo_100, then the agent | approves it, releases it | | PAY-901, a draft |
+| Tuesday | user_123 | sends PAY-901 | good | `COMMITTED`; PAY-901 paid; one transfer to VENDOR-44 |
+| Tuesday | user_123 | sends PAY-902, of INV-1002 | silent | `OUTCOME_UNKNOWN`; PAY-902 still a draft; the money left |
+| Tuesday | user_123 | sends PAY-902 again, with a new key | good | `CONFLICT`: the first attempt is in flight |
+| Tuesday | user_123 | sends PAY-903, of INV-1009 | broken | `CONNECTOR_UNAVAILABLE`; nothing sent |
+| Tuesday | user_123 | the same request, the same key | good | `COMMITTED`; one transfer |
 
 ### The tests, by claim
 
 | Claim | Tests |
 |---|---|
-| C1. Every declaration passes the schema; a default that does not, stops start-up; one that serves named companies puts only them out of service | `test/connectors.test.ts` |
-| C2. What each operation needs, from its contract; start-up stops when the default lacks it; line ④ refuses a company whose connector lacks it | `test/connectors.test.ts` |
-| C3. No key in a declaration, and none in a refusal | `test/connectors.test.ts`, `test/connectors-review.test.ts` |
-| The review's findings, each red first | `test/connectors-review.test.ts` |
-| C4. On the database: line ④'s refusal leaves no claim, and the same request with the same key runs once the connector is back | `test/connectors.db.test.ts` |
+| C1. What cannot be undone goes only to a bank that refuses a repeat or answers a lookup; each connector is asked only for its own part | `test/bank.test.ts` |
+| C2. On a good day, PAY-901 is paid through the fake bank | `test/bank.test.ts` |
+| C3. The bank's key is the proposal's; a replay sends nothing again | `test/bank.test.ts` |
+| C4. Slow is a success, broken a safe retry, silent unknown; on the database, a good day, a silent bank, and a cancel during a send | `test/bank.test.ts`, `test/bank.db.test.ts` |
+| The review's findings, each with its test | `test/bank-review.test.ts` |
+| C5. What payment.execute refuses before the bank is called | `test/bank.test.ts` |
 
-## What changed since step 33
+## What changed since step 34
 
 | File | What changed |
 | --- | --- |
-| `src/connectors.ts`, `connectors.json`, `schemas/connector.schema.json` | **New.** The declaration of the `accounting` connector, the file that says which connector serves each company, the specification's schema copied byte for byte, what each operation needs, the start-up check, and line ④'s check (D1 to D6) |
-| `src/registry.ts` | Start-up checks the connectors with the rest, and the registry keeps which connector serves each company (D3, D4) |
-| `src/pipeline.ts` | Line ④ looks at the company's connector, after the brake (D4) |
-| `src/main.ts` | The story of this step, in worlds of its own |
-| `test/connectors.test.ts`, `test/connectors.db.test.ts` | **New.** The claims C1 to C4 |
-| `test/connectors-review.test.ts` | **New.** What the review found: each fix, red first, and a test for each break that survived |
-| `test/rule-world.ts`, `test/db.ts`, `test/helpers.ts` | A world may be given a connectors file. `NO_PLUGS`, for a registry a test builds by hand |
-| `test/permissions.test.ts`, `test/registry.test.ts` | Their hand-built registries name their connectors. Each says "step 34" |
+| `src/bank.ts` | **New.** The fake bank and its four switches; the bank's key; the one way DSoR calls a bank, and how it reads each answer (D1, D3, D5) |
+| `contracts/payment.execute.json`, `inputs/PaymentExecuteRequest.schema.json`, `examples/payment.execute.json` | **New.** The command, its input, and its example for the cross-company suite (D7) |
+| `src/operations.ts` | payment.execute's code (D7) |
+| `src/connectors.ts`, `connectors.json` | The fake bank's declaration; each company names its records and its bank; what each operation needs of each (D2, D4) |
+| `src/pipeline.ts` | The command's code gets the company's bank, for its proposal, and only when it sends money; after a send, only COMMITTED or OUTCOME_UNKNOWN (D3, D5) |
+| `src/company.ts`, `src/payment.ts`, `src/postgres.ts`, `migrations/031_paid.sql` | A payment can be read, locked, and marked paid; an invoice's paid payments (D7) |
+| `src/proposals.ts`, `src/bundle.ts` | A proposal can end OUTCOME_UNKNOWN, and its bundle says `outcome_unknown` (D5) |
+| `roles.json` | `payment:execute`, for the AP supervisor (D6) |
+| `src/registry.ts`, `src/main.ts` | The banks start-up checks; the story of this step |
+| `test/bank.test.ts`, `test/bank.db.test.ts`, `test/bank-review.test.ts` | **New.** The claims C1 to C5, and the review's findings |
+| The other tests | The new file shape; payment.execute in every pinned list (eighteen contracts, 207 attacks); the company's bank in the company's keys. Each says "Changed in step 35" |
 
-Step 33's markers are gone, as the build skill (`.claude/skills/build-baby-step`) asks. A search
+Step 34's markers are gone, as the build skill (`.claude/skills/build-baby-step`) asks. A search
 for "NEW IN STEP" finds only this step's lesson.
 
 ```bash
-git diff --no-index ../mj_33_the_decision_bundle/src src
-git diff --no-index ../mj_33_the_decision_bundle/test test
+git diff --no-index ../mj_34_connectors/src src
+git diff --no-index ../mj_34_connectors/test test
 ```
 
 ## Run it
 
-As in step 33, the step needs a local PostgreSQL 17 and a database of its own. This step adds no
-migration.
+As in step 34, the step needs a local PostgreSQL 17 and a database of its own. This step adds one
+migration, 031.
 
 ```bash
 pnpm install
@@ -186,66 +188,64 @@ pnpm migrate
 pnpm start
 ```
 
-From a real run on 2026-10-17. After step 33's scenes, the program tells this step's story in
-worlds of their own, in memory:
+From a real run on 2026-10-18. After step 34's scenes, the program tells this step's story in a
+world of its own, in memory:
 
 ```text
-connectors, in memory, in worlds of their own:
-  accounting, exclusive: transactions true, optimistic_concurrency true, downstream_idempotency false, outcome_lookup false, events false, batch false, row_level_security true, freshness current
-  invoice.get needs: nothing beyond a read
-  invoice.list needs: nothing beyond a read
-  payment.cancel needs: transactions, optimistic_concurrency, freshness:current, shares_dsor_transaction
-  payment.create needs: optimistic_concurrency, freshness:current, shares_dsor_transaction
-  proposal.approve needs: transactions, freshness:current, shares_dsor_transaction
-  proposal.execute needs: transactions, freshness:current, shares_dsor_transaction
-  start-up warns: connectors.json: connector "accounting-789", which serves org_789, is out of service: connector "accounting-789" cannot serve: payment.cancel needs transactions; proposal.approve needs transactions; proposal.execute needs transactions
-  org_789's connector cannot undo a job; user_700 reads org_789's INV-2002: CONNECTOR_UNAVAILABLE: invoice.get: org_789's connector is out of service
-  the agent drafts org_456's INV-1008, 31,400.00 USD: PENDING_APPROVAL, needs CFO x1 (high-value-payment), until 2026-10-13T15:05:00.000Z
-  the default connector cannot undo a job: DSoR does not start:
-    connectors.json: the default connector is broken: connector "accounting" cannot serve: payment.cancel needs transactions; proposal.approve needs transactions; proposal.execute needs transactions
+a fake bank, in memory, in a world of its own:
+  the agent drafts INV-1008, 31,400.00 USD: PENDING_APPROVAL, needs CFO x1 (high-value-payment), until 2026-10-13T15:05:00.000Z
+  cfo_100 approves it: answered, apr_…
+  the agent releases it: answered, PAY-901
+  a good day; user_123 sends PAY-901: answered, PAY-901
+    the bank sent TRF-1: 31400.00 USD to VENDOR-44 for PAY-901, key dsor_b856d5bc400…
+  user_123 drafts INV-1002, 8,900.50 USD: answered, PAY-902
+  a silent day; user_123 sends PAY-902: OUTCOME_UNKNOWN: payment "PAY-902": the bank did not answer within 200 ms, so it may or may not have been sent
+    the bank sent TRF-2: 8900.50 USD to VENDOR-44 for PAY-902, key dsor_46b48f043eb…
+  the bank is back; user_123 tries PAY-902 again with a new key: CONFLICT: invoice INV-1002 has an attempt in flight already: proposal dsor://org_456/proposal/prop_…, OUTCOME_UNKNOWN
+  transfers the bank made: 2
+  user_123 drafts INV-1009, 7,425.00 USD: answered, PAY-903
+  a broken day; user_123 sends PAY-903: CONNECTOR_UNAVAILABLE: payment "PAY-903": the bank is down, and sent nothing
+  the bank is back; the same request, the same key: answered, PAY-903
+    the bank sent TRF-3: 7425.00 USD to VENDOR-44 for PAY-903, key dsor_eb0e75323a5…
+  transfers the bank made: 3
+  payments: PAY-901 paid, PAY-902 draft, PAY-903 paid
 ```
 
-`payment.create` does not need `transactions`: its contract says `compensatable`, which means a
-later command, `payment.cancel`, can undo it. It still needs DSoR's transaction (D1). The reason
-org_789's connector is out of service is in start-up's warning, for the people who run DSoR. The
-caller hears only that it is out.
-
-`pnpm check` runs the type check, then the unit tests. `pnpm test:db` runs the database tests.
+The key is printed short, and the ids of the approval and the proposal are cut. PAY-902's money left on the silent day, and DSoR does not know it: the
+bank kept TRF-2, and DSoR's answer was OUTCOME_UNKNOWN. Finding out is step 37's.
 
 ## Break it
 
-Each break ran on 2026-10-17 in a copy of this folder outside the repository, never in the folder
-itself, and a fresh copy was made for each. A short script told three scenes:
+Each break ran on 2026-10-18 in a fresh copy of this folder outside the repository. A short script
+told four scenes:
 
-- **S1:** org_789's connector cannot undo a job, and firm-ap-fte drafts org_789's INV-2002.
-- **S2:** the default connector cannot undo a job, and DSoR starts.
-- **S3:** the default connector's extensions hold a database URL, and DSoR starts.
+- **S1:** a bank that neither refuses a repeat nor answers a lookup, and DSoR starts.
+- **S2:** a silent bank, then the same request with the same key.
+- **S3:** a silent bank, then a new attempt with a new key.
+- **S4:** whether the bank's key is the proposal's.
 
 Unbroken:
 
 ```text
-S1, org_789's connector cannot undo a job; firm-ap-fte drafts INV-2002: CONNECTOR_UNAVAILABLE; proposals in org_789: 0; payments drafted: 0
-S2, the default connector cannot undo a job: connectors.json: the default connector is broken: connector "accounting" cannot serve: payment.cancel needs transactions; proposal.execute needs transactions
-S3, the default connector's extensions hold a URL: connectors.json: the default connector is broken: connector 1: its extensions may hold only org.panaversity.steps.shares_dsor_transaction
+S1: connectors.json: the default bank connector is broken: connector "fake-bank" cannot serve as the bank: payment.execute needs downstream_idempotency or outcome_lookup
+S2, silent, then the same request with the same key: OUTCOME_UNKNOWN, then OUTCOME_UNKNOWN; transfers: 1
+S3, silent, then a new attempt with a new key: OUTCOME_UNKNOWN, then CONFLICT; transfers: 1
+S4, the bank's key is the proposal's: true
 ```
-
-These breaks ran before the review, so `proposal.approve` is not yet in S2's list.
 
 | Break | What changed | The scenes | The tests that failed |
 |---|---|---|---|
-| **B1** | Line ④ does not look at the connector | S1: `COMMITTED`; 1 proposal, 1 payment drafted in org_789, through a connector that cannot undo a job | 2: the org_789 draft and the org_789 query |
-| **B2** | A broken default connector is only out of service, and start-up goes on | S2 and S3: `DSoR started` | 9, every start-up refusal of the default connector |
-| **B3** | `atomic` no longer needs `transactions` | S1: `COMMITTED`, 1 payment drafted; S2: `DSoR started` | 4, the needs table among them |
-| **B4** | The extensions may hold anything | S3: `DSoR started`, with a URL inside its declaration | 1 |
+| **B1** | payment.execute asks nothing of the bank | S1: `DSoR started` | 2 |
+| **B2** | The bank's key changes at every attempt | S4: `false` | 1 |
+| **B3** | A silent bank counts as "sent nothing" | S2 and S3: `CONNECTOR_UNAVAILABLE, then COMMITTED; transfers: 2`. **The vendor is paid twice** | 2 |
+| **B4** | An unknown proposal ends FAILED | S3: `OUTCOME_UNKNOWN, then COMMITTED; transfers: 2`. **Paid twice** | 2 |
 
-During B4's run, three tests of the cross-company suite (step 12) also failed while two other
-suites shared the machine. Run again alone, the suite passed, 88 of 88. They are not B4's.
+B3 and B4 are the two ways to pay twice that this step closes: a timeout read as "nothing sent",
+and an unknown read as "failed".
 
-**On the database (C4):** the test proves that line ④'s refusal leaves no claim behind, and that
-the same request with the same key is drafted once the connector is back. Why line ④ and not later:
-a claim keeps the answer it ended with, and a replay gives it back (step 20). A refusal after line
-⑦ would be kept with its key, so the retry that `safe_same_key` promises could not run. That break
-was not run in this step.
+Then each fix of the review was undone in a copy, one at a time, and the full unit suite run:
+the store failing after a send (F1), a second draft of one invoice (F2), a refusal the bank makes
+up (F3), and a bank given to every command (F7). Each failed exactly the test written for it.
 
 ## Build it yourself with Claude Code
 
@@ -253,51 +253,48 @@ Claude Code built the step in these moves.
 
 | # | Move | What was done |
 |---|---|---|
-| 1 | Explore | The learner asked why DSoR needs connectors when banks will ship MCP servers. Answered: MCP is how a call travels, a connector is DSoR's contract with one system. Open question 145 |
-| 2 | Production first | Six choices checked against how real systems run, before any code. Two changed: per-company connectors refuse at line ④ instead of stopping start-up, and the password test became an alarm, not the lock |
-| 3 | Decide | D1 to D6, Claude Code's, as the learner chose to build first. D1 changed during the build: a separate login would break step 33's one transaction (F1) |
-| 4 | The copy | Step 33 copied, its markers removed |
-| 5 | Red, then green | 22 tests written first; 17 failed against a stub that checked nothing, for the right reasons; the code turned them green |
-| 6 | The database | A throwaway PostgreSQL 17: C4's test, and the whole database suite |
-| 7 | Break it | B1 to B4, run for real, in copies of the folder |
-| 8 | Review | A reviewer who had not seen the conversation, with the threat table and 41 small breaks in a copy of its own |
-| 9 | Fix | F2 to F6, red first, each with its test |
+| 1 | The problem | A payment is a draft; a bank cannot undo one; slow, silent, and a bank that can help with neither |
+| 2 | Decide | Four choices, one at a time, by the learner; then "assume all and build" for D5 and D6 |
+| 3 | The copy | Step 34 copied, its markers removed |
+| 4 | Build | The bank, the connectors, the command, the pipeline's bank, the stores, migration 031. Code first, against the rule (see "How this step was made") |
+| 5 | Tests | 19 unit tests and the database tests; every pinned list of the earlier steps moved with the new command |
+| 6 | Break it | B1 to B4, run for real, in copies of the folder |
+| 7 | Review | A reviewer who had not seen the conversation, with 35 small breaks and seven attacks of its own |
+| 8 | Fix | F1 to F9, each with its test; each fix undone once in a copy, to see its test fail |
 
 To start it in a new session:
 
 ```text
-Build step 34 in learner mode from the design in
-docs/baby_steps_tutorials/mj_34_connectors/README.md.
+Build step 35 in learner mode from the design in
+docs/baby_steps_tutorials/mj_35_a_fake_bank/README.md.
 ```
+
 ## Check yourself
 
-1. org_789's connector says `transactions: false`. user_700 reads INV-2002. What do they hear, and
-   is anything claimed or drafted?
-2. The default connector says `transactions: false`. What happens when DSoR starts, and why does it
-   not only take the payments out of service?
-3. A contract asks `connector_requirements: { downstream_idempotency_or_outcome_lookup: true }`. The
-   connector says `downstream_idempotency: false` and `outcome_lookup: true`. Is the operation
-   routed there?
-4. Why does `accounting` share DSoR's transaction in this step, and what would break if it had its
-   own login today?
-5. A teammate writes the database URL into the declaration's `region`, "so it is all in one place".
-   What does DSoR do, and why does it matter?
+1. The bank takes PAY-902 and never answers. What does user_123 hear, what state is the proposal
+   in, and is PAY-902 paid?
+2. user_123 tries PAY-902 again, with a new key. What happens, and why does the new key not get a
+   new bank key?
+3. The bank says "down, nothing sent". Why is that one safe to retry with the same key, when
+   silence is not?
+4. The bank sends PAY-901, and then the database connection drops before PAY-901 is marked paid.
+   What does DSoR answer, and why not INTERNAL_ERROR?
+5. PAY-901 and PAY-902 are two drafts of INV-1002. PAY-901 is sent. What happens to PAY-902?
 
 <details>
 <summary>Answers</summary>
 
-1. `CONNECTOR_UNAVAILABLE`, at line ④, with the retry class `safe_same_key`. Nothing is claimed,
-   no proposal is made, and nothing is drafted. The record says DENY (D4).
-2. DSoR does not start, and it names each operation that needs `transactions`. The default serves
-   every company the file does not name, so every company would be broken, and a DSoR that started
-   anyway would be running on a promise it knows is false (D4).
-3. Yes. The key asks for either of the two, and the connector has one of them (D2).
-4. The claim, the payment, and the record commit in one transaction, so a payment never exists
-   without its record (DSOR-EXE-04a). A login of its own is a connection of its own, and no
-   transaction spans two connections. Until step 36's intent record, a payment and its record could
-   then part (D1).
-5. DSoR refuses to start: a region must be a short lowercase name. The declaration is published,
-   so a key in it is a key handed to anyone who reads it, the agent included (D5, DSOR-CNR-02).
+1. `OUTCOME_UNKNOWN`, retried only after reconciliation. The proposal is `OUTCOME_UNKNOWN`, which
+   is in flight. PAY-902 is still a draft in DSoR's records, though the bank sent it (D5).
+2. `CONFLICT`: one attempt at a time over INV-1002, and the first is in flight (step 32). The
+   new key never reaches the bank: the bank's key comes from the proposal, and a new proposal is
+   not made (D3).
+3. A bank that says it sent nothing has told DSoR the money did not leave. Silence tells nothing,
+   and the money may have left (D5).
+4. `OUTCOME_UNKNOWN`. Once the bank was asked, the work ends committed or unknown. An
+   INTERNAL_ERROR would undo the proposal with the claim, and the retry would get a new proposal,
+   a new key, and pay again (D5, F1).
+5. Its send is refused with `CONFLICT`: INV-1002 is paid already, by PAY-901 (D7, F2).
 
 </details>
 
@@ -305,75 +302,70 @@ docs/baby_steps_tutorials/mj_34_connectors/README.md.
 
 ### Found while building
 
-- **F1. A login of its own would have split a payment from its record.** The first plan gave the
-  connector its own database login. But step 33 saves the claim, the payment, and the record in
-  one transaction, and a second login is a second connection, which no transaction spans. So D1
-  keeps one login until step 36's intent record. The learner had agreed to separate keys; this is
-  the change, and its reason.
-- **Line ④ ran twice.** The first version checked the connector in a second line ④ of its own.
-  Forty older tests list the lines a call ran, and they saw a ④ too many. The brake and the
-  connector are now one line ④, the brake first.
-- **The contract already has `connector_requirements`.** Reading `operation-contract.schema.json`
-  found the field, and §7's example `downstream_idempotency_or_outcome_lookup`. D2 reads it before
-  it works anything out.
-- **The program's first scene asked the wrong caller.** firm-ap-fte holds no slip in the program's
-  world, so line ③ refused it before line ④ was reached. The scene asks user_700, a person of
-  org_789.
+- **`expected_version` is the invoice's.** The first code read it as the payment's version, and
+  the two happened to match at version 1. Since step 21, for a command that binds an invoice, line
+  ⑨ checks it against the invoice. A test of a payment sent twice found it: the second send heard
+  STALE_STATE for the invoice. payment.execute now follows the rule.
+- **The order of the send and the mark.** The first plan marked the payment paid before calling
+  the bank, so a cancel would wait. On the database a failed send undoes the mark, but memory has
+  no transaction, and the mark stayed. The payment is now read and locked first, sent, and marked
+  last, so both stores behave the same.
+- **A failure to mark it paid, after the money left,** was first an error, which undoes the claim.
+  It is OUTCOME_UNKNOWN, so the attempt stays in flight.
 
 ### What the review found
 
-A reviewer who had not seen the conversation read the step against the four rules, attacked it
-with inputs of its own, and made 41 small breaks in a copy of the folder.
+A reviewer who had not seen the conversation attacked the step with seven scenarios of its own and
+35 small breaks in a copy of the folder.
 
-- **F2. `proposal.approve` was not routed.** An approval reads the invoice and the vendor it binds
-  (`src/approve.ts`), through the connector, and cfo_100 approved while org_456's connector was out
-  of service. A test even said it was not routed. Now it is, by name (D3).
-- **F3. A refusal repeated the declaration's text.** Line ④'s message said *why* the connector was
-  out of service, which is the declaration's own words. A URL written as a field's name reached
-  the agent and the record. The caller now hears fixed words, and the reason goes to start-up's
-  warnings (D4).
-- **F4. Three fields could still carry a key:** `change_detection`, which the schema leaves open;
-  `field_fidelity`'s names; and the flag, which was never checked to be `true` or `false` (D5).
-- **F5. What a contract asks, read exactly.** Breaks survived for `false` meaning "not required",
-  for `freshness` as a requirement, and for `bounded_staleness`. Each has a test now.
-- **F6. Line ④'s order and reach.** Breaks survived that put the connector before the brake, or
-  refused DSoR's own commands too, so nobody could pull the brake during an outage. Each has a
-  test, and so do a dry run, `propose_only`, a release, and a replay. `NO_PLUGS`, which lets every
-  call through, moved from `src` to the tests. The code's decision numbers now match this README.
+- **F1 (critical). A failure after the send was forgotten.** If the payment store failed after the
+  bank answered, the call was an accident: the claim and the proposal were undone, and a retry made
+  a new proposal, with a new key, and the bank sent again. Now, once the bank was asked, only
+  COMMITTED or OUTCOME_UNKNOWN can end the work.
+- **F2 (high). Two drafts of one invoice were both sent.** Sending a payment left the invoice as it
+  was, so a second draft could be sent too. Now an invoice is paid once.
+- **F3 (high). A refusal the bank made up was passed on.** A bank that sent and then threw
+  CONNECTOR_UNAVAILABLE was retried, and paid twice. Only the fake's own "down, sent nothing" is
+  safe now; anything else is unknown.
+- **F4. A command that cannot be undone could go to no bank.** payment.create changed to
+  non_compensatable went to the records, which refuse no repeat. It stops start-up now.
+- **F5. A cancel during a send.** The branch for a payment that changed under the send had no
+  test, in memory or on the database. Both have one.
+- **F6. The code saw the key** in the receipt its send gave back. It gets nothing back now.
+- **F7. Every command got a live bank.** Only an operation that sends money gets one now.
+- **F8.** An unknown proposal's move named the bank for every cause. It names the real one.
+- **F9.** A Company kept after its call could still send. A test shows it cannot.
 
-Fifteen breaks had left every test green. Eleven now have a test aimed at each, though the
-reviewer's breaks were not run again against the fixes. Two are left, both small: a looser check
-of the file's shape, which still fails closed, and a duplicate id missed when its first copy is
-broken. Two are equivalent: the schema already refuses a requirement that is not `true` or
-`false`, and the refusal's label is never applied at line ④.
+The review's other breaks that left every test green each have a test now: a bank slower than the
+wait, the key's formula, the vendor sent, a release of a prepared payment, the agent's exact
+refusal, and a connector in the wrong role.
 
 ### Left open on purpose
 
-- **Routing is by name only.** Every company's records still live in the one database, behind the
-  same code, whichever connector the file names. A connector here is a declaration and a check.
-  Code of its own per connector starts with the bank, in step 35.
-- **The flag is the connector's own word.** Nothing checks that `accounting` really shares DSoR's
-  transaction. It does, because it is the same database. A connector to another system must say
-  `false`, and then no command goes there until step 36.
-- **A replay during an outage is refused.** Line ④ comes before line ⑦, so a call that already ran
-  is not given back while its company's connector is out, though its answer is in DSoR's own
-  store. The brake does the same. Open question 147.
-- **No fallback semantics.** DSOR-CNR-01b allows a contract to define them, and the schema has no
-  field for them. Open question 146.
-- **A warning is only printed.** No one is told when a company's connector goes out of service.
-  Watching a connector's health belongs with the bank's breaker, in step 35.
-- **Two database tests fail on a throwaway server.** On a local PostgreSQL that accepts any
-  password, the test "a log with the wrong password" logs in anyway, and an owner that belongs to
-  no other role fails "refuses to run as the owner". Step 33 fails both the same way on that
-  server. On the learner's own server both pass.
+- **Nothing is written before the bank is called** (step 36). If the program dies after the bank
+  sent and before the claim commits, nothing remembers the attempt, and the next one pays again.
+  The fix for F1 covers a failure the program sees, not a program that stops.
+- **Nothing holds a payment whose outcome is unknown** (step 37). After OUTCOME_UNKNOWN, PAY-902
+  can still be cancelled, and a new draft of INV-1002 can be made. Only payment.execute's one
+  attempt at a time stands in the way of a second send.
+- **Nobody asks the bank afterwards** (step 37). The lookup is built, and nothing calls it. The
+  bank's reference, `TRF-2`, is not kept as evidence.
+- **A replay gives back the answer of its time**, not what reconciliation learns later (step 37).
+- **No rule runs again at the sending** (D6). The CFO's rule ran at the draft.
+- **A release of a draft is refused while the bank is out of service**, though it sends nothing:
+  line ④ cannot tell what a release will run before it loads it.
+- **"Derived from its own idempotency key"** is read as the proposal's key, the key of the
+  execution (open question 148).
+- **Two database tests fail on a throwaway server**, as in step 34: one that accepts any password,
+  and an owner that belongs to no other role. On the learner's own server both pass.
 
 ## The rules this step meets
 
 | Rule | What it says | Spec | Tests |
 | --- | --- | --- | --- |
-| DSOR-CNR-01a | Every connector publishes a declaration that passes `connector.schema.json` | [§35](../../../specs/dsor/05-bindings.md#35-connector-contract) | [`test/connectors.test.ts`](test/connectors.test.ts), [`test/connectors-review.test.ts`](test/connectors-review.test.ts) |
-| DSOR-CNR-01b | No operation goes to a connector that lacks what its contract requires | [§35](../../../specs/dsor/05-bindings.md#35-connector-contract) | [`test/connectors.test.ts`](test/connectors.test.ts), [`test/connectors-review.test.ts`](test/connectors-review.test.ts), [`test/connectors.db.test.ts`](test/connectors.db.test.ts) |
-| DSOR-CNR-02 | A connector's credentials never reach the model or the agent | [§35](../../../specs/dsor/05-bindings.md#35-connector-contract) | [`test/connectors.test.ts`](test/connectors.test.ts), [`test/connectors-review.test.ts`](test/connectors-review.test.ts) |
-| DSOR-CNR-03a | Every connector says whether it is the only writer | [§35](../../../specs/dsor/05-bindings.md#35-connector-contract) | [`test/connectors.test.ts`](test/connectors.test.ts) |
+| DSOR-UNK-03a | A command that cannot be undone goes only to a connector that refuses a repeat or answers a lookup | [§25.2](../../../specs/dsor/03-execution.md#252-unknown-outcomes) | [`test/bank.test.ts`](test/bank.test.ts), [`test/bank-review.test.ts`](test/bank-review.test.ts), [`test/bank.db.test.ts`](test/bank.db.test.ts) |
+| DSOR-IDM-03 | DSoR gives such a connector a key derived from its own | [§22](../../../specs/dsor/03-execution.md#22-idempotency) | [`test/bank.test.ts`](test/bank.test.ts), [`test/bank-review.test.ts`](test/bank-review.test.ts) |
+| DSOR-UNK-01b | Step 04's rule, used for real: an unknown outcome is never success, failure, or retry-safe | [§25.2](../../../specs/dsor/03-execution.md#252-unknown-outcomes) | [`test/bank.test.ts`](test/bank.test.ts), [`test/bank-review.test.ts`](test/bank-review.test.ts), [`test/bank.db.test.ts`](test/bank.db.test.ts) |
+| DSOR-UNK-02 | A replay of an unknown outcome gives back its status, with no second attempt | [§25.2](../../../specs/dsor/03-execution.md#252-unknown-outcomes) | [`test/bank.test.ts`](test/bank.test.ts) |
 
-**Next:** step 35, a fake bank: a second connector, with switches for slow, broken, and silent.
+**Next:** step 36, write it down before you act: the note DSoR writes before it calls the bank.
