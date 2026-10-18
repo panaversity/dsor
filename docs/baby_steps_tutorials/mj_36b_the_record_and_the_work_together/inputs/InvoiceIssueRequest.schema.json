@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "InvoiceIssueRequest",
+  "description": "The input of invoice.issue: the invoice's canonical URI, and the version of that invoice its caller decided on (step 21's README, decisions 4 and 5). This tutorial's own schema: the specification names it and does not define it (step 07's README, decision 2).",
+  "type": "object",
+  "properties": {
+    "invoice": {
+      "$ref": "urn:dsor:schema:1.3:common#/$defs/resourceUri"
+    },
+    "expected_version": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647,
+      "description": "The version of the invoice that the caller read, and decided on. §38 names expected_version an argument of a tool (step 21's README, decisions 3 to 5). At most 2147483647, the largest version the database's integer column holds (step 21's README, decision 10)."
+    }
+  },
+  "required": ["invoice", "expected_version"],
+  "additionalProperties": false
+}

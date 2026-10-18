@@ -1,0 +1,5 @@
+{
+  "rule": "dsor://org_456/rule/cross-tenant-rule",
+  "version": 1,
+  "reason": "the cross-tenant suite switches on a rule of its own"
+}
