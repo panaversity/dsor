@@ -30,6 +30,11 @@ import { NO_SLIPS, type SlipStore } from "./slips.ts";
  */
 export type ClaimScope = { tenant: string; principal: string; operation: string; key: string };
 
+// NEW IN STEP 36B: the claim's own database transaction, as a log of the same database writes a
+//   record into it. Memory has none (step 36b's README, decision D1).
+/** The claim's own transaction, which only a log of the same database can use. */
+export type ClaimTransaction = object;
+
 /** The stores a command's code works on. On the database, they work inside the claim's transaction. */
 // And the proposals, which line ⑧ writes inside the same transaction (step 22's
 // README, decision 9).
@@ -58,6 +63,8 @@ export type WorkStores = {
   //   transaction; in memory nothing needs committing (step 36's README, decision D2).
   intents: IntentStore;
   checkpoint: () => Promise<void>;
+  // NEW IN STEP 36B: and the claim's transaction itself, so the record commits with the work.
+  transaction?: ClaimTransaction;
 };
 
 /** How the code's work ended: with its value, or with the refusal it gave. */
@@ -74,7 +81,14 @@ export type Outcome = Ended | { ready: true } | { pending: Pending };
 /** What a claim gives back: the outcome, its proposal, and, for a replay, the request id of the first call. */
 // And whether lines ⑨ and ⑩ denied the first call, so a replay's record says what
 // the first call's said (step 24's README, decision 17).
-export type Claimed = Outcome & { proposal?: string; replay_of?: string; denied?: true };
+// NEW IN STEP 36B: and whether the seal ran and committed with the claim: the record of a first
+//   call is kept already (decision D1).
+export type Claimed = Outcome & {
+  proposal?: string;
+  replay_of?: string;
+  denied?: true;
+  sealed?: true;
+};
 
 // Line ⑧ and the proposal's last move, which the claim runs around the code. The
 // proposal is opened before the code's savepoint, and moved after it, so a refusal that undoes the
@@ -115,6 +129,9 @@ export type ClaimStore = {
     work: (stores: WorkStores) => Promise<unknown>,
     // Line ⑧, for a command's call. Without it, the claim makes no proposal.
     steps?: ProposalSteps,
+    // NEW IN STEP 36B: line ⑪ for the first call, run inside the claim after its outcome is kept
+    //   and before it commits. If it throws, nothing of the claim is kept (decisions D1 to D3).
+    seal?: (stores: WorkStores, claimed: Claimed) => Promise<void>,
   ) => Promise<Claimed>;
 };
 
@@ -241,7 +258,7 @@ export function keyProblems(contracts: Iterable<Contract>): string[] {
 // a promise until the work ends. The promise fails only when the work had an accident.
 // The outcome holds the proposal's URI too.
 // And the mode of the first call.
-type Kept = Outcome & { proposal?: string; denied?: true };
+type Kept = Outcome & { proposal?: string; denied?: true; sealed?: true };
 type MemoryClaim = {
   payloadHash: string;
   mode: ProposalMode;
@@ -284,6 +301,7 @@ export function memoryClaims(
     requestId: string,
     work: (stores: WorkStores) => Promise<unknown>,
     steps?: ProposalSteps,
+    seal?: (stores: WorkStores, claimed: Claimed) => Promise<void>,
   ): Promise<Claimed> => {
     const id = JSON.stringify([scope.tenant, scope.principal, scope.operation, scope.key]);
     const held = claims.get(id);
@@ -334,7 +352,9 @@ export function memoryClaims(
           noted = true;
         },
       };
-      const outcome = Promise.resolve().then(async (): Promise<Kept> => {
+      // Set when an accident after the checkpoint made the outcome unknown: nobody seals that one.
+      let broke = false;
+      const body = async (): Promise<Kept> => {
         const opened = steps === undefined ? undefined : await steps.open(stores);
         const proposal = opened?.proposal;
         made = proposal;
@@ -369,8 +389,25 @@ export function memoryClaims(
           //   and the proposal at EXECUTING stay, as on the database, and the answer is
           //   OUTCOME_UNKNOWN. Found by step 36's review, H1.
           if (!noted || proposal === undefined) throw thrown;
+          broke = true;
           return { refused: unknownFromNote(), proposal };
         }
+      };
+      // NEW IN STEP 36B: the outcome, then its record, before any replay can read the outcome: a
+      //   replay waits for this promise. A record that cannot be kept is an accident, so the claim
+      //   and the proposal go, as the database rolls them back with the record. After the
+      //   checkpoint it is OUTCOME_UNKNOWN instead, as there. Memory has no transaction: what the
+      //   code wrote to its stores stays (step 36b's README, decisions D1 and D3).
+      const outcome = Promise.resolve().then(async (): Promise<Kept> => {
+        const kept = await body();
+        if (seal === undefined || broke) return kept;
+        try {
+          await seal(stores, fresh(kept));
+        } catch (thrown) {
+          if (!noted || made === undefined) throw thrown;
+          return { refused: unknownFromNote(), proposal: made };
+        }
+        return { ...kept, sealed: true };
       });
       claims.set(id, { payloadHash, mode, requestId, outcome });
       // The claim's locks are given back once its work has ended, either way.
@@ -379,7 +416,9 @@ export function memoryClaims(
         () => held.forEach((free) => free()),
       );
       try {
-        return fresh(await outcome);
+        const kept = await outcome;
+        // Only the first call hears that its record is kept; a replay's is written afterwards.
+        return kept.sealed === true ? { ...fresh(kept), sealed: true } : fresh(kept);
       } catch (error) {
         // An accident keeps no claim, as the database rolls the claim back with the work.
         claims.delete(id);
@@ -400,7 +439,7 @@ export function memoryClaims(
       (outcome) => outcome,
       () => undefined,
     );
-    if (ended === undefined) return run(scope, payloadHash, mode, requestId, work, steps);
+    if (ended === undefined) return run(scope, payloadHash, mode, requestId, work, steps, seal);
     // The fingerprint is compared only now, after the wait: a claim that failed was never a
     // claim (DSOR-IDM-01c, DSOR-IDM-01d).
     if (held.payloadHash !== payloadHash) throw usedForAnother(scope.operation);

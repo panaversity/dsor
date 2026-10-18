@@ -645,7 +645,9 @@ describe("C5 and C12: what the answers, the proposals, and the records say", () 
     expect(record?.extensions?.[OUR_EXTENSIONS]).not.toHaveProperty("invocation_mode");
   });
 
-  it("DSOR-EXE-03b: a propose_only call whose record cannot be written says a retry with the same key is safe, and the retry names the same proposal", async () => {
+  // Changed in step 36b: the waiting proposal goes with its record, so the retry makes the one
+  //   proposal there is (step 36b's README, decisions D2 and D3).
+  it("DSOR-EXE-03b: a propose_only call whose record cannot be written says a retry with the same key is safe, keeps no proposal, and the retry makes the only one", async () => {
     const world = story();
     const full: DecisionLog = {
       add: async () => {
@@ -657,10 +659,11 @@ describe("C5 and C12: what the answers, the proposals, and the records say", () 
     expect(answer).toStrictEqual({
       code: "EVIDENCE_STORE_UNAVAILABLE",
       message:
-        "DSoR could not record its decision after the proposal was made, and a retry with the same idempotency_key cannot make a second one",
+        "DSoR could not record its decision, so it kept nothing of the work, and a retry with the same idempotency_key runs it again",
       retry: "safe_same_key",
       correlation: correlationFor(THE_AGENT),
     });
+    expect(await world.proposals.all()).toHaveLength(0);
     const retried = await draft(world, envelope);
     expect(retried.answer).toMatchObject({ outcome: "READY" });
     expect(await world.proposals.all()).toHaveLength(1);

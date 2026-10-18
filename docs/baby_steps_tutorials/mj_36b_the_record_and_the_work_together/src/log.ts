@@ -2,6 +2,7 @@
 // leaves. DSOR-EXE-02 in specs/dsor/03-execution.md, section 21.
 // This file holds the log in memory, for the unit tests. The log the program uses is a
 // table in the database: createDbLog in postgres.ts.
+import type { ClaimTransaction } from "./claims.ts";
 import { randomUUID } from "node:crypto";
 import type { AgentAsserted } from "./asserted.ts";
 import type { BrakeBy } from "./brakes.ts";
@@ -389,7 +390,12 @@ export type DecisionRecord = Decision & { record_id: string; sequence: number; a
 // 11's README, decision 6).
 /** What call needs of a log: add a decision. */
 // And its bundle, when it has one, kept with it or not at all (step 33's README, D2).
-export type DecisionLog = { add: (decision: Decision, bundle?: DecisionBundle) => Promise<void> };
+// NEW IN STEP 36B: and, when given, the claim's own transaction, which a log of the same database
+//   writes into, so the record commits with the work (step 36b's README, decision D1). A log in
+//   memory has no transaction, and keeps the record at once.
+export type DecisionLog = {
+  add: (decision: Decision, bundle?: DecisionBundle, within?: ClaimTransaction) => Promise<void>;
+};
 
 /** The log in memory, for the unit tests: add a decision, and read a copy of every record. */
 // And a copy of every bundle (step 33's README, D3).

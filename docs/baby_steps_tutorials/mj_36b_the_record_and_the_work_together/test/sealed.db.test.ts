@@ -114,9 +114,10 @@ describe("C1: a process killed at the COMMIT that keeps the record leaves nothin
       expect(again).toMatchObject({ outcome: "COMMITTED" });
       expect(await madeWith(key)).toMatchObject([{ state: "COMMITTED" }]);
       expect(await draftsOf9001()).toBe((before as number) + 1);
-      expect(ownerRowsFor(again.correlation.request_id)).toMatchObject([
-        { authorization: "ALLOW", result: "ok" },
-      ]);
+      // Among the rows of its proposal's moves, which share its request id, its decision record.
+      expect(ownerRowsFor(again.correlation.request_id)).toEqual(
+        expect.arrayContaining([expect.objectContaining({ authorization: "ALLOW", result: "ok" })]),
+      );
     },
   );
 });
@@ -167,7 +168,9 @@ describe("C3: after the bank was asked, a refused record cannot undo the money",
       .split("/")
       .at(-1)!;
     expect(await intents.get("org_456", proposal)).not.toHaveProperty("outcome");
-    expect(ownerRowsFor(request)).toMatchObject([{ result: "OUTCOME_UNKNOWN" }]);
+    expect(ownerRowsFor(request)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ result: "OUTCOME_UNKNOWN" })]),
+    );
     expect(await sweepIntents(pool, ["org_456"])).toBe(1);
     settle.push(proposal);
   });

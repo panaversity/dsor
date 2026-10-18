@@ -24,8 +24,7 @@ pg.Client.prototype.query = function (this: pg.Client, ...args: unknown[]) {
   const text = typeof first === "string" ? first : first?.text;
   if (typeof text === "string" && text.includes("INSERT INTO dsor.decision_bundles")) {
     recorded = true;
-  }
-  else if (recorded && text === "COMMIT") {
+  } else if (recorded && text === "COMMIT") {
     writeSync(1, "KILLED AT COMMIT\n");
     process.kill(process.pid, "SIGKILL");
   }

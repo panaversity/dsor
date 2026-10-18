@@ -222,7 +222,9 @@ describe("C4, C6: a payment that needs the CFO waits", () => {
   });
 
   // Found by step 27's review, finding M1: the words said that the command ran, and nothing ran.
-  it("DSOR-EXE-03b: when the record of a payment that waits for the CFO cannot be written, the agent hears that the proposal was made, never that the command ran; a retry with the same key gives the waiting answer back, and nothing is drafted", async () => {
+  // Changed in step 36b: the waiting proposal goes with its record, and the words say so; the retry
+  //   makes the one waiting proposal there is (step 36b's README, decisions D2 and D3).
+  it("DSOR-EXE-03b: when the record of a payment that waits for the CFO cannot be written, the agent hears that nothing was kept, never that the command ran; a retry with the same key waits for the CFO, and nothing is drafted", async () => {
     const w = await withTuesday();
     const full: DecisionLog = {
       add: async () => {
@@ -234,9 +236,10 @@ describe("C4, C6: a payment that needs the CFO waits", () => {
     expect(await call(w.registry, full, envelope, "payment.create", input)).toMatchObject({
       code: "EVIDENCE_STORE_UNAVAILABLE",
       message:
-        "DSoR could not record its decision after the proposal was made, and a retry with the same idempotency_key cannot make a second one",
+        "DSoR could not record its decision, so it kept nothing of the work, and a retry with the same idempotency_key runs it again",
       retry: "safe_same_key",
     });
+    expect(await w.proposals.all()).toHaveLength(0);
     expect(await w.ask(envelope, "payment.create", input)).toMatchObject({
       outcome: "PENDING_APPROVAL",
     });

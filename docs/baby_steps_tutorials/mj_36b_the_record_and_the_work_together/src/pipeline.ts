@@ -7,7 +7,14 @@ import { checkBrake, holdBrake, NO_BRAKES, type BrakeStore } from "./brakes.ts";
 import { checkConnector, SENDS_MONEY } from "./connectors.ts";
 import { bankKeyOf, sendThrough, type BankOrder } from "./bank.ts";
 import { checkedAssertion } from "./asserted.ts";
-import { bundleOf, checkBundle, executedOf, newEvidence, stateReadOf } from "./bundle.ts";
+import {
+  bundleOf,
+  checkBundle,
+  executedOf,
+  newEvidence,
+  stateReadOf,
+  type DecisionBundle,
+} from "./bundle.ts";
 import { freshSheet, NO_RATES, readOnce, type RateStore } from "./rates.ts";
 import { NO_CONTROLS, type ControlStore } from "./rulebook.ts";
 import { NotCanonical, payloadHash } from "./canonical.ts";
@@ -15,6 +22,9 @@ import {
   claimScope,
   isOutcome,
   keptAfterNote,
+  type ClaimScope,
+  type Claimed,
+  type ClaimTransaction,
   type Ended,
   type ProposalSteps,
   type WorkStores,
@@ -53,7 +63,7 @@ import {
   type Unconvertible,
   type ReservationStore,
 } from "./limits.ts";
-import { decisionOf, type Authority, type DecisionLog, type Read } from "./log.ts";
+import { decisionOf, type Authority, type Decision, type DecisionLog, type Read } from "./log.ts";
 import { NO_PAYMENTS } from "./payment.ts";
 import { checkResultSize } from "./pages.ts";
 import { checkPermission, effectivePermissions, permissionsOf } from "./permissions.ts";
@@ -117,6 +127,11 @@ export type Observer = (line: number) => void;
  */
 // Call is async. It waits for the database at lines ⑨ and ⑪, and answers
 // only after the record is committed (step 09's README, decision 9).
+// NEW IN STEP 36B: what a caller hears when the record of its work could not be written, and so
+//   nothing of the work was kept (DSOR-EXE-03b; step 36b's README, decision D3).
+const KEPT_NOTHING =
+  "DSoR could not record its decision, so it kept nothing of the work, and a retry with the same idempotency_key runs it again";
+
 export async function call(
   registry: Registry,
   // The log every decision is written to (step 08's README, decision 6).
@@ -178,6 +193,11 @@ export async function call(
   // Set only from the claim, so no code can name a proposal of its own (step 22's README,
   // decision 5). Found by the review.
   let failedProposal: string | undefined;
+  // NEW IN STEP 36B: the answer a claim sealed with its record, whether line ⑪'s record is kept
+  //   already, and whether a record that could not be written took the work with it (decision D1).
+  let sealedAnswer: Answer | undefined;
+  let recordKept = false;
+  let nothingKept = false;
   // At a release, the rule versions the stored request was decided under.
   let approvedUnderOfRecord: { control: string; version: number }[] | undefined;
   // The mode line ① read, or execute when the envelope names none. A command's
@@ -1070,6 +1090,200 @@ export async function call(
     //   release, the request that ran and the contract of its operation. Its fingerprint, the
     //   kind of its answer, and its semantics are the stored request's (DSOR-APR-10).
     let answered: { hash: string; contract: Contract } = { hash, contract };
+    // NEW IN STEP 36B: what follows the claim, as its own function, so the claim's transaction
+    //   can run it before its COMMIT and keep the record it leads to (decision D1). It gives the
+    //   answer of a call that waits, throws a refusal, or sets the value that the tail shapes.
+    // NEW IN STEP 36B: and the proposals it reads: the claim's own, inside its transaction, so a
+    //   read waits for no other connection. Found while building: through the pool, two releases
+    //   at once each held a connection and waited for the other's.
+    const afterClaim = async (
+      scope: ClaimScope,
+      claimed: Claimed,
+      proposals: ProposalStore = registry.claims.proposals,
+    ): Promise<Answer | undefined> => {
+      // How the work ended, for the bundle: committed, failed, or not executed. A
+      //   replay ran nothing (step 33's README, D9).
+      evidence.executed = executedOf(claimed);
+      if (claimed.replay_of !== undefined) {
+        // A replay passed every line its first call passed, so its record says what the first
+        // call's said, and names the call whose outcome it gives back (step 20's README,
+        // decision 8).
+        // A first call that lines ⑨ and ⑩ refused was denied, and so is its
+        // replay. Found by step 24's review: the replay's record said ALLOW (decision 17).
+        allowed = claimed.denied !== true;
+        keyOfRecord = { key: scope.key, replay_of: claimed.replay_of };
+      }
+      // Every command's claim gives its proposal back. None is a bug.
+      if (claimed.proposal === undefined) throw new Error("a command's claim kept no proposal");
+      proposalOfRecord = claimed.proposal;
+      // A refusal the code gave is an outcome, and comes back like any other (step 20's
+      // README, decision 9).
+      // Its envelope names the proposal that ended FAILED, or, since step 24, DENIED.
+      if ("refused" in claimed) {
+        failedProposal = claimed.proposal;
+        throw claimed.refused;
+      }
+      // A propose_only call stops here, after line ⑩. Its proposal waits READY,
+      //   and the code never ran, so there is no data to check, mask, or measure. The
+      //   answer names the proposal, the request's fingerprint, and the contract's semantics, as
+      //   result-envelope.schema.json asks of READY (DSOR-OPR-05; step 23's README, decisions 1,
+      //   8, and 9).
+      // A call that a control stopped waits for its approval, in every mode, and
+      //   the code never ran. The answer names what it requires and when it expires, as
+      //   result-envelope.schema.json asks of PENDING_APPROVAL (step 27's README, decision D10).
+      if ("pending" in claimed) {
+        allowed = true;
+        return {
+          outcome: "PENDING_APPROVAL",
+          proposal: claimed.proposal,
+          payload_hash: hash,
+          requires: claimed.pending.requires,
+          semantics: semanticsOf(contract),
+          expires_at: claimed.pending.expires_at,
+          correlation,
+        };
+      }
+      if ("ready" in claimed) {
+        allowed = true;
+        return {
+          outcome: "READY",
+          proposal: claimed.proposal,
+          payload_hash: hash,
+          semantics: semanticsOf(contract),
+          correlation,
+        };
+      }
+      returned = claimed.value;
+      // Read again after the claim, so a replay, whose claim ran nothing, describes it too.
+      if (released !== undefined) {
+        const ran = await proposals.get(tenant, proposalIdOf(tenant, released));
+        const target = ran === undefined ? undefined : targetOf(registry.contracts, ran);
+        if (ran === undefined || target === undefined) {
+          throw new Error("a release that ran has no proposal, or no operation");
+        }
+        answered = { hash: ran.payload_hash, contract: target };
+        // And the bundle names what was released, a replay's too. Found by step
+        //   33's review, finding 5: a replay's bundle named proposal.execute@1.
+        evidence.decided = { operation: ran.operation, contract: target, proposal: ran.uri };
+      }
+      return undefined;
+    };
+    // NEW IN STEP 36B: and the tail, which shapes the answer from the value, as its own function.
+    const tail = (): Answer => {
+      // Ours, not §21's: every tenant_id in the code's answer must be the active company's.
+      // Right after ⑨, before anything else reads the answer. Another company's row is a bug
+      // in the code, so the call fails with INTERNAL_ERROR, and its record says ALLOW. The
+      // check reads DSoR's own copy of the answer, and the caller gets that copy (step 10's
+      // README, decision 14). Found by the Stage 2 review, and fixed from step 10 on.
+      // A replay's recorded answer is checked again here, as it leaves, and so is
+      // everything below (step 20's README, decision 7).
+      const data = checkAnswerInTenant(returned, tenant);
+      // Ours, not §21's. For an agent, every field above its clearance is
+      // left out before the answer leaves (DSOR-CLS-02a). The contract names the kind of its
+      // answer. Masking walks the copy the company check made, so the answer, its record, and
+      // the check all read one copy (step 14's README, decision 3). Found by the Stage 2
+      // review, and fixed from step 14 on. Masking comes before the size check, so the size
+      // measured below is the size that leaves (step 14's README, decision 5).
+      const kind = (answered.contract["output"] as { schema: string }).schema;
+      const shown = show(data, kind, registry.classifications, clearanceOf(caller));
+      // Ours, not §21's. No query's result leaves larger than DSoR gives in
+      // one call, whoever wrote its code, a list or not (DSOR-QRY-01; step 13's README,
+      // decision 3). Its code ran, so its record says ALLOW, with this refusal as its result.
+      // A command's answer passes here too: one draft is far below the limit, so only a bug
+      // reaches it.
+      checkResultSize(shown.data, shown.redactions);
+      // ⑩ Evaluate controls, segregation of duties, and limits. Segregation of duties between a request
+      //   and its approval runs at line ⑨ of proposal.approve, since step 30 (step 30's README, decision
+      //   D3). Incompatible operations by one person (DSOR-SOD-03a) are not built. Found by step 30's
+      //   review, finding L1: this said segregation of duties was not built.
+      // The controls and the limits are built. They run above, before the work, where §21 puts them
+      //   (step 27's README, decision D9). Found by step 27's review: this said the controls were not
+      //   built.
+
+      // A query's answer is { data, correlation } (step 04's README, decision 3).
+      // With its label (DSOR-CLS-03), and the fields left out, when there are
+      // any (DSOR-CLS-02b).
+      const { classification, redactions, resources } = shown;
+      const listed = redactions.length > 0 ? { redactions } : {};
+      if (contract["kind"] === "query") {
+        // The answer's label, from the labels its reads left. Nothing since the
+        // copy waited, so no read can have been noted after it: the label covers every read
+        // whose rows could be in the copy. Last of the checks, so an answer refused for another
+        // reason is refused for that one. A query that read nothing is a bug in its code
+        // (DSOR-FRS-01a; step 15's README, decision 6).
+        // The label names the record's version only when the caller may see the
+        // version itself. Masking withheld it, so the label leaves it out too. Found by the
+        // review: an agent whose clearance hid the version read it in the label (DSOR-CLS-02a;
+        // step 21's README, decision 9).
+        const label = stalest(reads);
+        const hidden = redactions.some((redaction) => redaction.field === "version");
+        const freshness = hidden ? withoutVersion(label) : label;
+        read = { resources, classification, freshness };
+        return { data: shown.data, classification, ...listed, freshness, correlation };
+      } else {
+        // A command's answer states the semantics its contract declares, never
+        // a word of its code (DSOR-EXE-05b). No freshness: DSOR-FRS-01a names query results,
+        // and a write is not a read (step 17's README, decision 2).
+        const semantics = semanticsOf(answered.contract);
+        // The outcome, the proposal, and the fingerprint of the request, so the
+        // answer passes result-envelope.schema.json (DSOR-SCH-01; step 22's README, decision 5).
+        if (proposalOfRecord === undefined) throw new Error("a command answered with no proposal");
+        read = { resources, classification };
+        return {
+          outcome: "COMMITTED",
+          proposal: proposalOfRecord,
+          payload_hash: answered.hash,
+          data: shown.data,
+          classification,
+          ...listed,
+          semantics,
+          correlation,
+        };
+      }
+    };
+    // NEW IN STEP 36B: the whole answer of a claim's first call, as the caller will hear it,
+    //   masked as it leaves.
+    const finish = async (
+      scope: ClaimScope,
+      claimed: Claimed,
+      proposals: ProposalStore,
+    ): Promise<Answer> => {
+      try {
+        try {
+          const early = await afterClaim(scope, claimed, proposals);
+          if (early !== undefined) return early;
+        } catch (thrown) {
+          throw maskRefusal(thrown, clearanceOf(caller));
+        }
+        return tail();
+      } catch (thrown) {
+        return toEnvelope(thrown, correlation, failedProposal);
+      }
+    };
+    // NEW IN STEP 36B: line ⑪ inside the claim's transaction, after its outcome is kept and before
+    //   its COMMIT. The record and its bundle are written through the claim's own transaction, so
+    //   the work, its outcome, and its record commit together, or none of them does
+    //   (DSOR-EXE-04a; decisions D1 to D3). A record that cannot be written takes the work with
+    //   it: nothing of the call is kept, and the same key runs it again (DSOR-EXE-03b).
+    const sealWith = async (
+      scope: ClaimScope,
+      stores: WorkStores,
+      claimed: Claimed,
+    ): Promise<void> => {
+      const answer = await finish(scope, claimed, stores.proposals);
+      try {
+        await line(11, () => keep(recordOf(answer), stores.transaction));
+      } catch {
+        // Nothing of the work is kept, so the record of the refusal names none of it.
+        proposalOfRecord = undefined;
+        failedProposal = undefined;
+        read = undefined;
+        evidence.executed = "not_executed";
+        nothingKept = true;
+        throw new Refusal("EVIDENCE_STORE_UNAVAILABLE", KEPT_NOTHING);
+      }
+      sealedAnswer = answer;
+    };
     try {
       if (contract["kind"] === "query" && key === undefined) {
         // A query makes no proposal, so its stores hold none to write (decision 7).
@@ -1201,6 +1415,7 @@ export async function call(
                 correlation.request_id,
                 running,
                 steps,
+                (stores, claimed) => sealWith(scope, stores, claimed),
               ),
             };
           }
@@ -1298,74 +1513,19 @@ export async function call(
               correlation.request_id,
               runCode,
               steps,
+              (stores, claimed) => sealWith(scope, stores, claimed),
             ),
           };
         });
-        // How the work ended, for the bundle: committed, failed, or not executed. A
-        //   replay ran nothing (step 33's README, D9).
-        evidence.executed = executedOf(claimed);
-        if (claimed.replay_of !== undefined) {
-          // A replay passed every line its first call passed, so its record says what the first
-          // call's said, and names the call whose outcome it gives back (step 20's README,
-          // decision 8).
-          // A first call that lines ⑨ and ⑩ refused was denied, and so is its
-          // replay. Found by step 24's review: the replay's record said ALLOW (decision 17).
-          allowed = claimed.denied !== true;
-          keyOfRecord = { key: scope.key, replay_of: claimed.replay_of };
+        // NEW IN STEP 36B: a first call whose record committed with its claim is answered as it
+        //   was sealed, and line ⑪ below keeps nothing more. A replay, and an outcome nobody
+        //   could seal, go on as before.
+        if (claimed.sealed === true && sealedAnswer !== undefined) {
+          recordKept = true;
+          return sealedAnswer;
         }
-        // Every command's claim gives its proposal back. None is a bug.
-        if (claimed.proposal === undefined) throw new Error("a command's claim kept no proposal");
-        proposalOfRecord = claimed.proposal;
-        // A refusal the code gave is an outcome, and comes back like any other (step 20's
-        // README, decision 9).
-        // Its envelope names the proposal that ended FAILED, or, since step 24, DENIED.
-        if ("refused" in claimed) {
-          failedProposal = claimed.proposal;
-          throw claimed.refused;
-        }
-        // A propose_only call stops here, after line ⑩. Its proposal waits READY,
-        //   and the code never ran, so there is no data to check, mask, or measure. The
-        //   answer names the proposal, the request's fingerprint, and the contract's semantics, as
-        //   result-envelope.schema.json asks of READY (DSOR-OPR-05; step 23's README, decisions 1,
-        //   8, and 9).
-        // A call that a control stopped waits for its approval, in every mode, and
-        //   the code never ran. The answer names what it requires and when it expires, as
-        //   result-envelope.schema.json asks of PENDING_APPROVAL (step 27's README, decision D10).
-        if ("pending" in claimed) {
-          allowed = true;
-          return {
-            outcome: "PENDING_APPROVAL",
-            proposal: claimed.proposal,
-            payload_hash: hash,
-            requires: claimed.pending.requires,
-            semantics: semanticsOf(contract),
-            expires_at: claimed.pending.expires_at,
-            correlation,
-          };
-        }
-        if ("ready" in claimed) {
-          allowed = true;
-          return {
-            outcome: "READY",
-            proposal: claimed.proposal,
-            payload_hash: hash,
-            semantics: semanticsOf(contract),
-            correlation,
-          };
-        }
-        returned = claimed.value;
-        // Read again after the claim, so a replay, whose claim ran nothing, describes it too.
-        if (released !== undefined) {
-          const ran = await registry.claims.proposals.get(tenant, proposalIdOf(tenant, released));
-          const target = ran === undefined ? undefined : targetOf(registry.contracts, ran);
-          if (ran === undefined || target === undefined) {
-            throw new Error("a release that ran has no proposal, or no operation");
-          }
-          answered = { hash: ran.payload_hash, contract: target };
-          // And the bundle names what was released, a replay's too. Found by step
-          //   33's review, finding 5: a replay's bundle named proposal.execute@1.
-          evidence.decided = { operation: ran.operation, contract: target, proposal: ran.uri };
-        }
+        const early = await afterClaim(scope, claimed);
+        if (early !== undefined) return early;
       }
     } catch (thrown) {
       // A refusal the code throws is masked as its answer would be
@@ -1375,76 +1535,45 @@ export async function call(
       // (step 20's README, decision 7).
       throw maskRefusal(thrown, clearanceOf(caller));
     }
-    // Ours, not §21's: every tenant_id in the code's answer must be the active company's.
-    // Right after ⑨, before anything else reads the answer. Another company's row is a bug
-    // in the code, so the call fails with INTERNAL_ERROR, and its record says ALLOW. The
-    // check reads DSoR's own copy of the answer, and the caller gets that copy (step 10's
-    // README, decision 14). Found by the Stage 2 review, and fixed from step 10 on.
-    // A replay's recorded answer is checked again here, as it leaves, and so is
-    // everything below (step 20's README, decision 7).
-    const data = checkAnswerInTenant(returned, tenant);
-    // Ours, not §21's. For an agent, every field above its clearance is
-    // left out before the answer leaves (DSOR-CLS-02a). The contract names the kind of its
-    // answer. Masking walks the copy the company check made, so the answer, its record, and
-    // the check all read one copy (step 14's README, decision 3). Found by the Stage 2
-    // review, and fixed from step 14 on. Masking comes before the size check, so the size
-    // measured below is the size that leaves (step 14's README, decision 5).
-    const kind = (answered.contract["output"] as { schema: string }).schema;
-    const shown = show(data, kind, registry.classifications, clearanceOf(caller));
-    // Ours, not §21's. No query's result leaves larger than DSoR gives in
-    // one call, whoever wrote its code, a list or not (DSOR-QRY-01; step 13's README,
-    // decision 3). Its code ran, so its record says ALLOW, with this refusal as its result.
-    // A command's answer passes here too: one draft is far below the limit, so only a bug
-    // reaches it.
-    checkResultSize(shown.data, shown.redactions);
-    // ⑩ Evaluate controls, segregation of duties, and limits. Segregation of duties between a request
-    //   and its approval runs at line ⑨ of proposal.approve, since step 30 (step 30's README, decision
-    //   D3). Incompatible operations by one person (DSOR-SOD-03a) are not built. Found by step 30's
-    //   review, finding L1: this said segregation of duties was not built.
-    // The controls and the limits are built. They run above, before the work, where §21 puts them
-    //   (step 27's README, decision D9). Found by step 27's review: this said the controls were not
-    //   built.
+    return tail();
+  }
 
-    // A query's answer is { data, correlation } (step 04's README, decision 3).
-    // With its label (DSOR-CLS-03), and the fields left out, when there are
-    // any (DSOR-CLS-02b).
-    const { classification, redactions, resources } = shown;
-    const listed = redactions.length > 0 ? { redactions } : {};
-    if (contract["kind"] === "query") {
-      // The answer's label, from the labels its reads left. Nothing since the
-      // copy waited, so no read can have been noted after it: the label covers every read
-      // whose rows could be in the copy. Last of the checks, so an answer refused for another
-      // reason is refused for that one. A query that read nothing is a bug in its code
-      // (DSOR-FRS-01a; step 15's README, decision 6).
-      // The label names the record's version only when the caller may see the
-      // version itself. Masking withheld it, so the label leaves it out too. Found by the
-      // review: an agent whose clearance hid the version read it in the label (DSOR-CLS-02a;
-      // step 21's README, decision 9).
-      const label = stalest(reads);
-      const hidden = redactions.some((redaction) => redaction.field === "version");
-      const freshness = hidden ? withoutVersion(label) : label;
-      read = { resources, classification, freshness };
-      return { data: shown.data, classification, ...listed, freshness, correlation };
-    } else {
-      // A command's answer states the semantics its contract declares, never
-      // a word of its code (DSOR-EXE-05b). No freshness: DSOR-FRS-01a names query results,
-      // and a write is not a read (step 17's README, decision 2).
-      const semantics = semanticsOf(answered.contract);
-      // The outcome, the proposal, and the fingerprint of the request, so the
-      // answer passes result-envelope.schema.json (DSOR-SCH-01; step 22's README, decision 5).
-      if (proposalOfRecord === undefined) throw new Error("a command answered with no proposal");
-      read = { resources, classification };
-      return {
-        outcome: "COMMITTED",
-        proposal: proposalOfRecord,
-        payload_hash: answered.hash,
-        data: shown.data,
-        classification,
-        ...listed,
-        semantics,
-        correlation,
-      };
-    }
+  // The record of an answer, and its bundle, for a command past line ③: the log keeps both or
+  //   neither, and the record names its bundle (step 33's README, D1 and D2). Built inside line
+  //   ⑪'s try, so even a bug there gives no answer.
+  // NEW IN STEP 36B: its own function, so the claim's transaction can build it too.
+  function recordOf(answer: Answer): { decision: Decision; bundle: DecisionBundle | undefined } {
+    const decision = decisionOf(
+      answer,
+      registry.contracts.get(name),
+      allowed,
+      tenantOfRecord,
+      claimedTenant,
+      read,
+      under,
+      keyOfRecord,
+      proposalOfRecord,
+      modeOfRecord,
+      conversionOfRecord,
+      unconvertibleOfRecord,
+      controlsOfRecord,
+      denialsOfRecord,
+      staleOfRecord,
+      approvedUnderOfRecord,
+      evidence.asserted,
+    );
+    const bundle = bundleOf(decision, evidence, registry.contracts.get(name));
+    if (bundle === undefined) return { decision, bundle };
+    return { decision: { ...decision, decision_bundle: bundle.decision_id }, bundle };
+  }
+
+  // NEW IN STEP 36B: a record and its bundle into the log, inside the claim's transaction when one
+  //   is given (decision D1).
+  function keep(
+    record: { decision: Decision; bundle: DecisionBundle | undefined },
+    within?: ClaimTransaction,
+  ): Promise<void> {
+    return log.add(record.decision, record.bundle, within);
   }
 
   let answer: Answer;
@@ -1462,34 +1591,9 @@ export async function call(
   // Building the record is inside the try too, so even a bug there gives no answer.
   // Await. The answer waits until the database has committed the record,
   // and a database that refuses it lands in the catch (step 09's README, C2 and C4).
+  // NEW IN STEP 36B: unless the claim kept the record with its work already (decision D1).
   try {
-    await line(11, () => {
-      const decision = decisionOf(
-        answer,
-        registry.contracts.get(name),
-        allowed,
-        tenantOfRecord,
-        claimedTenant,
-        read,
-        under,
-        keyOfRecord,
-        proposalOfRecord,
-        modeOfRecord,
-        conversionOfRecord,
-        unconvertibleOfRecord,
-        controlsOfRecord,
-        denialsOfRecord,
-        staleOfRecord,
-        approvedUnderOfRecord,
-        evidence.asserted,
-      );
-      // And the decision's bundle, for a command past line ③, sealed with its
-      //   record: the log keeps both or neither, and the record names its bundle (step 33's
-      //   README, D1 and D2). Built here, inside the try, so a bug in it gives no answer either.
-      const bundle = bundleOf(decision, evidence, registry.contracts.get(name));
-      if (bundle === undefined) return log.add(decision);
-      return log.add({ ...decision, decision_bundle: bundle.decision_id }, bundle);
-    });
+    if (!recordKept) await line(11, () => keep(recordOf(answer)));
   } catch {
     // A command whose code ran may have changed something, and DSoR cannot
     // prove it did not. Until step 20 its answer never said a retry was safe: with no key, a
@@ -1499,7 +1603,7 @@ export async function call(
     // same key gets the claim's outcome, or runs once if the work rolled back. So the
     // answer is EVIDENCE_STORE_UNAVAILABLE, whose retry class is safe_same_key (step 20's
     // README, decision 10).
-    if (allowed && keyOfRecord !== undefined) {
+    if (allowed && keyOfRecord !== undefined && !nothingKept) {
       // A propose_only call ran no code. Its claim keeps the waiting proposal, so a
       // retry with the same key names that one.
       // And neither did a call that waits for an approval. Found by step 27's
@@ -1510,6 +1614,14 @@ export async function call(
           ? "DSoR could not record its decision after the proposal was made, and a retry with the same idempotency_key cannot make a second one"
           : "DSoR could not record its decision after the command ran, and a retry with the same idempotency_key cannot run it twice";
       return toEnvelope(new Refusal("EVIDENCE_STORE_UNAVAILABLE", ran), answer.correlation);
+    }
+    // NEW IN STEP 36B: a record that could not be written took the work with it, and the record of
+    //   that refusal could not be written either: the words still say what happened.
+    if (nothingKept) {
+      return toEnvelope(
+        new Refusal("EVIDENCE_STORE_UNAVAILABLE", KEPT_NOTHING),
+        answer.correlation,
+      );
     }
     // DSOR-EXE-03b, an L2 rule built early: with no record, there is no answer, not even a
     // "yes". Whatever the log threw stays inside: it can name paths and servers. This

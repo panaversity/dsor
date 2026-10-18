@@ -86,6 +86,7 @@ import {
   type ClaimScope,
   type ClaimStore,
   type Claimed,
+  type ClaimTransaction,
   type Ended,
   type ProposalSteps,
   type WorkStores,
@@ -241,7 +242,11 @@ export type DbLog = DecisionLog & {
 /** The log, as rows of dsor.audit. */
 export function createDbLog(pool: pg.Pool): DbLog {
   return Object.freeze({
-    add: async (decision: Decision, bundle?: DecisionBundle): Promise<void> => {
+    add: async (
+      decision: Decision,
+      bundle?: DecisionBundle,
+      within?: ClaimTransaction,
+    ): Promise<void> => {
       // Both checks before anything is written, as in memory: a record that names
       //   another bundle than the one given, and a bundle that fails its schema, keep nothing
       //   (step 33's README, decision D2).
@@ -253,7 +258,10 @@ export function createDbLog(pool: pg.Pool): DbLog {
       // Inside the transaction of the call's company, or of none when the
       // call was refused before line ②. The policy lets the record in only if it carries
       // exactly that company (DSOR-TEN-02a; step 11's README, decision 4).
-      await inCompany(pool, decision.tenant, async (client) => {
+      // NEW IN STEP 36B: inside the claim's own transaction when it is given, so the record
+      //   commits with the work, or neither does. The claim's transaction has set its company,
+      //   which is the record's (step 36b's README, decision D1).
+      const write = async (client: pg.PoolClient): Promise<void> => {
         // The bundle first, in the record's own transaction, so the record can name it: the
         //   database's key refuses a record that names a bundle it does not keep. A bundle that
         //   is kept and a record that is not roll back together (step 33's README, D2). The
@@ -309,7 +317,9 @@ export function createDbLog(pool: pg.Pool): DbLog {
         // Thrown inside the work, so inCompany rolls the transaction back. Found by step
         // 16's review, and fixed from step 09 on.
         if (rowCount !== 1) throw new Error(`the log kept ${rowCount ?? 0} rows, not 1`);
-      });
+      };
+      if (within !== undefined) await write(within as pg.PoolClient);
+      else await inCompany(pool, decision.tenant, write);
     },
     // One company at a time. dsor_runtime cannot read another company's
     // records, or a record with no company, so there is no "every record" for it to ask
@@ -1086,6 +1096,7 @@ export function createDbClaims(
       requestId: string,
       work: (stores: WorkStores) => Promise<unknown>,
       steps?: ProposalSteps,
+      seal?: (stores: WorkStores, claimed: Claimed) => Promise<void>,
     ): Promise<Claimed> => {
       // One transaction: the claim, the code's reads and writes, and the outcome. They commit
       // together, or none of them does (decision 6).
@@ -1115,6 +1126,14 @@ export function createDbClaims(
           if (added.rowCount !== 1)
             throw new Error(`the claim added ${added.rowCount} rows, not 1`);
           const stores = storesIn(client, scope.tenant, controls, noted);
+          // NEW IN STEP 36B: line ⑪ for this first call, after its outcome is kept and before the
+          //   COMMIT, through this transaction. If it throws, inCompany rolls back the claim, the
+          //   proposal, the work, and the record together (decisions D1 to D3).
+          const sealed = async (claimed: Claimed): Promise<Claimed> => {
+            if (seal === undefined) return claimed;
+            await seal(stores, claimed);
+            return { ...claimed, sealed: true };
+          };
           // Line ⑧, before the savepoint, so a refusal that undoes the code's work
           // keeps the proposal (step 22's README, decision 9).
           const opened = steps === undefined ? undefined : await steps.open(stores);
@@ -1130,7 +1149,7 @@ export function createDbClaims(
               ids,
               `{"refused":${refused},"proposal":${keptText(opened.proposal)},"denied":true}`,
             );
-            return { refused: opened.refused, proposal: opened.proposal, denied: true as const };
+            return sealed({ refused: opened.refused, proposal: opened.proposal, denied: true });
           }
           // A proposal that a control stopped waits for its approval, in every mode,
           // and the work never runs. The claim keeps what it waits for, so a replay gives the same
@@ -1142,7 +1161,7 @@ export function createDbClaims(
               ids,
               `{"pending":${pending},"proposal":${keptText(opened.proposal)}}`,
             );
-            return { pending: opened.pending, proposal: opened.proposal };
+            return sealed({ pending: opened.pending, proposal: opened.proposal });
           }
           // In propose_only mode the proposal waits READY, and the work never runs.
           // The claim keeps that as its answer, so a replay names the same waiting proposal (step
@@ -1150,7 +1169,7 @@ export function createDbClaims(
           if (mode === "propose_only") {
             if (proposal === undefined) throw new Error("a propose_only claim made no proposal");
             await keepAnswer(client, ids, `{"ready":true,"proposal":${keptText(proposal)}}`);
-            return { ready: true as const, proposal };
+            return sealed({ ready: true, proposal });
           }
           // The work runs inside a savepoint, so a refusal can undo the work and keep the claim.
           await client.query("SAVEPOINT work");
@@ -1177,7 +1196,7 @@ export function createDbClaims(
               ? `{"value":${keptText(outcome.value)}${named}}`
               : `{"refused":${keptText(keptOf(outcome.refused))}${named}}`;
           await keepAnswer(client, ids, text);
-          return proposal === undefined ? outcome : { ...outcome, proposal };
+          return sealed(proposal === undefined ? outcome : { ...outcome, proposal });
         });
       } catch (thrown) {
         // After the checkpoint, the claim, the proposal at EXECUTING, and the open
@@ -1243,6 +1262,9 @@ function storesIn(
     // And the intent records, written inside the claim's transaction, which the
     //   checkpoint then commits (step 36's README, decision D2).
     intents: intentsThrough(run),
+    // NEW IN STEP 36B: and the claim's own connection, so the record is written in its
+    //   transaction (decision D1).
+    transaction: client,
     // The claim, its proposal at EXECUTING, the code's reads so far, and the note commit here,
     //   before the bank is asked. A crash after this leaves all four behind, and the note says
     //   what was about to happen. The work goes on in a new transaction, in the same company,

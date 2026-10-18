@@ -481,7 +481,10 @@ describe("C9: a retry after a lost record is safe with the same key", () => {
     });
   });
 
-  it("step 20's decision 10: the log fails after the agent's keyed draft: EVIDENCE_STORE_UNAVAILABLE with safe_same_key, and the retry with the key gets PAY-901, with one draft", async () => {
+  // Changed in step 36b: the claim goes with the record, so the retry with the key drafts again.
+  //   On the database the first draft went too (test/sealed.db.test.ts); memory has no
+  //   transaction, so here PAY-901 stays, and the retry drafts PAY-902 (step 36b's README, D3).
+  it("step 20's decision 10: the log fails after the agent's keyed draft: EVIDENCE_STORE_UNAVAILABLE with safe_same_key, and the retry with the key drafts it again", async () => {
     const rows: Payment[] = [];
     const registry = paymentRegistry(rows);
     const kept = createLog();
@@ -506,8 +509,8 @@ describe("C9: a retry after a lost record is safe with the same key", () => {
       ...INV_1008,
       expected_version: 1,
     });
-    expect(heard(retry)).toMatchObject({ id: "PAY-901" });
-    expect(rows).toHaveLength(1);
+    expect(heard(retry)).toMatchObject({ id: "PAY-902" });
+    expect(rows).toHaveLength(2);
   });
 });
 

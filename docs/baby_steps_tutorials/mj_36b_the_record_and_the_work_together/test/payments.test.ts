@@ -413,8 +413,10 @@ describe("decision 17, changed in step 20: once a command's code has run, a fail
       throw new Error("disk full");
     },
   };
+  // Changed in step 36b: the record commits with the work, so a record that fails keeps nothing,
+  //   and the same key runs it again (step 36b's README, decision D3).
   const AFTER_IT_RAN =
-    "DSoR could not record its decision after the command ran, and a retry with the same idempotency_key cannot run it twice";
+    "DSoR could not record its decision, so it kept nothing of the work, and a retry with the same idempotency_key runs it again";
   const lost = (caller: Caller): unknown => ({
     code: "EVIDENCE_STORE_UNAVAILABLE",
     message: AFTER_IT_RAN,
@@ -435,7 +437,8 @@ describe("decision 17, changed in step 20: once a command's code has run, a fail
       },
     );
     expect(answer).toStrictEqual(lost(THE_SUPERVISOR));
-    // The known gap of decision 1: the draft stays, with no record, until step 36.
+    // Changed in step 36b: on the database the draft goes with its record (test/sealed.db.test.ts).
+    //   Memory has no transaction, so the draft the code wrote stays in memory's payments.
     expect(rows).toStrictEqual([PAY_901_DRAFT]);
   });
 
