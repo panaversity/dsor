@@ -1,0 +1,31 @@
+{
+  "name": "@dsor-steps/mj-35-a-fake-bank",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Step 35 of the DSoR baby steps, a learner build: a fake bank. A second connector, a pretend bank with switches for good, slow, broken, and silent, which refuses a repeated key and answers whether a payment went through. payment.execute, the first command that cannot be undone, is routed only to a bank that declares one of the two (DSOR-UNK-03a), and DSoR hands the bank a key derived from the proposal (DSOR-IDM-03). A silent bank is reported as OUTCOME_UNKNOWN, never as success or failure.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "start": "node src/main.ts",
+    "migrate": "node src/migrate.ts",
+    "test": "vitest run",
+    "test:db": "vitest run --config vitest.db.config.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "pnpm typecheck && pnpm test"
+  },
+  "dependencies": {
+    "@marcbachmann/cel-js": "8.0.0",
+    "ajv": "8.20.0",
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/pg": "8.23.1",
+    "typescript": "7.0.2",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "packageManager": "pnpm@11.22.0"
+}
