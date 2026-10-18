@@ -1002,3 +1002,9 @@ for a human. An agent may gather evidence; it does not settle these alone.
     ④, before line ⑦'s claim, so a replay during an outage hears `CONNECTOR_UNAVAILABLE` though its
     answer is in DSoR's own store, as a replay under the brake does. Should a replay that reads
     nothing from the connector pass the breaker?
+
+148. **Which key is "its own idempotency key"?** DSOR-IDM-03 asks DSoR to pass the bank "a key
+    derived from its own idempotency key". A caller's key changes when a caller retries with a new
+    one, and DSOR-IDM-04 makes the proposal's id the idempotency key of its execution. Step 35's
+    learner build derives the bank's key from the company and the proposal's id, so every attempt
+    at one proposal carries one key (its D3). Should DSOR-IDM-03 name the proposal's key?

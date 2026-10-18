@@ -1989,6 +1989,24 @@ then asked for step 33 as one story and the whole journey without jargon, and mo
 - **Left open:** routing by name only; the shared-transaction flag is the connector's own word;
   a replay during an outage (147); fallback semantics (146); a warning nobody is sent.
 
+### Step 35, a fake bank, decided by the learner, built while away (2026-10-18)
+
+Copied from step 34. The learner decided four choices one at a time (the bank inside the program;
+it refuses repeats and answers lookups; the bank's key from the proposal; each company names its
+bank), then said "assume all and build, see you later" for the last two (a silent bank is unknown;
+the CFO's rule stays on the draft).
+
+- **Code before tests**, against the rule. Each test was then shown to fail against a break of the
+  line it guards.
+- **Found while building:** `expected_version` is the invoice's, as for every command that binds
+  an invoice since step 21; and the send must come before the mark, so memory and the database
+  behave the same.
+- **The review found three ways to pay twice:** a failure after the send undid the attempt and its
+  key (F1); two drafts of one invoice were both sent (F2); a refusal the bank made up was retried
+  (F3). Fixed, each with its test, and each fix undone once to see the test fail.
+- **Left open:** nothing written before the call (36); nothing held, nobody asks the bank (37); no
+  rule runs again at the sending.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.
