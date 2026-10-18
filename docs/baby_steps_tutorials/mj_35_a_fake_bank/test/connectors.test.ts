@@ -19,8 +19,19 @@ function accounting(): Record<string, unknown> {
 }
 
 /** A connectors file with these connectors and these companies. */
+// Changed in step 35: each company names its bank too. The tests of step 34 name a records
+// connector for each company, and this gives each the shipped fake bank, declared beside them.
 function file(connectors: unknown[], companies: Record<string, unknown>): ConnectorsSource {
-  return { file: "connectors.json", text: JSON.stringify({ connectors, companies }) };
+  const shipped = JSON.parse(readConnectors().text) as { connectors: { id: string }[] };
+  const bank = shipped.connectors.find((one) => one.id === "fake-bank")!;
+  const both = Object.fromEntries(
+    Object.entries(companies).map(([company, records]) => [
+      company,
+      { records, bank: "fake-bank" },
+    ]),
+  );
+  const all = [...connectors, bank];
+  return { file: "connectors.json", text: JSON.stringify({ connectors: all, companies: both }) };
 }
 
 /** The accounting connector with these capabilities changed. */
@@ -57,16 +68,20 @@ async function startUp(
 describe("C1: every connector publishes a declaration that passes connector.schema.json", () => {
   it("DSOR-CNR-01a: the shipped accounting connector passes, and holds every company's records", async () => {
     const w = await ruleWorldOnTuesday();
-    expect(w.registry.plugs.connectorOf("org_456")).toBe("accounting");
-    expect(w.registry.plugs.connectorOf("org_789")).toBe("accounting");
-    expect(w.registry.plugs.outOfService("org_456")).toBeUndefined();
+    // Changed in step 35: a company names its records and its bank.
+    const both = { records: "accounting", bank: "fake-bank" };
+    expect(w.registry.plugs.connectorOf("org_456")).toStrictEqual(both);
+    expect(w.registry.plugs.connectorOf("org_789")).toStrictEqual(both);
+    expect(w.registry.plugs.outOfService("org_456", "invoice.get")).toBeUndefined();
   });
 
   it("DSOR-CNR-03a: a default connector that does not say whether it is the only writer stops start-up", async () => {
     const declaration = accounting();
     delete declaration["write_exclusivity"];
     const message = await startUp(file([declaration], { "*": "accounting" }));
-    expect(message).toContain("connectors.json: the default connector is broken: connector 1:");
+    expect(message).toContain(
+      "connectors.json: the default records connector is broken: connector 1:",
+    );
     expect(message).toContain("connector 1: must have required property 'write_exclusivity'");
   });
 
@@ -87,10 +102,10 @@ describe("C1: every connector publishes a declaration that passes connector.sche
 
   it("DSOR-CNR-01a: a file with no default connector, or naming a connector it does not declare, stops start-up", async () => {
     expect(await startUp(file([accounting()], { org_456: "accounting" }))).toContain(
-      'names no default connector, "*"',
+      'names no default connectors, "*"',
     );
     expect(await startUp(file([accounting()], { "*": "accounting", org_789: "xero" }))).toContain(
-      'org_789 names "xero", which no connector declares',
+      'org_789\'s records names "xero", which no connector declares',
     );
     expect(
       await startUp(file([accounting()], { "*": "accounting", acme: "accounting" })),
@@ -107,8 +122,8 @@ describe("C1: every connector publishes a declaration that passes connector.sche
     const own: Record<string, unknown> = { ...accounting(), id: "accounting-789" };
     delete own["write_exclusivity"];
     const w = await worldWith789(own);
-    expect(w.registry.plugs.outOfService("org_456")).toBeUndefined();
-    expect(w.registry.plugs.outOfService("org_789")).toContain(
+    expect(w.registry.plugs.outOfService("org_456", "invoice.get")).toBeUndefined();
+    expect(w.registry.plugs.outOfService("org_789", "invoice.get")).toContain(
       "must have required property 'write_exclusivity'",
     );
   });
@@ -122,6 +137,12 @@ describe("C2: an operation goes only to a connector that has what it needs", () 
       "invoice.list": [],
       "payment.cancel": [
         ["transactions"],
+        ["optimistic_concurrency"],
+        ["freshness:current"],
+        ["shares_dsor_transaction"],
+      ],
+      // Changed in step 35: payment.execute, what it needs of the records; the bank's needs are apart.
+      "payment.execute": [
         ["optimistic_concurrency"],
         ["freshness:current"],
         ["shares_dsor_transaction"],
@@ -148,7 +169,7 @@ describe("C2: an operation goes only to a connector that has what it needs", () 
       file([withCapabilities({ transactions: false })], { "*": "accounting" }),
     );
     expect(message).toContain(
-      'connector "accounting" cannot serve: payment.cancel needs transactions',
+      'connector "accounting" cannot serve as the records: payment.cancel needs transactions',
     );
     expect(message).toContain("proposal.execute needs transactions");
   });
@@ -274,7 +295,7 @@ describe("C4: the refusal is the breaker's, so a retry is safe", () => {
     );
     const { problems } = checkConnectors(file([], { "*": "accounting" }), [], () => false);
     expect(problems).toContain(
-      'connectors.json: * names "accounting", which no connector declares',
+      'connectors.json: *\'s records names "accounting", which no connector declares',
     );
   });
 });

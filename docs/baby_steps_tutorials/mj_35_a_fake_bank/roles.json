@@ -4,6 +4,7 @@
     "invoice:issue",
     "payment:create",
     "payment:cancel",
+    "payment:execute",
     "delegation:revoke",
     "control:suspend",
     "proposal:approve",

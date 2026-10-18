@@ -238,7 +238,8 @@ describe("C7: a loaded contract is exactly what was written", () => {
     // And the sweep of where each rule came from (step 28b's README, decision D4).
     // And proposal.approve (step 29's README, decision D1).
     // And proposal.execute (step 31's README, decision D12).
-    expect(shipped).toHaveLength(17);
+    // Changed in step 35: and payment.execute (step 35's README, decision D7).
+    expect(shipped).toHaveLength(18);
     for (const s of shipped) {
       const written = JSON.parse(s.text) as { id: string };
       expect(registry.contracts.get(written.id)).toStrictEqual(written);

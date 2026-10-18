@@ -546,6 +546,37 @@ function paymentsThrough(run: Runner): PaymentStore {
         const found = now.rows[0];
         return { payment: found === undefined ? undefined : paymentOf(found), changed: false };
       }),
+    // NEW IN STEP 35: one payment, read and locked in the company's own transaction. Inside a claim
+    //   the lock holds until the claim ends, so a cancel of the payment waits while the bank is
+    //   asked (step 35's README, decision D7).
+    get: async (tenant, id) =>
+      run(tenant, async (client) => {
+        const { rows } = await client.query<PaymentRow>(
+          `SELECT ${PAYMENT_COLUMNS} FROM app.payments WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
+          [tenant, id],
+        );
+        const found = rows[0];
+        return found === undefined ? undefined : paymentOf(found);
+      }),
+    // NEW IN STEP 35: one UPDATE decides, as for a cancel: only a draft at this version is paid
+    //   (step 35's README, decision D7).
+    pay: async (tenant, id, version) =>
+      run(tenant, async (client) => {
+        const changed = await client.query<PaymentRow>(
+          `UPDATE app.payments SET status = 'paid'
+            WHERE tenant_id = $1 AND id = $2 AND status = 'draft' AND version = $3
+            RETURNING ${PAYMENT_COLUMNS}`,
+          [tenant, id, version],
+        );
+        const row = changed.rows[0];
+        if (row !== undefined) return { payment: paymentOf(row), changed: true };
+        const now = await client.query<PaymentRow>(
+          `SELECT ${PAYMENT_COLUMNS} FROM app.payments WHERE tenant_id = $1 AND id = $2`,
+          [tenant, id],
+        );
+        const found = now.rows[0];
+        return { payment: found === undefined ? undefined : paymentOf(found), changed: false };
+      }),
   };
 }
 

@@ -92,6 +92,40 @@ export function handlersFor(): Record<string, Handler> {
     // The undo of payment.create. Only a draft is cancelled. The store decides
     // in one statement, and looks again when it changed nothing (step 17's README,
     // decision 9).
+    // NEW IN STEP 35: sends a drafted payment through the company's bank: the first command that
+    //   cannot be undone. The payment is read and locked, checked, sent, and only then marked paid,
+    //   so a bank that says no, or nothing, leaves it a draft. The bank's key and its wait are
+    //   DSoR's, out of this code's reach (step 35's README, decisions D3, D5, and D7).
+    "payment.execute": async (input, company) => {
+      // expected_version is the invoice's, as for payment.create, and line ⑨ checked it against
+      //   the invoice it read (step 21's README, decision 5). The payment's own version is the one
+      //   read here, under its lock.
+      const { invoice, payment: uri } = input as { invoice: string; payment: string };
+      const { id } = parseUri(uri);
+      const record = `payment ${preview(id)}`;
+      const payment = await company.payments.get(id);
+      if (!payment) throw new Refusal("RESOURCE_NOT_FOUND", `no ${record}`, "internal");
+      // The invoice line ⑨ read and holds is the one this payment pays, or the call is refused:
+      //   a second attempt at one payment must find its invoice held (DSOR-EXC-01).
+      if (payment.invoice_id !== parseUri(invoice).id) {
+        const why = `${record} does not pay invoice ${preview(parseUri(invoice).id)}`;
+        throw new Refusal("VALIDATION_FAILED", why, "internal");
+      }
+      if (payment.status !== "draft") {
+        const why = `${record} is ${payment.status}, not a draft, so it cannot be sent`;
+        throw new Refusal("CONFLICT", why, "internal");
+      }
+      await company.bank.send({ payment: id, vendor: payment.vendor_id, amount: payment.amount });
+      const { payment: paid, changed } = await company.payments.pay(id, payment.version);
+      // The lock held the row, so this cannot happen without a fault. Money has left, so the call
+      //   ends OUTCOME_UNKNOWN, which keeps the attempt in flight: an accident would undo the claim,
+      //   and a new attempt would get a new key and pay again (step 35's README, decision D5).
+      if (!changed || !paid) {
+        const why = `${record} was sent, and could not be marked paid, so its records must be checked`;
+        throw new Refusal("OUTCOME_UNKNOWN", why, "internal");
+      }
+      return paid;
+    },
     "payment.cancel": async (input, company) => {
       // Line ⑥ has checked the input against PaymentCancelRequest.
       // With the version of the payment its caller decided on (step 21's

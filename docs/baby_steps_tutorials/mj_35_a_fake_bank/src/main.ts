@@ -56,6 +56,7 @@
 // header described step 13's program, and left out the masking and cfo_100's read.
 // The log and the invoices are tables in the database named by
 // DSOR_DB_URL, in this step's .env. Run `pnpm migrate` once first.
+import { createFakeBank, type FakeBank } from "./bank.ts";
 import { readConnectors, type ConnectorsSource } from "./connectors.ts";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -2164,10 +2165,19 @@ const says = Object.entries(accounting["capabilities"] as Record<string, unknown
   .join(", ");
 console.log(`  ${String(accounting["id"])}, ${String(accounting["write_exclusivity"])}: ${says}`);
 /** A world whose connectors file is this one, with the story's rule, on Tuesday's sheet. */
-async function connectorWorld(connectors: ConnectorsSource) {
+// Changed in step 35: and this fake bank, these payments, and these proposals, which step 35's
+//   scene reads.
+async function connectorWorld(
+  connectors: ConnectorsSource,
+  fake: FakeBank = createFakeBank(),
+  drafted: Payment[] = [],
+  kept: ReturnType<typeof memoryProposals> = memoryProposals(() =>
+    Date.parse("2026-10-06T15:05:00Z"),
+  ),
+) {
   const clock = { now: Date.parse("2026-10-06T15:05:00Z") };
   const store = memoryInvoices(structuredClone(invoices), structuredClone(vendors));
-  const paid = memoryPayments([]);
+  const paid = memoryPayments(drafted);
   const slips = memorySlips(limited);
   const rates = memoryRates(() => clock.now);
   const rules = memoryControls(readControls(CONTROLS));
@@ -2185,7 +2195,7 @@ async function connectorWorld(connectors: ConnectorsSource) {
     memoryClaims(
       store,
       paid,
-      memoryProposals(() => clock.now),
+      kept,
       memoryReservations(() => clock.now),
       slips,
       undefined,
@@ -2199,6 +2209,7 @@ async function connectorWorld(connectors: ConnectorsSource) {
     rules,
     storyKsors(),
     connectors,
+    new Map([["fake-bank", { bank: fake, waitMs: 200 }]]),
   );
   await rates.load("org_456", {
     source: "ecb-daily",
@@ -2215,9 +2226,14 @@ for (const [operation, needs] of shippedWorld.plugs.needs) {
 }
 const cannotUndo = { ...(accounting["capabilities"] as object), transactions: false };
 const own789 = { ...accounting, id: "accounting-789", capabilities: cannotUndo };
+// Changed in step 35: each company names its bank too.
+const fakeBankDeclared = shippedConnectors.connectors[1]!;
 const split = JSON.stringify({
-  connectors: [accounting, own789],
-  companies: { "*": "accounting", org_789: "accounting-789" },
+  connectors: [accounting, own789, fakeBankDeclared],
+  companies: {
+    "*": { records: "accounting", bank: "fake-bank" },
+    org_789: { records: "accounting-789", bank: "fake-bank" },
+  },
 });
 const splitWorld = await connectorWorld({ file: "connectors.json", text: split });
 // Why org_789's connector is out of service is for the people who run DSoR: start-up says it, and
@@ -2242,8 +2258,8 @@ console.log(
   waitHeard(await splitCall(AGENT, "payment.create", ofInvoice("INV-1008"))),
 );
 const brokenDefault = JSON.stringify({
-  connectors: [{ ...accounting, capabilities: cannotUndo }],
-  companies: { "*": "accounting" },
+  connectors: [{ ...accounting, capabilities: cannotUndo }, fakeBankDeclared],
+  companies: { "*": { records: "accounting", bank: "fake-bank" } },
 });
 try {
   await connectorWorld({ file: "connectors.json", text: brokenDefault });
@@ -2254,6 +2270,89 @@ try {
     `  the default connector cannot undo a job: DSoR does not start:\n  ${String(first)}`,
   );
 }
+
+// NEW IN STEP 35: a fake bank, in memory, in a world of its own (step 35's README, the story's
+//   numbers). The agent drafts INV-1008, cfo_100 approves it, and the agent releases PAY-901. Then
+//   user_123 sends PAY-901 through the bank, on a good day. On a silent day, PAY-902 of INV-1002 is
+//   OUTCOME_UNKNOWN, and a second attempt is refused. On a broken day, PAY-903 of INV-1009 is safe
+//   to send again with the same key.
+console.log("a fake bank, in memory, in a world of its own:");
+const fakeBank = createFakeBank();
+const bankDrafted: Payment[] = [];
+const bankKept = memoryProposals(() => Date.parse("2026-10-06T15:05:00Z"));
+const bankWorld = await connectorWorld(readConnectors(), fakeBank, bankDrafted, bankKept);
+const bankLog = createLog();
+let bankKeys = 0;
+const bankCall = (who: RequestEnvelope, name: string, input: unknown, key?: string) =>
+  call(bankWorld, bankLog, withKey(who, key ?? `bank-${++bankKeys}`), name, input);
+const toPay = (invoice: string, payment: string) => ({
+  invoice: `dsor://org_456/invoice/${invoice}`,
+  payment: `dsor://org_456/payment/${payment}`,
+  expected_version: 1,
+});
+const lastTransfer = (): string => {
+  const transfer = fakeBank.transfers().at(-1);
+  if (transfer === undefined) return "none";
+  const { reference, amount, vendor, payment, key } = transfer;
+  return `${reference}: ${amount.value} ${amount.currency} to ${vendor} for ${payment}, key ${key.slice(0, 16)}…`;
+};
+const bankDraft = await bankCall(AGENT, "payment.create", ofInvoice("INV-1008"));
+console.log("  the agent drafts INV-1008, 31,400.00 USD:", waitHeard(bankDraft));
+const bankId =
+  String("proposal" in bankDraft ? bankDraft.proposal : "")
+    .split("/")
+    .at(-1) ?? "";
+const bankWaiting = await bankKept.get("org_456", bankId);
+if (bankWaiting === undefined) throw new Error("the story's proposal is not there");
+const bankYes = await bankCall(CFO_100, "proposal.approve", {
+  proposal: bankWaiting.uri,
+  payload_hash: bankWaiting.payload_hash,
+});
+console.log("  cfo_100 approves it:", heard(bankYes));
+console.log(
+  "  the agent releases it:",
+  heard(await bankCall(AGENT, "proposal.execute", { proposal: bankWaiting.uri })),
+  bankDrafted.map((p) => `${p.id} ${p.status}`).join(", "),
+);
+console.log(
+  "  a good day; user_123 sends PAY-901:",
+  heard(await bankCall(SUPERVISOR_123, "payment.execute", toPay("INV-1008", "PAY-901"))),
+  bankDrafted.map((p) => `${p.id} ${p.status}`).join(", "),
+);
+console.log(`    the bank sent ${lastTransfer()}`);
+const draft1002 = await bankCall(SUPERVISOR_123, "payment.create", ofInvoice("INV-1002"));
+console.log("  user_123 drafts INV-1002, 8,900.50 USD:", heard(draft1002));
+fakeBank.mode = "silent";
+const silent = await bankCall(SUPERVISOR_123, "payment.execute", toPay("INV-1002", "PAY-902"));
+console.log("  a silent day; user_123 sends PAY-902:", heard(silent));
+console.log(`    ${"message" in silent ? silent.message : ""}`);
+console.log(`    the bank sent ${lastTransfer()}`);
+fakeBank.mode = "good";
+console.log(
+  "  the bank is back; user_123 tries PAY-902 again with a new key:",
+  heard(await bankCall(SUPERVISOR_123, "payment.execute", toPay("INV-1002", "PAY-902"))),
+);
+console.log(`  transfers the bank made: ${fakeBank.transfers().length}`);
+const draft1009 = await bankCall(SUPERVISOR_123, "payment.create", ofInvoice("INV-1009"));
+console.log("  user_123 drafts INV-1009, 7,425.00 USD:", heard(draft1009));
+fakeBank.mode = "broken";
+const broken = await bankCall(
+  SUPERVISOR_123,
+  "payment.execute",
+  toPay("INV-1009", "PAY-903"),
+  "send-903",
+);
+console.log("  a broken day; user_123 sends PAY-903:", heard(broken));
+fakeBank.mode = "good";
+console.log(
+  "  the bank is back; the same request, the same key:",
+  heard(
+    await bankCall(SUPERVISOR_123, "payment.execute", toPay("INV-1009", "PAY-903"), "send-903"),
+  ),
+);
+console.log(`    the bank sent ${lastTransfer()}`);
+console.log(`  transfers the bank made: ${fakeBank.transfers().length}`);
+console.log(`  payments: ${bankDrafted.map((p) => `${p.id} ${p.status}`).join(", ")}`);
 
 // Every call above left one record in the log before its answer was returned, the
 // refusals too. dsor_runtime reads one company at a time, and never a

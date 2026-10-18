@@ -112,6 +112,8 @@ describe("C1: every command declares its semantics in its contract", () => {
       ["invoice.issue", "atomic"],
       ["payment.cancel", "atomic"],
       ["payment.create", "compensatable"],
+      // Changed in step 35: payment.execute, which no one can undo once the bank has sent it.
+      ["payment.execute", "non_compensatable"],
       // And proposal.approve, atomic: the approval and its move in one
       // transaction (step 29's README, decision D9).
       ["proposal.approve", "atomic"],

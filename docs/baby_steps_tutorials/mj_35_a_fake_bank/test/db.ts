@@ -68,6 +68,9 @@ export function dbRegistry(
   // And the connectors: the shipped file, unless the test gives another (step 34's README,
   // decision D4).
   connectors: ConnectorsSource = readConnectors(),
+  // Step 35: and the banks, the shipped fake unless the test gives its own (step 35's README,
+  // decision D1).
+  banks?: Parameters<typeof buildRegistry>[18],
 ): Registry {
   // The registry holds the store (step 10's README, decision 13).
   return buildRegistry(
@@ -97,6 +100,7 @@ export function dbRegistry(
     controls === "database" ? createDbControls(pool) : controls,
     ksors,
     connectors,
+    banks,
   );
 }
 

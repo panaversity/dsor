@@ -797,7 +797,9 @@ describe("from the review: every command, in each mode", () => {
       // org_789, AP supervisors (step 30's README, decision D5).
       // Changed in step 31: and 36 for proposal.execute, every member of each company that line
       // ③ lets through, 7 in org_456 and 5 in org_789 (step 31's README, decision D12).
-      expect(report.attacks).toHaveLength(195);
+      // Changed in step 35: and 12 for payment.execute, user_123 and user_700, 6 swaps each of its
+      // two URIs (step 35's README, decision D7).
+      expect(report.attacks).toHaveLength(207);
     },
   );
 

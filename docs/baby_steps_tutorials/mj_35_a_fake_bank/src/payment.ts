@@ -4,7 +4,9 @@
 // the unit tests keep them in memory (memoryPayments below).
 import type { Money } from "./money.ts";
 
-export type PaymentStatus = "draft" | "cancelled";
+// NEW IN STEP 35: and paid, once payment.execute has sent it through the company's bank (step 35's
+//   README, decision D7).
+export type PaymentStatus = "draft" | "cancelled" | "paid";
 
 // The field names follow §6's pattern, where a link to a vendor is vendor_id (step 17's
 // README, decision 15).
@@ -43,6 +45,13 @@ export type PaymentStore = {
   create: (tenant: string, draft: Draft, invoiceVersion: number) => Promise<Drafted>;
   /** Changes one company's payment from draft to cancelled, when it is a draft at this version. */
   cancel: (tenant: string, id: string, version: number) => Promise<Cancelled>;
+  // NEW IN STEP 35: a read of one payment, which on the database locks its row until the claim ends,
+  //   so a cancel at the same moment waits for the bank's answer, and the move from draft to paid,
+  //   which payment.execute makes once the bank has answered (step 35's README, decision D7).
+  /** One of this company's payments, or undefined when there is none. */
+  get: (tenant: string, id: string) => Promise<Payment | undefined>;
+  /** Changes one company's payment from draft to paid, when it is a draft at this version. */
+  pay: (tenant: string, id: string, version: number) => Promise<Cancelled>;
 };
 
 /** Payments held in memory, for the unit tests, in the list given. */
@@ -85,6 +94,23 @@ export function memoryPayments(rows: Payment[] = []): PaymentStore {
       }
       return { payment: structuredClone(found), changed };
     },
+    // NEW IN STEP 35: a copy, as every read gives (step 01's lesson).
+    get: async (tenant, id) => {
+      const found = rows.find((row) => row.tenant_id === tenant && row.id === id);
+      return found === undefined ? undefined : structuredClone(found);
+    },
+    // NEW IN STEP 35: the memory version of UPDATE ... SET status = 'paid' WHERE status = 'draft',
+    //   at the version the caller decided on, as cancel is.
+    pay: async (tenant, id, version) => {
+      const found = rows.find((row) => row.tenant_id === tenant && row.id === id);
+      if (found === undefined) return { payment: undefined, changed: false };
+      const changed = found.status === "draft" && found.version === version;
+      if (changed) {
+        found.status = "paid";
+        found.version += 1;
+      }
+      return { payment: structuredClone(found), changed };
+    },
   };
 }
 
@@ -94,6 +120,12 @@ export const NO_PAYMENTS: PaymentStore = Object.freeze({
     throw new Error("this registry was built without a store of payments");
   },
   cancel: async (): Promise<never> => {
+    throw new Error("this registry was built without a store of payments");
+  },
+  get: async (): Promise<never> => {
+    throw new Error("this registry was built without a store of payments");
+  },
+  pay: async (): Promise<never> => {
     throw new Error("this registry was built without a store of payments");
   },
 });

@@ -24,7 +24,8 @@ describe("C2: a contract passes the specification's own schema", () => {
   // README, decision D4).
   // Changed in step 29: sixteen, with proposal.approve (step 29's README, decision D1).
   // Changed in step 31: seventeen, with proposal.execute (step 31's README, decision D12).
-  it("DSOR-OPR-01: the seventeen shipped contracts pass", async () => {
+  // Changed in step 35: eighteen, with payment.execute (step 35's README, decision D7).
+  it("DSOR-OPR-01: the eighteen shipped contracts pass", async () => {
     const registry = buildRegistry(shipped, handlers, shippedRoles);
     // invoice.list. Step 17's two commands, payment.cancel and payment.create.
     // And delegation.revoke, DSoR's own command. And the brake's two, DSoR's own commands too.
@@ -38,6 +39,8 @@ describe("C2: a contract passes the specification's own schema", () => {
       "invoice.list",
       "payment.cancel",
       "payment.create",
+      // Changed in step 35: payment.execute (step 35's README, decision D7).
+      "payment.execute",
       "proposal.approve",
       // And step 31's release (step 31's README, decision D12).
       "proposal.execute",

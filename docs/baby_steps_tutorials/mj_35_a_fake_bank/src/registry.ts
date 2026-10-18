@@ -16,6 +16,7 @@ import { freshnessProblems } from "./preconditions.ts";
 import { NO_BRAKES, type BrakeStore } from "./brakes.ts";
 import { keyProblems, memoryClaims, type ClaimStore } from "./claims.ts";
 import { concurrencyProblems } from "./concurrency.ts";
+import { createFakeBank, type BankLine } from "./bank.ts";
 import {
   checkConnectors,
   READS_COMPANY_RECORDS,
@@ -224,6 +225,12 @@ export function buildRegistry(
   // The connectors, and the companies each one serves. This step's own file,
   //   unless the caller gives another (step 34's README, decisions D1 and D4).
   connectorSource: ConnectorsSource = readConnectors(),
+  // NEW IN STEP 35: the banks DSoR can call, by connector id: a fake bank of its own, unless the
+  //   caller gives others, with how long DSoR waits for its answer (step 35's README, decisions D1
+  //   and D5).
+  banks: ReadonlyMap<string, BankLine> = new Map([
+    ["fake-bank", { bank: createFakeBank(), waitMs: 1000 }],
+  ]),
 ): Registry {
   // Every problem is collected first, and the refusal names them all (step 03's
   // README, decision 2).
@@ -419,10 +426,14 @@ export function buildRegistry(
   //   store, and no connector serves them.
   const routed = (contract: Contract): boolean =>
     code.has(contract.id) || releases(contract) || READS_COMPANY_RECORDS.has(contract.id);
+  // And the banks: each company's bank must be one DSoR can call, and must have what a payment
+  //   that cannot be undone needs (DSOR-UNK-03a; step 35's README, decisions D2 and D4).
   const { plugs, problems: connectorProblems } = checkConnectors(
     connectorSource,
     contracts.values(),
     routed,
+    banks,
+    releases,
   );
   problems.push(...connectorProblems);
 

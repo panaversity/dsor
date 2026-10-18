@@ -315,6 +315,8 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
         "payment:approve",
         "payment:cancel",
         "payment:create",
+        // Changed in step 35: and send a draft through the bank (step 35's README, decision D6).
+        "payment:execute",
         "proposal:approve",
       ],
     ],
@@ -427,6 +429,8 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
       "payment:approve",
       "payment:cancel",
       "payment:create",
+      // Changed in step 35: and payment:execute (step 35's README, decision D6).
+      "payment:execute",
       "proposal:approve",
       "rule:draft",
     ]);

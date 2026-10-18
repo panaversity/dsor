@@ -747,9 +747,17 @@ export async function closeProposal(
   if (!isProposalOf(tenant, uri)) throw new Error("a claim's proposal is not one of its company's");
   const id = uri.slice(proposalUri(tenant, "").length);
   const ended = "value" in outcome;
-  await moveOrFail(store, tenant, id, "EXECUTING", ended ? "COMMITTED" : "FAILED", {
+  // NEW IN STEP 35: a work that cannot say whether its side effect happened ends OUTCOME_UNKNOWN,
+  //   never FAILED, and stays in flight (DSOR-UNK-01a, DSOR-UNK-01b; step 35's README, decision D5).
+  const unknown = !ended && outcome.refused.code === "OUTCOME_UNKNOWN";
+  const to: State = ended ? "COMMITTED" : unknown ? "OUTCOME_UNKNOWN" : "FAILED";
+  await moveOrFail(store, tenant, id, "EXECUTING", to, {
     mover: dsorMover(draft.requester),
-    cause: ended ? "the work ended" : `the code refused: ${outcome.refused.code}`,
+    cause: ended
+      ? "the work ended"
+      : unknown
+        ? "the bank did not say whether it sent the payment"
+        : `the code refused: ${outcome.refused.code}`,
     correlation,
   });
 }

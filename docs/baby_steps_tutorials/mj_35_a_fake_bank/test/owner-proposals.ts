@@ -24,9 +24,11 @@
 //   with the trigger switched off for that one statement, as a store that went wrong would leave
 //   it. The only command that commits: the release's check of the fingerprint must find it (step
 //   31's README, claim C1). The new request names INV-1009 in place of the invoice it named.
+// - settle <id> (since step 35): one of org_456's proposals moved from OUTCOME_UNKNOWN to FAILED, so
+//   a test leaves no attempt in flight. It commits, as tamper does.
 // Run by the tests as:
 //   node test/owner-proposals.ts rewrite <column> | skip | unreachable | guard | backfill | due |
-//   starts-waiting | tamper <id>
+//   starts-waiting | tamper <id> | settle <id>
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import pg from "pg";
@@ -189,6 +191,21 @@ try {
       );
       await other.query("ALTER TABLE dsor.proposals ENABLE TRIGGER proposals_move");
       await other.query("COMMIT");
+      result = { changed: changed.rowCount };
+    } finally {
+      await other.end();
+    }
+  } else if (command === "settle") {
+    // Since step 35: one of org_456's proposals moved from OUTCOME_UNKNOWN to FAILED, a move the
+    //   picture draws, by the owner on its own connection, so a test leaves no attempt in flight
+    //   for the next run. A stand-in for step 37's reconciliation (step 35's README, claim C4).
+    const other = new pg.Pool({ connectionString: owner, max: 1 });
+    try {
+      const changed = await other.query(
+        `UPDATE dsor.proposals SET state = 'FAILED'
+          WHERE tenant_id = 'org_456' AND id = $1 AND state = 'OUTCOME_UNKNOWN'`,
+        [column],
+      );
       result = { changed: changed.rowCount };
     } finally {
       await other.end();

@@ -128,6 +128,9 @@ export const STARTING_ROLES: Record<string, string[]> = {
     "invoice:issue",
     "payment:create",
     "payment:cancel",
+    // Changed in step 35: and send a drafted payment through the company's bank (step 35's
+    // README, decision D6).
+    "payment:execute",
     "delegation:revoke",
     "control:suspend",
     "proposal:approve",
@@ -330,9 +333,12 @@ export const OUR_EXTENSIONS = "org.panaversity.steps";
 // builds by hand, so it lives here and not in src, where it would let every call through (step
 // 34's review, F6).
 export const NO_PLUGS: Plugs = Object.freeze({
-  connectorOf: () => "*",
+  connectorOf: () => ({ records: "*", bank: "*" }),
   outOfService: () => undefined,
   needs: new Map(),
+  // Changed in step 35: and no bank.
+  bankNeeds: new Map(),
+  bankOf: () => undefined,
   warnings: [],
 });
 

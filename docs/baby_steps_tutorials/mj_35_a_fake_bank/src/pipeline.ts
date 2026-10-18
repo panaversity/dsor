@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { pinned, readBound, type Bound, type BoundRead } from "./bound.ts";
 import { checkBrake, holdBrake, NO_BRAKES, type BrakeStore } from "./brakes.ts";
 import { checkConnector } from "./connectors.ts";
+import { bankKeyOf, sendThrough, type BankOrder } from "./bank.ts";
 import { checkedAssertion } from "./asserted.ts";
 import { bundleOf, checkBundle, executedOf, newEvidence, stateReadOf } from "./bundle.ts";
 import { freshSheet, NO_RATES, readOnce, type RateStore } from "./rates.ts";
@@ -11,7 +12,7 @@ import { NO_CONTROLS, type ControlStore } from "./rulebook.ts";
 import { NotCanonical, payloadHash } from "./canonical.ts";
 import { claimScope, isOutcome, type ProposalSteps, type WorkStores } from "./claims.ts";
 import { policyLook } from "./drift.ts";
-import { checkAnswerInTenant, companyOf } from "./company.ts";
+import { checkAnswerInTenant, companyOf, NO_BANK, type CompanyBank } from "./company.ts";
 import { checkDelegation, checkNamedSlips, holdSlip } from "./delegation.ts";
 import { tenantOf, type Facts } from "./cel.ts";
 import {
@@ -880,6 +881,10 @@ export async function call(
     // And the job it runs: the call's own code and input, or, for a release, the
     //   code of the operation the proposal holds and the request it stored (DSOR-APR-10).
     type Job = { handler: Handler | undefined; own: OwnWork | undefined; input: unknown };
+    // NEW IN STEP 35: the proposal the work runs for, once line ⑧ has opened or loaded it. The bank's
+    //   key is derived from it, so every attempt at one payment carries one key (DSOR-IDM-03,
+    //   DSOR-IDM-04; step 35's README, decision D3).
+    let executing: string | undefined;
     const runCode = (
       stores: WorkStores,
       job: Job = { handler, own, input: copy },
@@ -912,9 +917,25 @@ export async function call(
             const work = { tenant, caller, stores, correlation, now, ksor, contracts };
             returned = await job.own.change(job.input, work);
           } else if (job.handler !== undefined) {
+            // NEW IN STEP 35: and the company's bank, for a command with a proposal. The code sends an
+            //   order; DSoR adds the key and waits, and the code never sees either (step 35's
+            //   README, decisions D3 and D6).
+            const bankLine = registry.plugs.bankOf(tenant);
+            const sending = executing;
+            const bank: CompanyBank =
+              contract["kind"] === "query" || bankLine === undefined || sending === undefined
+                ? NO_BANK
+                : Object.freeze({
+                    send: (order: BankOrder) =>
+                      sendThrough(
+                        bankLine,
+                        bankKeyOf(tenant, proposalIdOf(tenant, sending)),
+                        order,
+                      ),
+                  });
             returned = await job.handler(
               job.input,
-              companyOf(stores.invoices, tenant, reads, payments),
+              companyOf(stores.invoices, tenant, reads, payments, bank),
             );
           } else {
             throw new Error("an operation with no code reached its work");
@@ -997,6 +1018,8 @@ export async function call(
                   }
                   const { loaded, target, code } = gated;
                   const id = proposalIdOf(tenant, released);
+                  // NEW IN STEP 35: the release runs the proposal it loaded.
+                  executing = released;
                   // The check again, on live data, for the stored request and whoever asked for it:
                   //   its fingerprint, lines ③ to ⑤ for the asker, line ⑨'s read, line ⑩'s rules and
                   //   limits, and the approvals against what the rules ask for now. A "no" moves the
@@ -1116,6 +1139,8 @@ export async function call(
                 openProposal(stores.proposals, opening, async (proposal) => {
                   try {
                     const reserveFor = proposalIdOf(tenant, proposal);
+                    // NEW IN STEP 35: the work, if it runs, runs for this proposal.
+                    executing = proposal;
                     // Line ④ again, right after line ⑧, inside the claim's
                     //   transaction, under the brake's lock. A draft that passed line ④ a moment
                     //   before a brake waits for the pull, then is refused, and its proposal ends

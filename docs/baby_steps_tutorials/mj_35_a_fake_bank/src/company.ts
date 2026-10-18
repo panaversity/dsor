@@ -13,8 +13,10 @@ import {
   type Cancelled,
   type Draft,
   type Drafted,
+  type Payment,
   type PaymentStore,
 } from "./payment.ts";
+import type { BankOrder, BankReceipt } from "./bank.ts";
 
 /** One company's invoices. Whoever holds this can read that company's invoices, and no others. */
 export type CompanyInvoices = {
@@ -37,7 +39,25 @@ export type CompanyPayments = {
   readonly create: (draft: Draft, invoiceVersion: number) => Promise<Drafted>;
   /** Cancels one of this company's payments, when it is a draft at this version. */
   readonly cancel: (id: string, version: number) => Promise<Cancelled>;
+  // NEW IN STEP 35: a read of one payment, and the move to paid (step 35's README, decision D7).
+  /** One of this company's payments, or undefined. */
+  readonly get: (id: string) => Promise<Payment | undefined>;
+  /** Marks one of this company's payments paid, when it is a draft at this version. */
+  readonly pay: (id: string, version: number) => Promise<Cancelled>;
 };
+
+// NEW IN STEP 35: the company's bank, as the code sees it: send one order. The key, the bank, and
+//   how long DSoR waits are fixed by DSoR, out of the code's reach, as the company is (DSOR-IDM-03,
+//   DSOR-CNR-02; step 35's README, decisions D3 and D6).
+/** The company's bank, for the call's own proposal. */
+export type CompanyBank = { readonly send: (order: BankOrder) => Promise<BankReceipt> };
+
+/** No bank: every send throws. A query's code, and the code of a call with no proposal, get this. */
+export const NO_BANK: CompanyBank = Object.freeze({
+  send: async (): Promise<never> => {
+    throw new Error("this call has no bank");
+  },
+});
 
 /** What the code of an operation is given: the active company's id, its invoices, and its payments. */
 export type Company = {
@@ -45,6 +65,7 @@ export type Company = {
   readonly tenant: string;
   readonly invoices: CompanyInvoices;
   readonly payments: CompanyPayments;
+  readonly bank: CompanyBank;
 };
 
 /**
@@ -57,6 +78,8 @@ export function companyOf(
   reads: Reads = newReads(),
   // The store the commands write. Without one, every write fails.
   paymentStore: PaymentStore = NO_PAYMENTS,
+  // NEW IN STEP 35: and the bank, for the call's own proposal. Without one, every send fails.
+  bank: CompanyBank = NO_BANK,
 ): Company {
   // get takes an id, and list a place and a count, and nothing more. The company is fixed
   // here, out of the code's reach, so an extra argument changes nothing. Frozen, so the
@@ -110,8 +133,23 @@ export function companyOf(
       open();
       return paymentStore.cancel(tenant, id, version);
     },
+    get: async (id: string) => {
+      open();
+      return paymentStore.get(tenant, id);
+    },
+    pay: async (id: string, version: number) => {
+      open();
+      return paymentStore.pay(tenant, id, version);
+    },
   });
-  return Object.freeze({ tenant, invoices, payments });
+  // NEW IN STEP 35: and a Company kept after line ⑨ sends nothing more either.
+  const sends: CompanyBank = Object.freeze({
+    send: async (order: BankOrder) => {
+      open();
+      return bank.send(order);
+    },
+  });
+  return Object.freeze({ tenant, invoices, payments, bank: sends });
 }
 
 /**

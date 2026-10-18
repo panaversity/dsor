@@ -19,7 +19,27 @@
       "extensions": {
         "org.panaversity.steps": { "shares_dsor_transaction": true }
       }
+    },
+    {
+      "id": "fake-bank",
+      "contract_version": 1,
+      "region": "in-memory",
+      "external": true,
+      "capabilities": {
+        "transactions": false,
+        "optimistic_concurrency": false,
+        "downstream_idempotency": true,
+        "outcome_lookup": true,
+        "events": false,
+        "batch": false,
+        "row_level_security": false,
+        "freshness": ["current"]
+      },
+      "write_exclusivity": "exclusive",
+      "extensions": {
+        "org.panaversity.steps": { "shares_dsor_transaction": false }
+      }
     }
   ],
-  "companies": { "*": "accounting" }
+  "companies": { "*": { "records": "accounting", "bank": "fake-bank" } }
 }

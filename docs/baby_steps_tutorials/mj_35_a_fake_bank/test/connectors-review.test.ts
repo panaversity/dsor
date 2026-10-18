@@ -17,8 +17,19 @@ function accounting(): Record<string, unknown> {
 }
 
 /** A connectors file with these connectors and these companies. */
+// Changed in step 35: each company names its bank too. The tests of step 34 name a records
+// connector for each company, and this gives each the shipped fake bank, declared beside them.
 function file(connectors: unknown[], companies: Record<string, unknown>): ConnectorsSource {
-  return { file: "connectors.json", text: JSON.stringify({ connectors, companies }) };
+  const shipped = JSON.parse(readConnectors().text) as { connectors: { id: string }[] };
+  const bank = shipped.connectors.find((one) => one.id === "fake-bank")!;
+  const both = Object.fromEntries(
+    Object.entries(companies).map(([company, records]) => [
+      company,
+      { records, bank: "fake-bank" },
+    ]),
+  );
+  const all = [...connectors, bank];
+  return { file: "connectors.json", text: JSON.stringify({ connectors: all, companies: both }) };
 }
 
 /** A connector of this company's own, which cannot undo a half-finished job. */
@@ -86,7 +97,8 @@ describe("F3: the caller hears fixed words, and the reason goes to start-up", ()
   it("DSOR-CNR-01a: start-up names a broken connector that serves org_789 only, as a warning, and goes on", async () => {
     const w = await worldWith("org_789", cannotUndo("accounting-789"));
     expect(w.registry.plugs.warnings).toStrictEqual([
-      'connectors.json: connector "accounting-789", which serves org_789, is out of service: connector "accounting-789" cannot serve: payment.cancel needs transactions; proposal.approve needs transactions; proposal.execute needs transactions',
+      // Changed in step 35: the connector's role is named.
+      'connectors.json: connector "accounting-789", org_789\'s records, is out of service: connector "accounting-789" cannot serve as the records: payment.cancel needs transactions; proposal.approve needs transactions; proposal.execute needs transactions',
     ]);
   });
 });

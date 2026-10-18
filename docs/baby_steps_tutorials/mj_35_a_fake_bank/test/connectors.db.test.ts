@@ -28,9 +28,14 @@ function brokenFor456(): ConnectorsSource {
   const accounting = shipped.connectors[0]!;
   const capabilities = { ...(accounting["capabilities"] as object), transactions: false };
   const own = { ...accounting, id: "accounting-456", capabilities };
+  // Changed in step 35: each company names its bank too.
+  const bank = shipped.connectors[1]!;
   const text = JSON.stringify({
-    connectors: [accounting, own],
-    companies: { "*": "accounting", org_456: "accounting-456" },
+    connectors: [accounting, own, bank],
+    companies: {
+      "*": { records: "accounting", bank: "fake-bank" },
+      org_456: { records: "accounting-456", bank: "fake-bank" },
+    },
   });
   return { file: "connectors.json", text };
 }

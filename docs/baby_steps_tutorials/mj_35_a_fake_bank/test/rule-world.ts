@@ -6,6 +6,7 @@ import { memoryBrakes } from "../src/brakes.ts";
 import { memoryClaims } from "../src/claims.ts";
 import { readControls, type Control, type ControlsSource } from "../src/controls.ts";
 import { readConnectors, type ConnectorsSource } from "../src/connectors.ts";
+import { createFakeBank, type FakeBank } from "../src/bank.ts";
 import type { Answer } from "../src/envelope.ts";
 import type { FakeDirectory } from "../src/directory.ts";
 import { invoices, memoryInvoices, type Invoice } from "../src/invoice.ts";
@@ -88,6 +89,8 @@ export type RuleWorld = {
   // Step 32: and the vendors, which a test suspends between an approval and its release, as the
   //   accounts team would (step 32's README, decision D1).
   vendors: Vendor[];
+  // Step 35: and the fake bank, whose switch a test turns (step 35's README, decision D1).
+  bank: FakeBank;
 };
 
 /** A world in memory: the story's slips, del_100 with step 24's limits, and these rules. */
@@ -110,6 +113,8 @@ export function ruleWorld(
   // And the connectors: this step's own file, unless a test gives another (step 34's README,
   // decision D4).
   connectors: ConnectorsSource = readConnectors(),
+  // Step 35: and the fake bank, for which DSoR waits 50 ms, so a silent bank is quick to test.
+  bank: FakeBank = createFakeBank(),
 ): RuleWorld {
   const clock = { now: T0 };
   const bills = [...structuredClone(invoices), ...structuredClone(BILLS)];
@@ -151,6 +156,7 @@ export function ruleWorld(
     given,
     ksors,
     connectors,
+    new Map([["fake-bank", { bank, waitMs: 50 }]]),
   );
   const log = createLog();
   const ask = (who: RequestEnvelope, name: string, input: unknown): Promise<Answer> =>
@@ -176,6 +182,7 @@ export function ruleWorld(
     bills,
     directories,
     vendors: suppliers,
+    bank,
   };
 }
 

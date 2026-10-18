@@ -42,7 +42,7 @@ export type MoneyConversion = {
 };
 
 /** How the call's work ended: it ran and was kept, it ran and said no, or it never ran (D9). */
-export type Executed = "committed" | "failed" | "not_executed";
+export type Executed = "committed" | "failed" | "outcome_unknown" | "not_executed";
 
 /** One decision bundle, in the shape of decision-bundle.schema.json. */
 export type DecisionBundle = {
@@ -126,6 +126,8 @@ export function stateReadOf(read: BoundRead): StateRead {
 export function executedOf(claimed: Claimed): Executed {
   if (claimed.replay_of !== undefined) return "not_executed";
   if ("value" in claimed) return "committed";
+  // NEW IN STEP 35: a side effect nobody can confirm or deny (DSOR-UNK-01b; step 35's README, D5).
+  if ("refused" in claimed && claimed.refused.code === "OUTCOME_UNKNOWN") return "outcome_unknown";
   if ("refused" in claimed && claimed.denied !== true) return "failed";
   return "not_executed";
 }
