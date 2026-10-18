@@ -1,186 +1,173 @@
-# Step 35 · A fake bank
+# Step 36 · Write it down before you act
 
-**New in this step:** a second connector, a pretend bank, and `payment.execute`, the first command
-that cannot be undone. It goes only to a bank that refuses a repeated key or answers whether a
-payment went through, with a key derived from the proposal (DSOR-UNK-03a, DSOR-IDM-03).
+**New in this step:** the intent record, a note DSoR writes and commits before it asks a bank to
+send money. A note with no outcome means nobody knows whether the money left, so DSoR treats it as
+`OUTCOME_UNKNOWN`, at start-up and when the same request comes again (DSOR-EXE-03a, DSOR-EXE-03b,
+DSOR-EXE-04b).
 
 ## In plain words
 
-Until now, a payment was a *draft*: PAY-901 was a row in DSoR's own records that said "VENDOR-44 is
-to be paid 31,400.00 USD". A draft can be cancelled. No money moved.
+Since step 35, `payment.execute` sends a payment through the company's bank. Everything DSoR wrote
+for that call, the claim of the key, the proposal, and the payment marked `paid`, sat in one
+database transaction that committed only after the bank answered.
 
-This step moves money. A new command, `payment.execute`, sends a drafted payment through the
-company's **bank**. A bank is an outside system, so DSoR reaches it through a connector, as it
-reaches the company's records since step 34. And a bank cannot undo a payment. Once the money has
-left, no command of DSoR's brings it back. The specification calls such a command
-**non-compensatable**.
+That is fine while the program keeps running. It is not fine when the program stops in the middle.
+A transaction that never commits is rolled back. So if the program dies after the bank sent the
+money, the database forgets the whole attempt. Nothing says that a payment was ever started.
 
-So the bank's declaration matters more than any before it. It must say at least one of two things:
+This step adds one thing: a **note**, called an *intent record* in the specification. Before DSoR
+asks the bank, it writes "proposal `prop_…` is about to send PAY-901 through `fake-bank`, for
+user_123, with this key", and **commits** it, with the claim and the proposal. Only then does it ask
+the bank. When the work ends, the note gets its outcome: `committed`, `failed`, or
+`outcome_unknown`.
 
-- **It refuses a repeat** (`downstream_idempotency`). DSoR sends a key with each payment. If the
-  same key arrives twice, the bank answers with the first receipt and sends nothing more.
-- **It answers a lookup** (`outcome_lookup`). DSoR can ask later: "did the payment with this key
-  go through?"
-
-The bank in this step is a fake, inside the program, with four switches: **good**, **slow**,
-**broken**, and **silent**. It does both of the two things above, as real payment services do.
-Stripe, for example, takes an `Idempotency-Key` with each request and lets a payment be looked up
-afterwards.
+A note with no outcome is a sign that the program stopped while it paid. DSoR does not guess what
+happened. It says `OUTCOME_UNKNOWN`, and it keeps the attempt in flight, so nothing sends the money
+again.
 
 ## Why it matters
 
-**A slow bank, and a payment sent twice.** user_123 sends PAY-901. The bank takes long to answer.
-The caller gives up and sends again. If the bank cannot tell the second request from a new payment,
-VENDOR-44 is paid 62,800.00 USD. The key stops this, but only if every attempt at PAY-901 carries
-the *same* key. A caller's own key would not do: a caller that retries often makes a new one. So
-DSoR derives the bank's key from the proposal, the record of this one attempt to send PAY-901.
+**A program that dies, and a vendor paid twice.** user_123 sends PAY-901, 31,400.00 USD to
+VENDOR-44. DSoR asks the bank, and the bank sends the money. Then the server loses power, before
+DSoR's transaction commits. Under step 35, the claim and the proposal roll back. user_123's retry
+with the same key finds no claim, so it runs again, with a new proposal and so a new bank key. The
+bank cannot tell it from a new payment. VENDOR-44 gets 62,800.00 USD.
 
-**A silent bank, and a false "failed".** The bank takes the payment and never answers. If DSoR
-said "failed", someone would send PAY-901 again, and the money would leave twice. If DSoR said
-"sent", nobody would check. The truth is "we don't know", and step 04 already gave it a code:
-`OUTCOME_UNKNOWN`, retried only after someone has found out what happened.
+With the note, the claim and the proposal were committed before the bank was asked. The retry finds
+the claim and the note, and hears `OUTCOME_UNKNOWN`. A new key finds the proposal still in flight,
+and hears `CONFLICT`. The bank is not asked again.
 
-**A bank that can help with neither.** If the bank refused no repeat and answered no lookup, a
-silent moment could never be cleared up. DSoR refuses to send a payment through such a bank at all.
-
-**Common mistake:** treating a timeout like a refusal, "the bank did not answer, so nothing was
-sent". A bank that says "I sent nothing" can be retried. A bank that says nothing cannot.
+**Common mistake:** writing the note in the same transaction as the work. Then a crash rolls the
+note back with everything else, and the note proves nothing. The note must be **committed** before
+the side effect, not just written.
 
 ## The design, before any code
 
 ### How this step was made
 
-The learner decided four of the six choices, one at a time, then said "assume all and build" for
-the last two (2026-10-18). Choices 1 to 4 below are the learner's; D5 and D6 are Claude Code's,
-taken as recommended. The code was written before its tests in this step, against the rule of red
-first. To make up for it, each new test was then shown to fail against a break of the line it
-guards ("Break it").
+The learner decided four choices, one at a time, and chose to split the step in two (2026-10-18):
+this step is the note before a bank; step 36b commits the decision record together with the work for
+commands that only change records (DSOR-EXE-04a). Choices D1, D2, D4, and D6 below are the learner's.
+D3, D5, and D7 are Claude Code's.
 
-The circled numbers are lines of DSoR's checklist (§21). Line ④ checks whether the call may run
-now: the brake, and since step 34 the connectors. Line ⑦ claims the idempotency key, line ⑧ makes
-the proposal, and line ⑨ reads the bound records.
+The memory half was built red first. The database half, the checkpoint, the replay, and the sweep,
+was written before its tests. To make up for it, each guard was then broken in a copy of the folder,
+and a test failed for every break ("Break it").
+
+The circled numbers are lines of DSoR's checklist (§21). Line ⑦ claims the idempotency key, line ⑧
+makes the proposal, and line ⑨ reads the bound records.
 
 ### What each rule says
 
-- **DSOR-UNK-03a:** "A `NON_COMPENSATABLE` operation MUST be routed only to a connector that
-  declares downstream idempotency or outcome lookup."
-  ([§25.2](../../../specs/dsor/03-execution.md#252-unknown-outcomes))
-- **DSOR-IDM-03:** "Where the connector declares downstream idempotency, DSoR MUST pass a key
-  derived from its own idempotency key to the underlying system."
-  ([§22](../../../specs/dsor/03-execution.md#22-idempotency))
-- **DSOR-UNK-01b**, step 04's rule, used for real now: an unknown outcome is never reported as
-  success, as failure, or with a retry class that allows a new attempt.
+- **DSOR-EXE-03a:** "A durable intent record containing the proposal id, operation and version,
+  payload hash, idempotency key, connector, and security context MUST be written before any side
+  effect is attempted."
+  ([§21](../../../specs/dsor/03-execution.md#21-command-pipeline))
+- **DSOR-EXE-03b:** "If the control-plane store cannot accept the decision or intent record, DSoR
+  MUST NOT execute; the caller receives `EVIDENCE_STORE_UNAVAILABLE`."
+- **DSOR-EXE-04b:** "An intent record with no final outcome MUST be treated as `OUTCOME_UNKNOWN`."
 
 ### Decisions
 
-- **D1. The fake bank lives inside the program** (the learner's choice). It is a piece of code
-  with a switch a test can turn: `bank.mode = "silent"`. How long DSoR waits for an answer is
-  DSoR's setting, not the bank's: 200 ms in the program, 50 ms in the tests. *Downside:* no real
-  network, so real timeouts and real HTTP errors are only imitated until the HTTP steps.
-- **D2. The bank refuses a repeat and answers a lookup** (the learner's choice). What
-  `payment.execute` needs of the bank comes from its contract: its own `connector_requirements`,
-  `downstream_idempotency_or_outcome_lookup`, as §7's example asks, and its `non_compensatable`
-  semantics, which DSOR-UNK-03a reads the same way. The release, `proposal.execute`, may run a
-  `payment.execute`, so it needs the same of the bank. *Downside:* the lookup is declared and
-  built, and nothing asks it until step 37.
-- **D3. The bank's key comes from the proposal** (the learner's choice): a SHA-256 of the company
-  and the proposal's id. DSOR-IDM-04 already makes the proposal's id the key of its execution, so
-  every attempt at one proposal carries one bank key, whatever key the caller sent. The command's
-  code never sees the key or the bank: it sends an order, DSoR adds the key and waits, and the
-  code hears nothing back but success or a refusal, so no receipt with the key reaches it.
-  *Downside:* the words of DSOR-IDM-03 say "derived from its own idempotency key". This step
-  reads "its own" as the proposal's, the key of the execution (open question 148).
-- **D4. Each company names its bank** (the learner's choice). `connectors.json` gives each company
-  two connectors: `{ "records": "accounting", "bank": "fake-bank" }`. Each is checked against what
-  its own role needs: the records against what reading and marking need, the bank against
-  DSOR-UNK-03a. A company whose bank is out of service cannot send payments, and can still read
-  its invoices. Which operations send money is a list in the code, as step 34's list of operations
-  that read records is: no field of a contract says which system a side effect reaches. A command
-  that cannot be undone and is not on that list stops start-up, so DSOR-UNK-03a always has a bank
-  to ask. Only an operation on the list gets a bank at all; a release gets one when the request it
-  runs is on the list. *Downside:* step 34's file shape changed, and its tests moved with it.
-- **D5. A bad day** (Claude Code's, as recommended).
-  - *Broken:* the bank says it sent nothing. The call hears `CONNECTOR_UNAVAILABLE`, safe to retry
-    with the same key, and the claim is undone, as for any accident.
-  - *Slow:* an answer within DSoR's wait is a success.
-  - *Silent:* no answer within the wait. The call hears `OUTCOME_UNKNOWN`, retried only after
-    reconciliation. The proposal ends `OUTCOME_UNKNOWN`, which is still in flight, so step 32's
-    one attempt at a time refuses a second attempt. A replay gives back the same answer.
-  - *Anything else* the bank does without saying whether it sent the money, such as an error of
-    its own, or a refusal it makes up, is `OUTCOME_UNKNOWN` too. Only a bank that says "I sent
-    nothing" is safe to retry.
-  - *After the bank was asked*, the work ends `COMMITTED` or `OUTCOME_UNKNOWN`, never anything
-    else. If the payment store fails after the bank has answered, the call is unknown, not an
-    accident: an accident would undo the proposal and its key, and a retry would pay again.
+- **D1. A table of its own** (the learner's choice). Migration 032 makes `dsor.intents`: one note
+  for each proposal, and one for each claim. It names the proposal, the operation and its version,
+  the payload hash, the claim (its principal, its operation, and its key), the bank's connector, and
+  who asked. A trigger lets only one column change after the note is written: its outcome, once,
+  with the time. Row-level security keeps each company's notes apart, and `dsor_runtime` may not
+  delete one. *Downside:* the evidence of one payment now sits in two tables, the proposal's history
+  and the note.
+- **D2. Only commands that reach a bank** (the learner's choice). The note is written inside the
+  claim's transaction. Then a **checkpoint** commits the claim, the proposal at `EXECUTING`, and
+  the note, and the work goes on in a new transaction. Then DSoR asks the bank. A command that
+  changes only DSoR's records, such as `payment.create`, writes no note and keeps its one
+  transaction. *Downside:* the commit lets go of the transaction's locks. One attempt at a time
+  over the invoice still holds, because it is a unique index on proposals in flight (step 32). The
+  payment's row lock, the brake's lock, and the slip's lock are taken again right after the
+  checkpoint, and the payment must still be a draft. A cancel, a pull, or a tear-up that landed in
+  the moment between ends the work `FAILED`, and the bank is never asked.
+- **D3. A note ends with its proposal** (Claude Code's). The note's outcome is written in the same
+  transaction as the proposal's last move: `committed` with `COMMITTED`, `failed` with `FAILED`,
+  `outcome_unknown` with `OUTCOME_UNKNOWN`. So a note with no outcome always means "the work never
+  reached its end".
+- **D4. A start-up sweep, and every read of the claim** (the learner's choice).
+  - *The same key again:* a claim with no answer that wrote a note answers `OUTCOME_UNKNOWN`, with
+    its proposal. That holds while the first call is still waiting for the bank too: in flight is
+    not known yet.
+  - *The sweep:* before the program takes any call, after its login and its map are checked, it ends
+    every open note `outcome_unknown`, moves its proposal from `EXECUTING` to `OUTCOME_UNKNOWN`, and
+    gives the claim that answer. All three in one transaction for each note.
 
-  *Downside:* nothing holds the payment or asks the bank afterwards yet. That is step 37.
-- **D6. The CFO rule stays on the draft** (Claude Code's, as recommended). `payment.create` is
-  where the CFO approves, and a draft exists only once its rules allowed it. `payment.execute`
-  needs only its own permission, `payment:execute`, which only the AP supervisor's role holds. No
-  slip lists it, so no agent sends money in this step. *Downside:* the specification's own example
-  puts the CFO rule on `payment.execute`. A company whose rules change between the draft and the
-  sending has nothing that checks them again at the sending.
-- **D7. How `payment.execute` works** (Claude Code's). Its input names the invoice, the payment,
-  and the invoice's version, as `payment.create`'s does. Line ⑨ reads the invoice and its vendor,
-  checks that the invoice is issued and the vendor approved, and holds the invoice for this one
-  attempt (step 32). The code reads the payment, which on the database locks its row, checks that
-  it pays that invoice and is still a draft, and that no other payment of that invoice is paid
-  already: an invoice is paid once. Then it sends it, and only then marks it `paid`. A bank that
-  says no, or nothing, leaves it a draft. Migration 031 allows the status `paid`. *Downside:* the
-  bank is asked inside the claim's database transaction, which holds its locks for as long as DSoR
-  waits. An invoice is paid in one payment: no part payments, which no step has yet.
+  *Downside:* "every read" is the replay. No caller can read a proposal directly yet, and a new key
+  hears `CONFLICT` from one attempt at a time, not `OUTCOME_UNKNOWN`. The sweep cannot tell a note
+  left by a crash from a note of a call that another program is running right now, so it must run
+  while no other program serves the same database (open question 150).
+- **D5. A bank that says "sent nothing", after the note** (Claude Code's). In step 35 the claim was
+  undone, and the same key could try again. Now the claim was committed with the note, and nothing
+  undoes it. So the claim keeps `CONNECTOR_UNAVAILABLE`, the proposal ends `FAILED`, and the note
+  `failed`. The same key gives that answer back without asking the bank (DSOR-IDM-01c). A new key
+  makes a new proposal and pays once. The answer's words say so. *Downside:* the code's retry class
+  is still `safe_same_key`. A retry with the same key is safe, as promised, but it does not run again
+  (open question 149).
+- **D6. Kill a real process** (the learner's choice). `test/crash-while-paying.ts` sends a payment,
+  and its bank takes the order and kills the process with `SIGKILL` before it answers. The test
+  then reads what the dead process left in the database.
+- **D7. What the note says** (Claude Code's). The operation and the payload hash come from the
+  proposal as it is kept, so a release names the operation it runs, `payment.execute@1`. The
+  principal, the operation, and the key are the claim's, so the note is found by the claim that wrote
+  it: for a release, that is `proposal.execute`. The security context is the caller as line ③ found
+  them. The connector is the company's bank, from `connectors.json`.
 
 ### The story's numbers
 
-| When | Who | Asks | The bank | DSoR answers |
-|---|---|---|---|---|
-| Tuesday | the agent | drafts INV-1008, 31,400.00 USD | | `PENDING_APPROVAL`, for the CFO |
-| Tuesday | cfo_100, then the agent | approves it, releases it | | PAY-901, a draft |
-| Tuesday | user_123 | sends PAY-901 | good | `COMMITTED`; PAY-901 paid; one transfer to VENDOR-44 |
-| Tuesday | user_123 | sends PAY-902, of INV-1002 | silent | `OUTCOME_UNKNOWN`; PAY-902 still a draft; the money left |
-| Tuesday | user_123 | sends PAY-902 again, with a new key | good | `CONFLICT`: the first attempt is in flight |
-| Tuesday | user_123 | sends PAY-903, of INV-1009 | broken | `CONNECTOR_UNAVAILABLE`; nothing sent |
-| Tuesday | user_123 | the same request, the same key | good | `COMMITTED`; one transfer |
+| When | Who | Asks | The bank | DSoR answers | The note |
+|---|---|---|---|---|---|
+| Tuesday | user_123 | sends PAY-901 | good | `COMMITTED`; one transfer | `committed` |
+| Tuesday | user_123 | sends PAY-902, of INV-1002 | silent | `OUTCOME_UNKNOWN`; the money left | `outcome_unknown` |
+| Tuesday | user_123 | sends PAY-903, of INV-1009 | broken | `CONNECTOR_UNAVAILABLE`; nothing sent | `failed` |
+| Tuesday | user_123 | the same request, the same key | good | `CONNECTOR_UNAVAILABLE`, given back | none new |
+| Tuesday | user_123 | the same request, a new key | good | `COMMITTED`; one transfer | `committed` |
+| The tests | user_123 | sends a payment of INV-9001, 500.00 USD; the process is killed after the bank took it | took it | nothing: the process is dead | open |
+| The tests | user_123 | the same key, after the crash | | `OUTCOME_UNKNOWN` | open |
+| The tests | user_123 | a new key, after the crash | | `CONFLICT`: the attempt is in flight | open |
+| The tests | start-up | the sweep | | the proposal `OUTCOME_UNKNOWN` | `outcome_unknown` |
 
 ### The tests, by claim
 
 | Claim | Tests |
 |---|---|
-| C1. What cannot be undone goes only to a bank that refuses a repeat or answers a lookup; each connector is asked only for its own part | `test/bank.test.ts` |
-| C2. On a good day, PAY-901 is paid through the fake bank | `test/bank.test.ts` |
-| C3. The bank's key is the proposal's; a replay sends nothing again | `test/bank.test.ts` |
-| C4. Slow is a success, broken a safe retry, silent unknown; on the database, a good day, a silent bank, and a cancel during a send | `test/bank.test.ts`, `test/bank.db.test.ts` |
-| The review's findings, each with its test | `test/bank-review.test.ts` |
-| C5. What payment.execute refuses before the bank is called | `test/bank.test.ts` |
+| C1. The note is written, and on the database committed, before the bank is asked; a command that reaches no bank writes none | `test/intents.test.ts`, `test/intents.db.test.ts` |
+| C2. A note that cannot be written stops the payment: `EVIDENCE_STORE_UNAVAILABLE`, the bank never asked, nothing kept | `test/intents.test.ts`, `test/intents.db.test.ts` |
+| C3. The note ends with its proposal; a bank that said "sent nothing" after the note is kept | `test/intents.test.ts`, `test/intents.db.test.ts`, `test/bank.test.ts` |
+| C4. A note is evidence: only its outcome is written, once, and nothing removes it | `test/intents.db.test.ts`, `test/store-map.test.ts` |
+| C5. A process killed while the bank holds the payment: the same key hears `OUTCOME_UNKNOWN`, a new key `CONFLICT` | `test/intents.db.test.ts` |
+| C6. The sweep ends the note, the proposal, and the claim `OUTCOME_UNKNOWN` | `test/intents.db.test.ts` |
+| The review's findings, each with its test | `test/intents-review.test.ts`, `test/intents.db.test.ts` |
 
-## What changed since step 34
+## What changed since step 35
 
 | File | What changed |
 | --- | --- |
-| `src/bank.ts` | **New.** The fake bank and its four switches; the bank's key; the one way DSoR calls a bank, and how it reads each answer (D1, D3, D5) |
-| `contracts/payment.execute.json`, `inputs/PaymentExecuteRequest.schema.json`, `examples/payment.execute.json` | **New.** The command, its input, and its example for the cross-company suite (D7) |
-| `src/operations.ts` | payment.execute's code (D7) |
-| `src/connectors.ts`, `connectors.json` | The fake bank's declaration; each company names its records and its bank; what each operation needs of each (D2, D4) |
-| `src/pipeline.ts` | The command's code gets the company's bank, for its proposal, and only when it sends money; after a send, only COMMITTED or OUTCOME_UNKNOWN (D3, D5) |
-| `src/company.ts`, `src/payment.ts`, `src/postgres.ts`, `migrations/031_paid.sql` | A payment can be read, locked, and marked paid; an invoice's paid payments (D7) |
-| `src/proposals.ts`, `src/bundle.ts` | A proposal can end OUTCOME_UNKNOWN, and its bundle says `outcome_unknown` (D5) |
-| `roles.json` | `payment:execute`, for the AP supervisor (D6) |
-| `src/registry.ts`, `src/main.ts` | The banks start-up checks; the story of this step |
-| `test/bank.test.ts`, `test/bank.db.test.ts`, `test/bank-review.test.ts` | **New.** The claims C1 to C5, and the review's findings |
-| The other tests | The new file shape; payment.execute in every pinned list (eighteen contracts, 207 attacks); the company's bank in the company's keys. Each says "Changed in step 35" |
+| `migrations/032_intents.sql` | **New.** `dsor.intents`, its trigger, its policy, and `dsor_runtime`'s privileges (D1) |
+| `src/intents.ts` | **New.** The note, the store in memory, and the answer for a note with no outcome (D1, D4) |
+| `src/pipeline.ts` | The bank's wrapper writes the note, checkpoints, takes the payment's lock again, then asks the bank; after the note, "sent nothing" is kept and anything else is unknown; the note ends with the proposal (D2, D3, D5, D7) |
+| `src/claims.ts` | The stores of a claim's work gain the notes and the checkpoint; a refusal after the note is kept (D2, D5) |
+| `src/postgres.ts` | The checkpoint on the database; the notes in `dsor.intents`; the replay of a claim with no answer; the sweep (D2, D4) |
+| `src/main.ts` | The sweep at start-up; the scene's broken day and the notes (D4, D5) |
+| `src/store.ts`, `store.json` | `dsor.intents` on the map, as a record that moves once (D1) |
+| `test/intents.test.ts`, `test/intents.db.test.ts`, `test/intents-review.test.ts`, `test/crash-while-paying.ts`, `test/owner-intents.ts` | **New.** The claims C1 to C6, and the review's findings |
+| The other tests | `dsor.intents` in the lists of tables, privileges, policies, and triggers; step 35's broken day. Each says "Changed in step 36" |
 
-Step 34's markers are gone, as the build skill (`.claude/skills/build-baby-step`) asks. A search
-for "NEW IN STEP" finds only this step's lesson.
+Step 35's markers are gone. A search for "NEW IN STEP" finds only this step's lesson.
 
 ```bash
-git diff --no-index ../mj_34_connectors/src src
-git diff --no-index ../mj_34_connectors/test test
+git diff --no-index ../mj_35_a_fake_bank/src src
+git diff --no-index ../mj_35_a_fake_bank/test test
 ```
 
 ## Run it
 
-As in step 34, the step needs a local PostgreSQL 17 and a database of its own. This step adds one
-migration, 031.
+As in step 35, the step needs a local PostgreSQL 17 and a database of its own. This step adds one
+migration, 032.
 
 ```bash
 pnpm install
@@ -188,113 +175,96 @@ pnpm migrate
 pnpm start
 ```
 
-From a real run on 2026-10-18. After step 34's scenes, the program tells this step's story in a
-world of its own, in memory:
+From a real run on 2026-10-18. Start-up now sweeps first:
 
 ```text
-a fake bank, in memory, in a world of its own:
-  the agent drafts INV-1008, 31,400.00 USD: PENDING_APPROVAL, needs CFO x1 (high-value-payment), until 2026-10-13T15:05:00.000Z
-  cfo_100 approves it: answered, apr_…
-  the agent releases it: answered, PAY-901
-  a good day; user_123 sends PAY-901: answered, PAY-901
-    the bank sent TRF-1: 31400.00 USD to VENDOR-44 for PAY-901, key dsor_b856d5bc400…
-  user_123 drafts INV-1002, 8,900.50 USD: answered, PAY-902
-  a silent day; user_123 sends PAY-902: OUTCOME_UNKNOWN: payment "PAY-902": the bank did not answer within 200 ms, so it may or may not have been sent
-    the bank sent TRF-2: 8900.50 USD to VENDOR-44 for PAY-902, key dsor_46b48f043eb…
-  the bank is back; user_123 tries PAY-902 again with a new key: CONFLICT: invoice INV-1002 has an attempt in flight already: proposal dsor://org_456/proposal/prop_…, OUTCOME_UNKNOWN
-  transfers the bank made: 2
-  user_123 drafts INV-1009, 7,425.00 USD: answered, PAY-903
-  a broken day; user_123 sends PAY-903: CONNECTOR_UNAVAILABLE: payment "PAY-903": the bank is down, and sent nothing
-  the bank is back; the same request, the same key: answered, PAY-903
-    the bank sent TRF-3: 7425.00 USD to VENDOR-44 for PAY-903, key dsor_eb0e75323a5…
-  transfers the bank made: 3
-  payments: PAY-901 paid, PAY-902 draft, PAY-903 paid
+start-up: 0 note(s) with no outcome, each now OUTCOME_UNKNOWN
 ```
 
-The key is printed short, and the ids of the approval and the proposal are cut. PAY-902's money left on the silent day, and DSoR does not know it: the
-bank kept TRF-2, and DSoR's answer was OUTCOME_UNKNOWN. Finding out is step 37's.
+Then, after the earlier scenes, the bank's world in memory:
+
+```text
+  a broken day; user_123 sends PAY-903: CONNECTOR_UNAVAILABLE: payment "PAY-903": the bank is down, and sent nothing; this idempotency_key keeps this answer, so send the payment again with a new key
+  the bank is back; the same request, the same key: CONNECTOR_UNAVAILABLE: payment "PAY-903": the bank is down, and sent nothing; this idempotency_key keeps this answer, so send the payment again with a new key
+  the same request with a new key: answered, PAY-903
+    the bank sent TRF-3: 7425.00 USD to VENDOR-44 for PAY-903, key dsor_8729973189e…
+  transfers the bank made: 3
+  payments: PAY-901 paid, PAY-902 draft, PAY-903 paid
+  the notes DSoR wrote before it asked the bank:
+    prop_ab34ac67…: payment.execute@1 by user_123 through fake-bank, ended committed
+    prop_7aef1bf3…: payment.execute@1 by user_123 through fake-bank, ended outcome_unknown
+    prop_aff3f176…: payment.execute@1 by user_123 through fake-bank, ended failed
+    prop_ea7e1f73…: payment.execute@1 by user_123 through fake-bank, ended committed
+```
+
+The key and the proposals' ids are printed short. Four sends, four notes. The drafts, the approval,
+and the release of the draft wrote none: none of them reached the bank.
 
 ## Break it
 
-Each break ran on 2026-10-18 in a fresh copy of this folder outside the repository. A short script
-told four scenes:
+Each break ran on 2026-10-18 in a fresh copy of this folder outside the repository, with a fresh
+database. Each one removes one guard. The tests run were `test/intents.test.ts`, `test/bank.test.ts`,
+`test/intents.db.test.ts`, and `test/bank.db.test.ts`.
 
-- **S1:** a bank that neither refuses a repeat nor answers a lookup, and DSoR starts.
-- **S2:** a silent bank, then the same request with the same key.
-- **S3:** a silent bank, then a new attempt with a new key.
-- **S4:** whether the bank's key is the proposal's.
-
-Unbroken:
-
-```text
-S1: connectors.json: the default bank connector is broken: connector "fake-bank" cannot serve as the bank: payment.execute needs downstream_idempotency or outcome_lookup
-S2, silent, then the same request with the same key: OUTCOME_UNKNOWN, then OUTCOME_UNKNOWN; transfers: 1
-S3, silent, then a new attempt with a new key: OUTCOME_UNKNOWN, then CONFLICT; transfers: 1
-S4, the bank's key is the proposal's: true
-```
-
-| Break | What changed | The scenes | The tests that failed |
+| Break | What changed | Unit tests failed | Database tests failed |
 |---|---|---|---|
-| **B1** | payment.execute asks nothing of the bank | S1: `DSoR started` | 2 |
-| **B2** | The bank's key changes at every attempt | S4: `false` | 1 |
-| **B3** | A silent bank counts as "sent nothing" | S2 and S3: `CONNECTOR_UNAVAILABLE, then COMMITTED; transfers: 2`. **The vendor is paid twice** | 2 |
-| **B4** | An unknown proposal ends FAILED | S3: `OUTCOME_UNKNOWN, then COMMITTED; transfers: 2`. **Paid twice** | 2 |
+| **B1** | The checkpoint commits nothing | 0 | 5, the crash test among them |
+| **B2** | A claim with no answer ignores its note | 0 | 2: the same key during the send, and after the crash |
+| **B3** | The sweep leaves the proposal `EXECUTING` | 0 | 1: the crash test |
+| **B4** | The payment's lock is not taken again after the checkpoint | 0 | 1: step 35's cancel during a send |
+| **B5** | A note that cannot be written is an accident, not `EVIDENCE_STORE_UNAVAILABLE` | 1 | 1 |
+| **B6** | "Sent nothing" after the note is not kept | 2 | 2 |
+| **B7** | The note never ends | 4 | 5 |
+| **B8** | The trigger lets a note end twice | 0 | 1 |
+| **B9** | The note is written but not committed before the bank | 0 | 5 |
 
-B3 and B4 are the two ways to pay twice that this step closes: a timeout read as "nothing sent",
-and an unknown read as "failed".
-
-Then each fix of the review was undone in a copy, one at a time, and the full unit suite run:
-the store failing after a send (F1), a second draft of one invoice (F2), a refusal the bank makes
-up (F3), and a bank given to every command (F7). Each failed exactly the test written for it.
+B1 and B9 are the mistake this step exists to prevent: in memory nothing changes, because memory has
+no transaction to roll back. Only the database, and a real crash, show it.
 
 ## Build it yourself with Claude Code
 
-Claude Code built the step in these moves.
-
 | # | Move | What was done |
 |---|---|---|
-| 1 | The problem | A payment is a draft; a bank cannot undo one; slow, silent, and a bank that can help with neither |
-| 2 | Decide | Four choices, one at a time, by the learner; then "assume all and build" for D5 and D6 |
-| 3 | The copy | Step 34 copied, its markers removed |
-| 4 | Build | The bank, the connectors, the command, the pipeline's bank, the stores, migration 031. Code first, against the rule (see "How this step was made") |
-| 5 | Tests | 19 unit tests and the database tests; every pinned list of the earlier steps moved with the new command |
-| 6 | Break it | B1 to B4, run for real, in copies of the folder |
-| 7 | Review | A reviewer who had not seen the conversation, with 35 small breaks and seven attacks of its own |
-| 8 | Fix | F1 to F9, each with its test; each fix undone once in a copy, to see its test fail |
+| 1 | The problem | A program that dies after the bank sent forgets the attempt, and the retry pays again |
+| 2 | Decide | Four choices and the split, by the learner; D3, D5, and D7 by Claude Code |
+| 3 | The copy | Step 35 copied, its markers removed |
+| 4 | Memory, red first | 8 unit tests, red; then the note, the end, and "sent nothing" kept |
+| 5 | Database | The checkpoint, the lock taken again, the replay, the sweep; then 8 database tests, one with a real `SIGKILL` |
+| 6 | Break it | B1 to B9, in copies of the folder |
+| 7 | Review | A reviewer who had not seen the conversation, with attacks of its own |
+| 8 | Fix | H1, M1, M2, H2, and M3; each fix with a test undone once in a copy, to see its test fail |
 
 To start it in a new session:
 
 ```text
-Build step 35 in learner mode from the design in
-docs/baby_steps_tutorials/mj_35_a_fake_bank/README.md.
+Build step 36 in learner mode from the design in
+docs/baby_steps_tutorials/mj_36_write_it_down_before_you_act/README.md.
 ```
 
 ## Check yourself
 
-1. The bank takes PAY-902 and never answers. What does user_123 hear, what state is the proposal
-   in, and is PAY-902 paid?
-2. user_123 tries PAY-902 again, with a new key. What happens, and why does the new key not get a
-   new bank key?
-3. The bank says "down, nothing sent". Why is that one safe to retry with the same key, when
-   silence is not?
-4. The bank sends PAY-901, and then the database connection drops before PAY-901 is marked paid.
-   What does DSoR answer, and why not INTERNAL_ERROR?
-5. PAY-901 and PAY-902 are two drafts of INV-1002. PAY-901 is sent. What happens to PAY-902?
+1. The program dies after the bank took PAY-901 and before anything else. What is in the database
+   afterwards: the claim, the proposal, the note? In which state?
+2. user_123 sends the same request with the same key after that crash. What does DSoR answer, and
+   does it ask the bank?
+3. Why must the note be *committed* before the bank is asked, and not only written?
+4. The bank says "down, nothing sent" after the note. Why does the same key now give that answer
+   back, when in step 35 it ran again?
+5. `payment.create` writes no note. Why is that safe?
 
 <details>
 <summary>Answers</summary>
 
-1. `OUTCOME_UNKNOWN`, retried only after reconciliation. The proposal is `OUTCOME_UNKNOWN`, which
-   is in flight. PAY-902 is still a draft in DSoR's records, though the bank sent it (D5).
-2. `CONFLICT`: one attempt at a time over INV-1002, and the first is in flight (step 32). The
-   new key never reaches the bank: the bank's key comes from the proposal, and a new proposal is
-   not made (D3).
-3. A bank that says it sent nothing has told DSoR the money did not leave. Silence tells nothing,
-   and the money may have left (D5).
-4. `OUTCOME_UNKNOWN`. Once the bank was asked, the work ends committed or unknown. An
-   INTERNAL_ERROR would undo the proposal with the claim, and the retry would get a new proposal,
-   a new key, and pay again (D5, F1).
-5. Its send is refused with `CONFLICT`: INV-1002 is paid already, by PAY-901 (D7, F2).
+1. The claim, with no answer; the proposal, `EXECUTING`; the note, with no outcome. The checkpoint
+   committed all three before the bank was asked (D2).
+2. `OUTCOME_UNKNOWN`, with the proposal, retried only after reconciliation. It does not ask the
+   bank: a claim with no answer and a note is unknown (D4).
+3. A note that is written but not committed is rolled back by the crash, with everything else. Then
+   nothing remembers the attempt (B9).
+4. The claim was committed with the note, and a committed claim gives back what it recorded
+   (DSOR-IDM-01c). A new key pays (D5).
+5. It changes only DSoR's own records, in one transaction. A crash rolls all of it back, and the
+   retry with the same key runs again from nothing. No side effect is left outside (D2).
 
 </details>
 
@@ -302,70 +272,68 @@ docs/baby_steps_tutorials/mj_35_a_fake_bank/README.md.
 
 ### Found while building
 
-- **`expected_version` is the invoice's.** The first code read it as the payment's version, and
-  the two happened to match at version 1. Since step 21, for a command that binds an invoice, line
-  ⑨ checks it against the invoice. A test of a payment sent twice found it: the second send heard
-  STALE_STATE for the invoice. payment.execute now follows the rule.
-- **The order of the send and the mark.** The first plan marked the payment paid before calling
-  the bank, so a cancel would wait. On the database a failed send undoes the mark, but memory has
-  no transaction, and the mark stayed. The payment is now read and locked first, sent, and marked
-  last, so both stores behave the same.
-- **A failure to mark it paid, after the money left,** was first an error, which undoes the claim.
-  It is OUTCOME_UNKNOWN, so the attempt stays in flight.
+- **The commit lets go of the payment's lock.** Step 35's test of a cancel during a send showed
+  it: after the checkpoint, the cancel no longer waited, and the payment was cancelled while the
+  bank sent it. The lock is taken again right after the checkpoint, and the payment must still be a
+  draft (break B4).
+- **A release's note was found by the wrong claim.** A release's claim is `proposal.execute`'s, and
+  its note names `payment.execute@1`. So the note keeps the claim's own operation too, and the
+  replay finds a note by the whole scope of its claim.
+- **The note fits an existing kind of table.** `dsor.intents` has a trigger, and DSoR's own tables
+  may have one only if they move from state to state. A note moves once, from open to its outcome,
+  so it is `control-moved`, as proposals and rules are.
 
 ### What the review found
 
-A reviewer who had not seen the conversation attacked the step with seven scenarios of its own and
-35 small breaks in a copy of the folder.
+A reviewer who had not seen the conversation attacked the step. It found no way to pay twice. It
+found these:
 
-- **F1 (critical). A failure after the send was forgotten.** If the payment store failed after the
-  bank answered, the call was an accident: the claim and the proposal were undone, and a retry made
-  a new proposal, with a new key, and the bank sent again. Now, once the bank was asked, only
-  COMMITTED or OUTCOME_UNKNOWN can end the work.
-- **F2 (high). Two drafts of one invoice were both sent.** Sending a payment left the invoice as it
-  was, so a second draft could be sent too. Now an invoice is paid once.
-- **F3 (high). A refusal the bank made up was passed on.** A bank that sent and then threw
-  CONNECTOR_UNAVAILABLE was retried, and paid twice. Only the fake's own "down, sent nothing" is
-  safe now; anything else is unknown.
-- **F4. A command that cannot be undone could go to no bank.** payment.create changed to
-  non_compensatable went to the records, which refuse no repeat. It stops start-up now.
-- **F5. A cancel during a send.** The branch for a payment that changed under the send had no
-  test, in memory or on the database. Both have one.
-- **F6. The code saw the key** in the receipt its send gave back. It gets nothing back now.
-- **F7. Every command got a live bank.** Only an operation that sends money gets one now.
-- **F8.** An unknown proposal's move named the bank for every cause. It names the real one.
-- **F9.** A Company kept after its call could still send. A test shows it cannot.
+- **H1 (high). An accident after the checkpoint was an `INTERNAL_ERROR`.** The bank had paid,
+  then the note could not be ended, or the connection dropped, or the last COMMIT failed. The caller
+  heard `INTERNAL_ERROR`, and the bundle said "not executed", though the money had left. Now, once
+  the checkpoint has committed, any accident answers `OUTCOME_UNKNOWN`, the same answer the replay
+  gives, in memory and on the database.
+- **H2 (high). An unknown outcome gave its booking back.** Step 35's last move released the
+  reservation for every refusal, `OUTCOME_UNKNOWN` too, so the day's limit got back money that may
+  have left. The sweep kept it held, so a crash and a live failure left different state. Now an
+  unknown keeps its booking. No caller reaches this today: only the AP supervisor may send, and a
+  person has no daily limit. So it has no test of its own yet.
+- **M1. A checkpoint COMMIT that failed was an `INTERNAL_ERROR`.** It is
+  `EVIDENCE_STORE_UNAVAILABLE` now, and the bank is never asked (DSOR-EXE-03b).
+- **M2. No test showed a release's note.** A release's note is now tested in memory, and with a
+  real `SIGKILL` on the database: the note names `proposal.execute`'s claim, the same release key
+  hears `OUTCOME_UNKNOWN`, and the sweep answers that claim.
+- **M3. The brake's and the slip's locks were let go at the checkpoint**, so a pull or a tear-up no
+  longer waited for the send. They are taken again with the payment's. Only an agent can be braked,
+  and no agent may send, so this has no test of its own yet either.
 
-The review's other breaks that left every test green each have a test now: a bank slower than the
-wait, the key's formula, the vendor sent, a release of a prepared payment, the agent's exact
-refusal, and a connector in the wrong role.
+Each fix with a test was undone once in a copy of the folder, and its test failed.
 
 ### Left open on purpose
 
-- **Nothing is written before the bank is called** (step 36). If the program dies after the bank
-  sent and before the claim commits, nothing remembers the attempt, and the next one pays again.
-  The fix for F1 covers a failure the program sees, not a program that stops.
-- **Nothing holds a payment whose outcome is unknown** (step 37). After OUTCOME_UNKNOWN, PAY-902
-  can still be cancelled, and a new draft of INV-1002 can be made. Only payment.execute's one
-  attempt at a time stands in the way of a second send.
-- **Nobody asks the bank afterwards** (step 37). The lookup is built, and nothing calls it. The
-  bank's reference, `TRF-2`, is not kept as evidence.
-- **A replay gives back the answer of its time**, not what reconciliation learns later (step 37).
-- **No rule runs again at the sending** (D6). The CFO's rule ran at the draft.
-- **A release of a draft is refused while the bank is out of service**, though it sends nothing:
-  line ④ cannot tell what a release will run before it loads it.
-- **"Derived from its own idempotency key"** is read as the proposal's key, the key of the
-  execution (open question 148).
-- **Two database tests fail on a throwaway server**, as in step 34: one that accepts any password,
-  and an owner that belongs to no other role. On the learner's own server both pass.
+- **The decision record is still written after the work** (step 36b). For a command that only
+  changes records, the record and the work are not one transaction yet (DSOR-EXE-04a).
+- **Nobody asks the bank afterwards** (step 37). An unknown payment stays unknown until someone
+  looks. The tests' owner settles it by hand.
+- **The sweep and a second program** (open question 150). The sweep must run while no other program
+  serves the same database.
+- **Same key after "sent nothing"** (open question 149). Safe, but it gives the failure back.
+- **The sweep goes through the companies where a login works**, the companies in
+  `ready-lifetimes.json`. A note of a company taken off that list stays open (the review's L1).
+- **The note's security context is stamped with the program's clock**, as the proposal's requester
+  is, not the database's (the review's L2).
+- **A COMMIT that answers ROLLBACK without an error** is handled the same as one that fails, and
+  has no test: PostgreSQL raised an error in every case the tests could make.
+- **Two database tests fail on a throwaway server**, as in steps 34 and 35: one that accepts any
+  password, and an owner that belongs to no other role. On the learner's own server both pass.
 
 ## The rules this step meets
 
 | Rule | What it says | Spec | Tests |
 | --- | --- | --- | --- |
-| DSOR-UNK-03a | A command that cannot be undone goes only to a connector that refuses a repeat or answers a lookup | [§25.2](../../../specs/dsor/03-execution.md#252-unknown-outcomes) | [`test/bank.test.ts`](test/bank.test.ts), [`test/bank-review.test.ts`](test/bank-review.test.ts), [`test/bank.db.test.ts`](test/bank.db.test.ts) |
-| DSOR-IDM-03 | DSoR gives such a connector a key derived from its own | [§22](../../../specs/dsor/03-execution.md#22-idempotency) | [`test/bank.test.ts`](test/bank.test.ts), [`test/bank-review.test.ts`](test/bank-review.test.ts) |
-| DSOR-UNK-01b | Step 04's rule, used for real: an unknown outcome is never success, failure, or retry-safe | [§25.2](../../../specs/dsor/03-execution.md#252-unknown-outcomes) | [`test/bank.test.ts`](test/bank.test.ts), [`test/bank-review.test.ts`](test/bank-review.test.ts), [`test/bank.db.test.ts`](test/bank.db.test.ts) |
-| DSOR-UNK-02 | A replay of an unknown outcome gives back its status, with no second attempt | [§25.2](../../../specs/dsor/03-execution.md#252-unknown-outcomes) | [`test/bank.test.ts`](test/bank.test.ts) |
+| DSOR-EXE-03a | The note is written before any side effect | [§21](../../../specs/dsor/03-execution.md#21-command-pipeline) | [`test/intents.test.ts`](test/intents.test.ts), [`test/intents.db.test.ts`](test/intents.db.test.ts), [`test/store-map.test.ts`](test/store-map.test.ts) |
+| DSOR-EXE-03b | No note, no execution: `EVIDENCE_STORE_UNAVAILABLE` | [§21](../../../specs/dsor/03-execution.md#21-command-pipeline) | [`test/intents.test.ts`](test/intents.test.ts), [`test/intents.db.test.ts`](test/intents.db.test.ts) |
+| DSOR-EXE-04b | A note with no outcome is `OUTCOME_UNKNOWN` | [§21](../../../specs/dsor/03-execution.md#21-command-pipeline) | [`test/intents.test.ts`](test/intents.test.ts), [`test/intents.db.test.ts`](test/intents.db.test.ts) |
 
-**Next:** step 36, write it down before you act: the note DSoR writes before it calls the bank.
+**Next:** step 36b, the record and the work in one transaction, for commands that only change
+records.
