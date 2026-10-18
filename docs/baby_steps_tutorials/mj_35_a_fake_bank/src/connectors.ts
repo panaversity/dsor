@@ -255,6 +255,15 @@ export function checkConnectors(
     const forBank = needsOf(contract, "bank");
     problems.push(...forBank.problems);
     if (SENDS_MONEY.has(contract.id)) bankNeeds.set(contract.id, forBank.needs);
+    // A command that cannot be undone must say where its side effect goes: on the list, to the
+    //   bank. Otherwise DSOR-UNK-03a would ask nothing of any connector. Found by step 35's review,
+    //   F4: a non_compensatable payment.create went to the records, which refuse no repeat.
+    const semantics = (contract["execution"] as { semantics?: unknown } | undefined)?.semantics;
+    if (semantics === "non_compensatable" && !SENDS_MONEY.has(contract.id)) {
+      problems.push(
+        `${contract.id}: it cannot be undone, and no connector it is routed to is a bank (DSOR-UNK-03a)`,
+      );
+    }
   }
   // A release may run any of them, so it needs what every one of them needs of the bank.
   const allMoney = [...bankNeeds.values()].flat();

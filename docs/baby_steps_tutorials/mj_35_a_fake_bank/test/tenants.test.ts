@@ -780,8 +780,14 @@ describe("C8: the code can reach only the active company, and its answer must be
     expect(company.tenant).toBe("org_789");
     expect(Reflect.ownKeys(company.invoices)).toStrictEqual(["get", "list"]);
     expect(Object.getPrototypeOf(company.invoices)).toBe(Object.prototype);
-    // Changed in step 35: and a read of one payment, and the move to paid.
-    expect(Reflect.ownKeys(company.payments)).toStrictEqual(["create", "cancel", "get", "pay"]);
+    // Changed in step 35: and a read of one payment, the move to paid, and an invoice's paid payments.
+    expect(Reflect.ownKeys(company.payments)).toStrictEqual([
+      "create",
+      "cancel",
+      "get",
+      "pay",
+      "paidFor",
+    ]);
     expect(Object.getPrototypeOf(company.payments)).toBe(Object.prototype);
     expect(seen.one).toStrictEqual(INV_1008_OF_789);
     expect(seen.listed).toStrictEqual(Array(5).fill("org_789"));

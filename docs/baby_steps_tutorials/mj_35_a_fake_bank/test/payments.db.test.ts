@@ -218,9 +218,10 @@ describe("the review: what the database's lock hid, and the table's own checks",
   // The status is the one column dsor_runtime may change, so its CHECK is the only limit.
   // Which status may follow which is not the database's to say yet (step 17's README,
   // "Left open").
-  it("step 17's decision 9: the database refuses a status that is neither draft nor cancelled", async () => {
+  // Changed in step 35: paid is a status now (migration 031), so the test tries one that is not.
+  it("step 17's decision 9: the database refuses a status that is neither draft, cancelled, nor paid", async () => {
     const { id } = await draft();
-    const sql = "UPDATE app.payments SET status = 'paid' WHERE id = $1";
+    const sql = "UPDATE app.payments SET status = 'refunded' WHERE id = $1";
     await expect(tryThenRollBack(observer, sql, "org_456", [id])).rejects.toMatchObject({
       code: "23514",
     });

@@ -2312,12 +2312,10 @@ console.log("  cfo_100 approves it:", heard(bankYes));
 console.log(
   "  the agent releases it:",
   heard(await bankCall(AGENT, "proposal.execute", { proposal: bankWaiting.uri })),
-  bankDrafted.map((p) => `${p.id} ${p.status}`).join(", "),
 );
 console.log(
   "  a good day; user_123 sends PAY-901:",
   heard(await bankCall(SUPERVISOR_123, "payment.execute", toPay("INV-1008", "PAY-901"))),
-  bankDrafted.map((p) => `${p.id} ${p.status}`).join(", "),
 );
 console.log(`    the bank sent ${lastTransfer()}`);
 const draft1002 = await bankCall(SUPERVISOR_123, "payment.create", ofInvoice("INV-1002"));
@@ -2325,7 +2323,6 @@ console.log("  user_123 drafts INV-1002, 8,900.50 USD:", heard(draft1002));
 fakeBank.mode = "silent";
 const silent = await bankCall(SUPERVISOR_123, "payment.execute", toPay("INV-1002", "PAY-902"));
 console.log("  a silent day; user_123 sends PAY-902:", heard(silent));
-console.log(`    ${"message" in silent ? silent.message : ""}`);
 console.log(`    the bank sent ${lastTransfer()}`);
 fakeBank.mode = "good";
 console.log(

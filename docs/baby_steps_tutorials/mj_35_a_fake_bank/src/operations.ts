@@ -115,6 +115,14 @@ export function handlersFor(): Record<string, Handler> {
         const why = `${record} is ${payment.status}, not a draft, so it cannot be sent`;
         throw new Refusal("CONFLICT", why, "internal");
       }
+      // An invoice is paid once: a second draft of it is never sent. Found by step 35's review,
+      //   F2. One attempt at a time over the invoice makes this look safe from a second send at
+      //   the same moment (DSOR-EXC-01).
+      const paidAlready = await company.payments.paidFor(payment.invoice_id);
+      if (paidAlready.length > 0) {
+        const why = `invoice ${preview(payment.invoice_id)} is paid already, by ${paidAlready.join(", ")}`;
+        throw new Refusal("CONFLICT", why, "internal");
+      }
       await company.bank.send({ payment: id, vendor: payment.vendor_id, amount: payment.amount });
       const { payment: paid, changed } = await company.payments.pay(id, payment.version);
       // The lock held the row, so this cannot happen without a fault. Money has left, so the call

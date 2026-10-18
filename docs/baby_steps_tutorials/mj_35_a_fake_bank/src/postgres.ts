@@ -577,6 +577,16 @@ function paymentsThrough(run: Runner): PaymentStore {
         const found = now.rows[0];
         return { payment: found === undefined ? undefined : paymentOf(found), changed: false };
       }),
+    // NEW IN STEP 35: the paid payments of one invoice (step 35's review, F2).
+    paidFor: async (tenant, invoiceId) =>
+      run(tenant, async (client) => {
+        const { rows } = await client.query<{ id: string }>(
+          `SELECT id FROM app.payments
+            WHERE tenant_id = $1 AND invoice_id = $2 AND status = 'paid' ORDER BY id`,
+          [tenant, invoiceId],
+        );
+        return rows.map((row) => row.id);
+      }),
   };
 }
 

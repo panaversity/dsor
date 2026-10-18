@@ -16,7 +16,7 @@ import {
   type Payment,
   type PaymentStore,
 } from "./payment.ts";
-import type { BankOrder, BankReceipt } from "./bank.ts";
+import type { BankOrder } from "./bank.ts";
 
 /** One company's invoices. Whoever holds this can read that company's invoices, and no others. */
 export type CompanyInvoices = {
@@ -44,13 +44,17 @@ export type CompanyPayments = {
   readonly get: (id: string) => Promise<Payment | undefined>;
   /** Marks one of this company's payments paid, when it is a draft at this version. */
   readonly pay: (id: string, version: number) => Promise<Cancelled>;
+  /** The ids of this company's payments of one invoice that are paid. */
+  readonly paidFor: (invoiceId: string) => Promise<string[]>;
 };
 
 // NEW IN STEP 35: the company's bank, as the code sees it: send one order. The key, the bank, and
 //   how long DSoR waits are fixed by DSoR, out of the code's reach, as the company is (DSOR-IDM-03,
 //   DSOR-CNR-02; step 35's README, decisions D3 and D6).
 /** The company's bank, for the call's own proposal. */
-export type CompanyBank = { readonly send: (order: BankOrder) => Promise<BankReceipt> };
+// It answers nothing: the receipt holds the key, and the code never sees it. Found by step 35's
+//   review, F6.
+export type CompanyBank = { readonly send: (order: BankOrder) => Promise<void> };
 
 /** No bank: every send throws. A query's code, and the code of a call with no proposal, get this. */
 export const NO_BANK: CompanyBank = Object.freeze({
@@ -141,12 +145,16 @@ export function companyOf(
       open();
       return paymentStore.pay(tenant, id, version);
     },
+    paidFor: async (invoiceId: string) => {
+      open();
+      return paymentStore.paidFor(tenant, invoiceId);
+    },
   });
   // NEW IN STEP 35: and a Company kept after line ⑨ sends nothing more either.
   const sends: CompanyBank = Object.freeze({
     send: async (order: BankOrder) => {
       open();
-      return bank.send(order);
+      await bank.send(order);
     },
   });
   return Object.freeze({ tenant, invoices, payments, bank: sends });

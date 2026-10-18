@@ -174,10 +174,19 @@ describe("C3: the bank gets a key derived from the proposal, never the caller's"
     const w = await ruleWorldOnTuesday();
     const payment = await draft1002(w);
     const envelope = keyed(SUPERVISOR);
+    // Every call to the bank is counted: the fake sends a repeated key once, so its transfers
+    //   alone would not show a second call (step 35's review).
+    let calls = 0;
+    const pay = w.bank.pay;
+    w.bank.pay = async (key, order) => {
+      calls += 1;
+      return pay(key, order);
+    };
     const first = await execute(w, payment, envelope);
     const again = await execute(w, payment, envelope);
     expect(heard(again)).toBe("COMMITTED");
     expect(idOf(again)).toBe(idOf(first));
+    expect(calls).toBe(1);
     expect(w.bank.transfers()).toHaveLength(1);
   });
 

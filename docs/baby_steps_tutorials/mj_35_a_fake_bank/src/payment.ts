@@ -52,6 +52,10 @@ export type PaymentStore = {
   get: (tenant: string, id: string) => Promise<Payment | undefined>;
   /** Changes one company's payment from draft to paid, when it is a draft at this version. */
   pay: (tenant: string, id: string, version: number) => Promise<Cancelled>;
+  // NEW IN STEP 35: the paid payments of one invoice, so an invoice is paid once. Found by step
+  //   35's review, F2: two drafts of one invoice were both sent (step 35's README, decision D7).
+  /** The ids of one company's payments of one invoice that are paid. */
+  paidFor: (tenant: string, invoiceId: string) => Promise<string[]>;
 };
 
 /** Payments held in memory, for the unit tests, in the list given. */
@@ -111,6 +115,11 @@ export function memoryPayments(rows: Payment[] = []): PaymentStore {
       }
       return { payment: structuredClone(found), changed };
     },
+    paidFor: async (tenant, invoiceId) =>
+      rows
+        .filter((row) => row.tenant_id === tenant && row.invoice_id === invoiceId)
+        .filter((row) => row.status === "paid")
+        .map((row) => row.id),
   };
 }
 
@@ -126,6 +135,9 @@ export const NO_PAYMENTS: PaymentStore = Object.freeze({
     throw new Error("this registry was built without a store of payments");
   },
   pay: async (): Promise<never> => {
+    throw new Error("this registry was built without a store of payments");
+  },
+  paidFor: async (): Promise<never> => {
     throw new Error("this registry was built without a store of payments");
   },
 });

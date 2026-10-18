@@ -98,12 +98,13 @@ export async function sendThrough(
       `payment ${JSON.stringify(order.payment)}: ${why}, so it may or may not have been sent`,
       "internal",
     );
+  let answer: BankReceipt | "silent";
   try {
-    const answer = await Promise.race([line.bank.pay(key, order), silence]);
-    if (answer === "silent") throw unknown(`the bank did not answer within ${line.waitMs} ms`);
-    return answer;
+    answer = await Promise.race([line.bank.pay(key, order), silence]);
   } catch (thrown) {
-    if (thrown instanceof Refusal) throw thrown;
+    // Only a bank that says it sent nothing is safe to try again. Anything else it throws, a
+    //   refusal of its own words too, may come after the money left. Found by step 35's review,
+    //   F3: a bank that sent and then threw CONNECTOR_UNAVAILABLE was sent again.
     if (thrown instanceof BankDown) {
       const why = `payment ${JSON.stringify(order.payment)}: the bank is down, and sent nothing`;
       throw new Refusal("CONNECTOR_UNAVAILABLE", why, "internal");
@@ -112,4 +113,6 @@ export async function sendThrough(
   } finally {
     clearTimeout(timer);
   }
+  if (answer === "silent") throw unknown(`the bank did not answer within ${line.waitMs} ms`);
+  return answer;
 }

@@ -3,7 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { pinned, readBound, type Bound, type BoundRead } from "./bound.ts";
 import { checkBrake, holdBrake, NO_BRAKES, type BrakeStore } from "./brakes.ts";
-import { checkConnector } from "./connectors.ts";
+import { checkConnector, SENDS_MONEY } from "./connectors.ts";
 import { bankKeyOf, sendThrough, type BankOrder } from "./bank.ts";
 import { checkedAssertion } from "./asserted.ts";
 import { bundleOf, checkBundle, executedOf, newEvidence, stateReadOf } from "./bundle.ts";
@@ -917,26 +917,50 @@ export async function call(
             const work = { tenant, caller, stores, correlation, now, ksor, contracts };
             returned = await job.own.change(job.input, work);
           } else if (job.handler !== undefined) {
-            // NEW IN STEP 35: and the company's bank, for a command with a proposal. The code sends an
-            //   order; DSoR adds the key and waits, and the code never sees either (step 35's
-            //   README, decisions D3 and D6).
+            // NEW IN STEP 35: and the company's bank, for an operation that sends money, with a
+            //   proposal. The code sends an order; DSoR adds the key and waits, and the code never
+            //   sees either (step 35's README, decisions D3 and D6). Only an operation on the list
+            //   gets a bank: for a release, the one it runs. Found by step 35's review, F7.
             const bankLine = registry.plugs.bankOf(tenant);
             const sending = executing;
+            const running = "target" in job ? (job as { target: Contract }).target.id : contract.id;
+            // Whether the bank may have sent: true once it was asked, unless it said it sent
+            //   nothing.
+            let sent = false;
             const bank: CompanyBank =
-              contract["kind"] === "query" || bankLine === undefined || sending === undefined
+              !SENDS_MONEY.has(running) || bankLine === undefined || sending === undefined
                 ? NO_BANK
                 : Object.freeze({
-                    send: (order: BankOrder) =>
-                      sendThrough(
-                        bankLine,
-                        bankKeyOf(tenant, proposalIdOf(tenant, sending)),
-                        order,
-                      ),
+                    send: async (order: BankOrder) => {
+                      const key = bankKeyOf(tenant, proposalIdOf(tenant, sending));
+                      try {
+                        await sendThrough(bankLine, key, order);
+                        sent = true;
+                      } catch (thrown) {
+                        const nothing =
+                          thrown instanceof Refusal && thrown.code === "CONNECTOR_UNAVAILABLE";
+                        if (!nothing) sent = true;
+                        throw thrown;
+                      }
+                    },
                   });
-            returned = await job.handler(
-              job.input,
-              companyOf(stores.invoices, tenant, reads, payments, bank),
-            );
+            try {
+              returned = await job.handler(
+                job.input,
+                companyOf(stores.invoices, tenant, reads, payments, bank),
+              );
+              return checkAnswerInTenant(returned, tenant);
+            } catch (thrown) {
+              // Once the money may have left, the work ends COMMITTED or OUTCOME_UNKNOWN, never
+              //   anything else. An accident would undo the claim and the proposal, and a retry
+              //   would get a new proposal and a new key, and pay again. A refusal would end the
+              //   proposal FAILED, out of flight. Found by step 35's review, F1 (DSOR-UNK-01b).
+              const unknown = thrown instanceof Refusal && thrown.code === "OUTCOME_UNKNOWN";
+              if (!sent || unknown) throw thrown;
+              const why =
+                "the bank was asked to send the payment, and then the work failed, so it may or may not have been sent";
+              throw new Refusal("OUTCOME_UNKNOWN", why, "internal");
+            }
           } else {
             throw new Error("an operation with no code reached its work");
           }

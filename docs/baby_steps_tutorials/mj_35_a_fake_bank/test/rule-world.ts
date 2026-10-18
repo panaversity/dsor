@@ -22,7 +22,12 @@ import { call } from "../src/pipeline.ts";
 import { readMoneyPolicies } from "../src/policies.ts";
 import { memoryProposals, type MemoryProposals } from "../src/proposals.ts";
 import { memoryRates, type MemoryRates } from "../src/rates.ts";
-import { buildRegistry, type ContractSource, type Registry } from "../src/registry.ts";
+import {
+  buildRegistry,
+  type ContractSource,
+  type Handler,
+  type Registry,
+} from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import { ownWorkFor } from "../src/revocation.ts";
 import {
@@ -115,6 +120,8 @@ export function ruleWorld(
   connectors: ConnectorsSource = readConnectors(),
   // Step 35: and the fake bank, for which DSoR waits 50 ms, so a silent bank is quick to test.
   bank: FakeBank = createFakeBank(),
+  // Step 35: and the company's code, the shipped code unless a test gives its own.
+  code: Record<string, Handler> = handlersFor(),
 ): RuleWorld {
   const clock = { now: T0 };
   const bills = [...structuredClone(invoices), ...structuredClone(BILLS)];
@@ -139,7 +146,7 @@ export function ruleWorld(
   const given = around(rules);
   const registry = buildRegistry(
     contracts,
-    handlersFor(),
+    code,
     roles,
     inputs,
     shippedLabels,

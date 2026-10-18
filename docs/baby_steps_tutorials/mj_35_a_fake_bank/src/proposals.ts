@@ -756,7 +756,7 @@ export async function closeProposal(
     cause: ended
       ? "the work ended"
       : unknown
-        ? "the bank did not say whether it sent the payment"
+        ? `the outcome is unknown: ${(outcome.refused as { message?: string }).message ?? ""}`
         : `the code refused: ${outcome.refused.code}`,
     correlation,
   });

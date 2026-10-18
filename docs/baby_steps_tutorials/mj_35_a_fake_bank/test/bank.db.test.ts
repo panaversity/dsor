@@ -59,6 +59,22 @@ function execute(id: string, who: RequestEnvelope = keyed(SUPERVISOR)): Promise<
   });
 }
 
+// A slow bank DSoR waits for, so a cancel can arrive while it sends (step 35's review, F5).
+const slowBank = createFakeBank();
+slowBank.mode = "slow";
+slowBank.slowMs = 400;
+const patient = dbRegistry(
+  pool,
+  none,
+  none,
+  none,
+  none,
+  none,
+  none,
+  none,
+  new Map([["fake-bank", { bank: slowBank, waitMs: 3000 }]]),
+);
+
 describe("C4: on the database, paid only once the bank has answered", () => {
   it("DSOR-UNK-03a: on the database, a good day: COMMITTED, the row in app.payments is paid at version 2, and the bank sent once", async () => {
     const id = await draft();
@@ -66,6 +82,25 @@ describe("C4: on the database, paid only once the bank has answered", () => {
     expect(await execute(id)).toMatchObject({ outcome: "COMMITTED" });
     expect(await payments.get("org_456", id)).toMatchObject({ status: "paid", version: 2 });
     expect(bank.transfers().filter((t) => t.payment === id)).toHaveLength(1);
+  });
+
+  it("step 35's decision D7: on the database, a cancel that arrives while the bank sends waits for the payment's lock, then hears STALE_STATE: the payment moved on to paid", async () => {
+    ownerInvoices("add");
+    const id = await draft();
+    const sending = call(patient, log, keyed(SUPERVISOR), "payment.execute", {
+      invoice: INV_9001,
+      payment: `dsor://org_456/payment/${id}`,
+      expected_version: 1,
+    });
+    await new Promise((done) => setTimeout(done, 150));
+    const cancel = await call(registry, log, keyed(SUPERVISOR), "payment.cancel", {
+      payment: `dsor://org_456/payment/${id}`,
+      expected_version: 1,
+    });
+    expect(await sending).toMatchObject({ outcome: "COMMITTED" });
+    expect(cancel).toMatchObject({ code: "STALE_STATE" });
+    expect(await payments.get("org_456", id)).toMatchObject({ status: "paid", version: 2 });
+    expect(slowBank.transfers().filter((t) => t.payment === id)).toHaveLength(1);
   });
 
   it("DSOR-UNK-01b: on the database, a silent bank: OUTCOME_UNKNOWN, the row in app.payments still a draft, its proposal OUTCOME_UNKNOWN, and a second attempt refused with CONFLICT", async () => {
