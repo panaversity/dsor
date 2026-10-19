@@ -354,6 +354,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     may_by_set_role: boolean;
     may_by_function: boolean;
     has_trigger: boolean;
+    has_rule: boolean;
   }>(
     `SELECT current_user AS who,
             ${held("current_user")} AS may,
@@ -399,7 +400,13 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
               SELECT 1 FROM pg_trigger t
               WHERE t.tgrelid IN (${TENANT_REGCLASSES})
                 AND NOT t.tgisinternal
-            ) AS has_trigger`,
+            ) AS has_trigger,
+            -- NEW IN STEP 26b: and rules. A tenant table is a table, and a table has no rule of
+            -- its own; every rule on one is somebody's (decision 161).
+            EXISTS (
+              SELECT 1 FROM pg_rewrite w
+              WHERE w.ev_class IN (${TENANT_REGCLASSES})
+            ) AS has_rule`,
   );
 
   const answer = rows[0];
@@ -461,6 +468,21 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
         `log or the invoices runs inside this program's own statements with its owner's rights — ` +
         `an evaluation measured a trigger on the invoices smuggling every company's rows out ` +
         `through the application's own UPDATE. Drop the trigger, or change this check deliberately.`,
+    );
+  }
+
+  // NEW IN STEP 26b: a rule is the trigger's older cousin. It rewrites this program's own
+  // statement, or adds statements of its own, with the table owner's rights, and start-up asked
+  // only about triggers. Decision 149 measured del_100's limit lifted by a rule on the invoices,
+  // fired by an ordinary invoice.issue; and `DO INSTEAD NOTHING` on the log would swallow a
+  // decision the program believes recorded. Any rule is refused, whatever it does (decision 161).
+  if (answer.has_rule !== false) {
+    throw new Error(
+      `a tenant table has a rule on it, and this program expects none: a rule rewrites this ` +
+        `program's own statements, or adds statements of its own, with the table owner's rights — ` +
+        `a rule on the invoices can sign a permission slip inside an ordinary invoice.issue, and ` +
+        `one that does nothing instead can swallow a record of the log. Drop the rule, or change ` +
+        `this check deliberately.`,
     );
   }
 
