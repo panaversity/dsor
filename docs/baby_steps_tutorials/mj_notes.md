@@ -2041,6 +2041,26 @@ whatever the claim keeps commits with its record; no record, no change; both att
   "kept nothing" could be said after the bank sent (F1). Fixed with a copy put back.
 - **Left open:** the outbox (40); a COMMIT whose answer is lost (F4).
 
+### Understanding step 37, outcome unknown, from zero (2026-10-19)
+
+A new style at the learner's request: start as if they know nothing of DSoR or any earlier step,
+every word defined, a story and pictures first, every case a real run. Five parts: the silent bank;
+what people can still do while nobody knows; the hold; what the hold covers and what each person
+hears; who lifts it, and the real-world names (pending, suspense account, processing).
+
+- **Their own questions were the best moments.** "If DSoR retries with the key it can know": a real
+  run showed the fake bank answering the same key with its first receipt (the spec's MAY re-drive),
+  and a new key paying again. "When and how will reconciliation happen": §25.3 and §44's clocks.
+- **Habit 1 (substitution) again:** "DSoR refuses the cancel", because it had said "unknown". The
+  run showed the cancel COMMITTED: no rule links "unknown" to "do not change".
+- **Found while teaching:** `payment.cancel` binds nothing and `payment.execute` binds no payment,
+  so a hold on the slip could not be matched today.
+- **The learner declined gut calls after part 3.** Explain and run; keep decisions in the ask tool.
+- **Design questions for step 37:** where a hold lives (a table, or worked out from unknown
+  proposals); binding the slip in payment.execute and payment.cancel; CONFLICT or RESOURCE_HELD when
+  both apply; older waiting drafts of a held bill (approve, release); whether reads show the hold;
+  holds for proposals the start-up sweep made unknown; and, for step 38, re-drive or look up.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.
