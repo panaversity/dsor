@@ -1,78 +1,76 @@
-# Step 26 · Money done right
+# Step 27 · Controls in CEL
 
-**New in this step:** two amounts in two currencies are compared exactly, at rates DSoR looks up
-itself, and an amount it cannot convert counts as over the limit.
+**New in this step:** the company's policy becomes a *control*, a rule written in CEL with its owner,
+the policy it came from, and test cases that must pass before it is switched on; DSoR evaluates it at
+every payment.
 
 ## In plain words
 
-Until this step, every amount DSoR compared was in dollars, like `del_100`'s limits: 50,000.00 USD a
-payment and 200,000.00 USD a day. Now `VENDOR-44` sends two bills in other currencies: INV-1010 for
-2,800,000.00 Pakistani rupees (PKR), and INV-1011 for 45,000.00 British pounds (GBP).
+org_456's finance policy says: "Payments above 25,000 USD or equivalent require CFO approval." It
+lives in KSoR, the company's record of what it knows, as version 4 of
+`finance/payment-approval-policy`. Until this step, nothing in DSoR knew it. `del_100` lets the agent
+pay up to 50,000.00 USD a payment, so the agent's 31,400.00 USD payment for INV-1008 was made, and no
+CFO ever saw it.
 
-To compare a bill in rupees with a limit in dollars, DSoR needs an *exchange rate*: how many rupees
-one dollar buys. Each company now has a **rate service** to ask. In this story it says that one US
-dollar buys 280 PKR, or 0.80 GBP, and it says when it published that. DSoR asks it itself, at the
-moment it decides. It never takes a rate from the request: an agent that says a dollar buys a
-million rupees could make any bill look small.
+A policy is English, and a program cannot run English. Someone translates the sentence into a
+condition a program can evaluate. That translation is a **control**:
 
-Then DSoR compares **exactly**. "Is 2,800,000 PKR more than 50,000 USD?" becomes "is 2,800,000 more
-than 50,000 × 280, which is 14,000,000?" It multiplies and never divides, so nothing is ever rounded.
-
-```ts
-const rates = ratesOf("org_456"); // org_456's rate service, asked only if a rate is needed
-exceeds(money("2800000.00", "PKR"), money("50000.00", "USD"), rates); // false: 10,000.00 USD
-exceeds(money("45000.00", "GBP"), money("50000.00", "USD"), rates); // true: 56,250.00 USD
+```text
+policy (KSoR, v4)   "Payments above 25,000 USD or equivalent require CFO approval."
+control (DSoR, v8)  dsor_exceeds(input.amount, dsor_money("25000", "USD"))  →  REQUIRE_APPROVAL by the CFO
 ```
 
-So the bill in rupees is paid, and the bill in pounds is refused.
+The condition is written in **CEL**, the Common Expression Language. CEL works like the condition of
+an `if` statement. It cannot loop forever, call the network, or read anything it was not handed. What
+it is handed is listed in the specification's
+[Appendix B](../../../specs/dsor/appendix-b-cel.md): eight variables, such as `input`, the payment's
+arguments, and `principal`, who is asking, and the money functions. `dsor_exceeds` is step 26's
+`exceeds`, so 50,000,000.00 PKR is compared exactly, at the company's own rates.
 
-The day's limit counts in dollars. A payment in rupees is converted when it is booked against the
-day, and rounded **up** to the cent: 1,000,000.00 PKR is 3,571.428571... USD, and the day counts
-3,571.43. The day can count a fraction of a cent too much, never too little. The booking keeps that
-number, so a payment that fails gives back exactly what it took, even if the rate has moved since.
+A control is kept in DSoR's own store, `dsor.controls`, with its owner (`cfo_100`), the policy
+sentence and version it came from, and five **test cases**. It arrives *in review*. Switching it on
+runs every case, with the exchange rates the case pins, and refuses if one gives the wrong answer.
 
-When DSoR cannot convert, the strict answer wins: the limit counts as exceeded, and the refusal says
-why. It cannot convert when the service has no rate for the currency, when its newest rates are more
-than three days old, when it does not answer, or when the company has no service at all. Two amounts
-in one currency need no rate, so a bill in dollars is paid even while the service is down.
+Once it is on, every payment is checked, a person's as well as the agent's. Above the line, the
+payment does not run: its proposal waits at **PENDING_APPROVAL**, its amount still booked against the
+day, and the caller is told who must approve, how many, and until when. Nobody can approve it until
+step 29. If the condition cannot be evaluated, a currency with no rate, say, the control applies:
+a rule that crashes is never "no rule today".
 
 ## Why it matters
 
-Step 25 refused every bill in another currency than the limit's: "cannot be compared". That is
-safe, and it means the agent can never pay a foreign bill, not even one rupee. Someone will want a
-quick fix, and each quick fix is a hole. These were measured in Node:
+Each quick fix for the CFO's policy is a hole:
 
-- **Compare the numbers, and forget the currency.** 45,000 is less than 50,000, so 45,000.00 GBP
-  goes through a limit of 50,000.00 USD. At 0.80 pounds to the dollar it is 56,250.00 USD.
-- **Check only the amounts in dollars.** Then 50,000,000.00 PKR, about 178,571 USD, goes through with
-  no check at all. The specification names this hole in
-  [§9](../../../specs/dsor/01-model.md#9-money-and-currency).
-- **Convert with JavaScript numbers.** They are not exact for decimals: `0.1 + 0.2` is
-  `0.30000000000000004`. At 281.15 rupees to the dollar, 14,057,500.00 PKR is exactly 50,000.00 USD,
-  and dividing gives `50000.00000000001`, so a payment exactly at the limit is refused.
+- **Write it in TypeScript**, `if (amount > 25000)`. The CFO cannot read it or test it, nobody can
+  walk from a payment back to the sentence that allowed it, and changing the policy needs a
+  programmer.
+- **Write it as numbers and a currency name**, `amount > 25000 && currency == "USD"`. 50,000,000.00
+  PKR, about 178,571 USD, goes straight through, because it is not in dollars. Measured below.
+- **Skip a rule that crashes.** On the day the rate service is down, a rule that cannot convert would
+  mean no rule at all.
 
-## What changed since step 25
+## What changed since step 26b
 
 ```bash
 # in Git Bash on Windows
-diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_25_revocation_and_the_emergency_brake ../my_26_money_done_right
+diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_26b_the_start_up_gaps ../my_27_controls_in_cel
 ```
 
 | File | What |
 | --- | --- |
-| `src/exchange.ts` | new — `compare`, `exceeds` and `covers`, exact in any two currencies because they multiply and never divide; `CannotConvert` for a missing, zero, negative or unreadable rate; `convertUp`, rounded up to the cent; `plus` |
-| `src/rates.ts` | new — the fake rate service, one per company, which a test or the demo can change, make old, or switch off; `ratesOf`, which asks it once, only when a rate is needed, copies the answer, and refuses rates more than three days old or dated in the future |
-| `migrations/027_bills_in_rupees_and_pounds.sql` | new — VENDOR-44's INV-1010, 2,800,000.00 PKR, and INV-1011, 45,000.00 GBP |
-| `src/operations.ts` | §21.10 compares the limit per payment through `exceeds`, books the day's amount converted and rounded up, and treats an amount it cannot convert as over, with the reason; it asks for the company first, because the rates are the company's |
-| `src/money.ts`, `src/authority.ts` | export the decimal pattern and step 19's two time checks, for the new files |
-| `src/payment.ts` | `centsOf` removed; a payment is still in its invoice's currency |
-| `src/main.ts` | the bill in rupees paid, the one in pounds refused, and rupees refused at rates four days old |
-| `src/database.ts` | two comments: the start-up gaps wait for step 26b |
-| `test/exchange.test.ts`, `test/rates.test.ts`, `test/money-limits.test.ts` | new — exactness at the boundary, every reason a rate cannot be used, both limits in other currencies, the dry run, rates planted in a request, and a failed payment giving back what it booked |
-| `test/main.test.ts` | the demo's money section, and the log's new totals |
-| `test/bounded-queries.test.ts`, `test/classified-reads.test.ts`, `test/versions.test.ts` | four invoices in the story, not two |
-| `test/delegations.test.ts`, `test/limits.test.ts`, `test/payments.test.ts` | titles and comments that said another currency cannot be compared |
-| `test/support/story.ts` | the story's tests put the two bills back |
+| `src/cel.ts` | new — Appendix B's environment: eight variables, `dsor_money`, `dsor_exceeds` and `dsor_covers` over step 26's exact comparisons; `checkCondition` refuses a name outside it, `matches`, and anything that is not true or false |
+| `src/policy-controls.ts` | new — the controls in the store; `evaluateControl`, which applies a control whose condition cannot be evaluated and denies one that cannot be read; `mostRestrictive`; `switchOn`, which runs the cases |
+| `migrations/028_controls.sql` | new — `dsor.controls`, under the second lock; the application reads them and changes a status |
+| `migrations/029_the_cfo_control.sql` | new — org_456's `high-value-payment` v8 on `payment.create`, in review, with its five cases |
+| `migrations/030_the_record_names_its_controls.sql` | new — the log's `controls` column |
+| `migrations/031_a_control_is_only_switched_on.sql` | new — the application may move a waiting control to active, and nothing else |
+| `src/operations.ts` | a new stage, *evaluate the controls*, at §21.10 before the slip's limits; DENY refuses `POLICY_DENIED`; REQUIRE_APPROVAL waits at PENDING_APPROVAL (`waitAt`, from step 23's `prepare`); §21.6 refuses a malformed amount |
+| `src/pipeline.ts`, `src/envelopes.ts`, `src/audit.ts` | the context's controls; the PENDING_APPROVAL receipt; the record's controls, inside the hash |
+| `src/database.ts` | start-up's questions about `dsor.controls` and its second policy; step 26b's review fixes, carried |
+| `src/main.ts` | the control switched on, and a payment above the line waiting for the CFO |
+| `test/cel.test.ts`, `test/controls-store.test.ts`, `test/switching-on.test.ts`, `test/controls-at-the-door.test.ts`, `test/controls-review.test.ts` | new |
+| `test/pipeline.test.ts`, `test/main.test.ts` and four others | the new stage, the demo's counts, the new table |
+| `package.json` | `@marcbachmann/cel-js` 8.0.0, exactly, the CEL library the repository's own specification tests use |
 
 ## Run it
 
@@ -81,32 +79,30 @@ pnpm install
 pnpm start
 ```
 
-The part that is this step comes after the brake:
+After the money section:
 
 ```text
-VENDOR-44 bills in rupees and in pounds. One US dollar buys 280 PKR, or 0.80 GBP:
+org_456's policy: payments above 25,000 USD or equivalent need the CFO. Its control:
 
-accounts-payable-fte  COMMITTED                dsor://org_456/payment/PAY-914  draft      compensatable
-                        withheld: amount (clearance)
-accounts-payable-fte  LIMIT_EXCEEDED           retry: after_delay          45000.00 GBP is above del_100's limit of 50000.00 USD a payment
-  the day had used 184600.00 USD, and has used 194600.00 USD of 200000.00
+  case 1  expects ALLOW             gives ALLOW
+  case 2  expects REQUIRE_APPROVAL  gives REQUIRE_APPROVAL
+  case 3  expects REQUIRE_APPROVAL  gives REQUIRE_APPROVAL
+  case 4  expects ALLOW             gives ALLOW
+  case 5  expects REQUIRE_APPROVAL  gives REQUIRE_APPROVAL
+  high-value-payment v8: switched on
 
-The rate service has published nothing for four days. A bill in rupees, and one in dollars:
-
-accounts-payable-fte  LIMIT_EXCEEDED           retry: after_delay          28000.00 PKR cannot be compared with del_100's limit of 50000.00 USD a payment, so it is refused: org_456's newest rates are more than three days old
-accounts-payable-fte  COMMITTED                dsor://org_456/payment/PAY-915  draft      compensatable
+user_123              VALIDATED                the decision would be REQUIRE_APPROVAL; nothing was done
+user_123              PENDING_APPROVAL         dsor://org_456/proposal/prop_32  waits for 1 by CFO (high-value-payment v8)
+                                              until 2026-10-22T19:22:52.249Z
+accounts-payable-fte  COMMITTED                dsor://org_456/payment/PAY-916  draft      compensatable
                         withheld: amount (clearance)
 ```
 
-The rupees are paid, and the day rises by exactly 10,000.00 USD. The pounds are refused before
-anything is booked: 45,000.00 GBP is 56,250.00 USD, above the limit of one payment. Then the rate
-service is made four days old for a moment. A bill in rupees cannot be compared, and is refused with
-the reason. A bill in dollars needs no rate, and is paid. The agent's receipts withhold the amount,
-as they have since step 14: the agent is not cleared to read amounts.
-
-Run it a second time, without deleting `.local-database`, and the bill in rupees is refused by the
-day instead: the first run's payments still count, and 10,000.00 USD would take the day past
-200,000.00.
+The five cases run before the control is switched on. Then user_123 asks first, with a dry run, and
+is told the decision would be REQUIRE_APPROVAL. The real payment waits for one approval by the CFO,
+for 72 hours, and nothing is paid. The agent's 2,500.00 USD is below the line, and is made. Run it a
+second time, without deleting `.local-database`, and the control says it is on already; the agent's
+2,500.00 is then past the day's limit.
 
 ### The database tier
 
@@ -114,130 +110,112 @@ day instead: the first run's payments still count, and 10,000.00 USD would take 
 database of this step's own:
 
 ```bash
-cp ../my_25_revocation_and_the_emergency_brake/.env .env     # then dsor_step25 -> dsor_step26 in both lines
+cp ../my_26b_the_start_up_gaps/.env .env     # then dsor_step26b -> dsor_step27 in both lines
 pnpm migrate && pnpm test:db
 ```
 
-The database has to exist first, made with one `CREATE DATABASE dsor_step26` through the owner
-login. `pnpm migrate` applies the twenty-seven migrations; on a server that already had step 25's
-twenty-six, it applies 027. This step adds no test to the tier. Money is compared in the program,
-before the database is asked anything, and the statement that books a day is step 24's, unchanged:
-it is handed an amount already in dollars. Run on a throwaway PostgreSQL 17 on this machine on 2026-10-16, with an owner shaped like Neon's: 75 passed. It has not yet run on Neon: `dsor_step26` does not exist yet.
+`pnpm migrate` applies 028 to 031 on a server that has step 26b's twenty-seven. This step adds no
+test to the tier: a control is read through the same store as everything else, and the start-up
+questions about `dsor.controls` are asked of the real server by `test/audit.db.test.ts`. Run on Neon on 2026-10-19, on `dsor_step27`: 75 passed; and 75 again after the review's migration 031.
 
 ## Break it
 
 Three, each measured on the full suite in a copy outside the repository, where one test skips
-because the specification is not beside it, so the total reads `1079` with `1 skipped`; in the
-repository it is `1079 passed`.
+because the specification is not beside it.
 
-### Break 1 · forget the currency
+### Break 1 · the rule written in numbers
 
-The first quick fix. In `src/exchange.ts`, in `compare`, change
-`if (a.currency === b.currency) {` to `if (a.currency === a.currency) {`, so every pair of amounts is
-compared as numbers.
+The map's break. In `migrations/029_the_cfo_control.sql`, change the condition to
+`double(input.amount.value) > 25000.0 && input.amount.currency == "USD"`.
 
 ```text
-      Tests  33 failed | 1045 passed | 1 skipped (1079)
+      Tests  43 failed | 1151 passed | 1 skipped (1195)
 ```
 
-Every comparison across two currencies goes wrong at once. The bill in rupees is refused, because
-2,800,000 is more than 50,000. The bill in pounds is paid, because 45,000 is less. An amount in a
-currency with no rate is compared without one. The demo prints the opposite of what it should, and
-the log's totals change with it.
+The control is never switched on: cases 3 and 5 fail, 50,000,000.00 PKR and a currency with no rate,
+which the rule calls ALLOW. Every test that needs the control on fails with it, and so does the demo,
+which prints `not switched on: high-value-payment v8 failed its own test cases`. Written in numbers,
+the rule is caught before it governs anything.
 
-### Break 2 · JavaScript numbers
+### Break 2 · a condition that cannot be evaluated allows
 
-The third quick fix. In `src/exchange.ts`, in `compare`, replace the last line,
-`return order(times(exact(a.value), bRate), times(exact(b.value), aRate));`, with a division of
-`Number(a.value)` by its rate and of `Number(b.value)` by its rate, compared with `<` and `>`.
+In `src/policy-controls.ts`, in `evaluateControl`'s `catch`, answer `outcome: "ALLOW"` instead of the
+control's effect.
 
 ```text
-      Tests  2 failed | 1076 passed | 1 skipped (1079)
+      Tests  43 failed | 1151 passed | 1 skipped (1195)
 ```
 
-Only two, and that is the point: floats are wrong rarely, and exactly where it matters. 14,057,500.00
-PKR at 281.15 is exactly the limit and comes out above it, and the largest amount a payment may
-hold, converted to dollars, no longer comes out above an amount it is above by a fraction of a cent.
+The same 43, for a different reason: case 5, 100.00 in XXX, has no rate, and now gives ALLOW, so the
+control again fails its own cases and is never switched on. The case in XXX is there for exactly this.
 
-### Break 3 · what cannot be compared carries on
+### Break 3 · a payment that needs the CFO runs anyway
 
-In `src/operations.ts`, in `checkTheSlipsLimit`, change
-`if (against.kind === "cannot_compare") {` to `if (against.kind === ("never" as string)) {`.
+In `src/operations.ts`, make `needsApproval` answer `false`.
 
 ```text
-      Tests  5 failed | 1073 passed | 1 skipped (1079)
+      Tests  18 failed | 1176 passed | 1 skipped (1195)
 ```
 
-The service down, rates four days old, no service, a currency with no rate: each bill goes through
-the limit per payment as if it were within it. The demo's rupees at old rates are paid.
+The control is evaluated and recorded, and nobody waits: every payment above the line is made. The
+receipts, the dry run, the replay, the stale control and the demo all say so.
 
 ## Build it yourself with Claude Code
 
-Copy `my_25_revocation_and_the_emergency_brake` to a new folder, without its `.env`, and ask:
+Copy `my_26b_the_start_up_gaps` to a new folder, without its `.env`, and ask:
 
-> Start step 26, money done right. Before any code: show me a bill in rupees against del_100's limit
-> in dollars, what step 25 does with it, and every quick fix that would be a hole. Then ask me the
-> step's decisions one at a time. Then build it a piece at a time, red first, and break each piece
-> on purpose.
+> Start step 27, controls in CEL. Before any code: show me the agent's 31,400.00 USD payment made
+> with no CFO, and the rule `amount > 25000 && currency == "USD"` letting 50,000,000 PKR through.
+> Then ask me the step's decisions one at a time. Then build it a piece at a time, red first, and
+> break each piece on purpose.
 
 ## Check yourself
 
-1. Why is "45,000 is less than 50,000" the wrong question for a bill of 45,000.00 GBP and a limit of
-   50,000.00 USD?
-2. `exceeds` never divides. What would dividing get wrong, and how does it compare without it?
-3. The rate service is down. Can the agent pay a bill in dollars? A bill in rupees? Why the
-   difference?
-4. A payment of 1,000,000.00 PKR is booked against the day. Why 3,571.43 USD, and not 3,571.42?
-5. The agent sends `"rates": { "GBP": "100" }` with its payment. What does DSoR do with it?
+1. Why is the CFO's condition `dsor_exceeds(input.amount, dsor_money("25000", "USD"))` and not
+   `amount > 25000`?
+2. The rate service is down, and user_123 pays 2,800,000.00 PKR. What does the control say, and why?
+3. What happens to a control whose test cases fail?
+4. A payment above the line waits at PENDING_APPROVAL. Is its amount booked against the day?
+5. Why is the brake, `control.suspend`, governed by no control?
 
 <details>
 <summary>Answers</summary>
 
-1. Because the two numbers are in different units. At 0.80 pounds to the dollar the bill is
-   56,250.00 USD, above the limit. Numbers can only be compared once both are in one currency.
-2. Dividing can leave a number with no end, like 1,000,000 / 280, and JavaScript rounds it:
-   14,057,500.00 PKR at 281.15 comes out a hair above 50,000.00 USD, though it is exactly that.
-   `exceeds` asks "is a × (b's rate) above b × (a's rate)?" instead, which multiplies exact decimals
-   and so stays exact.
-3. The bill in dollars, yes: two amounts in one currency need no rate. The bill in rupees, no: it
-   cannot be converted, so the limit counts as exceeded (`DSOR-MON-04`), and the refusal says the
-   service did not answer.
-4. 3,571.428571... is rounded up, so the day counts a fraction of a cent too much rather than too
-   little. Rounded down, a payment of 0.01 PKR would count as nothing and fit into a full day.
-5. Nothing. The rates come from `ratesOf(tenant)`, the company's own service, and the stage never
-   reads them from the request. A test sends exactly that and is still refused.
+1. `dsor_exceeds` converts to dollars at the company's rates and compares exactly, so 50,000,000.00
+   PKR is above 25,000 USD. A number compared with 25000 knows nothing about currency.
+2. It requires approval. Its condition cannot be evaluated, because the rupees cannot be converted,
+   and a control whose condition cannot be evaluated applies (`DSOR-CTL-07`).
+3. It is not switched on, and governs nothing. The rule written in numbers fails cases 3 and 5.
+4. Yes. It stays booked while it waits, so the day errs toward refusing, never toward paying more.
+5. A brake only ever makes things safer, and must work when the controls cannot be read.
 
 </details>
 
 ## The rules this step meets
 
-- **[DSOR-MON-02 · L1]** Monetary arithmetic and comparison MUST use decimal arithmetic.
-  ([§9](../../../specs/dsor/01-model.md#9-money-and-currency))
-- **[DSOR-MON-03 · L2]** A monetary threshold in a control or delegation MUST be compared only
-  through the `dsor_*` money functions, which convert both operands to the threshold's currency
-  using the tenant's rate source — claimed here for a slip's two limits. Controls arrive in step 27.
-- **[DSOR-MON-04 · L2]** When an amount cannot be converted, the comparison MUST resolve
-  restrictively — the delegation limit's half: treated as exceeded.
-- **[DSOR-MON-06 · L2]** A cumulative limit MUST accumulate in the limit's own currency, converting
-  each reservation at the rate in force when the reservation is taken.
+- **[DSOR-CTL-01a · L1]** A control MUST validate against `control.schema.json` — checked when it is
+  switched on, and a control in force that does not is denied.
+- **[DSOR-CTL-02c · L2]** Activation MUST run the control's test vectors and fail if any vector fails.
+- **[DSOR-CTL-02e · L2]** A test vector that depends on a currency conversion MUST pin the rates it
+  assumes — and those rates, never the live service's, are used.
+- **[DSOR-CTL-05 · L1]** Control conditions MUST be CEL expressions evaluated in the environment of
+  Appendix B — three of its six functions in this step.
+- **[DSOR-CTL-06 · L1]** An expression MUST NOT have access to anything outside that environment.
+- **[DSOR-CTL-07 · L2]** When a control condition fails to evaluate, the control's effect MUST apply.
+- **[DSOR-AUT-02a · L1]** ALLOW, DENY and REQUIRE_APPROVAL. **[DSOR-AUT-02b · L1]** The most
+  restrictive outcome wins.
+- **[DSOR-EXE-02 · L1]** The decision is recorded with the controls evaluated, before the response.
 
-**What this step leaves, said plainly.** The rate service is a fake with fixed rates. A real one may
-not publish every currency, and a company whose service has no rupee rate has every rupee bill
-refused, as it should. How old a rate may be is one setting for every company, three days, where
-the specification gives each company its own `max_rate_age`. The day's booking compares in its own
-statement, not through `exceeds`, because that statement is what keeps requests at once from booking
-past the limit; it is handed an amount `convertUp` already converted. Every limit is counted in
-hundredths, so a limit in a currency with three decimals would be rounded up to two. A refusal that
-could not convert is `LIMIT_EXCEEDED`, whose retry class says to try again later, which is right for
-old rates and pointless for a currency with no rate. The decision's record does not say which rate
-was used: that is `DSOR-MON-05`, in the step that builds the decision bundle. A payment is still in
-its invoice's currency. A dry run reads the day's total without checking its currency, which an
-administrator who changes a slip's daily currency mid-day could make answer wrongly (decision 160).
-The map's step 26 speaks of "a table of exchange rates"; this build asks a service instead
-(decision 159). And the four start-up gaps that steps 18, 22 and 25 sent here wait for step 26b.
+**What this step leaves, said plainly.** Nobody can approve a waiting payment until step 29, and
+nothing carries one out until step 31; nothing moves one to EXPIRED when its 72 hours end. Who may
+switch a control on, and what happens when the policy it came from changes, are step 28's: here no
+operation reaches `switchOn`, and the demo calls it in the administrator's place. `dsor_sum`,
+`dsor_in_flight` and `dsor_is_new_counterparty` wait for the steps that need them, and `state` is
+empty until step 32 binds resources. A condition about who is asking cannot be switched on, because
+the schema's test cases have no place for the principal; `payment.create`'s contract still lists no
+controls, since a company's controls are in its own store. Both are questions for the specification
+(decision 164). Everything earlier steps claimed still holds.
 
-Everything earlier steps claimed still holds.
-
-**Next:** step 26b, the start-up gaps that decision 145 had sent to step 26 and decision 159 gave a
-step of their own. Then step 27, `controls_in_cel`: the policy "payments above 25,000 USD need the
-CFO", written as a rule that calls `dsor_exceeds`, this step's `exceeds`.
+**Next:** step 28, `where_a_rule_came_from`: each control points at the policy sentence it was built
+from, a changed policy marks it stale without switching it off, and only the control's human owner
+may switch one on.
