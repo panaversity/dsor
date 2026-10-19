@@ -5872,3 +5872,72 @@ agent (decision 119), and each lets the program do what start-up exists to stop:
 - **The READMEs of steps 18, 22 and 25 still say "step 26"** for these gaps. They are finished
   steps and are not edited (decision 160); this step's README says where the gaps closed.
 - **One idea**: what start-up asks. No new table, no new command, and the demo does not change.
+
+## 162 · Step 27's decisions: the CFO's policy, as a control written in CEL (2026-10-19)
+
+**Decided by:** Claude, on the learner's standing instruction of this date, "select the recommended
+setting when you have to ask the human", given before they slept. The problem is stated first, as
+it would have been shown; each choice is the recommendation, and each is open to reversal.
+
+**The problem.** org_456's policy says "Payments above 25,000 USD or equivalent require CFO
+approval" (KSoR, `finance/payment-approval-policy`, version 4). Nothing in DSoR knows it. del_100
+lets the agent pay up to 50,000.00 USD a payment, so the agent's 31,400.00 USD payment to VENDOR-44
+for INV-1008 is made, and no CFO ever sees it. Each quick fix is a hole:
+
+- **Write it in TypeScript**, `if (amount > 25000)`. The policy's owner cannot read it or test it,
+  nobody can walk from a payment back to the sentence that allowed it, and changing the policy
+  needs a programmer.
+- **Write it as `amount > 25000 && currency == "USD"`.** 50,000,000.00 PKR, about 178,571 USD, goes
+  straight through, because it is not in dollars (§9; the map's break for this step).
+- **Skip a rule that crashes.** On the day the rate service is down, a rule that cannot convert
+  would mean no rule at all.
+
+A *control* is the policy translated into a condition a program can evaluate, kept with its owner,
+the policy sentence and version it came from, and test cases that must pass before it is switched
+on (§17). The condition is CEL, a small expression language that cannot loop forever, call the
+network, or see anything it was not handed (Appendix B).
+
+1. **Controls live in DSoR's own store**, a table `dsor.controls`, one row per company, control
+   and version, under the same two locks as every record there. The application reads them, and
+   may change a control's status and nothing else. **Rejected:** a JSON file in the folder, which
+   has no company lock and cannot remember that a control went stale (step 28); a list in the code,
+   which is the first quick fix again.
+2. **The CFO's control governs `payment.create`**, the command where the agent commits to an
+   amount; there is no `payment.execute` until the fake bank (step 35). Its condition is
+   `dsor_exceeds(input.amount, dsor_money("25000", "USD"))`, and it carries the specification's
+   five test cases, read from `input` instead of `state`. **Rejected:** building `payment.execute`
+   now, a second idea.
+3. **`REQUIRE_APPROVAL` stops the proposal at `PENDING_APPROVAL`**, as §21 says: the decision is
+   recorded, the proposal waits, the payment's amount stays booked against the day, and the agent
+   is told what it waits for (the CFO, one approval) and until when. Nothing approves it until step
+   29, and nothing carries it out until step 31. **Rejected:** refusing it, which §26 does not say
+   and step 29 would undo; letting it through with a note, which enforces nothing.
+4. **A waiting proposal says it waits 72 hours**, §44's strictest bound on an approval for a
+   `HIGH` operation. **Rejected:** 30 days, §44's ceiling at L2, too long for a payment.
+5. **A control's condition sees Appendix B's eight variables and three of its six functions**:
+   `dsor_money`, `dsor_exceeds` and `dsor_covers`, which compare through step 26's `exceeds` and
+   `covers` at the company's own rates. A condition that names anything else is refused when the
+   control is switched on. `dsor_sum`, `dsor_in_flight` and `dsor_is_new_counterparty` arrive with
+   the steps that need them. **Rejected:** all six now, three of them with nothing true to say.
+6. **Switching a control on runs its test cases, and refuses if any fails** (`DSOR-CTL-02c`). In
+   this step it is a function of the program, called by the demo in the administrator's place; no
+   operation reaches it, so the agent cannot. Step 28 makes it a command only the control's owner
+   may run. **Rejected:** controls arriving active from a migration, whose test cases nobody ran.
+7. **Controls are evaluated for every caller**, a person or the agent, at §21.10, before the
+   slip's limits. A control is the company's policy, not the agent's leash. **Rejected:** agents
+   only, which leaves user_123 paying 31,400.00 USD with no CFO.
+
+**Told, not asked.**
+
+- **A condition that cannot be evaluated applies the control** (`DSOR-CTL-07`): a missing field,
+  a type error, a currency with no rate. **The most restrictive answer wins** (`DSOR-AUT-02b`).
+- **A control's `deny` is refused `POLICY_DENIED`** before anything is booked.
+- **A test case's rates are its own** (`DSOR-CTL-02e`): the PKR cases say 280 to the dollar, and
+  the live rate service is never asked while a control is being switched on. The dollar is 1 by
+  definition, since every rate is per dollar.
+- **The decision's record names each control evaluated**: its id, version, outcome, the policy it
+  came from, and why it could not be evaluated, if it could not, in the log's new `controls`
+  column, inside the hash (`DSOR-EXE-02`'s "controls evaluated").
+- **`state` is empty in this step.** A contract binds no resources until step 32's preconditions.
+- **The demo's story runs with the control switched on**; the tests that do not ask about controls
+  run with it waiting for review, as migration 029 leaves it.
