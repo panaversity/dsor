@@ -297,14 +297,16 @@ describe("the review, on the database", () => {
     }
     expect(unknown).toMatchObject({ code: "OUTCOME_UNKNOWN", retry: "after_reconciliation" });
     const proposal = idOf(unknown);
-    expect((await proposals.get("org_456", proposal))?.state).toBe("EXECUTING");
-    expect(await intents.get("org_456", proposal)).not.toHaveProperty("outcome");
+    // Changed in step 38b: the claim then ends its own note, outcome_unknown, which the broken
+    //   trigger lets through, so the proposal is OUTCOME_UNKNOWN with its alert, and the start-up
+    //   sweep has nothing of it left to end (step 38b's README, decision D8).
+    expect((await proposals.get("org_456", proposal))?.state).toBe("OUTCOME_UNKNOWN");
+    expect(await intents.get("org_456", proposal)).toMatchObject({ outcome: "outcome_unknown" });
     expect(await execute(id, envelope)).toMatchObject({
       code: "OUTCOME_UNKNOWN",
       proposal: `dsor://org_456/proposal/${proposal}`,
     });
     expect(sentFor(id)).toBe(1);
-    expect(await sweepIntents(pool, ["org_456"])).toBe(1);
     settle.push(proposal);
   });
 
