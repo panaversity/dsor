@@ -1041,3 +1041,8 @@ for a human. An agent may gather evidence; it does not settle these alone.
     processing an order it has not recorded yet. Step 38's learner build believes the answer at
     once. Should the connector declare how long after a send its lookup is final, and reconciliation
     wait that long before it settles `FAILED`?
+154. **When does an unknown outcome's hour start?** DSOR-UNK-04c escalates "an occurrence
+    unresolved after the bound". Step 38b's learner build counts from the alert, raised with the
+    move to `OUTCOME_UNKNOWN`. After a crash, that move is the start-up sweep's, so three hours down
+    and one hour after is four hours after the money may have left. Should the bound count from the
+    intent record, written just before the bank was asked, and should §44 say so?

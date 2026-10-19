@@ -2115,6 +2115,25 @@ already keeps. Their own rule (re-send with the same key on "never received") wa
 - **Left open:** the alert and the human (38b); no timer; "never received it" believed at once;
   open questions 152 and 153.
 
+### Step 38b, alert at once, escalate before the hour, decided by the learner (2026-10-19)
+
+Copied from step 38. The learner asked to build straight after step 38: the problem was shown with
+a real run (two hours unknown, nobody told), then seven choices one at a time, all recommended (a
+row written with the move; a receiving role per company; a sweep for dsor-scheduler; a named person
+checked at start-up; every way in raises it; it closes with the settlement; the bounds declared).
+A list of alerts needs DSoR's first query over its own store, a second idea: split into step 38c.
+
+- **Red first:** 15 unit tests and the start-up check's, all red; then 4 database tests, later 7.
+- **Found while building:** a list in an answer must hold records of a named kind; a column the
+  database fills may not also be one DSoR moves; the system-only guard was a second wall, so a
+  break passed every test until a role table gave a person the permission.
+- **The review:** a send whose record failed after the bank sent stayed EXECUTING with no alert
+  (H1); unknowns before the migration had none (H2); the database did not tie an alert to its
+  proposal (M1); PT1H plus a sweep passed the hour (M2); cfo_100 could not settle (M3); memory
+  escalated three times at once (M4). The learner decided D8 to D11; each fix undone once.
+- **Left open:** the list (38c); delivery (40); the restart's clock (open question 154); one person
+  per company, and in org_789 it is the receiver too.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.
