@@ -7,12 +7,18 @@ import { checkpointText, type Checkpoint } from "./checkpoint.ts";
 export const NOT_A_CHECKPOINT = "it is not a checkpoint";
 export const NOT_SIGNED = "its signature does not match the committed public key";
 
+// The checkpoint file is this tutorial's own form; the specification has no schema for it.
+// not copied: a time as JavaScript's toISOString writes it, in UTC, to the millisecond.
 const TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+// not copied: a place in a chain, as step 39's chain_position counts it, from 1, with no leading 0.
 const PLACE = /^[1-9][0-9]*$/;
+// not copied: common.schema.json's hash allows any base64 or hex; a record's fingerprint, and a
+//   checkpoint's, is always step 39's form, hex SHA-256.
 const HASH = /^sha256:[0-9a-f]{64}$/;
+// not copied: PostgreSQL's system identifier, a whole number written as text.
 const SERVER = /^[0-9]+$/;
-// An Ed25519 signature is 64 bytes: 86 letters of base64 and "==". Node skips any letter that is
-//   not base64, so the form is checked here (found by the review, L3).
+// not copied: an Ed25519 signature is 64 bytes: 86 letters of base64 and "==". Node skips any
+//   letter that is not base64, so the form is checked here (found by the review, L3).
 const SIGNATURE = /^[A-Za-z0-9+/]{86}==$/;
 
 /** An object with exactly these keys, and no other. */
