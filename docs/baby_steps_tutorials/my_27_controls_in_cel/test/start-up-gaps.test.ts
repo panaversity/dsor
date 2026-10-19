@@ -83,6 +83,8 @@ describe("a rule on a tenant table", () => {
     "dsor.day_totals",
     "dsor.reservations",
     "dsor.agent_controls",
+    // NEW IN STEP 27: and the controls.
+    "dsor.controls",
   ]) {
     it(`DSOR-EXE-02: a rule that swallows what the application writes to ${table} is refused`, async () => {
       // `DO INSTEAD NOTHING` writes nothing and says nothing: on the log, a decision the program

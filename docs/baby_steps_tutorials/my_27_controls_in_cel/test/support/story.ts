@@ -27,6 +27,8 @@ export function storyStatements(): readonly string[] {
     // STEP 22: the proposals and their moves, moves first because they point at them.
     // STEP 25: and the brakes, so each test starts with none on.
     "DELETE FROM dsor.agent_controls WHERE tenant IN ('org_456', 'org_789')",
+    // NEW IN STEP 27: and the controls, which a test may switch on.
+    "DELETE FROM dsor.controls WHERE tenant IN ('org_456', 'org_789')",
     "DELETE FROM dsor.proposal_moves WHERE tenant IN ('org_456', 'org_789')",
     // STEP 24: and the reservations and the day totals, which point at proposals and slips.
     "DELETE FROM dsor.reservations WHERE tenant IN ('org_456', 'org_789')",
@@ -47,6 +49,8 @@ export function storyStatements(): readonly string[] {
     rowsFrom("023_del_100_has_a_daily_limit.sql"),
     // STEP 25: and org_789's slip, of the same number.
     rowsFrom("026_org_789_has_a_slip_too.sql"),
+    // NEW IN STEP 27: and org_456's CFO control, waiting for review.
+    rowsFrom("029_the_cfo_control.sql"),
     // So a test that makes a payment knows it is PAY-902, whatever ran before it.
     "ALTER SEQUENCE public.payment_numbers RESTART WITH 902",
     // STEP 22: and so a test's first proposal is prop_1.

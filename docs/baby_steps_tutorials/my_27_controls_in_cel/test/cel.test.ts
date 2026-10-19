@@ -76,7 +76,11 @@ describe("the CFO's condition, in Appendix B's environment", () => {
 
   it("DSOR-CTL-05: an amount that is not a decimal cannot be evaluated", () => {
     expect(() =>
-      evaluateCondition('dsor_exceeds(input.amount, dsor_money("lots", "USD"))', aPaymentOf("1.00", "USD"), STORY),
+      evaluateCondition(
+        'dsor_exceeds(input.amount, dsor_money("lots", "USD"))',
+        aPaymentOf("1.00", "USD"),
+        STORY,
+      ),
     ).toThrow();
   });
 });

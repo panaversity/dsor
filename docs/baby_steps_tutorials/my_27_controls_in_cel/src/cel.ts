@@ -121,7 +121,11 @@ export function checkCondition(condition: string): string | undefined {
  * Only the eight variables are passed on, by name, so a variable handed in beside them is never
  * seen (DSOR-CTL-06).
  */
-export function evaluateCondition(condition: string, given: ConditionInput, rates: RateOf): boolean {
+export function evaluateCondition(
+  condition: string,
+  given: ConditionInput,
+  rates: RateOf,
+): boolean {
   const { input, state, principal, actor_chain, delegation, tenant, risk, now } = given;
   const answer: unknown = environmentAt(rates).evaluate(condition, {
     input,

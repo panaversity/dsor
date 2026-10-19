@@ -303,6 +303,8 @@ describe("refuseIfItCanRewriteHistory", () => {
     );
     // STEP 25: eleven, with the brake.
     await db.exec("CREATE TABLE dsor.agent_controls (tenant TEXT, id TEXT);");
+    // NEW IN STEP 27: twelve, with the controls.
+    await db.exec("CREATE TABLE dsor.controls (tenant TEXT, id TEXT);");
     await db.exec("CREATE ROLE editor;");
     // STEP 16: the folder's USAGE as well as the table's UPDATE. Without it the route this
     // test is about is not real, and for a while it was not: after the move, `SET ROLE editor` then
@@ -781,6 +783,8 @@ describe("refuseIfItCanRewriteHistory", () => {
     );
     // STEP 25: eleven, with the brake.
     await db.exec("CREATE TABLE dsor.agent_controls (tenant TEXT, id TEXT);");
+    // NEW IN STEP 27: twelve, with the controls.
+    await db.exec("CREATE TABLE dsor.controls (tenant TEXT, id TEXT);");
     await db.exec("CREATE ROLE editor;");
     await db.exec("GRANT UPDATE ON dsor.audit TO editor;");
     await db.exec("GRANT editor TO dsor_runtime;");

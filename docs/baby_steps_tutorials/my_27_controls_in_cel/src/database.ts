@@ -267,6 +267,8 @@ const TENANT_TABLES: ReadonlyArray<readonly [table: string, column: string]> = O
   ["dsor.reservations", "tenant"],
   // STEP 25: the emergency brake (decision 142).
   ["dsor.agent_controls", "tenant"],
+  // NEW IN STEP 27: the company's controls, its policy in CEL (decision 162).
+  ["dsor.controls", "tenant"],
 ]);
 
 /** The tables as SQL, each looked up with `to_regclass`, which says NULL for one that is missing. */
@@ -932,6 +934,35 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
         `what it stops, or write one already lifted, itself, one SET ROLE away, or through a helper ` +
         `function. The application pulls the brake and releases it, and nothing else. See ` +
         `migrations/024_the_emergency_brake.sql.`,
+    );
+  }
+
+  // NEW IN STEP 27: the controls. The application reads them, and changes a control's status and
+  // when it was switched on, and nothing else: a control it could write is a policy it could
+  // rewrite, one it could delete is a policy gone, and one whose condition or test cases it could
+  // change would be switched on with cases nobody wrote (decision 162). Every column but those two,
+  // as for slips and brakes, so a column added later and granted is asked too.
+  const { rows: controls } = await db.query<{ may: boolean }>(
+    `SELECT ${forAnyRoleItCanActAs((role) =>
+      [
+        `has_any_column_privilege(${role}, 'dsor.controls', 'INSERT')`,
+        `has_table_privilege(${role}, 'dsor.controls', 'DELETE')`,
+        `has_table_privilege(${role}, 'dsor.controls', 'TRUNCATE')`,
+        `EXISTS (SELECT 1 FROM pg_attribute a
+                  WHERE a.attrelid = 'dsor.controls'::regclass AND a.attnum > 0
+                    AND NOT a.attisdropped
+                    AND a.attname NOT IN ('status', 'switched_on_at')
+                    AND has_column_privilege(${role}, a.attrelid, a.attnum, 'UPDATE'))`,
+      ].join(" OR "),
+    )} AS may`,
+  );
+
+  if (controls[0]?.may !== false) {
+    throw new Error(
+      `this connection is \`${answer.who}\`, and it may write a control, change what one says, or ` +
+        `delete one, itself, one SET ROLE away, or through a helper function. The application ` +
+        `reads the company's controls and changes a control's status, and nothing else. See ` +
+        `migrations/028_controls.sql.`,
     );
   }
 
