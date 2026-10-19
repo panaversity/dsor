@@ -2372,6 +2372,19 @@ console.log(
   heard(await bankCall(SUPERVISOR_123, "payment.create", ofInvoice("INV-1002"))),
 );
 console.log(`  transfers the bank made: ${fakeBank.transfers().length}`);
+// NEW IN STEP 38: dsor-scheduler reconciles PAY-902's attempt. The bank sent it, as TRF-2, so the
+//   proposal is COMMITTED and PAY-902 is paid, with the bank's answer as the evidence. Then
+//   user_123's first request, sent again with its own key, answers the settled outcome
+//   (DSOR-UNK-04a; step 38's README, claims C2 and C7).
+const reconciled = await bankCall(SCHEDULER, "payment.reconcile", {
+  proposal: String("proposal" in silent ? silent.proposal : ""),
+});
+console.log(
+  "  dsor-scheduler reconciles PAY-902:",
+  "data" in reconciled
+    ? `${String((reconciled.data as { state: string }).state)}, ${String((reconciled.data as { evidence: string }).evidence).replace(/, asked.*/, "")}`
+    : heard(reconciled),
+);
 const draft1009 = await bankCall(SUPERVISOR_123, "payment.create", ofInvoice("INV-1009"));
 console.log("  user_123 drafts INV-1009, 7,425.00 USD:", heard(draft1009));
 fakeBank.mode = "broken";
