@@ -123,15 +123,26 @@ Its table of limits, [§44](../../../specs/dsor/06-conformance.md#44-operational
 | C2, C4, C5 | `test/checkpoint.db.test.ts`: the owner's rewrite of step 39's "Why it matters", caught; a checkpoint refused on a broken log; every chain covered |
 | C6 | `test/checkpoint.test.ts`: a change after the newest checkpoint passes, said plainly |
 
-### The breaks, and the learner's predictions
+### The learner's predictions
 
-Each break below will be run for real on a fresh copy, and its real result written here.
+Asked on 2026-10-20, before any code. Each will be settled by a real run under "Break it".
 
-| Break | What it removes | The learner's prediction |
+| # | The story | The learner's prediction |
 |---|---|---|
-| **B1** | The checker compares a checkpoint's place, not its fingerprint | (to ask) |
-| **B2** | The checker does not check the signature | (to ask) |
-| **B3** | The checkpoint leaves out the `no_company` chain | (to ask) |
-| **B4** | The checker ignores the checkpoint's age | (to ask) |
-| **B5** | `pnpm checkpoint-audit` signs a broken log | (to ask) |
-| **B6** | The checker reads only the newest checkpoint | (to ask) |
+| P1 | A checkpoint at 09:00, when org_456 ends at place 63. At 10:00 the owner turns place 4 from DENY to ALLOW and rewrites every fingerprint after it, and the head | org_456 broken at place 63, exit 1 |
+| P2 | The same rewrite, and the owner also edits the 09:00 checkpoint file to hold the new fingerprint | The file's signature fails, exit 1 |
+| P3 | The owner deletes every checkpoint file, then rewrites the chain | Not checked, exit 2 |
+| P4 | After the 09:00 checkpoint, org_456 writes place 64; the owner edits place 64 and rewrites its fingerprint and the head | Whole, exit 0: nothing outside the database knows place 64 |
+
+### The breaks
+
+Each break will be run for real on a fresh copy, and the number of tests that fail written here.
+
+| Break | What it removes |
+|---|---|
+| **B1** | The checker compares a checkpoint's place, not its fingerprint |
+| **B2** | The checker does not check the signature |
+| **B3** | The checkpoint leaves out the `no_company` chain |
+| **B4** | The checker ignores the checkpoint's age |
+| **B5** | `pnpm checkpoint-audit` signs a broken log |
+| **B6** | The checker reads only the newest checkpoint |
