@@ -952,9 +952,10 @@ console.log(
 );
 
 // STEP 28: finance publishes version 5 of the policy, and the line moves to 20,000 USD. The
-// sweep DSoR runs, at least every 24 hours, notices: the control cites version 4. It marks the
-// control stale, writes it in the log, and tells its owner. It does not switch it off: 31,400.00 USD
-// still waits for the CFO, under version 8, until the CFO reviews it (DSOR-CTL-03a, DSOR-CTL-03b).
+// sweep notices: the control cites version 4. A deployment runs it at least every 24 hours; this
+// tutorial has no timer, so the demo runs it here. It marks the control stale, writes that in the
+// log, and tells its owner. It does not switch it off: 31,400.00 USD still waits for the CFO, under
+// version 8, for as long as it is in force (DSOR-CTL-03a, DSOR-CTL-03b, decision 166).
 console.log();
 console.log("Finance publishes version 5 of the policy: payments above 20,000 USD need the CFO.");
 console.log();

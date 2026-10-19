@@ -698,7 +698,8 @@ const handlers: Readonly<Record<string, Handler>> = {
       );
     }
 
-    const switched = await switchOn(tenant, read.id, version);
+    // STEP 28: with the caller, so the statement asks for the owner too (decision 166).
+    const switched = await switchOn(tenant, read.id, version, askedBy);
 
     if (switched.kind === "refused") {
       return refused(switched.code, switched.why);
@@ -1580,6 +1581,39 @@ const validateTheInput: Stage["run"] = (context) => {
 
       if (typeof amount === "string") {
         return refuse(askedBy, "VALIDATION_FAILED", amount, context.requestId);
+      }
+    }
+
+    // STEP 28: and which control, by its address and version, for control.activate. Left to the
+    // handler, a malformed one passed §21.9, which could not look the control up, and was recorded
+    // ALLOW for a person who was not its owner before the handler refused it (decision 166).
+    if (context.contract?.id === "control.activate") {
+      const control = Object.hasOwn(given, "control") ? given["control"] : undefined;
+      const version = Object.hasOwn(given, "version") ? given["version"] : undefined;
+      let named;
+
+      try {
+        named = typeof control === "string" ? parseUri(control) : undefined;
+      } catch {
+        named = undefined;
+      }
+
+      if (named?.entity !== "control") {
+        return refuse(
+          askedBy,
+          "VALIDATION_FAILED",
+          "control.activate needs a control's address, dsor://<company>/control/<id>",
+          context.requestId,
+        );
+      }
+
+      if (typeof version !== "number" || !Number.isSafeInteger(version) || version < 1) {
+        return refuse(
+          askedBy,
+          "VALIDATION_FAILED",
+          "a control is switched on by its version, a whole number above zero",
+          context.requestId,
+        );
       }
     }
 

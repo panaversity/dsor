@@ -18,7 +18,7 @@ import { checkCondition, evaluateCondition, type ConditionInput } from "./cel.ts
 import type { RateOf } from "./exchange.ts";
 import { theDatabase } from "./store.ts";
 // STEP 28: where a control's policy is kept, the record of a change, and its owner's inbox.
-import { audit } from "./audit.ts";
+import { recordInsertIf, recordTogether } from "./audit.ts";
 import { nextRequestId } from "./envelopes.ts";
 import { policySourceOf } from "./ksor.ts";
 import { tell } from "./notices.ts";
@@ -289,8 +289,15 @@ export type SwitchedOn =
        * control is not waiting or another version is in force, VALIDATION_FAILED when it cannot
        * be a control or fails its cases, RESOURCE_NOT_FOUND when there is none.
        */
-      readonly code: "CONFLICT" | "VALIDATION_FAILED" | "RESOURCE_NOT_FOUND";
+      readonly code: RefusalCode;
     };
+
+/** STEP 28: the codes a refusal to switch a control on is told. */
+export type RefusalCode =
+  | "CONFLICT"
+  | "VALIDATION_FAILED"
+  | "RESOURCE_NOT_FOUND"
+  | "AUTHORIZATION_DENIED";
 
 /**
  * The rates a test case pins, per US dollar as every rate in this program is: the dollar is 1 by
@@ -322,16 +329,34 @@ function ratesPinnedBy(pinned: unknown): RateOf {
  * Who may switch one on is step 28's. Here no operation reaches this function: the demo calls it in
  * the administrator's place.
  */
-export async function switchOn(tenant: string, id: string, version: number): Promise<SwitchedOn> {
+export async function switchOn(
+  tenant: string,
+  id: string,
+  version: number,
+  // STEP 28: who is switching it on, when a command is; the statement itself then asks that it is
+  // the control's owner. Left out, as the tests and the demo's administrator do (decision 166).
+  owner?: string,
+): Promise<SwitchedOn> {
   const refused = (
     why: string,
     results: readonly CaseResult[] = [],
-    code: "CONFLICT" | "VALIDATION_FAILED" | "RESOURCE_NOT_FOUND" = "VALIDATION_FAILED",
+    code: RefusalCode = "VALIDATION_FAILED",
   ): SwitchedOn => Object.freeze({ kind: "refused", why, results: Object.freeze(results), code });
   const control = (await controlsOf(tenant)).find((c) => c.id === id && c.version === version);
 
   if (control === undefined) {
     return refused(`${tenant} has no control ${id} v${version}`, [], "RESOURCE_NOT_FOUND");
+  }
+
+  // STEP 28: asked here too, not only at §21.9: a door built without that stage still cannot let
+  // anyone but the owner switch a control on. A review measured user_123 switching on the CFO's
+  // control through such a door (decision 166). The same words as §21.9's.
+  if (owner !== undefined && control.record.owner !== owner) {
+    return refused(
+      `only the owner of ${id} may switch it on, and ${owner} is not`,
+      [],
+      "AUTHORIZATION_DENIED",
+    );
   }
 
   if (!governedByControls(control.operation)) {
@@ -440,8 +465,9 @@ export async function switchOn(tenant: string, id: string, version: number): Pro
     ({ rows } = await theDatabase(tenant).query<{ version: number }>(
       `UPDATE dsor.controls SET status = 'active', switched_on_at = clock_timestamp()
         WHERE tenant = $1 AND id = $2 AND version = $3 AND status IN ('draft', 'in_review')
+          AND ($4::text IS NULL OR record->>'owner' = $4)
         RETURNING version`,
-      [tenant, id, version],
+      [tenant, id, version, owner ?? null],
     ));
   } catch (failure) {
     // Another version switched on at the same moment: migration 028's index lets one stand, and
@@ -499,6 +525,10 @@ export interface Noticed {
 export async function noticeStalePolicies(tenant: string): Promise<Noticed> {
   const source = policySourceOf(tenant);
   const marked: Noticed["marked"][number][] = [];
+  // STEP 28: every control is asked about, though KSoR will not answer for one: a review gave the
+  // sweep a KSoR that refused one address, and a control after it stayed active through two sweeps
+  // though its policy had changed (decision 166).
+  const unanswered: string[] = [];
 
   for (const control of await controlsOf(tenant)) {
     const authority = control.record.authority as Readonly<Record<string, unknown>> | undefined;
@@ -517,10 +547,8 @@ export async function noticeStalePolicies(tenant: string): Promise<Noticed> {
     try {
       inForce = source.current(authority.uri);
     } catch (failure) {
-      return Object.freeze({
-        marked: Object.freeze(marked),
-        couldNotAsk: failure instanceof Error ? failure.message : String(failure),
-      });
+      unanswered.push(failure instanceof Error ? failure.message : String(failure));
+      continue;
     }
 
     if (
@@ -531,18 +559,6 @@ export async function noticeStalePolicies(tenant: string): Promise<Noticed> {
       continue;
     }
 
-    // Only out of active, in one statement: two sweeps at once mark it, and tell its owner, once.
-    const { rows } = await theDatabase(tenant).query<{ id: string }>(
-      `UPDATE dsor.controls SET status = 'stale_authority'
-        WHERE tenant = $1 AND id = $2 AND version = $3 AND status = 'active'
-        RETURNING id`,
-      [tenant, control.id, control.version],
-    );
-
-    if (rows.length !== 1) {
-      continue;
-    }
-
     const owner = String(control.record.owner);
     const now =
       inForce === undefined
@@ -550,19 +566,57 @@ export async function noticeStalePolicies(tenant: string): Promise<Noticed> {
         : `the version in force is version ${inForce.version}`;
     const what = `${control.id} v${control.version} cites version ${authority.version} of ${authority.uri}, and ${now}`;
 
-    await audit({
-      kind: "control_change",
-      // DSoR itself made this change; nobody asked for it.
-      subject: "dsor",
+    // STEP 28: the mark and its record in one statement, decision 157's shape, as a revocation
+    // writes its own. Written apart, a review made the log refuse the record after the mark: the
+    // control was stale with no record and nobody told, and the next sweep skipped it as stale
+    // already, so nobody ever was (decision 166). Only out of active, so two sweeps at once mark it,
+    // record it and tell its owner once; a store that fails leaves it active, for the next sweep.
+    const { rows } = await recordTogether<{ marked: number }>(
       tenant,
-      requestId: nextRequestId(),
-      result: "STALE_AUTHORITY",
-      reason: `${what}; marked stale, still in force, for ${owner} to review`,
-    });
+      [
+        {
+          kind: "control_change",
+          // DSoR itself made this change; nobody asked for it.
+          subject: "dsor",
+          tenant,
+          requestId: nextRequestId(),
+          result: "STALE_AUTHORITY",
+          reason: `${what}; marked stale, still in force, for ${owner} to review`,
+        },
+      ],
+      (records) => {
+        const params: unknown[] = [tenant, control.id, control.version];
+        const [record] = records;
+
+        if (record === undefined) {
+          throw new TypeError("the sweep's record was not sealed; nothing was written");
+        }
+
+        return {
+          sql: `WITH marked AS (
+                  UPDATE dsor.controls SET status = 'stale_authority'
+                   WHERE tenant = $1 AND id = $2 AND version = $3 AND status = 'active'
+                  RETURNING id
+                ),
+                r0 AS (${recordInsertIf("EXISTS (SELECT 1 FROM marked)", record, params)})
+                SELECT (SELECT count(*) FROM marked)::int AS marked`,
+          params,
+        };
+      },
+    );
+
+    // No rows is a reply that was lost after the record was found written, and a record is written
+    // only with its mark.
+    if (rows !== undefined && rows[0]?.marked !== 1) {
+      continue;
+    }
+
+    // Told only once the mark and its record are in. The inbox lives in memory: a restart loses a
+    // notice nobody read, and the record stays (decision 166).
     tell(
       tenant,
       owner,
-      `Your control ${what}. It is marked stale and is still enforced as it is: review it, and switch on a version that cites the policy in force.`,
+      `Your control ${what}. It is marked stale and is still enforced exactly as it is: review it.`,
     );
     marked.push(
       Object.freeze({
@@ -574,5 +628,8 @@ export async function noticeStalePolicies(tenant: string): Promise<Noticed> {
     );
   }
 
-  return Object.freeze({ marked: Object.freeze(marked) });
+  return Object.freeze({
+    marked: Object.freeze(marked),
+    ...(unanswered.length === 0 ? {} : { couldNotAsk: unanswered.join("; ") }),
+  });
 }
