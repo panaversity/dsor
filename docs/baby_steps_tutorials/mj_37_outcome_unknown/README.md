@@ -123,7 +123,7 @@ second attempt (DSOR-UNK-02).
 
 ### The tests, by claim
 
-| Claim | Tests (to be written first, red) |
+| Claim | Tests (written first; 10 of 17 red on an empty store of holds) |
 |---|---|
 | C1 | `test/holds.test.ts`: a silent bank places two holds, PAY-901 and INV-1002. `test/holds.db.test.ts`: the same in `dsor.holds`, and after the start-up sweep |
 | C2 | `test/holds.test.ts` and `test/holds.db.test.ts`: each refused request, with its answer |
@@ -131,13 +131,165 @@ second attempt (DSOR-UNK-02).
 | C4 | `test/holds.test.ts`, `test/holds.db.test.ts`: a settled proposal frees its records |
 | C5 | `test/holds.test.ts`: the contracts, and start-up refusing a bad `hold_on_unknown` |
 
-### The breaks, planned
+### The breaks
 
-| Break | What it removes |
-|---|---|
-| B1 | No hold is placed when a payment turns unknown |
-| B2 | The hold is checked after "one attempt at a time", so a second send hears `CONFLICT` |
-| B3 | `payment.cancel` binds nothing again |
-| B4 | A hold outlives its payment: the check ignores the proposal's state |
-| B5 | The start-up sweep places no hold |
-| B6 | A release is not checked against holds, so an older approved proposal of a held bill runs |
+The learner chose not to predict. Each break ran on 2026-10-19 in a fresh copy of this folder, with
+a fresh database, against `test/holds.test.ts`, `test/bank.test.ts`, `test/bank-review.test.ts`,
+and `test/holds.db.test.ts`.
+
+| Break | What it removes | Unit tests failed | Database tests failed |
+|---|---|---|---|
+| **B1** | No hold is placed before the bank is asked | 15 | 4 |
+| **B2** | The hold is checked after "one attempt at a time", so a second send hears `CONFLICT` | 6 | 1 |
+| **B3** | `payment.cancel` binds nothing again | 5 | 2 |
+| **B4** | A hold outlives its payment: `COMMITTED` and `FAILED` proposals still hold | 6 | 4 |
+| **B5** | A hold counts only at `OUTCOME_UNKNOWN`, not while `EXECUTING` | 2 | 1: the cancel after a crash |
+| **B6** | A release is not checked against the holds | 2 | 0: no database test releases a held bill |
+| **B7** | `RESOURCE_HELD` is kept with the claim, so the same key replays it after settlement | 1 | 1 |
+
+B5 is the gap the learner's refinement of D6 closed: after a lost connection or a crash, the
+proposal stays `EXECUTING` until the next start-up, and a hold that counted only at
+`OUTCOME_UNKNOWN` let PAY-901 be cancelled in between.
+
+## What changed since step 36b
+
+| File | What changed |
+| --- | --- |
+| `src/holds.ts` | **New.** The store of holds, in memory; the look at line ⑨; the start-up check of `hold_on_unknown` (D1, D3, D7) |
+| `migrations/033_holds.sql` | **New.** `dsor.holds`, behind the company's lock, added and never changed (D1) |
+| `contracts/payment.execute.json`, `contracts/payment.cancel.json` | `payment.execute` binds its payment and holds it and its invoice; `payment.cancel` binds its payment and the invoice found on it (D2) |
+| `src/bound.ts` | Line ⑨ reads a bound payment, and the invoice found on it, and gives back each bound record's address (D2) |
+| `src/pipeline.ts` | The holds placed with step 36's note; line ⑨ looks at them first; a dry run looks too (D3, D6) |
+| `src/claims.ts`, `src/release.ts` | `RESOURCE_HELD` keeps nothing, and a release that hears it waits (D3, D4) |
+| `src/postgres.ts`, `store.json`, `src/registry.ts`, `src/approve.ts`, `src/main.ts` | The holds on the database; the map; the start-up check; the approval's look reads payments; the scene |
+| `test/holds.test.ts`, `test/holds.db.test.ts` | **New.** The claims C1 to C5 |
+| The other tests | `dsor.holds` in the lists of tables, privileges, and policies; a second attempt hears `RESOURCE_HELD`; a cancel during a send in memory. Each says "Changed in step 37" |
+
+```bash
+git diff --no-index ../mj_36b_the_record_and_the_work_together/src src
+git diff --no-index ../mj_36b_the_record_and_the_work_together/test test
+```
+
+## Run it
+
+As in step 36b: a local PostgreSQL 17 and a database of its own. This step adds migration 033.
+
+```bash
+pnpm install
+pnpm migrate
+pnpm start
+```
+
+From a real run on 2026-10-19, the bank's world in memory, shortened to the silent day:
+
+```text
+  a silent day; user_123 sends PAY-902: OUTCOME_UNKNOWN: payment "PAY-902": the bank did not answer within 200 ms, so it may or may not have been sent
+    the bank sent TRF-2: 8900.50 USD to VENDOR-44 for PAY-902, key dsor_e6cb17617cc…
+  the bank is back; user_123 tries PAY-902 again with a new key: RESOURCE_HELD: payment "PAY-902" is held while a payment's outcome is unknown; try again once it is reconciled
+  user_123 tries to cancel PAY-902: RESOURCE_HELD: payment "PAY-902" is held while a payment's outcome is unknown; try again once it is reconciled
+  user_123 tries a new draft of INV-1002: RESOURCE_HELD: invoice "INV-1002" is held while a payment's outcome is unknown; try again once it is reconciled
+  transfers the bank made: 2
+```
+
+And the story of "Why it matters", run again on this step's code:
+
+```text
+user_123 sends the same payment again, new key: RESOURCE_HELD
+user_123 cancels that payment: RESOURCE_HELD
+user_123 drafts a NEW payment of INV-1002: RESOURCE_HELD
+  payments in the records: PAY-901 draft
+  transfers the bank made: 1
+```
+
+The books no longer lie: PAY-901 stays a draft until someone finds out what the bank did.
+
+## Build it yourself with Claude Code
+
+| # | Move | What was done |
+|---|---|---|
+| 1 | Understand | Step 37 from zero, five parts, each settled by a real run |
+| 2 | Decide | Seven choices, one at a time, by the learner; D6 and D7 refined before the build |
+| 3 | The copy | Step 36b copied, its markers removed |
+| 4 | Red | 17 unit tests; 10 red on an empty store of holds |
+| 5 | Memory | The contracts, line ⑨'s payment read, the look, the placing, "not now" |
+| 6 | Database | Migration 033, the store, the map, 5 database tests with a real `SIGKILL` |
+| 7 | Break it | B1 to B7, in copies of the folder |
+| 8 | Review | A reviewer who had not seen the conversation |
+
+To start it in a new session:
+
+```text
+Build step 37 in learner mode from the design in
+docs/baby_steps_tutorials/mj_37_outcome_unknown/README.md.
+```
+
+## Check yourself
+
+1. PAY-901's bank went silent. user_123 cancels PAY-901. What does DSoR answer, and why did step
+   36b let it through?
+2. Why is INV-1002 held, and not only PAY-901?
+3. A cancel arrives while the bank is still sending PAY-901, on the database. What does it hear,
+   and why is that not `RESOURCE_HELD`?
+4. cfo_100 approves another payment of a held bill. Is it refused? And its release?
+5. A cancel heard `RESOURCE_HELD`. Reconciliation later settles PAY-901 `FAILED`. Can the same key
+   cancel it now?
+
+<details>
+<summary>Answers</summary>
+
+1. `RESOURCE_HELD`, retried after reconciliation. In step 36b no rule linked "PAY-901 is unknown" to
+   "PAY-901 must not change", and `payment.cancel` named no record a hold could match (D2).
+2. The danger is a second payment of the same bill, whatever slip it goes out on. The contract's
+   `hold_on_unknown` names both (D2).
+3. `STALE_STATE`. Line ⑨ reads the payment under its row lock, so the cancel waits for the send;
+   when it gets the lock, the payment is `COMMITTED` and its hold no longer counts (D6, D7).
+4. The approval goes through: it changes no held record. The release hears `RESOURCE_HELD`, and the
+   proposal stays approved, waiting (D4).
+5. Yes. `RESOURCE_HELD` keeps nothing with the claim, so the same key runs again once the hold no
+   longer counts (D3).
+
+</details>
+
+## Think it through
+
+### Found while building
+
+- **`invoice.issue` is not built in this tutorial.** It binds the invoice, so it would be held, but
+  it answers `UNSUPPORTED_CAPABILITY` first. No test can show it held.
+- **`RESOURCE_HELD` had to mean "not now".** Kept with the claim, as a refusal of the request would
+  be, it left a `DENIED` proposal and made the same key replay it for ever, though its own advice
+  says to try again after reconciliation. And a release's check invalidated the waiting proposal.
+  Now it keeps nothing, and a release that hears it waits (D3, D4).
+- **Memory did not undo a proposal made inside line ⑧** when line ⑧ itself refused: the claim never
+  learned the proposal's id. It remembers the proposal it creates now, as the database's rollback
+  removes it.
+- **On the database, a cancel during a send waits for the payment's lock** and hears `STALE_STATE`,
+  not `RESOURCE_HELD` (D6's downside).
+- **The order of a list.** The database lists tables by name, so `dsor.holds` comes before
+  `dsor.idempotency` in the pinned lists, not after it.
+
+### What the review found
+
+(Filled in after the review.)
+
+### Left open on purpose
+
+- **Reconciliation** (step 38). Nothing settles an unknown payment, so its holds stand until a
+  person or step 38 does. The tests settle by hand.
+- **A draft at the same moment as a send.** A new draft of INV-1002 that passes line ⑨ before the
+  send's holds commit is drafted. It cannot be sent: its send meets the hold.
+- **The payment read is not in the decision bundle yet.** The payments store gives no freshness
+  label, so line ⑨'s payment read is not noted as the invoice's is.
+- **Hold rows are never removed.** A settled proposal's rows stay, and no longer count.
+- **Two database tests fail on a throwaway server**, as in steps 34 to 36b: one that accepts any
+  password, and an owner that belongs to no other role.
+
+## The rules this step meets
+
+| Rule | What it says | Spec | Tests |
+| --- | --- | --- | --- |
+| DSOR-UNK-03b | While a payment's outcome is unknown, what its contract lists is held, and a command that binds a held record hears `RESOURCE_HELD` | [§25.2](../../../specs/dsor/03-execution.md#252-unknown-outcomes) | [`test/holds.test.ts`](test/holds.test.ts), [`test/holds.db.test.ts`](test/holds.db.test.ts) |
+| DSOR-UNK-02 | Still met: the same key gives back `OUTCOME_UNKNOWN`, not `RESOURCE_HELD` | [§25.2](../../../specs/dsor/03-execution.md#252-unknown-outcomes) | [`test/holds.test.ts`](test/holds.test.ts), [`test/holds.db.test.ts`](test/holds.db.test.ts) |
+
+**Next:** step 38, reconciliation: a job asks the fake bank what really happened, using the key, and
+the holds come down.
