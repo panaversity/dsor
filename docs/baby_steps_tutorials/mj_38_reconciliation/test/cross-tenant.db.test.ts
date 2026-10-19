@@ -59,6 +59,8 @@ describe("the suite, on the database", () => {
       "payment.create",
       // Changed in step 35: payment.execute (step 35's README, decision D7).
       "payment.execute",
+      // Changed in step 38: payment.reconcile (step 38's README, decision D2).
+      "payment.reconcile",
       // And step 29's proposal.approve.
       "proposal.approve",
       // And step 31's release (step 31's README, decision D12).
@@ -85,7 +87,8 @@ describe("the suite, on the database", () => {
     // Changed in step 31: and proposal.execute, by every member of each company that line ③ lets
     // through, 7 in org_456 and 5 in org_789: 36 more (step 31's README, decision D12).
     // Changed in step 35: and payment.execute's 12 (step 35's README, decision D7).
-    expect(report.attacks).toHaveLength(207);
+    // Changed in step 38: and payment.reconcile's 12 (step 38's README, decision D3).
+    expect(report.attacks).toHaveLength(219);
     // And the in-company pair, from org_456's four readers and org_789's two, through the
     // database's store. Found by the Stage 2 review, and fixed from step 12 on.
     expect(report.pairs).toHaveLength(6);
@@ -141,7 +144,7 @@ describe("the suite, on the database", () => {
       // each (step 30's README, decision D5).
       // Changed in step 31: and proposal.execute, 7 callers in org_456 and 5 in org_789, × 3 each
       // (step 31's README, decision D12).
-      expect(made).toHaveLength(home === "org_456" ? 117 : 90);
+      expect(made).toHaveLength(home === "org_456" ? 123 : 96);
       const ids = made.map((attack) => attack.request_id);
       expect(await recordsIn(home, ids)).toStrictEqual(
         made.map(({ operation, request_id }) => ({
