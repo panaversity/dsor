@@ -2061,6 +2061,24 @@ hears; who lifts it, and the real-world names (pending, suspense account, proces
   both apply; older waiting drafts of a held bill (approve, release); whether reads show the hold;
   holds for proposals the start-up sweep made unknown; and, for step 38, re-drive or look up.
 
+### Step 37, outcome unknown, decided by the learner (2026-10-19)
+
+Copied from step 36b, after the understanding session from zero. The learner decided seven choices
+one at a time (a table of holds; contracts name what a command touches; the hold speaks first;
+held at the release, not the approval; reads unchanged; every way into unknown places holds; a hold
+ends with its payment), and refined D6 and D7 before the build: holds are placed with step 36's
+note and count while EXECUTING too, so a lost connection leaves no gap.
+
+- **Red first:** 17 unit tests, 10 red on an empty store; then 5, later 8, database tests.
+- **Found while building:** RESOURCE_HELD must keep nothing (it says "not now"); memory did not undo
+  a proposal created inside line ⑧; on the database a cancel during a send waits for the payment's
+  lock; a killed run left the scratch database half-changed, and many tests failed for that reason.
+- **The review:** a running send lost its CONFLICT (F1); a hold_on_unknown with no address passed
+  start-up (F2); a draft could slip in before the holds commit (F3); a dry run waited for the bank
+  (F4). Fixed; each tested fix undone once.
+- **Left open:** reconciliation (38); the payment read is not in the bundle; hold rows never
+  removed; open question 151.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.

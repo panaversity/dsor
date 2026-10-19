@@ -1023,3 +1023,10 @@ for a human. An agent may gather evidence; it does not settle these alone.
     the same as one a crash left behind, so the sweep is safe only while no other program serves the
     same database. Should an intent record carry an owner and a lease, so the sweep ends only the
     records whose owner is gone?
+151. **Is `RESOURCE_HELD` a recorded result?** DSOR-IDM-01c makes a claimed key return "the recorded
+    status or result without re-execution", and §28 gives `RESOURCE_HELD` the retry class
+    `after_reconciliation`. If the claim records it, the same key replays it even after
+    reconciliation, and the advice to retry then is useless with that key. Step 37's learner build
+    keeps nothing for `RESOURCE_HELD`, as for a refusal that says only "not now", so the same key
+    runs once the hold is lifted (its D3 and D4). Should the specification say which refusals a
+    claim records?
