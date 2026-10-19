@@ -579,7 +579,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
                    THEN '((status = ''revoked''::text) AND (revoked_by IS NOT NULL)'
                         || ' AND (revoked_at IS NOT NULL) AND (revoked_reason IS NOT NULL))'
                    -- STEP 27: and a control changes only to active, with its moment.
-                   -- NEW IN STEP 28: or to stale (decision 165).
+                   -- STEP 28: or to stale (decision 165).
                    WHEN rel = to_regclass('dsor.controls')
                    THEN '((status = ANY (ARRAY[''active''::text, ''stale_authority''::text]))'
                         || ' AND (switched_on_at IS NOT NULL))'

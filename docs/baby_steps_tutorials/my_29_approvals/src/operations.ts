@@ -90,7 +90,7 @@ import { ratesOf } from "./rates.ts";
 import type { ConditionInput } from "./cel.ts";
 import {
   type Control,
-  // NEW IN STEP 28: the controls by name, and switching one on, for control.activate.
+  // STEP 28: the controls by name, and switching one on, for control.activate.
   controlsOf,
   switchOn,
   controlsInForce,
@@ -671,7 +671,7 @@ const handlers: Readonly<Record<string, Handler>> = {
     };
   },
 
-  // NEW IN STEP 28: switching a control on, by its owner (DSOR-CTL-02a, decision 165). Who may
+  // STEP 28: switching a control on, by its owner (DSOR-CTL-02a, decision 165). Who may
   // was decided at §21.9 and recorded. Here the control is switched on, which still runs every one of
   // its cases first, and refuses if one fails (DSOR-CTL-02c).
   "control.activate": async (args, contract, askedBy, tenant, hash, requestId, proposal) => {
@@ -1969,7 +1969,7 @@ const checkTheTarget: Stage["run"] = async (context) => {
       : carryOn(context);
   }
 
-  // NEW IN STEP 28: control.activate — only the control's owner, a person logged in as themselves
+  // STEP 28: control.activate — only the control's owner, a person logged in as themselves
   // (DSOR-CTL-02a, DSOR-CTL-02b, decision 165). Both people hold control:activate, so it is this
   // question that decides between them, as the signer's does for a slip.
   if (contract.id === "control.activate") {

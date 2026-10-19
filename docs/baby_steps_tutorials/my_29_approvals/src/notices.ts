@@ -1,4 +1,4 @@
-// NEW IN STEP 28: what DSoR tells a person, in an inbox each person has (decision 165).
+// STEP 28: what DSoR tells a person, in an inbox each person has (decision 165).
 //
 // When a control's policy changes, its owner must hear about it: "the policy your control came from
 // has a new version; review the control". A log is not where anybody learns their work, so DSoR also

@@ -17,7 +17,7 @@ import { moveProposal, movesOf, proposalsByRecord, proposalsOf } from "./proposa
 import { usedToday } from "./reservation.ts";
 // STEP 26: org_456's rate service, which the demo makes old for a moment.
 import { aRateService, useRateService } from "./rates.ts";
-// NEW IN STEP 28: a changed policy noticed, and its owner told (decision 165).
+// STEP 28: a changed policy noticed, and its owner told (decision 165).
 import { noticeStalePolicies } from "./policy-controls.ts";
 import { aPolicySource, usePolicySource } from "./ksor.ts";
 import { inboxOf } from "./notices.ts";
@@ -893,7 +893,7 @@ useRateService("org_456", undefined);
 // its five test cases, and only then is it in force. Then it governs every payment, a person's as
 // well as the agent's.
 //
-// NEW IN STEP 28: switching it on is a command, control.activate, and only the control's owner, the
+// STEP 28: switching it on is a command, control.activate, and only the control's owner, the
 // CFO, may run it (decision 165). user_123 holds the permission and is not its owner; the agent never
 // may. On a second run the control is stale already, from the first, and says so.
 console.log();
@@ -951,7 +951,7 @@ console.log(
   ),
 );
 
-// NEW IN STEP 28: finance publishes version 5 of the policy, and the line moves to 20,000 USD. The
+// STEP 28: finance publishes version 5 of the policy, and the line moves to 20,000 USD. The
 // sweep DSoR runs, at least every 24 hours, notices: the control cites version 4. It marks the
 // control stale, writes it in the log, and tells its owner. It does not switch it off: 31,400.00 USD
 // still waits for the CFO, under version 8, until the CFO reviews it (DSOR-CTL-03a, DSOR-CTL-03b).
@@ -1029,7 +1029,7 @@ for (const company of ["org_456", "org_789"]) {
     // entered, and the proposal, which its record names; the record of its creation cannot, and
     // the move that names that record says which it was.
     const isAMove = record.kind === "proposal_transition";
-    // NEW IN STEP 28: and a control the sweep marked stale, which no request asked for.
+    // STEP 28: and a control the sweep marked stale, which no request asked for.
     const isAChange = record.kind === "control_change";
     const proposal = record.resources?.[0]?.split("/").at(-1) ?? byRecord.get(record.record_id);
 

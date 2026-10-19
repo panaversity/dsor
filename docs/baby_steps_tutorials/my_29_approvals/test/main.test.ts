@@ -792,7 +792,7 @@ describe("the program a learner runs", () => {
     expect(section).toMatch(/accounts-payable-fte +COMMITTED +dsor:\/\/org_456\/payment\/PAY-\d+/);
   });
 
-  // NEW IN STEP 28: the policy changes, and the control is marked stale and still enforced.
+  // STEP 28: the policy changes, and the control is marked stale and still enforced.
   it("DSOR-CTL-03a: the demo's sweep marks the CFO's control stale, tells the CFO, and the payment still waits", () => {
     const out = demo().report;
     const section =

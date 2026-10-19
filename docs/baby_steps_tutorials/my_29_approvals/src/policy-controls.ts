@@ -17,7 +17,7 @@ import addFormatsModule, { type FormatsPlugin } from "ajv-formats";
 import { checkCondition, evaluateCondition, type ConditionInput } from "./cel.ts";
 import type { RateOf } from "./exchange.ts";
 import { theDatabase } from "./store.ts";
-// NEW IN STEP 28: where a control's policy is kept, the record of a change, and its owner's inbox.
+// STEP 28: where a control's policy is kept, the record of a change, and its owner's inbox.
 import { audit } from "./audit.ts";
 import { nextRequestId } from "./envelopes.ts";
 import { policySourceOf } from "./ksor.ts";
@@ -285,7 +285,7 @@ export type SwitchedOn =
       readonly why: string;
       readonly results: readonly CaseResult[];
       /**
-       * NEW IN STEP 28: the §28 code a caller of `control.activate` is told: CONFLICT when the
+       * STEP 28: the §28 code a caller of `control.activate` is told: CONFLICT when the
        * control is not waiting or another version is in force, VALIDATION_FAILED when it cannot
        * be a control or fails its cases, RESOURCE_NOT_FOUND when there is none.
        */
@@ -471,7 +471,7 @@ export async function switchOn(tenant: string, id: string, version: number): Pro
  */
 export const WAITS_FOR_APPROVAL_MS: number = 72 * 60 * 60 * 1000;
 
-/** NEW IN STEP 28: what one sweep found (decision 165). */
+/** STEP 28: what one sweep found (decision 165). */
 export interface Noticed {
   /** Each control it marked stale: the policy version it cites, and the one in force, if any. */
   readonly marked: readonly {
@@ -485,7 +485,7 @@ export interface Noticed {
 }
 
 /**
- * NEW IN STEP 28: notice the controls whose policy changed (DSOR-CTL-03a, decision 165).
+ * STEP 28: notice the controls whose policy changed (DSOR-CTL-03a, decision 165).
  *
  * For every control in force that cites KSoR, ask KSoR for the policy's version in force. A later
  * version, the same version with other words, or a policy KSoR no longer has: the control is marked

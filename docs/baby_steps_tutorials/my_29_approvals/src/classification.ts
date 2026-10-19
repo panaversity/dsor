@@ -72,7 +72,7 @@ const labels: Readonly<Record<string, Readonly<Record<string, Classification>>>>
     cancelled: "internal",
   }),
   // STEP 25: a brake, as its receipt shows it: what it stops, and whether it is on.
-  // NEW IN STEP 28: and a control switched on, as its receipt shows it: its version and status.
+  // STEP 28: and a control switched on, as its receipt shows it: its version and status.
   control: Object.freeze({
     uri: "internal",
     tenantId: "internal",

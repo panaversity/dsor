@@ -1,4 +1,4 @@
-// NEW IN STEP 28: a control whose policy changed is marked stale, and its owner is told (decision 165).
+// STEP 28: a control whose policy changed is marked stale, and its owner is told (decision 165).
 //
 // The CFO's control came from version 4 of org_456's payment approval policy. When KSoR publishes
 // version 5, the sweep DSoR runs notices, marks the control `stale_authority`, writes a record in

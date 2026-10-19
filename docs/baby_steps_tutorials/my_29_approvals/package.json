@@ -1,8 +1,8 @@
 {
-  "name": "@dsor-steps/28-where-a-rule-came-from",
+  "name": "@dsor-steps/29-approvals",
   "version": "0.0.0",
   "private": true,
-  "description": "Step 28 of the DSoR baby steps: each control points at the policy it came from, a changed policy marks it stale and tells its owner without switching it off, and only its owner may switch a control on",
+  "description": "Step 29 of the DSoR baby steps: a person approves a waiting proposal with proposal.approve, logged in as themselves, on a fingerprint of the exact request, and the approval expires",
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {

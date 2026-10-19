@@ -43,7 +43,7 @@ import { parseUri } from "../../src/uri.ts";
 export const SUPERVISOR = { loggedInAs: "user_123" };
 
 /**
- * NEW IN STEP 28: who calls each operation: user_123, but for switching a control on, which only
+ * STEP 28: who calls each operation: user_123, but for switching a control on, which only
  * its owner may, the CFO (decision 165). The refusals this suite asks for are about the address
  * whoever sends it; the example that works must be sent by someone it works for.
  */
@@ -111,7 +111,7 @@ export const ROWS_OF = `SELECT 'invoice' AS entity, id, vendor, NULL::text AS in
                         SELECT 'delegation', id, NULL, NULL, NULL, NULL, status, NULL
                           FROM dsor.delegations WHERE tenant = $1
                         UNION ALL
-                        -- NEW IN STEP 28: and the controls, which a careless control.activate
+                        -- STEP 28: and the controls, which a careless control.activate
                         -- could switch on.
                         SELECT 'control', id, NULL, NULL, NULL, NULL, status, version
                           FROM dsor.controls WHERE tenant = $1

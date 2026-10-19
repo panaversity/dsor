@@ -1,4 +1,4 @@
-// NEW IN STEP 28: the company's policies, as KSoR keeps them (decision 165).
+// STEP 28: the company's policies, as KSoR keeps them (decision 165).
 //
 // KSoR is the company's record of what it knows: its policies, in English, each with a version and
 // a fingerprint of its text. A control says which policy sentence it came from, and which version.

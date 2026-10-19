@@ -1,4 +1,4 @@
-// NEW IN STEP 28: only a control's owner, a person, may switch it on (decision 165).
+// STEP 28: only a control's owner, a person, may switch it on (decision 165).
 //
 // Switching a control on is a command now, `control.activate`, through the whole pipeline: the
 // caller logs in, holds `control:activate`, and the decision is recorded. Both people in the story
