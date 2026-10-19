@@ -116,7 +116,7 @@ describe("C6: start-up checks alerts.json", () => {
 
   it("DSOR-UNK-04c: a registry built with a broken alerts file refuses to start, and names the problem", () => {
     const broken = { file: "alerts.json", text: JSON.stringify({ org_456: GOOD }) };
-    const args = new Array(10).fill(undefined) as unknown as Parameters<typeof ruleWorld>;
+    const args = Array.from({ length: 10 }) as unknown as Parameters<typeof ruleWorld>;
     args[10] = broken;
     expect(() => ruleWorld(...args)).toThrow(
       "alerts.json: org_789 has no alerts, and a login works there",

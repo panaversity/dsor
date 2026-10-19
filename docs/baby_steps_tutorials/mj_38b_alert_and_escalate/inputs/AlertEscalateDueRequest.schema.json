@@ -10,8 +10,6 @@
       "pattern": "^dsor://[^/]+/tenant/"
     }
   },
-  "required": [
-    "company"
-  ],
+  "required": ["company"],
   "additionalProperties": false
 }
