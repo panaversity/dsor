@@ -6076,3 +6076,50 @@ switch on a control the CFO owns, or a careless handler could switch on one nobo
   the second lock lets the application switch a waiting control on and mark one stale, nothing else.
 - **A control marked stale is never switched off quietly**: still in force, its decisions recorded
   with it as before.
+
+## 167 · Step 29's decisions: an approval, by the approver's own login, on the exact request (2026-10-20)
+
+**Decided by:** Claude, on the learner's standing instruction of 2026-10-19, "select the recommended
+setting when you have to ask the human", given before they slept. The problem is stated first, as it
+would have been shown; each choice is the recommendation, and each is open to reversal.
+
+**The problem.** Since step 27, user_123's 31,400.00 USD payment waits at PENDING_APPROVAL for the
+CFO, and nobody can approve it: it waits until its 72 hours end. An approval has to be built, and
+each easy way to build it is a hole. An approval the agent relays, "the CFO said yes", is one the
+agent can invent. An approval of "the payment for INV-1008" can be stretched over a payment the CFO
+never saw, if the request changed after she looked. And a fingerprint of the request taken over its
+text as sent differs when the same request arrives with its fields in another order, so the CFO could
+approve one spelling while the program holds another.
+
+1. **The fingerprint is the RFC 8785 canonical JSON of the request** (`DSOR-APR-02b`): keys in one
+   order, one way to write each number and string, then SHA-256. It is every command's payload hash,
+   not only an approval's, so the same request with its fields in another order is the same request,
+   to its idempotency key as well. **Rejected:** the hash over the text as sent.
+2. **`proposal.approve`, with `{ proposal, payload_hash }`**, accepted only from a person logged in as
+   themselves, never an agent and never under a slip (`DSOR-APR-05a`), who holds the target
+   contract's `approve_permission`, `payment:approve` for `payment.create`, added to its contract
+   (`DSOR-APR-07`); for a proposal still waiting, its 72 hours not passed; with the stored payload
+   hash, or `APPROVAL_MISMATCH` (`DSOR-APR-09`); once per person.
+3. **A requirement's role is a job title**, and the program's list of people gives each person one:
+   `cfo_100` is the CFO. An approval satisfies each requirement whose role is its approver's title,
+   with the basis `role:CFO`. **Rejected:** anyone holding `payment:approve` filling any role, which
+   lets two controls that ask for two different people be satisfied by one.
+4. **What a waiting proposal waits for is kept**, in `dsor.requirements`, written when it starts
+   waiting, and never changed. **Rejected:** working it out again from the log, which is evidence and
+   not state.
+5. **An approval is kept whole, in `dsor.approvals`, as `approval.schema.json` says it** (`DSOR-APR-02a`),
+   added and never changed; one for each person and proposal.
+6. **When every requirement has its quorum, the proposal moves to APPROVED** in the same request
+   (`DSOR-AUT-02c`: when two rules each ask, both must be given). Nothing carries an approved proposal
+   out until step 31.
+7. **An approval expires when its proposal's 72 hours end**, and a proposal past its time cannot be
+   approved, `APPROVAL_EXPIRED`. Nothing moves a proposal to EXPIRED yet.
+
+**Told, not asked.**
+
+- **The bound state is `predicate`, with no versions bound**: re-checking the world at execution is
+  step 31's (`DSOR-APR-03a`).
+- **When the approver logged in is the decision's own time**: this program has no real login until
+  steps 43 and 44, so no `acr` is claimed.
+- **Who may not approve, beyond an agent, is step 30's**: the person who signed the agent's slip, and
+  one person counted twice towards a quorum.
