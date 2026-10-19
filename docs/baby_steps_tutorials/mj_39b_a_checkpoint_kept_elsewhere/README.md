@@ -1,320 +1,137 @@
-# Step 39 · A log nobody can quietly edit
+# Step 39b · A checkpoint kept elsewhere
 
-**New in this step:** each record in DSoR's log carries the fingerprint of the record before it, in
-one chain per company, written by the database, and `pnpm verify-audit` checks every chain
-(DSOR-AUD-04b, DSOR-AUD-04c).
+**New in this step:** `pnpm checkpoint-audit` signs each chain's last fingerprint and keeps it in a
+file outside the database, and `pnpm verify-audit` holds every chain against every checkpoint
+(DSOR-AUD-04b, DSOR-AUD-04d).
 
 ## In plain words
 
-DSoR is a careful clerk between a company's people and AI workers and its real systems. Every
-decision it makes, it writes down in its log, `dsor.audit`: who asked, what, under which slip, and
-what DSoR answered. Since step 09, DSoR's own login may only add a record to the log, never change
-or remove one (DSOR-AUD-04a).
+Since step 39, each record in DSoR's log, `dsor.audit`, carries the fingerprint of the record before
+it. Change an old record and the next one gives it away. But the database's *owner*, the login that
+made the tables, knows the recipe. The owner can change a record and then write every fingerprint
+after it again, and the chain looks whole.
 
-But someone runs the database, and its *owner*, the login that made the tables, can change any row.
-A *fingerprint* is a short code computed from a record's contents, here with SHA-256: change one
-letter and the fingerprint changes completely. Unlike a finger's, anyone who knows the recipe can
-make it again, so a fingerprint alone proves nothing; a chain of them does. In this step each record also holds the fingerprint
-of the record before it, so the records form a *chain*. Change an old record and its fingerprint no
-longer matches the one the next record holds. The break shows.
+A *checkpoint* is a note of where each chain ended at one moment: its last place and that record's
+fingerprint. If the note is kept where the owner cannot change it, a later rewrite shows: the record
+at the noted place no longer has the noted fingerprint.
 
-Think of a ledger whose pages are numbered, and where each page carries the fingerprint of the page
-before it. Tear out a page in the middle or rewrite a line on it, and the next page gives it away.
-The last pages can go with nothing to show, and a new last page can be added. And someone who
-rewrites every page after the edit, with new fingerprints, makes the chain look whole again.
-Keeping the last fingerprint somewhere the owner cannot reach is step 39b's checkpoint.
+Here the note is a file, and it is *signed*. A signature is made with a *private key*, a secret file
+that only the person who takes checkpoints holds. Anyone can check the signature with the matching
+*public key*, but nobody can make a new one without the private key. The pair is made with Ed25519,
+a signing method built into Node. So the owner can delete a checkpoint, but cannot write one that
+the checker accepts.
 
 ## Why it matters
 
-A real run on step 38c's database, on 2026-10-20, a scratch database the tests had filled. The
-owner edits one old record:
+A real run on 2026-10-20, on a scratch database filled by `pnpm start`. The careful editor, with the
+owner's login, turns org_456's record at place 4 from a refusal into a success, then writes every
+fingerprint from place 4 to the end of the chain again, and the chain's head too:
 
 ```text
-records in dsor.audit: 3355
-an old record:          2368 | 2026-10-19 | payment.reconcile@1 | DENY  | AUTHORIZATION_DENIED | user_123
-after the owner's edit: 2368 | 2026-10-19 | payment.reconcile@1 | ALLOW | COMMITTED            | user_123
-columns that could show the change: (none)
-```
-
-A refused call now reads as a settled payment; the same edit gave it the reason "reconciled by the
-CFO", which the output does not show. An auditor
-reading this log would believe it, and nothing in DSoR could tell them otherwise.
-
-**Common mistake:** computing the fingerprints in DSoR's own code. Every path that writes a record
-must then do it right, under a lock, and the database cannot stop one that does not. Two records
-written at once could both claim the same predecessor. The second mistake is the one this step
-made first: taking the chain's lock as the record goes in. The lock is held to the end of the
-transaction, so every call of a company waits for every other.
-
-## The design, before any code
-
-### How this step was made
-
-On 2026-10-20, after step 38c, the learner asked to build this step. The problem was shown with the
-run above, and the learner decided five choices, each the recommended option (D0 to D4). The review
-found one more choice, and the learner decided it (D8).
-
-### What the rules say
-
-- **DSOR-AUD-04b:** "Audit records MUST be tamper-evident through hash chaining, signed checkpoints,
-  or an equivalent mechanism."
-- **DSOR-AUD-04c:** "Where audit is partitioned into several chains, every record MUST belong to
-  exactly one chain." ([§30](../../../specs/dsor/03-execution.md#30-audit-integrity-and-retention))
-
-The specification allows chains per company: "Chains MAY be partitioned by tenant and shard so
-that audit is not a global serialization point." Its audit-record schema already names the fields:
-`chain`, `previous_hash`, and `record_hash`. Checkpoints, DSOR-AUD-04d, are step 39b's.
-
-### The claims
-
-| Claim | What it says |
-|---|---|
-| C1 | Every record, when its transaction commits, gets its chain, its place in the chain, the fingerprint of the record before it, and its own fingerprint, written by the database. DSoR's login cannot write any of the four. A record the trigger cannot write is refused at the commit, never kept without them |
-| C2 | One chain for each company, and one for the records that name no company. Two records never share a place or a predecessor, even when written at the same moment |
-| C3 | The migration chains every record already in the log, in the order they were written |
-| C4 | `pnpm verify-audit`, run as the owner, recomputes every fingerprint and names, for each chain, the first record that does not fit: a field changed, a fingerprint changed, a record removed, records swapped, a record with no chain, or a chain whose head says more than its records |
-| C5 | A whole log exits 0; a broken one exits 1; a log it could not check, with a login that cannot see every record, exits 2 |
-| C6 | What it cannot catch, said in the README and by the script: a chain and its head rewritten from the edit on, its newest records removed with the head, and a new record the owner adds, with any date (step 39b catches the first two) |
-
-### Decisions
-
-- **D0. Chain only; checkpoints in step 39b** (the learner's choice). *Downside:* until 39b, a careful
-  editor with the owner's login can rewrite the chain and its head from the edit on, or remove its
-  newest records with the head, and the script finds nothing. Adding a new record, with any date,
-  is the easiest forgery of all: the trigger chains it like any other, and a checkpoint taken before
-  it does not see it either.
-- **D1. One chain per company** (the learner's choice). The chain is named by the record's company;
-  a record with no company, a call refused before its company was known, goes in a chain of its
-  own. *Downside:* more chains to check.
-- **D2. The database writes the fingerprints** (the learner's choice). A trigger on `dsor.audit`
-  computes them when the record's transaction commits, holding the chain's head only for that
-  moment. No path through DSoR's login can keep a record without them; a record kept another way,
-  with the trigger off, has no chain, and the checker names it. It first ran as each row went in,
-  and that locked a company's calls against each other (see "Found while building"). The trigger
-  writes the log with the owner's rights, and the owner must hold BYPASSRLS, as Neon's does; a
-  write that changes no row refuses the commit. *Downside:* the recipe is written in SQL, and the
-  script must follow it exactly.
-- **D3. The migration chains the old records** (the learner's choice). *Downside:* whatever the old
-  rows say on the day of the migration is what the chain vouches for.
-- **D4. A script, run as the owner** (the learner's choice). `pnpm verify-audit` reads every chain,
-  recomputes each fingerprint in TypeScript, and names the first broken record of each chain.
-  *Downside:* it uses the owner's login, the one that could edit the log; an auditor would want a
-  read-only login of their own.
-- **D5. The recipe** (Claude Code's). A record's fingerprint is SHA-256 over the previous
-  fingerprint and every column of the record, each written as text with its length in bytes before
-  it, so no two records can make the same text. The first record of a chain follows a fingerprint of
-  zeros. *Downside:* a column added later must join the recipe, in both places.
-- **D6. A place in the chain, and two unique keys** (Claude Code's). Each record gets
-  `chain_position`, one more than the record before it in its chain. A unique key is a rule that no
-  two rows share these values: the database refuses two records with the same chain and place, or
-  the same chain and predecessor. The specification's audit-record schema calls the place in the
-  chain `sequence`; here `sequence` is the log's own counter, kept from step 09, and the place is
-  `chain_position` (open question 155). *Downside:* two more columns and two more indexes.
-- **D7. The chain of records with no company is named `no_company`** (Claude Code's). *Downside:*
-  a company may never be called that, and the id pattern `org_` plus digits already ensures it.
-- **D8. A table of chain heads** (the learner's choice, after the review's L1). `dsor.audit_heads`
-  holds each chain's last place and fingerprint, and only the owner reads or writes it. The trigger
-  locks a chain's row there until the commit ends, so no other login can stall a company's commits,
-  as any login could with the first lock. The checker compares each chain with its head, and never
-  trusts the head. *Downside:* one more table, a copy of what the chain says.
-- **D9. One chain per transaction** (Claude Code's, after the review's L3). A transaction writes
-  one company's records, as `inCompany` pins it, so it locks one head; two transactions locking two
-  heads in opposite orders would wait for each other for ever. *Downside:* a rule kept by how DSoR
-  works today, not by the database.
-
-### The tests, by claim
-
-| Claim | Tests |
-|---|---|
-| C4, C5 | `test/verify-audit.test.ts`: the checker over chains built in the test, whole and broken each way |
-| C1, C2, C4, C5 | `test/audit-chain.db.test.ts`: real records, real parallel writes, the owner's edits, the database's keys, and the script itself |
-| C3 | A real run on 2026-10-20: 41 records written under step 38c's schema, chained by migration 035, every chain whole |
-
-### The breaks
-
-The learner chose not to predict. Each break ran on 2026-10-20 in a fresh copy of this folder, with
-a fresh database, against `test/verify-audit.test.ts` and `test/audit-chain.db.test.ts`.
-
-| Break | What it removes | Unit tests failed | Database tests failed |
-|---|---|---|---|
-| **B1** | `authorization` left out of the recipe, in SQL and in TypeScript | 1 | 5 |
-| **B2** | The trigger does not lock the chain's head | 0 | 1 |
-| **B3** | The checker does not look at the predecessor | 1 | 1 |
-| **B4** | The checker does not look at the places | 2 | 1 |
-| **B5** | The recipe joins the fields with no lengths | 1 | 9 |
-| **B6** | The trigger runs with `dsor_runtime`'s rights | 0 | 14 |
-| **B7** | Two records may follow one predecessor | 0 | 1 |
-| **B8** | A record the trigger could not write is kept, unchained | 0 | 1 |
-| **B9** | The checker runs with a login that cannot see every record | 0 | 1 |
-
-These are the counts after the review's fixes, rerun on 2026-10-20.
-
-B1 is the dangerous one: the denied reconcile turned to `ALLOW` would pass, because the recipe no
-longer covers that field, and both recipes agree with each other. A unit test now holds the
-recipe's columns against the table's, and a database test changes each column in turn. B7 first passed every test: the lock already keeps one
-predecessor per record, so the key behind it had none. A test where the owner tries it now does.
-
-## Break it
-
-The map's exercise, run for real on 2026-10-20, on a database chained by migration 035. The owner
-edits one old record, then runs the script:
-
-```text
-the old record: 2 | invoice.issue@1 | DENY | AUTHORIZATION_DENIED
-after the owner's edit: 2 | invoice.issue@1 | ALLOW | COMMITTED
-no_company: whole, 2 records
-org_456: broken at place 2, record aud_d01c2ca4-2c0d-4055-b01a-4ff47d4b1c27: its contents do not match its fingerprint
-org_789: whole, 1 records
-not checked: a chain and its head rewritten from an edit on (step 39b), or a new record the owner adds
-exit=1
-```
-
-Then the careful editor, who knows the recipe, writes every fingerprint again from the edit on, and
-the chain's head too:
-
-```text
-no_company: whole, 2 records
-org_456: whole, 38 records
+the old record:      4 | invoice.issue@1 | DENY | AUTHORIZATION_DENIED
+after the rewrite:   4 | invoice.issue@1 | ALLOW | COMMITTED
+no_company: whole, 3 records
+org_456: whole, 63 records
 org_789: whole, 1 records
 not checked: a chain and its head rewritten from an edit on (step 39b), or a new record the owner adds
 exit=0
 ```
 
-The chain cannot see this. That is what step 39b's checkpoint is for.
+`user_123`'s refused call now reads as a call DSoR allowed and committed, and step 39's checker
+calls the log whole. Everything the checker reads is inside the database, and the owner can change
+everything inside the database.
 
-## What changed since step 38c
+**Common mistake:** keeping the checkpoint in the database, in a table of its own. The owner
+rewrites it with the chain. A checkpoint protects the log only when it lives where the owner's login
+cannot reach. The second mistake: signing whatever the chain says today. A checkpoint taken after a
+rewrite vouches for the rewrite, so the script checks every chain before it signs.
 
-| File | What changed |
-| --- | --- |
-| `migrations/035_audit_chain.sql` | **New.** The four columns, the recipe in SQL, the old records chained, two keys, and the trigger that chains each record at its commit (D1 to D3, D5 to D7) |
-| `src/audit-chain.ts` | **New.** The recipe in TypeScript, and the checker (D5) |
-| `src/verify-audit.ts`, `package.json` | **New.** `pnpm verify-audit` (D4) |
-| `src/store.ts`, `store.json` | The log's kind, `append-only-chained`, which allows its one named trigger; `dsor.audit_heads`, the owner's own |
-| `test/verify-audit.test.ts`, `test/audit-chain.db.test.ts`, `test/owner-audit.ts` | **New.** The claims C1 to C6 |
-| The other tests | The store map's lists of the log's columns and triggers. Each says "Changed in step 39" |
+## The design, before any code
 
-```bash
-git diff --no-index ../mj_38c_the_list_of_alerts/src src
-git diff --no-index ../mj_38c_the_list_of_alerts/test test
-```
+### How this step was made
 
-## Run it
+On 2026-10-20, after step 39, the learner asked to continue. The problem was shown with the run
+above, and the learner decided nine choices, each the recommended option (D1 to D9). Claude Code
+decided three details (D10 to D12).
 
-As in step 38c: a local PostgreSQL 17 and a database of its own. Migration 035 is new.
+### What the rules say
 
-```bash
-pnpm install
-pnpm migrate
-pnpm start
-pnpm verify-audit
-```
+- **DSOR-AUD-04b:** "Audit records MUST be tamper-evident through hash chaining, signed checkpoints,
+  or an equivalent mechanism."
+- **DSOR-AUD-04d:** "Every audit chain MUST be covered by each checkpoint."
+  ([§30](../../../specs/dsor/03-execution.md#30-audit-integrity-and-retention))
 
-`pnpm verify-audit` reads the owner's login, `DSOR_MIGRATION_URL`, from `.env`, and never prints it.
+The specification adds: "Implementations SHOULD anchor checkpoints outside the control-plane store."
+Its table of limits, [§44](../../../specs/dsor/06-conformance.md#44-operational-bounds), sets the checkpoint interval at
+24 hours or less for L2.
 
-## Build it yourself with Claude Code
+### The claims
 
-| # | Move | What was done |
+| Claim | What it says |
+|---|---|
+| C1 | `pnpm checkpoint-keys` makes an Ed25519 key pair. The private key goes to a file the learner names, outside this folder, readable only by them. The public key goes to `checkpoint-public-key.pem` in this folder, to be committed |
+| C2 | `pnpm checkpoint-audit`, as the owner and read only, first checks every chain as step 39 does. If one is broken, it signs nothing and exits 1. Otherwise it writes one signed file in `checkpoints/`: the time, from the database's clock, and every chain with its last place and fingerprint, `no_company` included (DSOR-AUD-04d) |
+| C3 | `pnpm verify-audit` reads every checkpoint file. A file whose signature does not verify with the committed public key is named, broken, and not used |
+| C4 | For each chain a checkpoint names, the record at the noted place must carry the noted fingerprint. A different fingerprint, or a chain that no longer reaches that place, is broken, and the checkpoint and the place are named. A chain that no checkpoint names yet is reported as "not yet in a checkpoint", not broken |
+| C5 | Exit 0: every chain whole and the newest checkpoint 24 hours old or less. Exit 1: anything broken. Exit 2, when nothing is broken but the log could not be fully checked: no checkpoint, the newest older than 24 hours, no public key, or a login that cannot see every record |
+| C6 | What it still cannot catch, said in this README and by the script: a change to a record written after the newest checkpoint, a new record the owner adds, and anyone who holds both the owner's login and the private key |
+
+### Decisions
+
+- **D1. A signed file** (the learner's choice). *Downside:* the file sits on a disk someone manages.
+  The signature stops a forged checkpoint, not a deleted one.
+- **D2. An Ed25519 key pair** (the learner's choice). The private key signs; the public key only
+  checks. Node's `node:crypto` has it, so there is no new dependency. *Downside:* one more secret
+  file to keep safe, and to keep apart from the owner's login.
+- **D3. A script, run by hand** (the learner's choice). `pnpm checkpoint-audit`, at least once every
+  24 hours; in production, a scheduled job. *Downside:* if nobody runs it, there is no protection.
+  D6 makes the checker say so.
+- **D4. A mismatch is broken, exit 1** (the learner's choice). The same exit as step 39's breaks.
+- **D5. A chain newer than every checkpoint is allowed, and reported** (the learner's choice). A
+  company's first record can come after the last checkpoint. *Downside:* that chain is protected only
+  by step 39's chain until the next checkpoint.
+- **D6. No checkpoint, or one older than 24 hours: not checked, exit 2** (the learner's choice).
+  *Downside:* a new database answers exit 2 until its first checkpoint.
+- **D7. Every checkpoint kept is checked** (the learner's choice). Delete the newest file, and the
+  older ones still protect the records before them. *Downside:* more files to read, one line per
+  chain in each.
+- **D8. The public key is committed** (the learner's choice). Swapping it shows in git history, out
+  of the owner's reach. The private key's path is `DSOR_CHECKPOINT_KEY` in `.env`, and only
+  `pnpm checkpoint-audit` reads it. *Downside:* each learner's copy has its own key, and a new key
+  pair makes every older checkpoint fail its signature.
+- **D9. A checkpoint whose signature fails is broken, exit 1** (the learner's choice). It is evidence
+  that someone touched the anchor. *Downside:* after a new key pair, the old checkpoint files must be
+  moved away.
+- **D10. Never sign a broken log** (Claude Code's). `pnpm checkpoint-audit` runs step 39's checker
+  first and signs only when every chain is whole and matches its head. *Downside:* while the log is
+  broken, no new checkpoint can be taken, until a person decides what to do.
+- **D11. The file and what is signed** (Claude Code's). One JSON file per checkpoint, named by its
+  time, in `checkpoints/`, which git ignores: the checkpoints belong to the learner's own database.
+  The signed text is the checkpoint as JSON, its fields in a fixed order and its chains sorted by
+  name, so the checker makes the same text again. *Downside:* a file that is changed by even one
+  space no longer verifies, which is the point, but it can surprise.
+- **D12. One snapshot, and the database's clock** (Claude Code's). The script reads the chains, the
+  heads, and the time in one read-only transaction that sees one moment, so the heads and the records
+  agree. The checker compares a checkpoint's age with the database's clock too. *Downside:* a
+  database whose clock is wrong gives wrong ages.
+
+### The tests, by claim
+
+| Claim | Tests |
+|---|---|
+| C1 to C5 | `test/checkpoint.test.ts`: checkpoints made and signed in the test, held against chains built in the test, whole and broken each way |
+| C2, C4, C5 | `test/checkpoint.db.test.ts`: the owner's rewrite of step 39's "Why it matters", caught; a checkpoint refused on a broken log; every chain covered |
+| C6 | `test/checkpoint.test.ts`: a change after the newest checkpoint passes, said plainly |
+
+### The breaks, and the learner's predictions
+
+Each break below will be run for real on a fresh copy, and its real result written here.
+
+| Break | What it removes | The learner's prediction |
 |---|---|---|
-| 1 | Understand | The problem, shown with a real edit of step 38c's database |
-| 2 | Decide | Five choices by the learner; three details by Claude Code |
-| 3 | The copy | Step 38c copied, its markers removed |
-| 4 | Red | 13 unit tests and 7 database tests, all red |
-| 5 | Code | Migration 035, the recipe and the checker, the script |
-| 6 | Earlier tests | The store map; then the chain moved to commit time |
-| 7 | Break it | B1 to B7, and the map's exercise, for real |
-| 8 | Review | A reviewer who had not seen the conversation |
-
-To start it in a new session:
-
-```text
-Build step 39 in learner mode from the design in
-docs/baby_steps_tutorials/mj_39_a_log_nobody_can_quietly_edit/README.md.
-```
-
-## Check yourself
-
-1. The owner turns an old record from `DENY` to `ALLOW`. Which record does `pnpm verify-audit`
-   name, and why?
-2. The owner turns it over and writes that one record's fingerprint again. Which record is named
-   now?
-3. Why does each field carry its length in the recipe?
-4. Why is the chain written at commit, and not as the record goes in?
-5. What can a careful editor still do without being caught, and which step closes it?
-
-<details>
-<summary>Answers</summary>
-
-1. That record itself: its contents no longer match its own fingerprint (C4).
-2. The record after it: the fingerprint it holds of the record before is the old one, so it no
-   longer follows (C4).
-3. So no two different records make the same text: without lengths, "ab" then "c" and "a" then
-   "bc" join to the same "abc" (D5, break B5).
-4. A lock taken at the insert is held to the end of the transaction, so every call of a company
-   waited for every other, and two rule drafts locked each other. At commit the lock is held only
-   while the transaction ends (D2).
-5. Write every fingerprint and the head again from the edit on, or remove the newest records and set
-   the head back, or add a new record with any date. Step 39b keeps each chain's last fingerprint
-   where the owner cannot reach it, which catches the first two; nothing in the chain catches the
-   third (D0, C6).
-
-</details>
-
-## Think it through
-
-### Found while building
-
-- **The chain's lock, taken at the insert, locked a company's calls against each other.** Two rule
-  drafts at once each held one lock and waited for the other's; the database stopped one, and its
-  caller heard `INTERNAL_ERROR`. Two rate loads changed outcome. The chain is now written by a
-  trigger deferred to the commit.
-- **The store map refused a trigger on an append-only table.** The log has a kind of its own,
-  `append-only-chained`, which allows its one named trigger; every other append-only table still
-  allows none.
-- **A careful editor really does win.** The second run under "Break it" is real: with the recipe,
-  the owner rewrote every fingerprint from the edit on, and the script said whole.
-
-### What the review found
-
-A reviewer who had not seen the conversation read the rules, the code, and this README, ran its own
-PostgreSQL with an owner like Neon's, and broke the code in copies. The learner decided the one
-finding that needed a choice (D8). Each fix below was undone once in a copy, and its test failed,
-except M1, which needs a database written before migration 003b.
-
-| # | What it found | What was done |
-|---|---|---|
-| H1 | An owner without BYPASSRLS made the trigger's writes change nothing: records were kept with no chain, and the checker, seeing nothing, said "the log holds no record", exit 0 | A write that changes no row refuses the commit; the checker refuses a login that cannot see every record, exit 2 (breaks B8, B9) |
-| M1 | Migration 035 failed on a database holding a record written before migration 003b, whose size check is `NOT VALID` | The check is lifted for the chaining and put back as it was |
-| M2 | Nothing proved a fingerprint covers the one before it | A test: the next record pointed at a rewritten fingerprint is named |
-| M3 | Nothing tied the recipe to every column | A unit test holds the columns against the table's; a database test changes each in turn |
-| M4 | A record with no chain, and the `no_company` chain, were never tested on the database | Tests for both |
-| M5 | The easiest forgery went unsaid: the owner adds a new record, with any date | Said in C6, D0, the script's output, and "Check yourself" |
-| M6 | "No path can keep a record without them" was false | D2 says "no path through DSoR's login" |
-| M7 | The migration's chaining had no test | A test runs its block again and checks the order |
-| L1 | Any login could take the chain's lock and stall a company's commits | D8: a table of heads, which only the owner can lock (break B2) |
-| L2, L4, L5, L8, L9 | Commits out of order untested; a test that needed the whole log clean; one exit code for two meanings; the company check untested; one record named of many with no chain | Tests; the test scoped to org_456; exit 2; a count |
-| L3 | Two chains in one transaction could wait for each other for ever | D9 |
-| L6, L7 | Three versions of each row; lengths in the database's encoding | One write; UTF-8 bytes |
-| L11, L12 | A comment named the wrong cause; `sequence` means another thing in the schema | Corrected; said in D6 |
-| Prose | The ledger promised more than it does for the last page; "fingerprint" could be made again by anyone; "key" meant other things | Said plainly |
-
-### Left open on purpose
-
-- **Checkpoints** (step 39b, DSOR-AUD-04d). A rewrite from the edit on, and the newest records
-  removed, pass the checker.
-- **The checker uses the owner's login.** An auditor would want a read-only login of their own.
-- **The checker's read is not recorded.** DSOR-AUD-05b asks that reading audit be authorized and
-  audited; `pnpm verify-audit` reads every company's log as the owner and writes nothing.
-- **The owner must hold BYPASSRLS.** Neon's does; a deployment whose owner does not refuses every
-  record's commit, rather than keep it unchained, and the checker refuses to check.
-- **The owner can switch the trigger off**, as migration 020 does for its own change. Records kept
-  then have no chain, and the checker names them.
-- **Two database tests fail on a throwaway server**, as in steps 34 to 38c.
-
-## The rules this step meets
-
-| Rule | What it says | Spec | Tests |
-| --- | --- | --- | --- |
-| DSOR-AUD-04b | Audit records are tamper-evident through hash chaining | [§30](../../../specs/dsor/03-execution.md#30-audit-integrity-and-retention) | [`test/verify-audit.test.ts`](test/verify-audit.test.ts), [`test/audit-chain.db.test.ts`](test/audit-chain.db.test.ts) |
-| DSOR-AUD-04c | Every record belongs to exactly one chain | [§30](../../../specs/dsor/03-execution.md#30-audit-integrity-and-retention) | [`test/verify-audit.test.ts`](test/verify-audit.test.ts), [`test/audit-chain.db.test.ts`](test/audit-chain.db.test.ts) |
-
-**Next:** step 39b, checkpoints kept outside the database.
+| **B1** | The checker compares a checkpoint's place, not its fingerprint | (to ask) |
+| **B2** | The checker does not check the signature | (to ask) |
+| **B3** | The checkpoint leaves out the `no_company` chain | (to ask) |
+| **B4** | The checker ignores the checkpoint's age | (to ask) |
+| **B5** | `pnpm checkpoint-audit` signs a broken log | (to ask) |
+| **B6** | The checker reads only the newest checkpoint | (to ask) |
