@@ -492,7 +492,8 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
   // trap the same review measured: a view runs with its owner's rights, and its owner skips the
   // lock, so a view over the invoices shows every company to whoever may SELECT from it. So it
   // refuses an application that may itself SELECT from the whole of a table or view beside the
-  // tenant tables. Decision 156: it asks nothing more yet, and the rest waits for step 26. A grant
+  // tenant tables. Decision 156: it asks nothing more yet, and the rest waits for step 26b, which
+  // decision 159 made a step of its own beside step 26's money. A grant
   // that names its columns instead, even every one, is invisible to has_table_privilege, as step 17
   // found for writing; and unlike the questions about writing, this one is not asked one SET ROLE
   // away, or of a helper function's owner.
@@ -747,7 +748,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
   // `setval` choose the next one, and a review made PAY-5000 that way (decision 126).
   // Decision 156: this is the only sequence start-up asks about. The three in dsor, which give a
   // proposal its number, a move its place and a brake its number, are not asked about yet; that
-  // waits for step 26.
+  // waits for step 26b (decision 159).
   const { rows: payments } = await db.query<{ may: boolean }>(
     `SELECT ${forAnyRoleItCanActAs(
       (role) => `has_any_column_privilege(${role}, 'public.vendors', 'INSERT')

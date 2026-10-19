@@ -165,8 +165,10 @@ export async function cancelPayment(
   return { kind: "not_draft", status: current.status };
 }
 
-// STEP 26: `centsOf`, which compared two amounts of one currency in cents, is gone. Every limit is
-// compared through `exceeds` in exchange.ts now, in any two currencies (DSOR-MON-03, decision 159).
+// STEP 26: `centsOf`, which compared two amounts of one currency in cents, is gone. A limit is
+// compared through `exceeds` in exchange.ts now, in any two currencies (DSOR-MON-03, decision 159),
+// except the day's booking, which compares in its own statement, to stay safe under requests at
+// once, an amount `convertUp` has already put in the limit's currency (decision 160).
 
 /**
  * An amount a payment may carry, or why not.

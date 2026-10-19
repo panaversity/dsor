@@ -214,7 +214,7 @@ describe("DSOR-MON-06: del_100's day counts a bill in another currency in dollar
       // 0.01 PKR is 0.0000357... USD, and the day counts it as 0.01. Rounded down, it would count
       // as nothing, and fit in a full day.
       expect(outcome(await pay(INV_1010, "0.01", "PKR"))).toBe(
-        "LIMIT_EXCEEDED: 0.01 PKR, 0.01 USD, would take del_100 past its limit of 200000.00 USD a day",
+        "LIMIT_EXCEEDED: 0.01 PKR would take del_100 past its limit of 200000.00 USD a day",
       );
       expect(await theDay()).toBe("200000.00");
     }));
@@ -222,8 +222,9 @@ describe("DSOR-MON-06: del_100's day counts a bill in another currency in dollar
   it("DSOR-MON-06: a rupee payment that fails gives back what it booked, though the rate has moved since", (context) =>
     onOneDay(context, async () => {
       // The handler moves the rupee to 28 to the dollar, then refuses as nothing done, so the
-      // payment is FAILED and its reservation released. Given back at the new rate, 2,800,000.00
-      // PKR would be 100,000.00 USD, where it booked 10,000.00.
+      // payment is FAILED and its reservation released. 1,000,000.00 PKR booked 3,571.43 USD,
+      // rounded up; given back at the new rate it would be 35,714.29 (decision 160: an amount that
+      // converts with a remainder, so a release that rounded again would leave a cent behind).
       const door = makeDoor(PIPELINE, {
         "payment.create": (_args, _contract, askedBy, _tenant, _hash, requestId) => {
           useRateService("org_456", aRateService("org_456", { rates: { PKR: "28" } }));
@@ -241,7 +242,7 @@ describe("DSOR-MON-06: del_100's day counts a bill in another currency in dollar
       const answer = await door(
         AGENT,
         "payment.create",
-        { invoice: INV_1010, amount: { value: "2800000.00", currency: "PKR" } },
+        { invoice: INV_1010, amount: { value: "1000000.00", currency: "PKR" } },
         { idempotencyKey: "pay-and-the-rate-moves" },
       );
 
@@ -274,8 +275,43 @@ describe("DSOR-OPR-06: a dry run of a bill in another currency", () => {
       expect(outcome(await pay(INV_1010, "280.00", "PKR", "validate_only"))).toBe("result");
       // 280.01 PKR is 1.0000357... USD, counted as 1.01: one cent past the day.
       expect(outcome(await pay(INV_1010, "280.01", "PKR", "validate_only"))).toBe(
-        "LIMIT_EXCEEDED: 280.01 PKR, 1.01 USD, would take del_100 past its limit of 200000.00 USD a day",
+        "LIMIT_EXCEEDED: 280.01 PKR would take del_100 past its limit of 200000.00 USD a day",
       );
       expect(await theDay()).toBe("199999.00");
     }));
+});
+
+describe("decision 160: what the review found untested", () => {
+  it("DSOR-MON-04: a dry run of a bill that cannot be converted is refused too, and books nothing", async () => {
+    await asTheOwner(() =>
+      db.exec(`UPDATE dsor.delegations
+                  SET per_transaction_limit_value = NULL, per_transaction_limit_currency = NULL
+                WHERE tenant = 'org_456' AND id = 'del_100'`),
+    );
+    useRateService("org_456", aRateService("org_456", { down: true }));
+
+    expect(outcome(await pay(INV_1010, "2800000.00", "PKR", "validate_only"))).toBe(
+      "LIMIT_EXCEEDED: 2800000.00 PKR cannot be compared with del_100's limit of 200000.00 USD a day, so it is refused: org_456's rate service did not answer",
+    );
+    expect(await theDay()).toBe("0.00");
+  });
+
+  it("DSOR-MON-03: rates planted in the request's arguments, through the door, change nothing", async () => {
+    // Fields a contract does not name survive validation (decision 155), so these reach §21.10.
+    const answer = await callOperation(
+      AGENT,
+      "payment.create",
+      {
+        invoice: INV_1011,
+        amount: { value: "45000.00", currency: "GBP", rate: "100" },
+        rate: "100",
+        rates: { USD: "1", GBP: "100" },
+      },
+      { idempotencyKey: "planted-rates" },
+    );
+
+    expect(outcome(answer)).toBe(
+      "LIMIT_EXCEEDED: 45000.00 GBP is above del_100's limit of 50000.00 USD a payment",
+    );
+  });
 });

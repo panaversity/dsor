@@ -5782,3 +5782,42 @@ that cannot be converted counts as over the limit.
   so a limit has no other way to be compared (`DSOR-MON-03`).
 - **The rate a decision used is not yet recorded.** That is `DSOR-MON-05`, in the step that builds
   the decision bundle.
+
+## 160 · What the review of step 26 found, and what was chosen (2026-10-19)
+
+**Decided by:** Claude, on the standing rule that a review's findings are fixed or written down;
+open to reversal by the learner.
+
+The requirement-reviewer found no defect that breaks a guarantee. It checked the arithmetic against
+an independent reference on 200,000 random cases, signed amounts up to twenty digits and rates up to
+fifteen decimals: none wrong, and `convertUp` never below the exact value nor more than one cent above
+it. No request argument reaches a rate, and every path refuses an amount that cannot be converted.
+What it found:
+
+1. **A dry run of an amount that cannot be converted was untested.** The code refused it, and a dry
+   run that let it through passed every test. A test now asks it; broken on purpose, it fails.
+2. **"Rates in the request change nothing" was tested on the stage alone**, with empty arguments. A
+   test now plants `rates` in the arguments of a real request through the door; a stage that read
+   them fails it.
+3. **"A release gives back what it booked" was tested with an amount that converts exactly.** The
+   test now books 1,000,000.00 PKR, 3,571.43 USD after rounding up, so a release that converted again
+   would leave the day wrong; broken on purpose, it fails.
+4. **Two sentences said every limit goes through `exceeds`.** The day's booking compares in its own
+   statement, as it must to stay safe under requests at once (`DSOR-DEL-06a`), on an amount
+   `convertUp` already converted. `payment.ts` now says so, and this corrects decision 159's "a limit
+   has no other way to be compared".
+5. **The day's refusal named what the day counted the amount as**, "280.01 PKR, 1.01 USD, would
+   take...". Sending large dry runs, the agent could read the company's rate to fourteen digits.
+   Decision 148's rule is that a refusal names only what the caller sent, so the converted amount is
+   gone from the message. **Rejected:** recording rates as public, which holds for the reference
+   profile's central-bank rates and not for a rate a company negotiated with its bank.
+6. **The README was still step 25's**, and the map and `docs/status.md` did not know step 26.
+   Written with the step. The map's entry says "a table of exchange rates", and decision 159 chose a
+   service; the map is the official steps', so the README says where this build differs.
+7. **Written down, not fixed: a dry run reads the day's total without its currency.** If an
+   administrator changes a slip's daily currency in the middle of a day, the dry run can answer
+   "within" for a payment the booking then refuses. It needs the administrator, not the agent, it is
+   older than this step, and the real booking stays safe.
+
+Earlier folders were not edited: the READMEs of steps 18, 22 and 25 still say their start-up gaps
+close "in step 26". They close in 26b (decision 159).

@@ -2118,12 +2118,10 @@ const checkTheSlipsLimit: Stage["run"] = async (context) => {
     );
   }
 
-  // NEW IN STEP 26: an amount in another currency says what the day counted it as.
-  const asCounted =
-    counted === amount
-      ? `${amount.value} ${amount.currency}`
-      : `${amount.value} ${amount.currency}, ${counted.value} ${counted.currency},`;
-  const overTheDay = `${asCounted} would take ${slip.id} past its limit of ${daily.value} ${daily.currency} a day`;
+  // Decision 160: the refusal names the amount the caller sent, and not what the day counted it
+  // as, which would tell the agent the company's rate (decision 148: a refusal names only what the
+  // caller sent).
+  const overTheDay = `${amount.value} ${amount.currency} would take ${slip.id} past its limit of ${daily.value} ${daily.currency} a day`;
 
   try {
     // A dry run reserves nothing (DSOR-OPR-06): it reads the room left and answers from it. The
