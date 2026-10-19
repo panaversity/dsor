@@ -347,13 +347,22 @@ describe("a number the application may choose", () => {
   });
 
   it("DSOR-TEN-01a: a sequence the application may become the owner of is refused", async () => {
-    // Its owner may ALTER SEQUENCE ... RESTART, with no UPDATE granted at all. PostgreSQL will not
-    // hand over a sequence that belongs to a table's column, so this one belongs to nothing.
+    // Its owner may ALTER SEQUENCE ... RESTART with no UPDATE at all: the owner here gives up its
+    // own rights on it, which an owner may, and keeps ALTER, which only ownership gives. Found by
+    // breaking the check on purpose: while the owner kept UPDATE, the UPDATE question refused it
+    // first, and the ownership question had no case of its own. PostgreSQL will not hand over a
+    // sequence that belongs to a table's column, so this one belongs to nothing.
     await asTheOwner(() =>
       db.exec(`CREATE SEQUENCE public.ticket_numbers; CREATE ROLE keeper;
                ALTER SEQUENCE public.ticket_numbers OWNER TO keeper;
+               REVOKE ALL ON SEQUENCE public.ticket_numbers FROM keeper;
                GRANT keeper TO dsor_runtime WITH INHERIT FALSE`),
     );
+
+    // Not testing nothing: one SET ROLE, and the next number is whatever the application says.
+    await db.exec("SET ROLE keeper");
+    await db.exec("ALTER SEQUENCE public.ticket_numbers RESTART WITH 5000");
+    await db.exec("SET ROLE dsor_runtime");
 
     await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
       /may choose the next number of `public\.ticket_numbers`/,
