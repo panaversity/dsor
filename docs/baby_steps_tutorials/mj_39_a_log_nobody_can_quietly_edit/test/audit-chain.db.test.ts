@@ -132,6 +132,21 @@ describe("C4: each edit is named", () => {
   });
 });
 
+// Found by break B7: the lock alone kept every record to one predecessor, so the keys behind it
+//   had no test. Here the owner tries what the lock never lets the trigger do.
+describe("C2: the database's keys", () => {
+  it("DSOR-AUD-04c: the owner gives a record the predecessor, or the place, of the record before it: the database refuses both", async () => {
+    await aRead();
+    const record = await aRead();
+    expect(ownerAudit("fork", record)).toMatchObject({
+      refused: expect.stringContaining("audit_one_successor"),
+    });
+    expect(ownerAudit("twin", record)).toMatchObject({
+      refused: expect.stringContaining("audit_one_place"),
+    });
+  });
+});
+
 describe("C5: pnpm verify-audit", () => {
   it(
     "DSOR-AUD-04b: a whole log: every chain whole, exit 0; one record turned over: that record named, exit 1; turned back: exit 0",

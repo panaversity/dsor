@@ -7,6 +7,9 @@
 // - rehash <id>: the same, and that record's fingerprint written again too. Rolled back.
 // - remove <id>: delete one record, then check. Rolled back.
 // - flip <id>: turn one record's authorization over, and commit. Run twice, it puts it back.
+// - fork <id>: give the record the predecessor of the record before it, so two records follow one.
+//   Rolled back; the database's key refuses it (since break B7).
+// - twin <id>: give the record the place of the record before it. Rolled back; refused too.
 // Run by the tests as: node test/owner-audit.ts verify | edit <id> | rehash <id> | remove <id> | flip <id>
 import pg from "pg";
 import { readChains, verifyChains } from "../src/audit-chain.ts";
@@ -33,6 +36,22 @@ try {
   let result: unknown;
   if (command === "verify") {
     result = verifyChains(await readChains(client));
+  } else if (command === "fork" || command === "twin") {
+    const column = command === "fork" ? "previous_hash" : "chain_position";
+    await client.query("BEGIN");
+    try {
+      await client.query(
+        `UPDATE dsor.audit a SET ${column} = (SELECT b.${column} FROM dsor.audit b
+            WHERE b.chain = a.chain AND b.chain_position = a.chain_position - 1)
+          WHERE record_id = $1`,
+        [id],
+      );
+      result = { changed: true };
+    } catch (error) {
+      result = { refused: (error as Error).message };
+    } finally {
+      await client.query("ROLLBACK");
+    }
   } else if (command === "flip") {
     await client.query(FLIP, [id]);
     result = { flipped: id };
