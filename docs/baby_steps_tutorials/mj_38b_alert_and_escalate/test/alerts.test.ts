@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 import type { Answer } from "../src/envelope.ts";
 import type { RequestEnvelope } from "../src/request.ts";
-import { AGENT, CFO, keyed, SUPERVISOR } from "./helpers.ts";
+import { AGENT, CFO, DEL_100, keyed, shippedRoles, SUPERVISOR } from "./helpers.ts";
 import { heard, ruleWorldOnTuesday, type RuleWorld } from "./rule-world.ts";
 
 const INV_1002 = "dsor://org_456/invoice/INV-1002";
@@ -196,6 +196,29 @@ describe("C5: only DSoR's own scheduled login may escalate", () => {
       expect(await w.proposals.alerts("org_456")).toMatchObject([{ proposal: id, state: "open" }]);
     },
   );
+
+  // Found by break B5: no person's role holds alert:escalate, and an agent's slip needs a signer who
+  //   holds it, so the system-only guard passed every test without it. Here the AP supervisor's
+  //   role holds it too, and the guard alone refuses user_123 and user_123's agent.
+  it("DSOR-UNK-04c: with alert:escalate in the AP supervisor's role, user_123 and the agent under a slip that lists it are still refused", async () => {
+    const roles = JSON.parse(shippedRoles.text) as Record<string, string[]>;
+    roles["ap_supervisor"] = [...roles["ap_supervisor"]!, "alert:escalate"];
+    const table = { file: "roles.json", text: JSON.stringify(roles) };
+    const listing = { ...DEL_100, permissions: [...DEL_100.permissions, "alert:escalate"] };
+    const w = await ruleWorldOnTuesday(
+      undefined,
+      [listing],
+      undefined,
+      undefined,
+      undefined,
+      table,
+    );
+    const id = await unknownPayment(w);
+    w.clock.now += 2 * HOUR;
+    expect(await escalate(w, SUPERVISOR)).toMatchObject({ code: "AUTHORIZATION_DENIED" });
+    expect(await escalate(w, AGENT)).toMatchObject({ code: "AUTHORIZATION_DENIED" });
+    expect(await w.proposals.alerts("org_456")).toMatchObject([{ proposal: id, state: "open" }]);
+  });
 
   it("DSOR-UNK-04c: dsor-scheduler in org_456 names org_789's company: refused, and nothing is escalated", async () => {
     const w = await ruleWorldOnTuesday();
