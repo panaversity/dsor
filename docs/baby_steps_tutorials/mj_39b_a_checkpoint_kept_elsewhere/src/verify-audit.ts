@@ -4,19 +4,18 @@
 // check: a login that cannot see every record would see an empty log and call it whole (found by
 // step 39's review, H1). The owner's login comes from .env and is never printed (DSOR-AUD-04b;
 // step 39's README, decision D4).
-// NEW IN STEP 39b: it also holds every chain against every checkpoint whose signature holds with the
-// committed public key, and exits 2 when no checkpoint 24 hours old or less vouches for the log
-// (step 39b's README, claims C3 to C6).
+// NEW IN STEP 39b: it also holds every chain against every checkpoint of this database whose
+// signature holds with the committed public key, and exits 2 when no checkpoint 24 hours old or
+// less, by this computer's clock, vouches for the log (step 39b's README, claims C3 to C6).
 import { existsSync } from "node:fs";
 import pg from "pg";
 import { checkAgainstCheckpoints } from "./checkpoint-check.ts";
+import { readLogAsOwner } from "./checkpoint-db.ts";
 import {
   checkpointDir,
   PUBLIC_KEY_FILE,
   readCheckpointFiles,
-  readLog,
   readPublicKey,
-  seesEveryRecord,
 } from "./checkpoint-files.ts";
 import { loadDotEnv, requireEnv } from "./postgres.ts";
 
@@ -24,30 +23,21 @@ import { loadDotEnv, requireEnv } from "./postgres.ts";
 async function check(): Promise<0 | 1 | 2> {
   loadDotEnv(["DSOR_MIGRATION_URL", "DSOR_CHECKPOINT_DIR"]);
   const owner = new pg.Pool({ connectionString: requireEnv("DSOR_MIGRATION_URL"), max: 1 });
-  const client = await owner.connect();
-  let log: Awaited<ReturnType<typeof readLog>>;
-  try {
-    // NEW IN STEP 39b: one moment for the records, the heads, and the clock (decision D12).
-    await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
-    if (!(await seesEveryRecord(client))) {
-      console.log(
-        "not checked: this login cannot see every record of the log (it needs BYPASSRLS)",
-      );
-      return 2;
-    }
-    log = await readLog(client);
-    await client.query("COMMIT");
-  } finally {
-    client.release();
-    await owner.end();
+  // NEW IN STEP 39b: one moment for the records and the heads, read trusting as little of the
+  //   owner's database as it can (decisions D12 and D15).
+  const read = await readLogAsOwner(owner).finally(() => owner.end());
+  if ("refused" in read) {
+    console.log(`${read.exit === 1 ? "broken" : "not checked"}: ${read.refused}`);
+    return read.exit;
   }
   const publicKey = existsSync(PUBLIC_KEY_FILE) ? readPublicKey(PUBLIC_KEY_FILE) : undefined;
   const files = readCheckpointFiles(checkpointDir());
-  const checked = checkAgainstCheckpoints(log.rows, log.heads, files, publicKey, log.now);
+  // This computer's clock, never the database's, which the owner controls (step 39b's review, H2).
+  const now = new Date().toISOString();
+  const checked = checkAgainstCheckpoints(read.log, files, publicKey, now);
   for (const { name, broken } of checked.files) {
-    console.log(
-      `checkpoint ${name}: ${broken === undefined ? "signature holds" : `broken: ${broken}`}`,
-    );
+    const said = broken === undefined ? "signature holds" : `broken: ${broken}`;
+    console.log(`checkpoint ${name}: ${said}`);
   }
   for (const { chain, records, broken: at } of checked.reports) {
     if (at === undefined) {

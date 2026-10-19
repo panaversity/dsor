@@ -4,13 +4,14 @@
 // need (DSOR-AUD-04b, DSOR-AUD-04d; step 39b's README, claims C2, C4, C5).
 import { spawnSync } from "node:child_process";
 import { generateKeyPairSync } from "node:crypto";
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Answer } from "../src/envelope.ts";
 import { call } from "../src/pipeline.ts";
+import { PUBLIC_KEY_FILE } from "../src/checkpoint-files.ts";
 import { createDbLog } from "../src/postgres.ts";
 import { dbRegistry, newPool, ownerCheckpoint, requestId } from "./db.ts";
 import { SUPERVISOR } from "./helpers.ts";
@@ -141,6 +142,35 @@ describe("C4: the careful editor, against the checkpoint", () => {
   });
 });
 
+describe("the review, on the database", () => {
+  it("DSOR-AUD-04b: H1: org_456 rewritten after the checkpoint: the routine checkpoint is refused, and no file written", () => {
+    const before = readdirSync(checkpoints);
+    const taken = ownerCheckpoint("rewrite-take", firstOf456(), checkpoints, privateFile);
+    expect(taken).toStrictEqual({
+      refused: "the log or a checkpoint is broken, and a new checkpoint would vouch for the break",
+    });
+    expect(readdirSync(checkpoints)).toStrictEqual(before);
+  });
+
+  it("DSOR-AUD-04b: H1: every checkpoint file deleted: the signer refuses, because the last one it signed is gone", () => {
+    const empty = join(dir, "emptied");
+    expect(ownerCheckpoint("take", empty, privateFile)).toStrictEqual({
+      refused: `the newest checkpoint this key signed, ${readdirSync(checkpoints).at(-1)}, is not the newest in the folder`,
+    });
+  });
+
+  it("DSOR-AUD-04b: H2: an owner's own now() that says 2099, put first: the scripts still read PostgreSQL's clock", () => {
+    const { databaseNow } = ownerCheckpoint("clock") as { databaseNow: string };
+    expect(databaseNow.startsWith("2099")).toBe(false);
+  });
+
+  it("DSOR-AUD-04b: H3: a view in place of the log: refused, never read", () => {
+    expect(ownerCheckpoint("view", checkpoints, publicFile)).toStrictEqual({
+      refused: "dsor.audit or dsor.audit_heads is not a plain table",
+    });
+  });
+});
+
 describe("C5: the scripts", () => {
   const run = (name: string, env: NodeJS.ProcessEnv) =>
     spawnSync(process.execPath, [script(name)], {
@@ -161,19 +191,33 @@ describe("C5: the scripts", () => {
     }
   });
 
-  it("DSOR-AUD-04b: pnpm checkpoint-audit signs with the key DSOR_CHECKPOINT_KEY names, into DSOR_CHECKPOINT_DIR, exit 0", () => {
+  // With a key of its own: the shared key's note says its last checkpoint is in another folder.
+  //   When the learner has committed their own public key, this key is not its pair, and the script
+  //   must refuse; before that, it signs.
+  it("DSOR-AUD-04b: pnpm checkpoint-audit signs with the key DSOR_CHECKPOINT_KEY names, into DSOR_CHECKPOINT_DIR, exit 0; or, when another public key is committed, refuses, exit 2", () => {
     const out = join(dir, "by-script");
+    const own = generateKeyPairSync("ed25519");
+    const ownPrivate = join(dir, "script-private.pem");
+    const ownPublic = join(dir, "script-public.pem");
+    writeFileSync(ownPrivate, own.privateKey.export({ type: "pkcs8", format: "pem" }));
+    writeFileSync(ownPublic, own.publicKey.export({ type: "spki", format: "pem" }));
     const taken = run("checkpoint-audit.ts", {
-      DSOR_CHECKPOINT_KEY: privateFile,
+      DSOR_CHECKPOINT_KEY: ownPrivate,
       DSOR_CHECKPOINT_DIR: out,
     });
-    expect(taken.stdout).toMatch(/^checkpoint written: .*\.json, \d+ chains$/m);
-    expect(taken.status).toBe(0);
-    const checked = ownerCheckpoint("verify", out, publicFile) as Checked;
-    expect(checked.files).toHaveLength(1);
-    expect(checked.files[0]!.broken).toBeUndefined();
     // The private key is never printed.
     expect(taken.stdout + taken.stderr).not.toContain("PRIVATE KEY");
+    if (existsSync(PUBLIC_KEY_FILE)) {
+      expect(taken.stdout).toContain("not taken: this private key is not the pair");
+      expect(taken.status).toBe(2);
+      return;
+    }
+    expect(taken.stdout).toMatch(/^checkpoint written: .*\.json, \d+ chains$/m);
+    expect(taken.stdout).toContain("for learning only");
+    expect(taken.status).toBe(0);
+    const checked = ownerCheckpoint("verify", out, ownPublic) as Checked;
+    expect(checked.files).toHaveLength(1);
+    expect(checked.files[0]!.broken).toBeUndefined();
   });
 
   it("DSOR-AUD-04b: pnpm checkpoint-audit with no private key named: signs nothing, exit 2", () => {

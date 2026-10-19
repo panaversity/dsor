@@ -1,6 +1,6 @@
 // Step 39b: the story's log, its keys, and checkpoints made from them, shared by the checkpoint
 // tests. Not a test file.
-import { generateKeyPairSync, type KeyObject } from "node:crypto";
+import { generateKeyPairSync, type KeyObject, type KeyPairKeyObjectResult } from "node:crypto";
 import { fingerprint, GENESIS, type ChainHead, type ChainRow } from "../src/audit-chain.ts";
 import {
   checkpointFileName,
@@ -10,7 +10,11 @@ import {
   type Checkpoint,
   type DatabaseId,
 } from "../src/checkpoint.ts";
-import { checkAgainstCheckpoints, type Checked } from "../src/checkpoint-check.ts";
+import {
+  checkAgainstCheckpoints,
+  type CheckpointFile,
+  type Checked,
+} from "../src/checkpoint-check.ts";
 
 /** A chain of records, fingerprinted as the database does. */
 export function chainOf(chain: string, records: (string | null)[][]): ChainRow[] {
@@ -45,8 +49,8 @@ export function rewritten(): ChainRow[] {
   return [...chainOf("org_456", story), ...LOG().filter((r) => r.chain === "no_company")];
 }
 
-export const KEYS = generateKeyPairSync("ed25519");
-export const OTHER = generateKeyPairSync("ed25519");
+export const KEYS: KeyPairKeyObjectResult = generateKeyPairSync("ed25519");
+export const OTHER: KeyPairKeyObjectResult = generateKeyPairSync("ed25519");
 export const AT_9 = "2026-10-20T09:00:00.000Z";
 export const AT_10 = "2026-10-20T10:00:00.000Z";
 /** The story's database, as PostgreSQL names it. */
@@ -76,7 +80,7 @@ export function fileOf(
 /** The log held against these files, as verify-audit would, by the checker's clock `now`. */
 export function check(
   rows: ChainRow[],
-  files: { name: string; text: string }[],
+  files: CheckpointFile[],
   now: string = AT_10,
   heads?: ReadonlyMap<string, ChainHead>,
 ): Checked {

@@ -1,25 +1,30 @@
 // NEW IN STEP 39b: the owner takes checkpoints, tampers as the careful editor would, and reads what
 // the checker says against the checkpoints. Not a test file: checkpoint.db.test.ts starts it
 // through ownerCheckpoint in test/db.ts. The owner's login stays in this child, and what it prints
-// is redacted first (step 09's README, decision 18). Every tamper is rolled back. The commands:
-// - take <dir> <private key file>: a checkpoint of the log as it is, written to <dir>.
-// - verify <dir> <public key file>: the log held against every checkpoint in <dir>, read only.
+// is redacted first (step 09's README, decision 18). Everything is rolled back but the file a take
+// writes. The commands:
+// - take <dir> <private key file>: a checkpoint of the log as it is, as pnpm checkpoint-audit takes
+//   it, written to <dir>.
+// - verify <dir> <public key file>: the log held against every checkpoint in <dir>.
 // - rewrite <id> <dir> <public key file>: turn the record over, write every fingerprint from it to
 //   the end of its chain again, and the chain's head; then verify (step 39b's README, P1).
-// - trim <chain> <dir> <public key file>: remove the chain's newest record and set its head back;
-//   then verify.
+// - rewrite-take <id> <dir> <private key file>: the same rewrite, then try to take a checkpoint
+//   (the review, H1).
+// - trim <chain> <dir> <public key file>: remove the chain's newest record, set its head back, and
+//   verify.
 // - edit-take <id> <dir> <private key file>: turn the record over, then try to take a checkpoint.
+// - view <dir> <public key file>: put a view in place of the log, then read it (the review, H3).
+// - clock: name a function public.now() that says 2099, put it first, then read the database's
+//   clock as the scripts do (the review, H2).
 // - chains: every chain the log holds, and each chain's head. first <chain>: its first record's id.
 // Run by the tests as: node test/owner-checkpoint.ts <command> <words>
+import { createPublicKey } from "node:crypto";
 import pg from "pg";
-import {
-  readCheckpointFiles,
-  readLog,
-  readPrivateKey,
-  readPublicKey,
-} from "../src/checkpoint-files.ts";
+import { checkpointHash, takeCheckpoint, writeCheckpoint } from "../src/checkpoint.ts";
 import { checkAgainstCheckpoints } from "../src/checkpoint-check.ts";
-import { takeCheckpoint, writeCheckpoint } from "../src/checkpoint.ts";
+import { NotAPlainLog, readLog } from "../src/checkpoint-db.ts";
+import { readCheckpointFiles, readPrivateKey, readPublicKey } from "../src/checkpoint-files.ts";
+import { mayTake, readLastSigned, writeLastSigned } from "../src/checkpoint-signer.ts";
 import { loadDotEnv, requireEnv } from "../src/postgres.ts";
 import { redact } from "./db.ts";
 
@@ -61,41 +66,64 @@ const TRIM = [
 
 /** The log held against every checkpoint in the folder, inside the open transaction. */
 async function verify(client: pg.PoolClient, dir: string, keyFile: string): Promise<unknown> {
-  const { rows, heads, now } = await readLog(client);
-  return checkAgainstCheckpoints(
-    rows,
-    heads,
-    readCheckpointFiles(dir),
-    readPublicKey(keyFile),
-    now,
-  );
+  const log = await readLog(client);
+  const now = new Date().toISOString();
+  return checkAgainstCheckpoints(log, readCheckpointFiles(dir), readPublicKey(keyFile), now);
+}
+
+/** A checkpoint taken as pnpm checkpoint-audit takes one, inside the open transaction. */
+async function take(client: pg.PoolClient, dir: string, keyFile: string): Promise<unknown> {
+  const key = readPrivateKey(keyFile);
+  const log = await readLog(client);
+  const now = new Date().toISOString();
+  const checked = checkAgainstCheckpoints(log, readCheckpointFiles(dir), createPublicKey(key), now);
+  const decision = mayTake(checked, readLastSigned(keyFile));
+  if ("refused" in decision) return decision;
+  const taken = takeCheckpoint(log, now, decision.previous);
+  if ("refused" in taken) return taken;
+  const name = writeCheckpoint(dir, taken.checkpoint, key);
+  writeLastSigned(keyFile, { name, hash: checkpointHash(taken.checkpoint) });
+  return { written: name };
+}
+
+/** The careful editor's rewrite, from this record on. */
+async function rewrite(client: pg.PoolClient, id: string): Promise<void> {
+  await client.query("SELECT set_config('test.id', $1, true)", [id]);
+  await client.query(FLIP, [id]);
+  await client.query(REWRITE);
 }
 
 const client = await pool.connect();
 try {
   let result: unknown;
   await client.query("BEGIN");
-  if (command === "take" || command === "edit-take") {
-    const [id, dir, keyFile] = command === "take" ? [undefined, ...words] : words;
-    if (id !== undefined) await client.query(FLIP, [id]);
-    const { rows, heads, now } = await readLog(client);
-    const taken = takeCheckpoint(rows, heads, now);
-    result =
-      "checkpoint" in taken
-        ? { written: writeCheckpoint(dir!, taken.checkpoint, readPrivateKey(keyFile!)) }
-        : taken;
-  } else if (command === "verify") {
-    result = await verify(client, words[0]!, words[1]!);
-  } else if (command === "rewrite") {
-    const [id, dir, keyFile] = words;
-    await client.query("SELECT set_config('test.id', $1, true)", [id]);
-    await client.query(FLIP, [id]);
-    await client.query(REWRITE);
-    result = await verify(client, dir!, keyFile!);
+  const [a, b, c] = words;
+  if (command === "take") result = await take(client, a!, b!);
+  else if (command === "verify") result = await verify(client, a!, b!);
+  else if (command === "rewrite") {
+    await rewrite(client, a!);
+    result = await verify(client, b!, c!);
+  } else if (command === "rewrite-take") {
+    await rewrite(client, a!);
+    result = await take(client, b!, c!);
+  } else if (command === "edit-take") {
+    await client.query(FLIP, [a]);
+    result = await take(client, b!, c!);
   } else if (command === "trim") {
-    const [chain, dir, keyFile] = words;
-    for (const sql of TRIM) await client.query(sql, [chain]);
-    result = await verify(client, dir!, keyFile!);
+    for (const sql of TRIM) await client.query(sql, [a]);
+    result = await verify(client, b!, c!);
+  } else if (command === "view") {
+    await client.query("ALTER TABLE dsor.audit RENAME TO audit_real");
+    await client.query("CREATE VIEW dsor.audit AS SELECT * FROM dsor.audit_real");
+    result = await verify(client, a!, b!).catch((error: unknown) =>
+      error instanceof NotAPlainLog ? { refused: error.message } : Promise.reject(error),
+    );
+  } else if (command === "clock") {
+    await client.query(
+      "CREATE FUNCTION public.now() RETURNS timestamptz LANGUAGE sql AS $$ SELECT timestamptz '2099-01-01 00:00:00+00' $$",
+    );
+    await client.query("SET LOCAL search_path TO public, pg_catalog");
+    result = { databaseNow: (await readLog(client)).databaseNow };
   } else if (command === "chains") {
     const chains = await client.query<{ chain: string }>(
       "SELECT DISTINCT chain FROM dsor.audit ORDER BY chain",
@@ -107,7 +135,7 @@ try {
   } else if (command === "first") {
     const { rows } = await client.query(
       "SELECT record_id FROM dsor.audit WHERE chain = $1 AND chain_position = 1",
-      [words[0]],
+      [a],
     );
     result = rows[0];
   } else {
