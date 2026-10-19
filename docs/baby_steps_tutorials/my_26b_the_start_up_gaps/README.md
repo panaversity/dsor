@@ -1,112 +1,112 @@
-# Step 26 · Money done right
+# Step 26b · The start-up gaps
 
-**New in this step:** two amounts in two currencies are compared exactly, at rates DSoR looks up
-itself, and an amount it cannot convert counts as over the limit.
+**New in this step:** when the program starts, it asks the database about every way its login could
+write, read or number things past its rights, not only the obvious ones.
 
 ## In plain words
 
-Until this step, every amount DSoR compared was in dollars, like `del_100`'s limits: 50,000.00 USD a
-payment and 200,000.00 USD a day. Now `VENDOR-44` sends two bills in other currencies: INV-1010 for
-2,800,000.00 Pakistani rupees (PKR), and INV-1011 for 45,000.00 British pounds (GBP).
+Every time this program starts, it asks the database one question in many forms: "what may my own
+login do?" If the answer is too much, it refuses to start. Since step 09 it has asked whether the
+login may rewrite the log; since step 11, whether it can skip the second lock; since step 17,
+whether it may change a payment it should only create. The login is `dsor_runtime`, and the person
+who sets it up is a database administrator. The agent never touches any of this.
 
-To compare a bill in rupees with a limit in dollars, DSoR needs an *exchange rate*: how many rupees
-one dollar buys. Each company now has a **rate service** to ask. In this story it says that one US
-dollar buys 280 PKR, or 0.80 GBP, and it says when it published that. DSoR asks it itself, at the
-moment it decides. It never takes a rate from the request: an agent that says a dollar buys a
-million rupees could make any bill look small.
+Steps 18, 22 and 25 found four questions nobody had asked, and wrote them down (decision 145). Each
+one is a door an administrator can open by mistake, with one grant or one line of SQL. This step
+asks all four:
 
-Then DSoR compares **exactly**. "Is 2,800,000 PKR more than 50,000 USD?" becomes "is 2,800,000 more
-than 50,000 × 280, which is 14,000,000?" It multiplies and never divides, so nothing is ever rounded.
+- **A rule on a tenant table.** A rule is code the table's owner attaches to it, like a trigger. It
+  runs inside this program's own statements, with the owner's rights. Start-up asked about triggers
+  and never about rules.
+- **A view the program may write through.** A view is a saved query that looks like a table. It
+  runs with its owner's rights. Start-up asked whether the program may *read* a view, never whether
+  it may *write* through one.
+- **A view the program may read another way.** Start-up asked whether the login itself may read a
+  view. It never asked a role the login can become with one `SET ROLE`, a helper function's owner, or
+  a grant on some of the view's columns only.
+- **A number the program may set.** PostgreSQL hands out numbers from *sequences*: PAY-902, `prop_1`,
+  `ctl_1`. Start-up asked about the payments' sequence only. The program should take the next number
+  and never choose one.
 
-```ts
-const rates = ratesOf("org_456"); // org_456's rate service, asked only if a rate is needed
-exceeds(money("2800000.00", "PKR"), money("50000.00", "USD"), rates); // false: 10,000.00 USD
-exceeds(money("45000.00", "GBP"), money("50000.00", "USD"), rates); // true: 56,250.00 USD
-```
-
-So the bill in rupees is paid, and the bill in pounds is refused.
-
-The day's limit counts in dollars. A payment in rupees is converted when it is booked against the
-day, and rounded **up** to the cent: 1,000,000.00 PKR is 3,571.428571... USD, and the day counts
-3,571.43. The day can count a fraction of a cent too much, never too little. The booking keeps that
-number, so a payment that fails gives back exactly what it took, even if the rate has moved since.
-
-When DSoR cannot convert, the strict answer wins: the limit counts as exceeded, and the refusal says
-why. It cannot convert when the service has no rate for the currency, when its newest rates are more
-than three days old, when it does not answer, or when the company has no service at all. Two amounts
-in one currency need no rate, so a bill in dollars is paid even while the service is down.
+Each question is asked the same way: of the login itself, of every role it can become, and of every
+helper function's owner. And each looks at every relation by what it is, not by what its schema is
+called.
 
 ## Why it matters
 
-Step 25 refused every bill in another currency than the limit's: "cannot be compared". That is
-safe, and it means the agent can never pay a foreign bill, not even one rupee. Someone will want a
-quick fix, and each quick fix is a hole. These were measured in Node:
+Each of these was measured, with start-up content every time:
 
-- **Compare the numbers, and forget the currency.** 45,000 is less than 50,000, so 45,000.00 GBP
-  goes through a limit of 50,000.00 USD. At 0.80 pounds to the dollar it is 56,250.00 USD.
-- **Check only the amounts in dollars.** Then 50,000,000.00 PKR, about 178,571 USD, goes through with
-  no check at all. The specification names this hole in
-  [§9](../../../specs/dsor/01-model.md#9-money-and-currency).
-- **Convert with JavaScript numbers.** They are not exact for decimals: `0.1 + 0.2` is
-  `0.30000000000000004`. At 281.15 rupees to the dollar, 14,057,500.00 PKR is exactly 50,000.00 USD,
-  and dividing gives `50000.00000000001`, so a payment exactly at the limit is refused.
+- **A rule** on the invoices that inserts a slip: an ordinary `invoice.issue` signed a new
+  permission slip, with no limit at all, for an agent nobody named.
+- **A view** over the slips, with INSERT granted and no SELECT: the program wrote itself a slip.
+  The same view over the log, with UPDATE: one statement rewrote every company's records, and with
+  DELETE, one statement erased them.
+- **A view** over every company's invoices, readable one `SET ROLE` away, or through a helper, or by
+  two of its columns: both companies' INV-1008, through a lock that should show one.
+- **`setval`** on the proposals' sequence chose prop_4999 for the next proposal.
 
-## What changed since step 25
+None of these needs a clever agent. Each needs one careless grant, and decision 119 builds this
+program against a careless administrator, not only a careful one.
+
+## What changed since step 26
 
 ```bash
 # in Git Bash on Windows
-diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_25_revocation_and_the_emergency_brake ../my_26_money_done_right
+diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_26_money_done_right ../my_26b_the_start_up_gaps
 ```
 
 | File | What |
 | --- | --- |
-| `src/exchange.ts` | new — `compare`, `exceeds` and `covers`, exact in any two currencies because they multiply and never divide; `CannotConvert` for a missing, zero, negative or unreadable rate; `convertUp`, rounded up to the cent; `plus` |
-| `src/rates.ts` | new — the fake rate service, one per company, which a test or the demo can change, make old, or switch off; `ratesOf`, which asks it once, only when a rate is needed, copies the answer, and refuses rates more than three days old or dated in the future |
-| `migrations/027_bills_in_rupees_and_pounds.sql` | new — VENDOR-44's INV-1010, 2,800,000.00 PKR, and INV-1011, 45,000.00 GBP |
-| `src/operations.ts` | §21.10 compares the limit per payment through `exceeds`, books the day's amount converted and rounded up, and treats an amount it cannot convert as over, with the reason; it asks for the company first, because the rates are the company's |
-| `src/money.ts`, `src/authority.ts` | export the decimal pattern and step 19's two time checks, for the new files |
-| `src/payment.ts` | `centsOf` removed; a payment is still in its invoice's currency |
-| `src/main.ts` | the bill in rupees paid, the one in pounds refused, and rupees refused at rates four days old |
-| `src/database.ts` | two comments: the start-up gaps wait for step 26b |
-| `test/exchange.test.ts`, `test/rates.test.ts`, `test/money-limits.test.ts` | new — exactness at the boundary, every reason a rate cannot be used, both limits in other currencies, the dry run, rates planted in a request, and a failed payment giving back what it booked |
-| `test/main.test.ts` | the demo's money section, and the log's new totals |
-| `test/bounded-queries.test.ts`, `test/classified-reads.test.ts`, `test/versions.test.ts` | four invoices in the story, not two |
-| `test/delegations.test.ts`, `test/limits.test.ts`, `test/payments.test.ts` | titles and comments that said another currency cannot be compared |
-| `test/support/story.ts` | the story's tests put the two bills back |
+| `src/database.ts` | four new questions at start-up: a rule on a tenant table; a write to anything beside the tenant tables; the read question asked of every role and by column; every sequence, by `setval` and by owner. Relations are chosen by what they are, not by their schema's name |
+| `test/start-up-gaps.test.ts` | new — each gap measured first, then refused: rules on all eleven tenant tables, write-only views over the slips and the log, side tables, three ways round the read question, two schema names that looked like PostgreSQL's own, and every sequence |
+| `package.json` | the step's name |
+
+The demo does not change. Nothing in it is a database administrator's mistake.
 
 ## Run it
 
 ```bash
 pnpm install
-pnpm start
+pnpm test test/start-up-gaps.test.ts
 ```
-
-The part that is this step comes after the brake:
 
 ```text
-VENDOR-44 bills in rupees and in pounds. One US dollar buys 280 PKR, or 0.80 GBP:
-
-accounts-payable-fte  COMMITTED                dsor://org_456/payment/PAY-914  draft      compensatable
-                        withheld: amount (clearance)
-accounts-payable-fte  LIMIT_EXCEEDED           retry: after_delay          45000.00 GBP is above del_100's limit of 50000.00 USD a payment
-  the day had used 184600.00 USD, and has used 194600.00 USD of 200000.00
-
-The rate service has published nothing for four days. A bill in rupees, and one in dollars:
-
-accounts-payable-fte  LIMIT_EXCEEDED           retry: after_delay          28000.00 PKR cannot be compared with del_100's limit of 50000.00 USD a payment, so it is refused: org_456's newest rates are more than three days old
-accounts-payable-fte  COMMITTED                dsor://org_456/payment/PAY-915  draft      compensatable
-                        withheld: amount (clearance)
+ ✓ test/start-up-gaps.test.ts > a rule on a tenant table > DSOR-DEL-01a: a rule that signs a slip inside the application's own invoice.issue is refused
+ ✓ test/start-up-gaps.test.ts > a rule on a tenant table > DSOR-EXE-02: a rule on dsor.audit is refused, whatever it does
+ ✓ test/start-up-gaps.test.ts > a view the application may write through > DSOR-DEL-01a: a view over the slips that the application may write through, and not read, is refused
+ ✓ test/start-up-gaps.test.ts > a view the application may write through > DSOR-AUD-04a: a view over the log that the application may update, and not read, is refused
+ ✓ test/start-up-gaps.test.ts > a view the application may read some other way > DSOR-TEN-01b: a view readable one SET ROLE away is refused
+ ✓ test/start-up-gaps.test.ts > a schema that only looks like one PostgreSQL keeps for itself > DSOR-TEN-01b: a view over every company's invoices in pgxtemp is refused
+ ✓ test/start-up-gaps.test.ts > a number the application may set > an application that may set dsor.proposal_numbers is refused at start-up
+ ✓ test/start-up-gaps.test.ts > a number the application may set > taking the next number, which the application must, does not refuse start-up
+   … 26 more
+ Test Files  1 passed (1)
+      Tests  34 passed (34)
 ```
 
-The rupees are paid, and the day rises by exactly 10,000.00 USD. The pounds are refused before
-anything is booked: 45,000.00 GBP is 56,250.00 USD, above the limit of one payment. Then the rate
-service is made four days old for a moment. A bill in rupees cannot be compared, and is refused with
-the reason. A bill in dollars needs no rate, and is paid. The agent's receipts withhold the amount,
-as they have since step 14: the agent is not cleared to read amounts.
+What start-up says, as the program would print it and stop, for three of them:
 
-Run it a second time, without deleting `.local-database`, and the bill in rupees is refused by the
-day instead: the first run's payments still count, and 10,000.00 USD would take the day past
-200,000.00.
+```text
+a rule on the invoices:
+  a tenant table has a rule on it, and this program expects none: a rule rewrites this program's
+  own statements, or adds statements of its own, with the table owner's rights — a rule on the
+  invoices can sign a permission slip inside an ordinary invoice.issue, and one that does nothing
+  instead can swallow a record of the log. Drop the rule, or change this check deliberately.
+
+a view over the slips the application may write through:
+  this connection is `dsor_runtime`, and it may write to `public.slip_desk`, which is not one of
+  the tenant tables, itself, one SET ROLE away, or through a helper function. A view runs with its
+  owner's rights, so a view the application may write through is a way past every question above,
+  even one it may not read. The application writes public.invoices, public.vendors,
+  public.payments, dsor.audit, dsor.delegations, dsor.idempotency_keys, dsor.proposals,
+  dsor.proposal_moves, dsor.day_totals, dsor.reservations and dsor.agent_controls, and nothing else.
+
+a proposal's number the application may set:
+  this connection is `dsor_runtime`, and it may set the next number of `dsor.proposal_numbers`,
+  itself, one SET ROLE away, or through a helper function: setval needs UPDATE on a sequence, and
+  ALTER SEQUENCE needs its owner. A payment's, a proposal's and a brake's number, and the place of a
+  proposal's move, are the database's to give. The application takes the next number, and sets none.
+```
 
 ### The database tier
 
@@ -114,130 +114,105 @@ day instead: the first run's payments still count, and 10,000.00 USD would take 
 database of this step's own:
 
 ```bash
-cp ../my_25_revocation_and_the_emergency_brake/.env .env     # then dsor_step25 -> dsor_step26 in both lines
+cp ../my_26_money_done_right/.env .env     # then dsor_step26 -> dsor_step26b in both lines
 pnpm migrate && pnpm test:db
 ```
 
-The database has to exist first, made with one `CREATE DATABASE dsor_step26` through the owner
-login. `pnpm migrate` applies the twenty-seven migrations; on a server that already had step 25's
-twenty-six, it applies 027. This step adds no test to the tier. Money is compared in the program,
-before the database is asked anything, and the statement that books a day is step 24's, unchanged:
-it is handed an amount already in dollars. Run on a throwaway PostgreSQL 17 on this machine on 2026-10-16, with an owner shaped like Neon's: 75 passed. It has not yet run on Neon: `dsor_step26` does not exist yet.
+The database has to exist first, made with one `CREATE DATABASE dsor_step26b` through the owner
+login. This step adds no migration. The tier matters here for one reason: `test/audit.db.test.ts`
+opens the program against the real server, so every new question is asked of a real Neon database,
+and a question that refused a real setup would fail it. Run on Neon on 2026-10-19, on `dsor_step26b`:
+75 passed, and 75 again after the review's fixes.
 
 ## Break it
 
 Three, each measured on the full suite in a copy outside the repository, where one test skips
-because the specification is not beside it, so the total reads `1079` with `1 skipped`; in the
-repository it is `1079 passed`.
+because the specification is not beside it.
 
-### Break 1 · forget the currency
+### Break 1 · rules are not asked about
 
-The first quick fix. In `src/exchange.ts`, in `compare`, change
-`if (a.currency === b.currency) {` to `if (a.currency === a.currency) {`, so every pair of amounts is
-compared as numbers.
+In `src/database.ts`, change `if (answer.has_rule !== false) {` to
+`if (false && answer.has_rule !== false) {`.
 
 ```text
-      Tests  33 failed | 1045 passed | 1 skipped (1079)
+      Tests  12 failed | 1100 passed | 1 skipped (1113)
 ```
 
-Every comparison across two currencies goes wrong at once. The bill in rupees is refused, because
-2,800,000 is more than 50,000. The bill in pounds is paid, because 45,000 is less. An amount in a
-currency with no rate is compared without one. The demo prints the opposite of what it should, and
-the log's totals change with it.
+The rule that signs a slip inside `invoice.issue`, and a rule on each of the eleven tenant tables:
+the program starts with every one of them in place.
 
-### Break 2 · JavaScript numbers
+### Break 2 · the write question asked of the program alone
 
-The third quick fix. In `src/exchange.ts`, in `compare`, replace the last line,
-`return order(times(exact(a.value), bRate), times(exact(b.value), aRate));`, with a division of
-`Number(a.value)` by its rate and of `Number(b.value)` by its rate, compared with `<` and `>`.
+In the question about writing beside the tenant tables, ask `current_user` in each clause instead of
+`${role}`, the role the helper `forAnyRoleItCanActAs` hands it.
 
 ```text
-      Tests  2 failed | 1076 passed | 1 skipped (1079)
+      Tests  2 failed | 1110 passed | 1 skipped (1113)
 ```
 
-Only two, and that is the point: floats are wrong rarely, and exactly where it matters. 14,057,500.00
-PKR at 281.15 is exactly the limit and comes out above it, and the largest amount a payment may
-hold, converted to dollars, no longer comes out above an amount it is above by a fraction of a cent.
+The view written one `SET ROLE` away and the one written through a helper's owner. Every other
+case is the program's own grant, which the narrower question still sees: this is the gap decision 126
+measured in step 17, for the business's tables, met again.
 
-### Break 3 · what cannot be compared carries on
+### Break 3 · schemas skipped by their names
 
-In `src/operations.ts`, in `checkTheSlipsLimit`, change
-`if (against.kind === "cannot_compare") {` to `if (against.kind === ("never" as string)) {`.
+Put back step 26's filter: skip `pg_catalog` and `information_schema` by name, and `LIKE
+'pg_toast%'` and `LIKE 'pg_temp%'`.
 
 ```text
-      Tests  5 failed | 1073 passed | 1 skipped (1079)
+      Tests  2 failed | 1110 passed | 1 skipped (1113)
 ```
 
-The service down, rates four days old, no service, a currency with no rate: each bill goes through
-the limit per payment as if it were within it. The demo's rupees at old rates are paid.
+A view over every company's invoices, in `information_schema` and in a schema named `pgxtemp`, which
+`LIKE 'pg_temp%'` matches because `_` matches any character. The review found both (decision 163).
 
 ## Build it yourself with Claude Code
 
-Copy `my_25_revocation_and_the_emergency_brake` to a new folder, without its `.env`, and ask:
+Copy `my_26_money_done_right` to a new folder, without its `.env`, and ask:
 
-> Start step 26, money done right. Before any code: show me a bill in rupees against del_100's limit
-> in dollars, what step 25 does with it, and every quick fix that would be a hole. Then ask me the
-> step's decisions one at a time. Then build it a piece at a time, red first, and break each piece
-> on purpose.
+> Start step 26b, the start-up gaps. Before any code: show me each of the four gaps decision 145
+> wrote down, as a measured attack with start-up content. Then ask me the step's decisions one at a
+> time. Then close them a piece at a time, red first, and break each piece on purpose.
 
 ## Check yourself
 
-1. Why is "45,000 is less than 50,000" the wrong question for a bill of 45,000.00 GBP and a limit of
-   50,000.00 USD?
-2. `exceeds` never divides. What would dividing get wrong, and how does it compare without it?
-3. The rate service is down. Can the agent pay a bill in dollars? A bill in rupees? Why the
-   difference?
-4. A payment of 1,000,000.00 PKR is booked against the day. Why 3,571.43 USD, and not 3,571.42?
-5. The agent sends `"rates": { "GBP": "100" }` with its payment. What does DSoR do with it?
+1. The program may not read the view `public.slip_desk`. Why can it still harm the slips through it?
+2. Why is a rule on a tenant table refused even when it does nothing at all?
+3. The program may take numbers from `dsor.proposal_numbers`. What may it not do, and why does it
+   matter?
+4. A view sits in a schema named `pgxtemp`. Why did the old question skip it?
 
 <details>
 <summary>Answers</summary>
 
-1. Because the two numbers are in different units. At 0.80 pounds to the dollar the bill is
-   56,250.00 USD, above the limit. Numbers can only be compared once both are in one currency.
-2. Dividing can leave a number with no end, like 1,000,000 / 280, and JavaScript rounds it:
-   14,057,500.00 PKR at 281.15 comes out a hair above 50,000.00 USD, though it is exactly that.
-   `exceeds` asks "is a × (b's rate) above b × (a's rate)?" instead, which multiplies exact decimals
-   and so stays exact.
-3. The bill in dollars, yes: two amounts in one currency need no rate. The bill in rupees, no: it
-   cannot be converted, so the limit counts as exceeded (`DSOR-MON-04`), and the refusal says the
-   service did not answer.
-4. 3,571.428571... is rounded up, so the day counts a fraction of a cent too much rather than too
-   little. Rounded down, a payment of 0.01 PKR would count as nothing and fit into a full day.
-5. Nothing. The rates come from `ratesOf(tenant)`, the company's own service, and the stage never
-   reads them from the request. A test sends exactly that and is still refused.
+1. A view runs with its owner's rights, and INSERT, or UPDATE and DELETE with no WHERE, need no
+   right to read. Through the view, the program wrote itself a slip.
+2. "Does nothing" is `DO INSTEAD NOTHING`: it swallows the program's write and says nothing. On the
+   log, a decision the program believes recorded is not there.
+3. It may not set the next number, backward or forward, with `setval` or `ALTER SEQUENCE`. Taking
+   numbers one by one only moves forward; setting one lets the program choose a number it should be
+   given.
+4. `LIKE 'pg_temp%'` reads `_` as "any one character", so `pgxtemp` looked like a temporary schema.
+   Start-up now chooses relations by what they are, not by their schema's name.
 
 </details>
 
 ## The rules this step meets
 
-- **[DSOR-MON-02 · L1]** Monetary arithmetic and comparison MUST use decimal arithmetic.
-  ([§9](../../../specs/dsor/01-model.md#9-money-and-currency))
-- **[DSOR-MON-03 · L2]** A monetary threshold in a control or delegation MUST be compared only
-  through the `dsor_*` money functions, which convert both operands to the threshold's currency
-  using the tenant's rate source — claimed here for a slip's two limits. Controls arrive in step 27.
-- **[DSOR-MON-04 · L2]** When an amount cannot be converted, the comparison MUST resolve
-  restrictively — the delegation limit's half: treated as exceeded.
-- **[DSOR-MON-06 · L2]** A cumulative limit MUST accumulate in the limit's own currency, converting
-  each reservation at the rate in force when the reservation is taken.
+- **[DSOR-TEN-01b · L1]** Tenant isolation MUST be enforced in at least two independent layers — here,
+  that the second layer has no window: no view readable another way, and no rule running past it.
+- **[DSOR-AUD-04a · L1]** The DSoR runtime identity MUST NOT be able to update or delete audit
+  records — now through a view as well.
+- **[DSOR-DEL-01a · L1]** A command from an agent MUST be evaluated under an active delegation held in
+  the store — one a person signed, not one the program wrote through a view or a rule.
+- **[DSOR-EXE-02 · L1]** The decision MUST be durably recorded — no rule may swallow it.
 
-**What this step leaves, said plainly.** The rate service is a fake with fixed rates. A real one may
-not publish every currency, and a company whose service has no rupee rate has every rupee bill
-refused, as it should. How old a rate may be is one setting for every company, three days, where
-the specification gives each company its own `max_rate_age`. The day's booking compares in its own
-statement, not through `exceeds`, because that statement is what keeps requests at once from booking
-past the limit; it is handed an amount `convertUp` already converted. Every limit is counted in
-hundredths, so a limit in a currency with three decimals would be rounded up to two. A refusal that
-could not convert is `LIMIT_EXCEEDED`, whose retry class says to try again later, which is right for
-old rates and pointless for a currency with no rate. The decision's record does not say which rate
-was used: that is `DSOR-MON-05`, in the step that builds the decision bundle. A payment is still in
-its invoice's currency. A dry run reads the day's total without checking its currency, which an
-administrator who changes a slip's daily currency mid-day could make answer wrongly (decision 160).
-The map's step 26 speaks of "a table of exchange rates"; this build asks a service instead
-(decision 159). And the four start-up gaps that steps 18, 22 and 25 sent here wait for step 26b.
+**What this step leaves, said plainly.** Start-up refuses; it never repairs the database. The
+question about helper functions still skips `pg_catalog` and `information_schema` by name, unchanged
+from step 17. A row trigger on a table that *inherits* from a tenant table fires under the program's
+UPDATE of the parent, and the trigger question looks at the tenant tables themselves only (decision
+163); it needs the owner's hand, as all of these do. The READMEs of steps 18, 22 and 25 say these
+gaps close in step 26; they close here (decision 159). Everything earlier steps claimed still holds.
 
-Everything earlier steps claimed still holds.
-
-**Next:** step 26b, the start-up gaps that decision 145 had sent to step 26 and decision 159 gave a
-step of their own. Then step 27, `controls_in_cel`: the policy "payments above 25,000 USD need the
-CFO", written as a rule that calls `dsor_exceeds`, this step's `exceeds`.
+**Next:** step 27, `controls_in_cel`: the policy "payments above 25,000 USD need the CFO", written
+as a rule in CEL, a small safe expression language, and checked at every payment.
