@@ -4,6 +4,7 @@
 // request is refused (DSOR-IDM-01b to DSOR-IDM-01d in specs/dsor/03-execution.md, section 22;
 // step 20's README, decisions 4, 6, 7, and 9). The program keeps its claims in the table
 // dsor.idempotency (postgres.ts); the unit tests keep them in memory (memoryClaims below).
+import { memoryHolds, type HoldStore } from "./holds.ts";
 import { memoryIntents, unknownFromNote, type IntentStore } from "./intents.ts";
 import { NO_BRAKES, type BrakeStore } from "./brakes.ts";
 import { RETRY, Refusal, type ErrorCode } from "./envelope.ts";
@@ -63,6 +64,9 @@ export type WorkStores = {
   //   transaction; in memory nothing needs committing (step 36's README, decision D2).
   intents: IntentStore;
   checkpoint: () => Promise<void>;
+  // NEW IN STEP 37: and the holds, placed with the note and read at line ⑨ (step 37's README,
+  //   decisions D1 and D6).
+  holds: HoldStore;
   // And the claim's transaction itself, so the record commits with the work.
   transaction?: ClaimTransaction;
 };
@@ -286,6 +290,8 @@ export function memoryClaims(
   controls: ControlStore = NO_CONTROLS,
   // And these intent records, in memory unless the test gives others.
   intents: IntentStore = memoryIntents(),
+  // NEW IN STEP 37: and these holds, in memory unless the test gives others.
+  holds: HoldStore = memoryHolds(),
 ): ClaimStore {
   // Each claim by its scope, written as one text.
   const claims = new Map<string, MemoryClaim>();
@@ -346,6 +352,7 @@ export function memoryClaims(
         rates,
         controls,
         intents,
+        holds,
         // Memory has no transaction to commit, and keeps the note as it is written. From here
         //   on the claim is kept, as the database's is once its checkpoint commits.
         checkpoint: async () => {

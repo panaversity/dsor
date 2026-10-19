@@ -1,5 +1,6 @@
 // The checklist every call goes through. DSOR-EXE-01a in specs/dsor/03-execution.md,
 // section 21, and DSOR-OPR-04a in specs/dsor/01-model.md, section 7.
+import { NO_HOLDS } from "./holds.ts";
 import { NO_INTENTS } from "./intents.ts";
 import { randomUUID } from "node:crypto";
 import { pinned, readBound, type Bound, type BoundRead } from "./bound.ts";
@@ -839,6 +840,7 @@ export async function call(
             proposals: registry.claims.proposals,
             // A dry run writes no note and commits nothing.
             intents: NO_INTENTS,
+            holds: NO_HOLDS,
             checkpoint: async () => {},
           };
           try {
@@ -1320,6 +1322,7 @@ export async function call(
           controls: NO_CONTROLS,
           // And no note to write, and nothing to commit.
           intents: NO_INTENTS,
+          holds: NO_HOLDS,
           checkpoint: async () => {},
         });
       } else {

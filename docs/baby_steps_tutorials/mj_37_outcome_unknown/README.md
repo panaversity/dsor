@@ -76,8 +76,8 @@ second attempt (DSOR-UNK-02).
 
 | Claim | What it says |
 |---|---|
-| C1 | When a payment's proposal turns `OUTCOME_UNKNOWN`, DSoR holds the records its contract's `hold_on_unknown` lists, the payment and its invoice, in the same transaction. This happens live and at the start-up sweep |
-| C2 | A command that binds a held record hears `RESOURCE_HELD`, retried only after reconciliation, before any work: a cancel of PAY-901, a new draft of INV-1002, a send of that draft, a change to INV-1002, a release of an older proposal of INV-1002 |
+| C1 | Before a payment is sent, DSoR holds the records its contract's `hold_on_unknown` lists, the payment and its invoice, in the transaction of step 36's note. The holds count while the proposal is `EXECUTING` or `OUTCOME_UNKNOWN`, so they stand after a silent bank, a lost connection, and a crash |
+| C2 | A command that binds a held record hears `RESOURCE_HELD`, retried only after reconciliation, before any work: a cancel of PAY-901, a new draft of INV-1002, PAY-901 sent again with a new key, a cancel during the send, a release of an older proposal of INV-1002. (`invoice.issue` binds the invoice too, and would be held, but this tutorial has not built it: it answers `UNSUPPORTED_CAPABILITY` first) |
 | C3 | The hold touches nothing else: a read of INV-1002, a payment of another bill, cfo_100's approval, and the same-key replay of PAY-901, which still answers `OUTCOME_UNKNOWN` |
 | C4 | A hold ends with its payment: once the proposal is no longer `OUTCOME_UNKNOWN`, the records are free |
 | C5 | `payment.execute` and `payment.cancel` bind their payment and its invoice, and start-up refuses a `hold_on_unknown` that names something the contract does not bind |
@@ -104,12 +104,17 @@ second attempt (DSOR-UNK-02).
 - **D5. Reads stay as they are** (the learner's choice). `invoice.get` answers as before. The hold
   shows only when someone tries to change a held record. *Downside:* a reader sees "not paid" for a
   bill that may have been paid.
-- **D6. Every way in places the hold** (the learner's choice). A silent bank, a failure after the
-  note of step 36, and the start-up sweep each move a proposal to `OUTCOME_UNKNOWN`, and each writes
-  its holds in the same transaction. *Downside:* the sweep reads each proposal's contract to know
-  what to hold.
+- **D6. Every way in places the hold, so it is placed before the bank** (the learner's choice,
+  refined by the learner before the build). A payment can become unknown three ways: a silent bank,
+  a failure after step 36's note, and a crash the start-up sweep finds. In the second, the proposal
+  stays `EXECUTING` with an open note until the next start-up, so a hold placed only at
+  `OUTCOME_UNKNOWN` would leave a gap. So the holds are written with step 36's note, in the same
+  transaction, before the bank is asked: every way in finds them already there. *Downside:* a cancel
+  that arrives during a normal send hears `RESOURCE_HELD` at once, where step 36b made it wait and
+  then hear `STALE_STATE`.
 - **D7. A hold ends with its payment; finding out is step 38** (the learner's choice). A hold counts
-  only while its proposal is still `OUTCOME_UNKNOWN`, so settling the payment frees the records.
+  only while its proposal is still `EXECUTING` or `OUTCOME_UNKNOWN` (refined with D6), so settling
+  the payment, `COMMITTED` or `FAILED`, frees the records.
   Step 38 also records when. A same-key retry keeps answering `OUTCOME_UNKNOWN`: re-sending with
   the same key, or looking the payment up, is step 38's. *Downside:* each check reads the proposal's
   state as well as the hold.

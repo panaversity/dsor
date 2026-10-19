@@ -1,6 +1,7 @@
 // What step 28's tests share: a world in memory whose company keeps its rules in a store. Not a
 // test file itself. The registry and the claims are given the same store, as with the brakes, so
 // a change that a command makes is the change that line ⑩ reads (step 28's README, decision D5).
+import { memoryHolds, type MemoryHolds } from "../src/holds.ts";
 import { memoryIntents, type MemoryIntents } from "../src/intents.ts";
 import { readRoleSettings } from "../src/authority.ts";
 import { memoryBrakes } from "../src/brakes.ts";
@@ -99,6 +100,8 @@ export type RuleWorld = {
   bank: FakeBank;
   // Step 36: and the intent records (step 36's README, decision D1).
   intents: MemoryIntents;
+  // Step 37: and the holds (step 37's README, decision D1).
+  holds: MemoryHolds;
 };
 
 /** A world in memory: the story's slips, del_100 with step 24's limits, and these rules. */
@@ -146,6 +149,7 @@ export function ruleWorld(
   const slips = memorySlips([...kept, ...more]);
   const brakes = memoryBrakes();
   const intents = memoryIntents();
+  const holds = memoryHolds();
   const rules = memoryControls(controls);
   const given = around(rules);
   const registry = buildRegistry(
@@ -159,7 +163,18 @@ export function ruleWorld(
     slips,
     directories,
     readRoleSettings(),
-    memoryClaims(store, payments, proposals, reservations, slips, brakes, rates, given, intents),
+    memoryClaims(
+      store,
+      payments,
+      proposals,
+      reservations,
+      slips,
+      brakes,
+      rates,
+      given,
+      intents,
+      holds,
+    ),
     ownWorkFor(),
     brakes,
     readLifetimes(),
@@ -195,6 +210,7 @@ export function ruleWorld(
     vendors: suppliers,
     bank,
     intents,
+    holds,
   };
 }
 

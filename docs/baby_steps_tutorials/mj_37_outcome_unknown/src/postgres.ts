@@ -1,6 +1,7 @@
 // Everything that talks to PostgreSQL. The log is the table dsor.audit,
 // which dsor_runtime can add to and read, and never change (DSOR-AUD-04a in
 // specs/dsor/03-execution.md, section 30). The invoices are the table app.invoices.
+import { NO_HOLDS } from "./holds.ts";
 import {
   unknownFromNote,
   type IntentOutcome,
@@ -1262,6 +1263,8 @@ function storesIn(
     // And the intent records, written inside the claim's transaction, which the
     //   checkpoint then commits (step 36's README, decision D2).
     intents: intentsThrough(run),
+    // NEW IN STEP 37: and the holds, in dsor.holds (step 37's README, decision D1). Not built yet.
+    holds: NO_HOLDS,
     // And the claim's own connection, so the record is written in its
     //   transaction (decision D1).
     transaction: client,
