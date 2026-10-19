@@ -17,6 +17,11 @@ import addFormatsModule, { type FormatsPlugin } from "ajv-formats";
 import { checkCondition, evaluateCondition, type ConditionInput } from "./cel.ts";
 import type { RateOf } from "./exchange.ts";
 import { theDatabase } from "./store.ts";
+// NEW IN STEP 28: where a control's policy is kept, the record of a change, and its owner's inbox.
+import { audit } from "./audit.ts";
+import { nextRequestId } from "./envelopes.ts";
+import { policySourceOf } from "./ksor.ts";
+import { tell } from "./notices.ts";
 
 // ajv-formats is CommonJS; under nodenext the callable sits on `.default`, as in audit.ts.
 const addFormats = (addFormatsModule as unknown as { default: FormatsPlugin }).default;
@@ -445,3 +450,109 @@ export async function switchOn(tenant: string, id: string, version: number): Pro
  * waiting proposal on before step 29.
  */
 export const WAITS_FOR_APPROVAL_MS: number = 72 * 60 * 60 * 1000;
+
+/** NEW IN STEP 28: what one sweep found (decision 165). */
+export interface Noticed {
+  /** Each control it marked stale: the policy version it cites, and the one in force, if any. */
+  readonly marked: readonly {
+    readonly id: string;
+    readonly version: number;
+    readonly cites: number;
+    readonly inForce: number | undefined;
+  }[];
+  /** Why it could not ask KSoR, when it could not; nothing after that was asked. */
+  readonly couldNotAsk?: string;
+}
+
+/**
+ * NEW IN STEP 28: notice the controls whose policy changed (DSOR-CTL-03a, decision 165).
+ *
+ * For every control in force that cites KSoR, ask KSoR for the policy's version in force. A later
+ * version, the same version with other words, or a policy KSoR no longer has: the control is marked
+ * `stale_authority`, a `control_change` record goes in the company's log, and its owner is told. It
+ * is never switched off: a stale control is still in force (DSOR-CTL-03b). One marked stale already
+ * is left as it is, so nobody is told twice. KSoR down marks nothing, and says so.
+ *
+ * §44 bounds this at 24 hours at L2. There is no timer in this tutorial: the program runs it, and
+ * the demo does.
+ */
+export async function noticeStalePolicies(tenant: string): Promise<Noticed> {
+  const source = policySourceOf(tenant);
+  const marked: Noticed["marked"][number][] = [];
+
+  for (const control of await controlsOf(tenant)) {
+    const authority = control.record.authority as Readonly<Record<string, unknown>> | undefined;
+
+    if (
+      control.status !== "active" ||
+      authority?.system !== "ksor" ||
+      typeof authority.uri !== "string" ||
+      typeof authority.version !== "number"
+    ) {
+      continue;
+    }
+
+    let inForce;
+
+    try {
+      inForce = source.current(authority.uri);
+    } catch (failure) {
+      return Object.freeze({
+        marked: Object.freeze(marked),
+        couldNotAsk: failure instanceof Error ? failure.message : String(failure),
+      });
+    }
+
+    if (
+      inForce !== undefined &&
+      inForce.version === authority.version &&
+      inForce.content_hash === authority.content_hash
+    ) {
+      continue;
+    }
+
+    // Only out of active, in one statement: two sweeps at once mark it, and tell its owner, once.
+    const { rows } = await theDatabase(tenant).query<{ id: string }>(
+      `UPDATE dsor.controls SET status = 'stale_authority'
+        WHERE tenant = $1 AND id = $2 AND version = $3 AND status = 'active'
+        RETURNING id`,
+      [tenant, control.id, control.version],
+    );
+
+    if (rows.length !== 1) {
+      continue;
+    }
+
+    const owner = String(control.record.owner);
+    const now =
+      inForce === undefined
+        ? "KSoR no longer has it"
+        : `the version in force is version ${inForce.version}`;
+    const what = `${control.id} v${control.version} cites version ${authority.version} of ${authority.uri}, and ${now}`;
+
+    await audit({
+      kind: "control_change",
+      // DSoR itself made this change; nobody asked for it.
+      subject: "dsor",
+      tenant,
+      requestId: nextRequestId(),
+      result: "STALE_AUTHORITY",
+      reason: `${what}; marked stale, still in force, for ${owner} to review`,
+    });
+    tell(
+      tenant,
+      owner,
+      `Your control ${what}. It is marked stale and is still enforced as it is: review it, and switch on a version that cites the policy in force.`,
+    );
+    marked.push(
+      Object.freeze({
+        id: control.id,
+        version: control.version,
+        cites: authority.version,
+        inForce: inForce?.version,
+      }),
+    );
+  }
+
+  return Object.freeze({ marked: Object.freeze(marked) });
+}

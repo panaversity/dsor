@@ -132,20 +132,22 @@ describe("a control the program may not switch off (medium)", () => {
     // Measured by the review: one UPDATE, and user_123's 31,400.00 USD was made with no CFO.
     expect((await switchOn("org_456", "high-value-payment", 8)).kind).toBe("switched_on");
 
-    // A control in force is not one the policy lets change: the statement touches no row.
-    const { rows } = await theDatabase("org_456").query(
-      "UPDATE dsor.controls SET status = 'retired' WHERE tenant = $1 AND id = 'high-value-payment' RETURNING id",
-      ["org_456"],
-    );
-
-    expect(rows).toStrictEqual([]);
+    // STEP 28: a control in force may go stale now, so the policy reads the row, and refuses the
+    // row it would become: retired is neither active nor stale (decision 165).
+    await expect(
+      theDatabase("org_456").query(
+        "UPDATE dsor.controls SET status = 'retired' WHERE tenant = $1 AND id = 'high-value-payment' RETURNING id",
+        ["org_456"],
+      ),
+    ).rejects.toThrow(/row-level security/);
     expect(codeOf(await pay(SUPERVISOR, { value: "31400.00", currency: "USD" }))).toBe(
       "PENDING_APPROVAL",
     );
   });
 
   it("DSOR-CTL-03b: start-up refuses the controls without that policy", async () => {
-    await asTheOwner(() => db.exec("DROP POLICY only_switched_on ON dsor.controls"));
+    // STEP 28: migration 032's name for it, which lets a control go stale too.
+    await asTheOwner(() => db.exec("DROP POLICY switched_on_or_marked_stale ON dsor.controls"));
 
     try {
       await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
@@ -153,9 +155,9 @@ describe("a control the program may not switch off (medium)", () => {
       );
     } finally {
       await asTheOwner(() =>
-        db.exec(`CREATE POLICY only_switched_on ON dsor.controls AS RESTRICTIVE FOR UPDATE
-                   USING (status IN ('draft', 'in_review'))
-                   WITH CHECK (status = 'active' AND switched_on_at IS NOT NULL)`),
+        db.exec(`CREATE POLICY switched_on_or_marked_stale ON dsor.controls AS RESTRICTIVE FOR UPDATE
+                   USING (status IN ('draft', 'in_review', 'active'))
+                   WITH CHECK (status IN ('active', 'stale_authority') AND switched_on_at IS NOT NULL)`),
       );
     }
   });

@@ -567,9 +567,10 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
                    WHEN rel = to_regclass('dsor.delegations')
                    THEN '(status = ANY (ARRAY[''active''::text, ''suspended''::text]))'
                    -- STEP 27: and the controls', which lets only a waiting control
-                   -- change, as PostgreSQL writes it back, measured (decision 164).
+                   -- change, as PostgreSQL writes it back, measured (decision 164). NEW IN
+                   -- STEP 28: or one in force, which may go stale (decision 165).
                    WHEN rel = to_regclass('dsor.controls')
-                   THEN '(status = ANY (ARRAY[''draft''::text, ''in_review''::text]))' END,
+                   THEN '(status = ANY (ARRAY[''draft''::text, ''in_review''::text, ''active''::text]))' END,
               -- STEP 25: what the second policy lets a row become: anything, the program's
               -- to say, except for a slip, which only becomes revoked.
               -- Decision 143: and with who revoked it. Decision 156: and when and why, as
@@ -578,8 +579,10 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
                    THEN '((status = ''revoked''::text) AND (revoked_by IS NOT NULL)'
                         || ' AND (revoked_at IS NOT NULL) AND (revoked_reason IS NOT NULL))'
                    -- STEP 27: and a control changes only to active, with its moment.
+                   -- NEW IN STEP 28: or to stale (decision 165).
                    WHEN rel = to_regclass('dsor.controls')
-                   THEN '((status = ''active''::text) AND (switched_on_at IS NOT NULL))'
+                   THEN '((status = ANY (ARRAY[''active''::text, ''stale_authority''::text]))'
+                        || ' AND (switched_on_at IS NOT NULL))'
                    ELSE 'true' END
          FROM tenant_table
      )
