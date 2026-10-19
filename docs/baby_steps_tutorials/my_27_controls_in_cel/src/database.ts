@@ -291,6 +291,21 @@ const forAnyRoleItCanActAs = (question: (role: string) => string): string =>
                WHERE p.prosecdef AND n.nspname NOT IN ('pg_catalog', 'information_schema')
                  AND (${question("p.proowner")})))`;
 
+/**
+ * STEP 26b: the relations the questions about reading, writing and numbers ask about,
+ * chosen by what they are, never by what their schema is called (decision 163). It was three
+ * names and two patterns, and a review measured a way past each kind: a view over every company's
+ * invoices in `information_schema`, or in a schema named `pgxtemp`, which `LIKE 'pg_temp%'` reads as
+ * a temporary schema because `_` matches any character, passed start-up. Now: nothing in
+ * `pg_catalog`, where nobody may create; nothing PostgreSQL itself made when the database was
+ * created, whose numbers start below 16384, so a view an administrator puts in `information_schema`
+ * later is asked about like any other; and not this session's own temporary relations, which run
+ * with the application's own rights and are filtered like it.
+ */
+const MADE_SINCE_THE_DATABASE = `c.relnamespace <> 'pg_catalog'::regnamespace
+                AND c.oid >= 16384
+                AND c.relnamespace <> pg_my_temp_schema()`;
+
 /** The tables as words, for a refusal. */
 const TENANT_TABLE_NAMES = `${TENANT_TABLES.slice(0, -1)
   .map(([table]) => table)
@@ -618,11 +633,8 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
             (SELECT string_agg(ns.nspname || '.' || c.relname, ', ' ORDER BY 1)
                FROM pg_class c JOIN pg_namespace ns ON ns.oid = c.relnamespace
               WHERE c.relkind IN ('r', 'v', 'm', 'p', 'f')
-                AND ns.nspname NOT IN ('pg_catalog', 'information_schema')
-                AND ns.nspname NOT LIKE 'pg_toast%'
-                -- A session's own temporary relations are its own: a temp view runs with the
-                -- rights of whoever made it, which is the application, and is filtered like it.
-                AND ns.nspname NOT LIKE 'pg_temp%'
+                -- STEP 26b: by what a relation is, not by its schema's name (decision 163).
+                AND ${MADE_SINCE_THE_DATABASE}
                 -- NOT EXISTS, not NOT IN: a NULL in a NOT IN list makes every row false.
                 AND NOT EXISTS (SELECT 1 FROM tenant_table t WHERE t.rel = c.oid)
                 -- STEP 26b: asked the way the write questions are, of every role the
@@ -772,9 +784,8 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
   // (DSOR-TEN-01a), not whom it pays, for which invoice or how much, and it neither chooses a new
   // payment's number or status nor removes one. The number is the sequence's: UPDATE on it lets
   // `setval` choose the next one, and a review made PAY-5000 that way (decision 126).
-  // Decision 156: this is the only sequence start-up asks about. The three in dsor, which give a
-  // proposal its number, a move its place and a brake its number, are not asked about yet; that
-  // waits for step 26b (decision 159).
+  // Decision 156: this was the only sequence start-up asked about. STEP 26b asks about every
+  // sequence, at the end, and this one keeps its question here, so the refusal names the reason.
   const { rows: payments } = await db.query<{ may: boolean }>(
     `SELECT ${forAnyRoleItCanActAs(
       (role) => `has_any_column_privilege(${role}, 'public.vendors', 'INSERT')
@@ -1010,10 +1021,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
      SELECT string_agg(ns.nspname || '.' || c.relname, ', ' ORDER BY 1) AS writes_beyond
        FROM pg_class c JOIN pg_namespace ns ON ns.oid = c.relnamespace
       WHERE c.relkind IN ('r', 'v', 'm', 'p', 'f')
-        AND ns.nspname NOT IN ('pg_catalog', 'information_schema')
-        AND ns.nspname NOT LIKE 'pg_toast%'
-        -- A session's own temporary tables are its own, as for the read question above.
-        AND ns.nspname NOT LIKE 'pg_temp%'
+        AND ${MADE_SINCE_THE_DATABASE}
         AND NOT EXISTS (SELECT 1 FROM tenant_table t WHERE t.rel = c.oid)
         AND ${forAnyRoleItCanActAs(
           (role) => `has_any_column_privilege(${role}, c.oid, 'INSERT')
@@ -1042,19 +1050,18 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
   }
 
   // STEP 26b: every sequence, not a list. `setval` needs UPDATE on a sequence, and
-  // `ALTER SEQUENCE` needs its owner; either lets the application choose the number it should be
-  // given. Start-up asked about the payments' sequence alone, above, and a proposal's number, a
+  // `ALTER SEQUENCE` needs its owner; either lets the application set the next number, backward
+  // too, where it should only be given one. Taking numbers one after another, which USAGE allows,
+  // can only move forward (decision 163). Start-up asked about the payments' sequence alone, above, and a proposal's number, a
   // brake's number and a move's place come from three more (decisions 153 and 156). Asked of every
   // sequence, so the next one a migration adds is asked without anyone remembering to add it here,
   // as decision 143 learned for columns (decision 161). Taking the next number is USAGE, which the
   // application needs, and is not asked.
-  const { rows: numbers } = await db.query<{ chooses: string | null }>(
-    `SELECT string_agg(ns.nspname || '.' || c.relname, ', ' ORDER BY 1) AS chooses
+  const { rows: numbers } = await db.query<{ sets: string | null }>(
+    `SELECT string_agg(ns.nspname || '.' || c.relname, ', ' ORDER BY 1) AS sets
        FROM pg_class c JOIN pg_namespace ns ON ns.oid = c.relnamespace
       WHERE c.relkind = 'S'
-        AND ns.nspname NOT IN ('pg_catalog', 'information_schema')
-        AND ns.nspname NOT LIKE 'pg_toast%'
-        AND ns.nspname NOT LIKE 'pg_temp%'
+        AND ${MADE_SINCE_THE_DATABASE}
         AND ${forAnyRoleItCanActAs(
           (role) => `has_sequence_privilege(${role}, c.oid, 'UPDATE')
              OR pg_has_role(${role}, c.relowner, 'MEMBER')`,
@@ -1063,17 +1070,17 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
 
   if (numbers[0] === undefined) {
     throw new Error(
-      "the database did not say which numbers this connection may choose; refusing to start",
+      "the database did not say which numbers this connection may set; refusing to start",
     );
   }
 
-  if (numbers[0].chooses !== null) {
+  if (numbers[0].sets !== null) {
     throw new Error(
-      `this connection is \`${answer.who}\`, and it may choose the next number of ` +
-        `\`${numbers[0].chooses}\`, itself, one SET ROLE away, or through a helper function: ` +
+      `this connection is \`${answer.who}\`, and it may set the next number of ` +
+        `\`${numbers[0].sets}\`, itself, one SET ROLE away, or through a helper function: ` +
         `setval needs UPDATE on a sequence, and ALTER SEQUENCE needs its owner. A payment's, a ` +
         `proposal's and a brake's number, and the place of a proposal's move, are the database's ` +
-        `to give. The application takes the next number, and nothing else.`,
+        `to give. The application takes the next number, and sets none.`,
     );
   }
 }

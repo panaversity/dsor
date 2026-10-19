@@ -86,7 +86,11 @@ describe("a rule on a tenant table", () => {
     // NEW IN STEP 27: and the controls.
     "dsor.controls",
   ]) {
-    it(`DSOR-EXE-02: a rule that swallows what the application writes to ${table} is refused`, async () => {
+    // The log's case is DSOR-EXE-02's: a decision the program believes recorded, swallowed. Every other
+    // table's is the second lock's: a rule runs with the owner's rights, past it (decision 163).
+    const rule = table === "dsor.audit" ? "DSOR-EXE-02" : "DSOR-TEN-01b";
+
+    it(`${rule}: a rule on ${table} is refused, whatever it does`, async () => {
       // `DO INSTEAD NOTHING` writes nothing and says nothing: on the log, a decision the program
       // believes recorded is not. Any rule on any tenant table is refused, whatever it does.
       await asTheOwner(() =>
@@ -206,6 +210,49 @@ describe("a view the application may write through", () => {
     );
   });
 
+  it("DSOR-AUD-04a: a view over the log that the application may delete from, and not read, is refused", async () => {
+    // Found by a review: with the write question's DELETE and TRUNCATE taken out, every test still
+    // passed, because every other DELETE in the suite is on a tenant table, which an earlier
+    // question refuses first. One statement through such a view erases every company's records.
+    await asTheOwner(async () => {
+      await db.exec("CREATE VIEW public.log_desk AS SELECT * FROM dsor.audit");
+      await db.exec("GRANT DELETE ON public.log_desk TO dsor_runtime");
+    });
+    await audit({
+      kind: "decision",
+      subject: "user_123",
+      tenant: "org_456",
+      requestId: "req_1",
+      operation: "invoice.get@1",
+      authorization: "ALLOW",
+      result: "OK",
+    });
+
+    // Not testing nothing: no WHERE, no SELECT needed, and the log is empty.
+    await db.query("DELETE FROM public.log_desk");
+    const left = await asTheOwner(async () => {
+      const { rows } = await db.query<{ n: number }>("SELECT count(*)::int AS n FROM dsor.audit");
+
+      return rows[0]?.n;
+    });
+    expect(left).toBe(0);
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
+      /may write to `public\.log_desk`/,
+    );
+  });
+
+  it("DSOR-DEL-01a: a table beside the tenant tables that the application may only truncate is refused", async () => {
+    await asTheOwner(async () => {
+      await db.exec("CREATE TABLE public.scratch (note TEXT)");
+      await db.exec("GRANT TRUNCATE ON public.scratch TO dsor_runtime");
+    });
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
+      /may write to `public\.scratch`/,
+    );
+  });
+
   it("a view the application may not write through, or read, does not refuse start-up", async () => {
     // Views are not refused for existing: a report people read harms nothing the application can
     // reach. Not testing nothing: the same desk refuses the moment the application may write to it.
@@ -229,7 +276,7 @@ describe("a view the application may read some other way", () => {
     return rows.map((r) => r.tenant_id).sort();
   }
 
-  it("DSOR-RP-01a: a view readable one SET ROLE away is refused", async () => {
+  it("DSOR-TEN-01b: a view readable one SET ROLE away is refused", async () => {
     // Start-up asked whether the application itself may read beside the tenant tables. The write
     // questions have also asked every role it can become since step 17 (decision 126).
     await everyInvoice();
@@ -251,7 +298,7 @@ describe("a view the application may read some other way", () => {
     );
   });
 
-  it("DSOR-RP-01a: a view readable through a helper function's owner is refused", async () => {
+  it("DSOR-TEN-01b: a view readable through a helper function's owner is refused", async () => {
     // A SECURITY DEFINER helper runs with its owner's rights, whoever calls it (decision 148).
     await everyInvoice();
     await asTheOwner(() =>
@@ -272,7 +319,7 @@ describe("a view the application may read some other way", () => {
     );
   });
 
-  it("DSOR-RP-01a: a view granted on some of its columns only is refused", async () => {
+  it("DSOR-TEN-01b: a view granted on some of its columns only is refused", async () => {
     // `has_table_privilege` says no to a grant that names columns, as step 17 found for writing.
     await everyInvoice();
     await asTheOwner(() =>
@@ -289,7 +336,37 @@ describe("a view the application may read some other way", () => {
   });
 });
 
-describe("a number the application may choose", () => {
+describe("a schema that only looks like one PostgreSQL keeps for itself", () => {
+  // Found by a review: the questions skipped schemas by name, and a view in `information_schema`,
+  // or in a schema named `pgxtemp`, which `LIKE 'pg_temp%'` matched because `_` matches any
+  // character, passed start-up. They ask now by what a relation is (decision 163).
+  for (const schema of ["information_schema", "pgxtemp"]) {
+    it(`DSOR-TEN-01b: a view over every company's invoices in ${schema} is refused`, async () => {
+      await asTheOwner(async () => {
+        if (schema !== "information_schema") {
+          await db.exec(`CREATE SCHEMA ${schema}; GRANT USAGE ON SCHEMA ${schema} TO dsor_runtime`);
+        }
+
+        await db.exec(
+          `CREATE VIEW ${schema}.every_invoice AS SELECT tenant_id, id FROM public.invoices`,
+        );
+        await db.exec(`GRANT SELECT ON ${schema}.every_invoice TO dsor_runtime`);
+      });
+
+      // Not testing nothing: both companies' INV-1008, through the view.
+      const { rows } = await db.query<{ tenant_id: string }>(
+        `SELECT tenant_id FROM ${schema}.every_invoice WHERE id = 'INV-1008' ORDER BY 1`,
+      );
+      expect(rows.map((r) => r.tenant_id)).toStrictEqual(["org_456", "org_789"]);
+
+      await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
+        new RegExp(`may read \`${schema}\\.every_invoice\``),
+      );
+    });
+  }
+});
+
+describe("a number the application may set", () => {
   // `setval` needs UPDATE on a sequence, and `ALTER SEQUENCE` needs its owner. Start-up asked about
   // one sequence, the payments'. A proposal's number, a brake's number and a move's place come from
   // three more, and a later step's sequence would be a fifth (decisions 153, 156 and 161).
@@ -298,17 +375,17 @@ describe("a number the application may choose", () => {
     "dsor.control_numbers",
     "dsor.proposal_moves_seq_seq",
   ]) {
-    it(`DSOR-TEN-01a: an application that may move ${sequence} is refused at start-up`, async () => {
+    it(`an application that may set ${sequence} is refused at start-up`, async () => {
       await asTheOwner(() => db.exec(`GRANT UPDATE ON SEQUENCE ${sequence} TO dsor_runtime`));
 
-      // Not testing nothing: the application chooses the next number.
+      // Not testing nothing: the application sets the next number, backward if it likes.
       const { rows } = await db.query<{ n: string }>(
         `SELECT setval('${sequence}', 4999)::text AS n`,
       );
       expect(rows[0]?.n).toBe("4999");
 
       await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
-        new RegExp(`may choose the next number of \`${sequence.replace(".", "\\.")}\``),
+        new RegExp(`may set the next number of \`${sequence.replace(".", "\\.")}\``),
       );
     });
   }
@@ -325,16 +402,16 @@ describe("a number the application may choose", () => {
        ALTER FUNCTION public.a_helper() OWNER TO counter`,
     ],
   ] as const) {
-    it(`DSOR-TEN-01a: the proposals' numbers, moved ${how}, are refused`, async () => {
+    it(`the proposals' numbers, set ${how}, are refused`, async () => {
       await asTheOwner(() => db.exec(grant));
 
       await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
-        /may choose the next number of `dsor\.proposal_numbers`/,
+        /may set the next number of `dsor\.proposal_numbers`/,
       );
     });
   }
 
-  it("DSOR-TEN-01a: a sequence no step has made yet is asked too", async () => {
+  it("a sequence no step has made yet is asked too", async () => {
     // Every sequence, not a list: the next one a migration adds is asked without anyone
     // remembering to add it here (decision 161).
     await asTheOwner(() =>
@@ -344,11 +421,11 @@ describe("a number the application may choose", () => {
     );
 
     await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
-      /may choose the next number of `public\.ticket_numbers`/,
+      /may set the next number of `public\.ticket_numbers`/,
     );
   });
 
-  it("DSOR-TEN-01a: a sequence the application may become the owner of is refused", async () => {
+  it("a sequence the application may become the owner of is refused", async () => {
     // Its owner may ALTER SEQUENCE ... RESTART with no UPDATE at all: the owner here gives up its
     // own rights on it, which an owner may, and keeps ALTER, which only ownership gives. Found by
     // breaking the check on purpose: while the owner kept UPDATE, the UPDATE question refused it
@@ -367,7 +444,7 @@ describe("a number the application may choose", () => {
     await db.exec("SET ROLE dsor_runtime");
 
     await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
-      /may choose the next number of `public\.ticket_numbers`/,
+      /may set the next number of `public\.ticket_numbers`/,
     );
   });
 
