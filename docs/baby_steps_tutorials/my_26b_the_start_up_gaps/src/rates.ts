@@ -1,4 +1,4 @@
-// NEW IN STEP 26: the rate service, which says how many of each currency one US dollar buys
+// STEP 26: the rate service, which says how many of each currency one US dollar buys
 // (decision 159).
 //
 // DSoR never takes a rate from the request. An agent that says a dollar buys a million rupees could

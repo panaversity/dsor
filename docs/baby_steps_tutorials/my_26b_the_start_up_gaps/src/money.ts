@@ -24,7 +24,7 @@ export interface Money {
 // packages/spec/schemas/common.schema.json. Copying them means this step refuses
 // exactly what the normative schema refuses, and nothing more.
 // copied from packages/spec/schemas/common.schema.json#/$defs/money/properties/value/pattern
-// NEW IN STEP 26: exported, so that `exchange.ts` asks the same of a rate (decision 159).
+// STEP 26: exported, so that `exchange.ts` asks the same of a rate (decision 159).
 export const DECIMAL: RegExp = /^-?[0-9]+(\.[0-9]+)?$/;
 // copied from packages/spec/schemas/common.schema.json#/$defs/money/properties/currency/pattern
 const ISO_4217 = /^[A-Z]{3}$/;

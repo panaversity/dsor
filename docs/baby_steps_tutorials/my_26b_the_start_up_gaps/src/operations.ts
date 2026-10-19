@@ -81,7 +81,7 @@ import { reserve, settleReservation, usedToday } from "./reservation.ts";
 import { liftTheBrake, pullTheBrake, whatStops } from "./controls.ts";
 import { findPerson } from "./people.ts";
 import { money, type Money } from "./money.ts";
-// NEW IN STEP 26: two amounts compared in any two currencies, at the company's rates (decision 159).
+// STEP 26: two amounts compared in any two currencies, at the company's rates (decision 159).
 import { CannotConvert, convertUp, exceeds, plus, type RateOf } from "./exchange.ts";
 import { ratesOf } from "./rates.ts";
 // STEP 22: the proposal, made at §21.8 and moved by the door (decision 136).
@@ -1984,7 +1984,7 @@ function forTheRecord(context: Context): ForTheRecord | undefined {
   };
 }
 
-/** NEW IN STEP 26: where an amount stands against a limit, perhaps in another currency. */
+/** STEP 26: where an amount stands against a limit, perhaps in another currency. */
 type AgainstTheLimit =
   | { readonly kind: "within" }
   | { readonly kind: "above" }
@@ -1992,7 +1992,7 @@ type AgainstTheLimit =
   | { readonly kind: "cannot_compare"; readonly why: string };
 
 /**
- * NEW IN STEP 26: an amount against a limit, through `exceeds` and nothing else (DSOR-MON-03,
+ * STEP 26: an amount against a limit, through `exceeds` and nothing else (DSOR-MON-03,
  * decision 159). The caller treats "cannot_compare" as above the limit (DSOR-MON-04).
  */
 function againstTheLimit(amount: Money, limit: Money, rates: RateOf): AgainstTheLimit {
@@ -2044,7 +2044,7 @@ const checkTheSlipsLimit: Stage["run"] = async (context) => {
   const askedBy = context.principal?.id ?? "(nobody)";
   const tenant = context.tenant;
 
-  // NEW IN STEP 26: asked before any limit now, because the rates are the company's. It was asked
+  // STEP 26: asked before any limit now, because the rates are the company's. It was asked
   // only before the daily limit, which books against the company's day.
   if (tenant === undefined) {
     return refuse(
@@ -2055,14 +2055,14 @@ const checkTheSlipsLimit: Stage["run"] = async (context) => {
     );
   }
 
-  // NEW IN STEP 26: the company's rates, from its rate service and never from the request, asked
+  // STEP 26: the company's rates, from its rate service and never from the request, asked
   // only if an amount and a limit are in two currencies (DSOR-MON-03, decision 159).
   const rates = ratesOf(tenant);
 
   if (limit !== undefined) {
     const against = againstTheLimit(amount, limit, rates);
 
-    // NEW IN STEP 26: an amount that cannot be converted is treated as above the limit, and the
+    // STEP 26: an amount that cannot be converted is treated as above the limit, and the
     // refusal says why (DSOR-MON-04).
     if (against.kind === "cannot_compare") {
       return refuse(
@@ -2096,7 +2096,7 @@ const checkTheSlipsLimit: Stage["run"] = async (context) => {
     return carryOn(context);
   }
 
-  // NEW IN STEP 26: what the day counts, in the limit's currency: the amount converted at the
+  // STEP 26: what the day counts, in the limit's currency: the amount converted at the
   // company's rates of this moment, and rounded up to the cent, so that the day can count a fraction
   // of a cent too much and never too little (DSOR-MON-06, decision 159). The reservation keeps this
   // amount, so a payment that fails gives back exactly what it took, whatever the rate does next.
@@ -2129,7 +2129,7 @@ const checkTheSlipsLimit: Stage["run"] = async (context) => {
     if (context.mode === "validate_only") {
       const used = money(await usedToday(tenant, slip.id), daily.currency);
 
-      // NEW IN STEP 26: through `exceeds`, like every limit (DSOR-MON-03), with the amount as
+      // STEP 26: through `exceeds`, like every limit (DSOR-MON-03), with the amount as
       // the day counts it.
       return exceeds(plus(used, counted), daily, rates)
         ? refuse(askedBy, "LIMIT_EXCEEDED", overTheDay, context.requestId)
@@ -2145,7 +2145,7 @@ const checkTheSlipsLimit: Stage["run"] = async (context) => {
       );
     }
 
-    // NEW IN STEP 26: the amount as the day counts it, in the limit's currency.
+    // STEP 26: the amount as the day counts it, in the limit's currency.
     const booked = await reserve(tenant, context.proposal, slip.id, counted, daily);
 
     if (booked.kind === "over") {

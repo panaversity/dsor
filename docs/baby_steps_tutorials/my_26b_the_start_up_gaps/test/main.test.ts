@@ -617,7 +617,7 @@ describe("the program a learner runs", () => {
 
   it("DSOR-MON-03: the demo pays the bill in rupees, refuses the one in pounds, and the day counts the rupees in dollars", (context) =>
     onOneDay(context, () => {
-      // NEW IN STEP 26 (decision 159). The day's two numbers are the day before and after the
+      // STEP 26 (decision 159). The day's two numbers are the day before and after the
       // rupees: 10,000.00 USD apart, exactly, whatever the day held before.
       const out = demo().raw;
       const section =
@@ -642,7 +642,7 @@ describe("the program a learner runs", () => {
     }));
 
   it("DSOR-MON-04: the demo's rates four days old refuse a bill in rupees, and a bill in dollars needs none", () => {
-    // NEW IN STEP 26 (decision 159).
+    // STEP 26 (decision 159).
     const out = demo().raw;
     const section = out.split("The rate service has published nothing for four days.")[1] ?? "";
     const lines = section.split("\n").filter((line) => line.startsWith("accounts-payable-fte"));

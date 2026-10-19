@@ -1,4 +1,4 @@
-// NEW IN STEP 26: the rate service, which DSoR asks itself, never the request (decision 159).
+// STEP 26: the rate service, which DSoR asks itself, never the request (decision 159).
 //
 // Rule DSOR-MON-03: a monetary threshold in a control or delegation MUST be compared only through
 // the dsor_* money functions, which convert both operands to the threshold's currency using the

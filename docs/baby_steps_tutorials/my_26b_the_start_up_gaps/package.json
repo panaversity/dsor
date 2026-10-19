@@ -1,8 +1,8 @@
 {
-  "name": "@dsor-steps/26-money-done-right",
+  "name": "@dsor-steps/26b-the-start-up-gaps",
   "version": "0.0.0",
   "private": true,
-  "description": "Step 26 of the DSoR baby steps: amounts in two currencies are compared exactly, at a rate DSoR looks up itself, and an amount it cannot convert counts as over the limit",
+  "description": "Step 26b of the DSoR baby steps: start-up asks the database about every way the program could write or read past its rights, not only the front door",
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {

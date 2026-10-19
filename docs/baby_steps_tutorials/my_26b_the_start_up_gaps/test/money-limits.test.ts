@@ -1,4 +1,4 @@
-// NEW IN STEP 26: a slip's limits, for bills in other currencies (decision 159).
+// STEP 26: a slip's limits, for bills in other currencies (decision 159).
 //
 // Rule DSOR-MON-03: a monetary threshold in a control or delegation MUST be compared only through
 // the dsor_* money functions, which convert both operands to the threshold's currency using the

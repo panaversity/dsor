@@ -1,4 +1,4 @@
-// NEW IN STEP 26: two amounts compared exactly, in any two currencies (decision 159).
+// STEP 26: two amounts compared exactly, in any two currencies (decision 159).
 //
 // Is 2,800,000.00 PKR more than 50,000.00 USD? Not as numbers: 2,800,000 is more than 50,000, and
 // the bill is 10,000.00 USD. Both amounts must first be counted in one currency, at a rate. A rate

@@ -1,4 +1,4 @@
-// NEW IN STEP 26: two amounts compared exactly, in any two currencies (decision 159).
+// STEP 26: two amounts compared exactly, in any two currencies (decision 159).
 //
 // Rule DSOR-MON-02: monetary arithmetic and comparison MUST use decimal arithmetic.
 // Rule DSOR-MON-03: a monetary threshold in a control or delegation MUST be compared only through

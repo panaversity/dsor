@@ -15,12 +15,12 @@ import { aDirectory, useDirectory } from "./directory.ts";
 import { activeSlipFor } from "./delegation.ts";
 import { moveProposal, movesOf, proposalsByRecord, proposalsOf } from "./proposal.ts";
 import { usedToday } from "./reservation.ts";
-// NEW IN STEP 26: org_456's rate service, which the demo makes old for a moment.
+// STEP 26: org_456's rate service, which the demo makes old for a moment.
 import { aRateService, useRateService } from "./rates.ts";
 
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
 const INV_1009 = "dsor://org_456/invoice/INV-1009";
-// NEW IN STEP 26: VENDOR-44's bills in rupees and in pounds (migration 027).
+// STEP 26: VENDOR-44's bills in rupees and in pounds (migration 027).
 const INV_1010 = "dsor://org_456/invoice/INV-1010";
 const INV_1011 = "dsor://org_456/invoice/INV-1011";
 
@@ -807,7 +807,7 @@ console.log(
   ),
 );
 
-// NEW IN STEP 26: money in any currency (decision 159). VENDOR-44 bills in rupees and in pounds,
+// STEP 26: money in any currency (decision 159). VENDOR-44 bills in rupees and in pounds,
 // and DSoR compares each bill with del_100's limits at the rates of org_456's rate service, never at
 // a rate the agent sends. Exactly, so 2,800,000.00 PKR is 10,000.00 USD, not a hair more. The day
 // counts the rupees in dollars. And rates more than three days old are no rates: a bill in rupees

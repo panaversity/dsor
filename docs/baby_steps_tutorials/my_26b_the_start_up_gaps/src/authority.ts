@@ -40,7 +40,7 @@ export const CLOCK_SKEW_MS: number = 5 * 60 * 1000;
  */
 // not copied: the specification's timestamp is the JSON Schema format date-time, which has no pattern
 // to copy; this one asks for the zone that format requires.
-// NEW IN STEP 26: exported, so that the rate service's time is asked the same (decision 159).
+// STEP 26: exported, so that the rate service's time is asked the same (decision 159).
 export const WITH_ITS_ZONE: RegExp =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
 
@@ -56,7 +56,7 @@ addFormats(ajv);
  * Beside the zone, it asks that the day exist. JavaScript does not: it reads 31 September as
  * 1 October, a day the directory never said (decision 150).
  */
-// NEW IN STEP 26: exported, for the rate service's time too (decision 159).
+// STEP 26: exported, for the rate service's time too (decision 159).
 export const isARecordTime: ValidateFunction<string> = ajv.compile<string>({
   type: "string",
   format: "date-time",
