@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AlertEscalateDueRequest",
+  "description": "The input of alert.escalate_due: the company to sweep, as a URI, dsor://org_456/tenant/org_456. The sweep escalates every open alert of that company raised at least the company's escalate_after ago, by the database's clock, to the person alerts.json names, so its caller names no alert, no person, and no time (step 38b's README, decisions D3, D4, and D7). The company must be the call's own, as for proposal.expire_due. This tutorial's own schema: the specification names no operation that escalates an alert.",
+  "type": "object",
+  "properties": {
+    "company": {
+      "$ref": "urn:dsor:schema:1.3:common#/$defs/resourceUri",
+      "type": "string",
+      "pattern": "^dsor://[^/]+/tenant/"
+    }
+  },
+  "required": ["company"],
+  "additionalProperties": false
+}

@@ -1,0 +1,4 @@
+{
+  "target": "dsor://org_456/agent/intake-fte",
+  "reason": "the cross-tenant suite brakes an agent that no login names"
+}
