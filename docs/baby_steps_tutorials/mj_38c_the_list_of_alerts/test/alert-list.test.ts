@@ -6,7 +6,10 @@
 import { describe, expect, it } from "vitest";
 import type { OwnReadLook } from "../src/alert-list.ts";
 import type { Answer } from "../src/envelope.ts";
+import { memoryClaims } from "../src/claims.ts";
+import { memoryInvoices } from "../src/invoice.ts";
 import { createLog } from "../src/log.ts";
+import { memoryPayments } from "../src/payment.ts";
 import { call } from "../src/pipeline.ts";
 import { dsorMover } from "../src/proposals.ts";
 import { handlersFor } from "../src/operations.ts";
@@ -413,6 +416,32 @@ describe("the review", () => {
     await call(registry, createLog(), SUPERVISOR, "alert.list", {});
     await expect(kept!.unsettled(["open"], undefined, 1)).rejects.toThrow("this call has ended");
     await expect(kept!.proposal(ID("a"))).rejects.toThrow("this call has ended");
+  });
+
+  // Found by step 38c's review, M1: nothing tested a store that leaks. Here org_456's look is
+  //   handed org_789's alert and proposal. Each row now carries the alert's own company, and its
+  //   addresses are org_789's, so the pipeline's company check refuses the answer.
+  it("DSOR-TEN-01a: M1: a store that hands org_456's list org_789's alert is refused, and user_123 sees nothing of it", async () => {
+    const w = await ruleWorldOnTuesday();
+    await plant(w, "org_789", ID("e"));
+    const store = w.proposals;
+    const leaky = {
+      ...store,
+      unsettled: (
+        _t: string,
+        ...rest: Parameters<typeof store.unsettled> extends [string, ...infer R] ? R : never
+      ) => store.unsettled("org_789", ...rest),
+      get: (_t: string, id: string) => store.get("org_789", id),
+    };
+    const args = Array.from({ length: 21 }) as unknown as Parameters<typeof buildRegistry>;
+    args[0] = shipped;
+    args[1] = handlersFor();
+    args[2] = shippedRoles;
+    args[10] = memoryClaims(memoryInvoices(), memoryPayments(), leaky);
+    args[11] = ownWorkFor();
+    const answer = await call(buildRegistry(...args), createLog(), SUPERVISOR, "alert.list", {});
+    expect(answer).not.toHaveProperty("data");
+    expect(JSON.stringify(answer)).not.toContain(ID("e"));
   });
 
   it("DSOR-OPR-01: a read of a command that has no other code stops start-up: a read changes nothing, so it is a query", () => {
