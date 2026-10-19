@@ -1030,3 +1030,14 @@ for a human. An agent may gather evidence; it does not settle these alone.
     keeps nothing for `RESOURCE_HELD`, as for a refusal that says only "not now", so the same key
     runs once the hold is lifted (its D3 and D4). Should the specification say which refusals a
     claim records?
+152. **What does a same-key retry hear after an unknown payment is settled `FAILED`?** DSOR-UNK-02
+    makes a replay return the current status while the proposal is `OUTCOME_UNKNOWN`, and §25.3
+    settles it. Nothing names the answer once it is settled. Step 38's learner build answers
+    `CONFLICT`, whose retry class is "never", with "send it again with a new key", because
+    `CONNECTOR_UNAVAILABLE` is "retry with the same key" and that key can only hear this again.
+    Should §28 have a code for "settled as never received"?
+153. **When is a bank's "no payment with this key" final?** DSOR-UNK-04a settles with "the evidence
+    used", and a lookup that finds nothing reads as "never received it". A real bank may still be
+    processing an order it has not recorded yet. Step 38's learner build believes the answer at
+    once. Should the connector declare how long after a send its lookup is final, and reconciliation
+    wait that long before it settles `FAILED`?

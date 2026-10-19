@@ -2096,6 +2096,25 @@ the two clocks; never an agent.
   settle alone; what runs the clocks; what a same-key retry says after settlement; whether a
   human's settlement may overrule the bank's lookup.
 
+### Step 38, reconciliation, decided by the learner (2026-10-19)
+
+Copied from step 37. The learner decided six choices one at a time: split the alert and the human
+into 38b; look up only, so "never received it" settles FAILED and a person pays again with a new
+payment; an operation, `payment.reconcile`, run by `dsor-scheduler`; the job and AP supervisors,
+never an agent; a same-key retry answers the settled outcome; the evidence in the records DSoR
+already keeps. Their own rule (re-send with the same key on "never received") was weighed at D1.
+
+- **Red first:** 12 unit tests, all red; then 5 database tests, with a real `SIGKILL`.
+- **Found while building:** a bank that only refuses a repeat no longer serves as the default bank;
+  reconcile names the proposal, because binding the payment meets the payment's own hold; two breaks
+  passed every test (a mismatched receipt, a dry run of a settled proposal), and each got a test.
+- **The review:** a payment already paid made every reconcile fail (F1); a mismatched receipt left
+  no record of why (F4); a FAILED replay was "retry with the same key" for ever (F6); a draft could
+  answer COMMITTED on replay (F8). Fixed; each fix undone once, and its test failed. F3 asked for
+  booking tests, and the test showed the booking is the draft's: the claims had said it moved.
+- **Left open:** the alert and the human (38b); no timer; "never received it" believed at once;
+  open questions 152 and 153.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.
