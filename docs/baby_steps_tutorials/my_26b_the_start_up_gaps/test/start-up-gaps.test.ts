@@ -273,7 +273,9 @@ describe("a view the application may read some other way", () => {
   it("DSOR-RP-01a: a view granted on some of its columns only is refused", async () => {
     // `has_table_privilege` says no to a grant that names columns, as step 17 found for writing.
     await everyInvoice();
-    await asTheOwner(() => db.exec("GRANT SELECT (tenant_id, id) ON public.every_invoice TO dsor_runtime"));
+    await asTheOwner(() =>
+      db.exec("GRANT SELECT (tenant_id, id) ON public.every_invoice TO dsor_runtime"),
+    );
 
     expect(
       await companiesThrough("SELECT tenant_id FROM public.every_invoice WHERE id = 'INV-1008'"),
@@ -282,5 +284,89 @@ describe("a view the application may read some other way", () => {
     await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
       /may read `public\.every_invoice`/,
     );
+  });
+});
+
+describe("a number the application may choose", () => {
+  // `setval` needs UPDATE on a sequence, and `ALTER SEQUENCE` needs its owner. Start-up asked about
+  // one sequence, the payments'. A proposal's number, a brake's number and a move's place come from
+  // three more, and a later step's sequence would be a fifth (decisions 153, 156 and 161).
+  for (const sequence of [
+    "dsor.proposal_numbers",
+    "dsor.control_numbers",
+    "dsor.proposal_moves_seq_seq",
+  ]) {
+    it(`DSOR-TEN-01a: an application that may move ${sequence} is refused at start-up`, async () => {
+      await asTheOwner(() => db.exec(`GRANT UPDATE ON SEQUENCE ${sequence} TO dsor_runtime`));
+
+      // Not testing nothing: the application chooses the next number.
+      const { rows } = await db.query<{ n: string }>(
+        `SELECT setval('${sequence}', 4999)::text AS n`,
+      );
+      expect(rows[0]?.n).toBe("4999");
+
+      await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
+        new RegExp(`may choose the next number of \`${sequence.replace(".", "\\.")}\``),
+      );
+    });
+  }
+
+  for (const [how, grant] of [
+    [
+      "one SET ROLE away",
+      "CREATE ROLE numberer; GRANT UPDATE ON SEQUENCE dsor.proposal_numbers TO numberer; GRANT numberer TO dsor_runtime WITH INHERIT FALSE",
+    ],
+    [
+      "through a helper function's owner",
+      `CREATE ROLE counter; GRANT UPDATE ON SEQUENCE dsor.proposal_numbers TO counter;
+       CREATE FUNCTION public.a_helper() RETURNS integer LANGUAGE sql SECURITY DEFINER AS 'SELECT 1';
+       ALTER FUNCTION public.a_helper() OWNER TO counter`,
+    ],
+  ] as const) {
+    it(`DSOR-TEN-01a: the proposals' numbers, moved ${how}, are refused`, async () => {
+      await asTheOwner(() => db.exec(grant));
+
+      await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
+        /may choose the next number of `dsor\.proposal_numbers`/,
+      );
+    });
+  }
+
+  it("DSOR-TEN-01a: a sequence no step has made yet is asked too", async () => {
+    // Every sequence, not a list: the next one a migration adds is asked without anyone
+    // remembering to add it here (decision 161).
+    await asTheOwner(() =>
+      db.exec(
+        "CREATE SEQUENCE public.ticket_numbers; GRANT UPDATE ON SEQUENCE public.ticket_numbers TO dsor_runtime",
+      ),
+    );
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
+      /may choose the next number of `public\.ticket_numbers`/,
+    );
+  });
+
+  it("DSOR-TEN-01a: a sequence the application may become the owner of is refused", async () => {
+    // Its owner may ALTER SEQUENCE ... RESTART, with no UPDATE granted at all. PostgreSQL will not
+    // hand over a sequence that belongs to a table's column, so this one belongs to nothing.
+    await asTheOwner(() =>
+      db.exec(`CREATE SEQUENCE public.ticket_numbers; CREATE ROLE keeper;
+               ALTER SEQUENCE public.ticket_numbers OWNER TO keeper;
+               GRANT keeper TO dsor_runtime WITH INHERIT FALSE`),
+    );
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
+      /may choose the next number of `public\.ticket_numbers`/,
+    );
+  });
+
+  it("taking the next number, which the application must, does not refuse start-up", async () => {
+    // USAGE is nextval's right, and every new payment, proposal and brake needs it.
+    const { rows } = await db.query<{ n: string }>(
+      "SELECT nextval('dsor.proposal_numbers')::text AS n",
+    );
+    expect(Number(rows[0]?.n)).toBeGreaterThan(0);
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).resolves.toBeUndefined();
   });
 });

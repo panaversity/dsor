@@ -1009,6 +1009,42 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
         `writes ${TENANT_TABLE_NAMES}, and nothing else.`,
     );
   }
+
+  // NEW IN STEP 26b: every sequence, not a list. `setval` needs UPDATE on a sequence, and
+  // `ALTER SEQUENCE` needs its owner; either lets the application choose the number it should be
+  // given. Start-up asked about the payments' sequence alone, above, and a proposal's number, a
+  // brake's number and a move's place come from three more (decisions 153 and 156). Asked of every
+  // sequence, so the next one a migration adds is asked without anyone remembering to add it here,
+  // as decision 143 learned for columns (decision 161). Taking the next number is USAGE, which the
+  // application needs, and is not asked.
+  const { rows: numbers } = await db.query<{ chooses: string | null }>(
+    `SELECT string_agg(ns.nspname || '.' || c.relname, ', ' ORDER BY 1) AS chooses
+       FROM pg_class c JOIN pg_namespace ns ON ns.oid = c.relnamespace
+      WHERE c.relkind = 'S'
+        AND ns.nspname NOT IN ('pg_catalog', 'information_schema')
+        AND ns.nspname NOT LIKE 'pg_toast%'
+        AND ns.nspname NOT LIKE 'pg_temp%'
+        AND ${forAnyRoleItCanActAs(
+          (role) => `has_sequence_privilege(${role}, c.oid, 'UPDATE')
+             OR pg_has_role(${role}, c.relowner, 'MEMBER')`,
+        )}`,
+  );
+
+  if (numbers[0] === undefined) {
+    throw new Error(
+      "the database did not say which numbers this connection may choose; refusing to start",
+    );
+  }
+
+  if (numbers[0].chooses !== null) {
+    throw new Error(
+      `this connection is \`${answer.who}\`, and it may choose the next number of ` +
+        `\`${numbers[0].chooses}\`, itself, one SET ROLE away, or through a helper function: ` +
+        `setval needs UPDATE on a sequence, and ALTER SEQUENCE needs its owner. A payment's, a ` +
+        `proposal's and a brake's number, and the place of a proposal's move, are the database's ` +
+        `to give. The application takes the next number, and nothing else.`,
+    );
+  }
 }
 
 /**
