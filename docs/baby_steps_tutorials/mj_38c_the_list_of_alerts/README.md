@@ -11,10 +11,16 @@ and its bank. When the bank never answers a payment, DSoR says the outcome is un
 38b it raises an *alert* in the same moment, a record that says "this payment needs a person", and
 near the hour it writes a more senior person's name on it.
 
-Think of the order-tracking page, which is what a proposal is. Step 38b put a red flag on the page
-and a manager's name beside it, but the page had no screen. `alert.list` is the screen. Each person
-who asks sees the flags meant for them, and the payment and bill each one is about, so they can
-call `payment.reconcile`. Nobody is phoned or emailed yet: that is step 40's outbox.
+Think of the order-tracking page, which is what a proposal is. Step 38b flagged the pages whose
+order went missing, and wrote a manager's name on some, but nobody could search for the flagged
+pages. `alert.list` is that search. Each person who asks sees the flags meant for them, and the
+payment and bill each one is about, so they can call `payment.reconcile`. Nobody is phoned or
+emailed yet: nothing in this tutorial delivers a message to a person.
+
+Three words this step uses. The *receivers role* is the role `alerts.json` names for a company:
+the people who hold it see every alert there (org_456's is `ap_supervisor`). An alert is
+*unsettled* while it is open or escalated, before `payment.reconcile` closes it. A *cursor* is the
+last id of a page, which the caller sends back to get the next page.
 
 Every query until now read the company's records, through a connector. This one reads DSoR's own
 records. It answers the way every query does: in pages, with a label saying how sensitive it is,
@@ -22,8 +28,10 @@ and a label saying how fresh it is and where it was read.
 
 ## Why it matters
 
-user_123 sends PAY-901, 8,900.50 USD to VENDOR-44 for INV-1002, and the bank goes silent. A real run
-on step 38b's code, on 2026-10-19:
+user_123 sends a payment of 8,900.50 USD to VENDOR-44 for INV-1002, and the bank goes silent. A real
+run on step 38b's code, on 2026-10-19, through a short script in a copy of the step. In that
+world the payment is the first one, so DSoR numbers it PAY-901; the program's own scene calls it
+PAY-902.
 
 ```text
 user_123 sends PAY-901: OUTCOME_UNKNOWN
@@ -62,14 +70,14 @@ alert reaches someone and the escalation reaches the named human.
 | Claim | What it says |
 |---|---|
 | C1 | `alert.list` answers a person of the company's receivers role with every unsettled alert of the company: open and escalated |
-| C2 | It answers the company's named person with the alerts escalated to them, and no others |
-| C3 | Anyone else is refused: a person neither the file names, and an agent, even with a slip that lists `alert:read` |
+| C2 | It answers the company's named person with every escalated alert of the company, whoever it was first escalated to, and no open one |
+| C3 | Anyone else is refused, and the record says `DENY`: a person the file names neither by role nor by name, and an agent, even with a slip that lists `alert:read` |
 | C4 | A closed alert is never listed |
 | C5 | Each alert names its proposal, its state, when it was raised, and, once escalated, to whom and when, with the payment and the invoice the proposal sends |
 | C6 | The list comes in pages of at most 10, whatever the caller asks for, with a cursor for the next; another company's alerts are never in it |
-| C7 | The answer carries its labels: `internal`, and freshness `current`, read now from DSoR's own store |
-| C8 | On the database, the same, through `dsor_runtime` and the company's rule |
-| C9 | Start-up refuses a read of DSoR's store that has no contract, or that shares its name with other code |
+| C7 | The answer carries its labels: `internal` when it lists an alert (an empty page holds no field, so it is `public`), and freshness `current`, read now from DSoR's own store, at the time of the call |
+| C8 | On the database, the same, through `dsor_runtime` and row-level security, which shows a login only its company's rows |
+| C9 | Start-up refuses a read of DSoR's store that has no contract, shares its name with other code, or is not a query; and an `alerts.json` whose receivers role or person holds no `alert:read` |
 
 ### Decisions
 
@@ -91,9 +99,17 @@ alert reaches someone and the escalation reaches the named human.
   read now and never kept; connector `dsor`, because DSoR's own store is not a company connector;
   observed at the time the read starts. *Downside:* `dsor` is this tutorial's name, not the
   specification's.
-- **D7. Each alert is a row** (Claude Code's). It carries its company and an id, its proposal's, so
-  the call's record names every alert it read, as `dsor://org_456/alert/prop_…`. *Downside:* the
-  address names an alert by its proposal's id.
+- **D7. Each alert is a row** (Claude Code's). It carries its own company, as the store keeps it,
+  and an id, its proposal's, so the call's record names every alert it read, as
+  `dsor://org_456/alert/prop_…`. *Downside:* the address names an alert by its proposal's id.
+- **D8. The named person sees every escalated alert** (the learner's choice, after the review's
+  M2). If `alerts.json` names a new person, the old escalations are theirs too; the alert still
+  records whom it first went to. *Downside:* the new person sees escalations made before their
+  time, and nothing tells the old one it was handed on.
+- **D9. Start-up keeps the two checks in step** (Claude Code's, after the review's H1). It refuses
+  a receivers role, or a person, that holds no `alert:read`, as step 38b refuses a person without
+  `payment:reconcile`. *Downside:* the permission's name is written twice: in the contract and in
+  the check.
 
 ### The tests, by claim
 
@@ -111,19 +127,21 @@ a fresh database, against `test/alert-list.test.ts`, `test/cross-tenant.test.ts`
 
 | Break | What it removes | Unit tests failed | Database tests failed |
 |---|---|---|---|
-| **B1** | `alerts.json` is not asked: anyone with `alert:read` sees every unsettled alert | 3 | 1 |
-| **B2** | The named person sees every unsettled alert, not only the escalated ones | 2 | 1 |
-| **B3** | A closed alert is listed too | 1 | 1 |
-| **B4** | The contract no longer refuses an agent | 0 | 0 |
-| **B5** | The cursor is ignored, so the second page repeats the first | 1 | 0 |
+| **B1** | `alerts.json` is not asked: anyone with `alert:read` sees every unsettled alert | 5 | 1 |
+| **B2** | The named person sees the open alerts too | 3 | 1 |
+| **B3** | A closed alert is listed too | 4 | 1 |
+| **B4** | The contract no longer refuses an agent | 1 | 0 |
+| **B5** | The cursor is ignored, so the second page repeats the first | 2 | 0 |
 | **B6** | The label says the list may be stale | 1 | 1 |
-| **B7** | The look reads org_456's alerts, whatever company the call is in | 44 | 1 |
+| **B7** | The look reads org_456's alerts, whatever company the call is in | 45 | 1 |
+
+These are the counts after the review's fixes, rerun on 2026-10-19.
 
 B7 is the dangerous one: org_789's people would see org_456's unknown payments. The cross-company
-suite caught it many times over, because it now plants an alert in each company. B4 passes every
-test, and that is expected: an agent holds no role and is never the named person, so the file
-check refuses every agent before the guard is needed. The guard is a second wall, the same one
-step 38's `payment.reconcile` has, and that step tests it alone.
+suite caught it many times over, because it now plants an alert in each company. B4 first passed
+every test: an agent holds no role and is never the named person, so the file check refused it
+anyway. A test of the words the agent hears, "is never for an agent", now shows the contract's
+guard working at line ⑤.
 
 ## What changed since step 38b
 
@@ -198,7 +216,8 @@ docs/baby_steps_tutorials/mj_38c_the_list_of_alerts/README.md.
 <details>
 <summary>Answers</summary>
 
-1. Only user_123, of the receivers role. cfo_100 sees an alert only once it is escalated to them;
+1. Only user_123, of the receivers role. cfo_100, the named person, sees an alert only once it is
+   escalated;
    admin_100 is not named in `alerts.json`; the agent is refused by the contract and by the file
    (C1 to C3).
 2. It is read in the call, never kept, so it is as fresh as it can be (DSOR-FRS-01b forbids
@@ -225,15 +244,35 @@ docs/baby_steps_tutorials/mj_38c_the_list_of_alerts/README.md.
   reads are given only for the contracts a registry has. Reads a caller names are checked in full.
 - **The cross-company suite counts an empty list as a finding.** It now plants an unsettled,
   escalated alert in each company through the registry's own proposal store, and settles it after.
+  Its escalation escalates every open alert of the company, as a real sweep would; on the database
+  that includes other tests' leftovers.
 
 ### What the review found
 
-(Filled in after the review.)
+A reviewer who had not seen the conversation read the rules, the code, and this README, and broke
+the code in copies. It found no way to see another company's alerts or a closed one. The learner
+decided the one finding that needed a choice (D8). Each fix below was undone once in a copy, and
+its test failed, except M1, as its row says.
+
+| # | What it found | What was done |
+|---|---|---|
+| H1 | A role table without `alert:read` started cleanly, and then nobody could list an alert | D9: start-up refuses it, for the receivers role and the person |
+| H2 | A refusal by `alerts.json` was recorded `ALLOW`, while the caller heard `AUTHORIZATION_DENIED` | DSoR's own read has a check that runs before the work, so the record says `DENY` |
+| M1 | Each row's company was stamped from the call, so the answer's company check could never fail for this list | An alert carries its own company from both stores. A store that leaks is refused; the leaked rows' other addresses would also have caught it, so this fix is a second wall |
+| M2 | An escalated alert showed only to the person it named, so a change of person orphaned it | D8, the learner's choice |
+| Database | The database test did not settle its payment if a check failed; the suite's planting was not settled if the suite threw; no refusal was tested on the database | Settled in both; refusals tested |
+| Tests | Ten small breaks passed every test: reads after the call ended, the label's time, the start-up branch for "must be a query", the agent's words, the cursor walk, the order, a second company's own receivers, the suite's settlement | A test for each, but one: no principal holds roles in two companies, so a look that mixes companies' roles cannot be caught yet |
+| Lower | The read loaded every alert ever raised; the sort and the cursor compared text two ways; the payload's shape was assumed | The store reads one page of unsettled alerts, compared as the database's C collation does; the shape is checked |
+| Prose | "The page had no screen" mixed two pictures; "step 40's outbox" promised what step 40 does not do; three words used before they were defined; a vocabulary clash on "rule" | The search for flagged pages; "nothing in this tutorial delivers it"; defined in plain words; "row-level security" |
 
 ### Left open on purpose
 
-- **Nobody is told.** A person sees an alert only by asking. Delivery by email or a pager is step
-  40's outbox.
+- **Nobody is told.** A person sees an alert only by asking. Step 40's outbox sends events to other
+  systems; nothing in this tutorial's map yet delivers a message to a person. Step 38b's README
+  said otherwise, and is left as it was: earlier steps are finished.
+- **A look that mixes companies' roles cannot be caught yet.** No principal holds roles in two
+  companies, so a break that read every company's roles passed every test.
+- **Two clocks.** The label's time is Node's; the alert's times are the database's.
 - **No acknowledgement.** Reading an alert does not mark it seen, so two AP supervisors may both
   call `payment.reconcile`; the second hears `CONFLICT`.
 - **No history screen** (D3). Settled alerts are found in the proposals' moves and the records.

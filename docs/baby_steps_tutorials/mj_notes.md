@@ -2134,6 +2134,24 @@ A list of alerts needs DSoR's first query over its own store, a second idea: spl
 - **Left open:** the list (38c); delivery (40); the restart's clock (open question 154); one person
   per company, and in org_789 it is the receiver too.
 
+### Step 38c, the list of alerts, decided by the learner (2026-10-19)
+
+Copied from step 38b. The problem was shown with a real run (cfo_100 holds an escalated alert and
+hears UNSUPPORTED_CAPABILITY); the learner decided four choices, all recommended (whom alerts.json
+names; no agent; only unsettled alerts; each alert with its payment and invoice). The page size
+and the freshness label were not choices: DSOR-QRY-01 and DSOR-FRS-01a settle them.
+
+- **Red first:** 11 unit tests and 1 database test, all red.
+- **Found while building:** DSoR refused own work for a query, so a read is a new kind; a row is
+  named by its kind; the cross-company suite counts an empty list as a finding, so it now plants
+  an alert in each company, and a look reading org_456 for everyone failed it 44 times.
+- **The review:** a role table without alert:read started cleanly (H1); a refusal was recorded
+  ALLOW (H2); the row's company was stamped, not read (M1); an escalation was pinned to a person
+  (M2, the learner chose that the current person sees every escalated alert). Fixed; each fix
+  undone once, M1 a second wall.
+- **Left open:** nothing tells a person who does not ask; no acknowledgement; no history screen;
+  a look that mixes companies' roles cannot be caught yet.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.
