@@ -249,7 +249,9 @@ describe("C4: a slow bank is a success, a broken one a safe retry, a silent one 
     expect(bundle?.execution.result).toBe("outcome_unknown");
   });
 
-  it("DSOR-UNK-02: after a silent bank, a replay gives back OUTCOME_UNKNOWN, and a new attempt with a new key is refused while the first is in flight; the bank sent once", async () => {
+  // Changed in step 37: the new attempt hears RESOURCE_HELD, the invoice and the payment held for
+  //   the unknown one, not CONFLICT (step 37's README, decision D3).
+  it("DSOR-UNK-02: after a silent bank, a replay gives back OUTCOME_UNKNOWN, and a new attempt with a new key hears RESOURCE_HELD; the bank sent once", async () => {
     const w = await ruleWorldOnTuesday();
     const payment = await draft1002(w);
     const envelope = keyed(SUPERVISOR);
@@ -258,8 +260,8 @@ describe("C4: a slow bank is a success, a broken one a safe retry, a silent one 
     w.bank.mode = "good";
     expect(heard(await execute(w, payment, envelope))).toBe("OUTCOME_UNKNOWN");
     const second = await execute(w, payment);
-    expect(second).toMatchObject({ code: "CONFLICT" });
-    expect(JSON.stringify(second)).toContain(idOf(first));
+    expect(second).toMatchObject({ code: "RESOURCE_HELD", retry: "after_reconciliation" });
+    expect(JSON.stringify(second)).not.toContain(idOf(first));
     expect(w.bank.transfers()).toHaveLength(1);
   });
 });

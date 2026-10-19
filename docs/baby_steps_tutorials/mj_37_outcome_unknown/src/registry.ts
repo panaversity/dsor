@@ -11,6 +11,7 @@ import {
   type RoleSource,
 } from "./authority.ts";
 import { bindProblems } from "./bound.ts";
+import { holdProblems } from "./holds.ts";
 import { exclusiveProblems } from "./inflight.ts";
 import { freshnessProblems } from "./preconditions.ts";
 import { NO_BRAKES, type BrakeStore } from "./brakes.ts";
@@ -304,6 +305,9 @@ export function buildRegistry(
   // And every bind is a path line ⑨ can read, and every spends names a bound
   // invoice (step 24's README, decision 2).
   problems.push(...bindProblems(contracts.values()));
+  // NEW IN STEP 37: and every hold_on_unknown names an alias its contract binds (step 37's README,
+  //   claim C5).
+  problems.push(...holdProblems(contracts.values()));
   // And a HIGH or CRITICAL command's preconditions are read current, unless its
   //   contract permits bounded staleness with an age (DSOR-FRS-02a; step 32's README, decision D5).
   problems.push(...freshnessProblems(contracts.values()));

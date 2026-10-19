@@ -74,15 +74,19 @@ describe("F1: once the bank may have sent, the work ends COMMITTED or OUTCOME_UN
     expect((await w.proposals.get("org_456", idOf(first)))?.state).toBe("OUTCOME_UNKNOWN");
     broken = false;
     expect(heard(await execute(w, payment, envelope))).toBe("OUTCOME_UNKNOWN");
-    expect(heard(await execute(w, payment))).toBe("CONFLICT");
+    // Changed in step 37: RESOURCE_HELD, not CONFLICT (step 37's README, decision D3).
+    expect(heard(await execute(w, payment))).toBe("RESOURCE_HELD");
     expect(w.bank.transfers()).toHaveLength(1);
   });
 
-  it("DSOR-UNK-01b: the payment is cancelled while the bank sends it: the send ends OUTCOME_UNKNOWN, never COMMITTED", async () => {
+  // Changed in step 37: the payment is held from the note on, so the cancel hears RESOURCE_HELD and
+  //   changes nothing, and the send commits, in memory as on the database (step 37's README,
+  //   decision D6).
+  it("DSOR-UNK-01b: a cancel of the payment while the bank sends it hears RESOURCE_HELD, and the send commits", async () => {
     const w = await ruleWorldOnTuesday();
     const payment = await draft(w);
-    // The cancel lands after the bank has taken the payment, before its answer: in memory nothing
-    //   holds the row, which the database's lock does (step 35's review, F5).
+    // The cancel lands after the bank has taken the payment, before its answer (step 35's review,
+    //   F5).
     const pay = w.bank.pay;
     let cancel: Answer | undefined;
     w.bank.pay = async (key, order) => {
@@ -90,8 +94,8 @@ describe("F1: once the bank may have sent, the work ends COMMITTED or OUTCOME_UN
       cancel = await w.ask(keyed(SUPERVISOR), "payment.cancel", { payment, expected_version: 1 });
       return receipt;
     };
-    expect(await execute(w, payment)).toMatchObject({ code: "OUTCOME_UNKNOWN" });
-    expect(heard(cancel!)).toBe("COMMITTED");
+    expect(heard(await execute(w, payment))).toBe("COMMITTED");
+    expect(heard(cancel!)).toBe("RESOURCE_HELD");
     expect(w.bank.transfers()).toHaveLength(1);
   });
 });
@@ -128,7 +132,8 @@ describe("F3: only a bank that says it sent nothing is safe to try again", () =>
       expect(await execute(w, payment, envelope)).toMatchObject({ code: "OUTCOME_UNKNOWN" });
       w.bank.pay = pay;
       expect(heard(await execute(w, payment, envelope))).toBe("OUTCOME_UNKNOWN");
-      expect(heard(await execute(w, payment))).toBe("CONFLICT");
+      // Changed in step 37: RESOURCE_HELD, not CONFLICT (step 37's README, decision D3).
+      expect(heard(await execute(w, payment))).toBe("RESOURCE_HELD");
       expect(w.bank.transfers()).toHaveLength(1);
     },
   );

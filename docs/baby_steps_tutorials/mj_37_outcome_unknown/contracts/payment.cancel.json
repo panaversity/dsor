@@ -10,6 +10,7 @@
   "delegation": { "required": true },
   "idempotency": { "required": true },
   "concurrency": { "strategy": "optimistic" },
+  "bind": { "payment": "input.payment", "invoice": "state.payment.invoice_id" },
   "execution": { "semantics": "atomic" },
   "risk": { "level": "low" },
   "preconditions": { "freshness": "current", "predicates": [] },

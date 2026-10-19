@@ -12,12 +12,16 @@
   "concurrency": { "strategy": "optimistic" },
   "execution": { "semantics": "non_compensatable" },
   "risk": { "level": "high" },
-  "bind": { "invoice": "input.invoice", "vendor": "state.invoice.vendor_id" },
+  "bind": {
+    "invoice": "input.invoice",
+    "vendor": "state.invoice.vendor_id",
+    "payment": "input.payment"
+  },
   "preconditions": {
     "freshness": "current",
     "predicates": ["state.invoice.status == \"issued\"", "state.vendor.status == \"approved\""]
   },
-  "in_flight": { "exclusive_over": ["invoice"] },
+  "in_flight": { "exclusive_over": ["invoice"], "hold_on_unknown": ["payment", "invoice"] },
   "controls": [],
   "audit": { "level": "full" },
   "connector_requirements": { "downstream_idempotency_or_outcome_lookup": true }

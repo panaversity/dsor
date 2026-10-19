@@ -1090,6 +1090,8 @@ export function createDbClaims(
     proposals: createDbProposals(pool),
     // And the intent records, each read in a transaction of its own.
     intents: createDbIntents(pool),
+    // NEW IN STEP 37: and the holds. Not built yet.
+    holds: NO_HOLDS,
     run: async (
       scope: ClaimScope,
       payloadHash: string,

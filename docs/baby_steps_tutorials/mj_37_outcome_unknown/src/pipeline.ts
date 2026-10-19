@@ -1,6 +1,6 @@
 // The checklist every call goes through. DSOR-EXE-01a in specs/dsor/03-execution.md,
 // section 21, and DSOR-OPR-04a in specs/dsor/01-model.md, section 7.
-import { NO_HOLDS } from "./holds.ts";
+import { checkHolds, holdsOf, NO_HOLDS, type HoldStore } from "./holds.ts";
 import { NO_INTENTS } from "./intents.ts";
 import { randomUUID } from "node:crypto";
 import { pinned, readBound, type Bound, type BoundRead } from "./bound.ts";
@@ -65,7 +65,7 @@ import {
   type ReservationStore,
 } from "./limits.ts";
 import { decisionOf, type Authority, type Decision, type DecisionLog, type Read } from "./log.ts";
-import { NO_PAYMENTS } from "./payment.ts";
+import { NO_PAYMENTS, type PaymentStore } from "./payment.ts";
 import { checkResultSize } from "./pages.ts";
 import { checkPermission, effectivePermissions, permissionsOf } from "./permissions.ts";
 import { clearanceOf, maskRefusal, show } from "./masking.ts";
@@ -468,6 +468,9 @@ export async function call(
     // decision 16).
     // The invoices line ⑨ read, apart from the vendors it read with them.
     let boundInvoices: Bound["invoices"] = {};
+    // NEW IN STEP 37: and the address of each record line ⑨ bound, by its alias, which a
+    //   payment's holds are placed on (step 37's README, decision D6).
+    let boundResources: Bound["resources"] = {};
     // The request line ⑨ and line ⑩ decide: its contract, the request, DSoR's own
     //   work for it, who asked for it, the roles they hold now, and the slip it runs under. For a
     //   call, the call itself. For a release, the stored request (step 31's README, decision D1).
@@ -523,6 +526,9 @@ export async function call(
       // And the proposals, which an approval's look reads: the claim's own, or,
       //   in a dry run, the claim store's, outside any claim.
       proposals: ProposalStore,
+      // NEW IN STEP 37: and the company's payments, which line ⑨ reads when a contract binds one,
+      //   and the holds it looks at (step 37's README, decisions D2 and D3).
+      looks: { payments: PaymentStore; holds: HoldStore },
       reserveFor?: string,
       // And the request asked about, the call's own unless a release names the
       //   stored one (DSOR-APR-03a).
@@ -535,6 +541,7 @@ export async function call(
         state,
         invoices: read,
         spends,
+        resources,
       } = await line(9, async () => {
         // Each record line ⑨ reads goes into the notebook of evidence as it is read, one that
         //   is not there too, before any refusal. One call reads at line ⑨ once (step 33's README,
@@ -542,7 +549,18 @@ export async function call(
         const noted = (read: BoundRead): void => {
           evidence.state.push(stateReadOf(read));
         };
-        const bound = await readBound(contract, copy, invoices, tenant, noted);
+        const bound = await readBound(contract, copy, invoices, tenant, noted, looks.payments);
+        // NEW IN STEP 37: the holds first, before freshness, the version decided on, and one
+        //   attempt at a time: a command that binds a record held for an unknown payment hears
+        //   RESOURCE_HELD, retried only after reconciliation, whatever else is true (DSOR-UNK-03b;
+        //   step 37's README, decision D3). Its own proposal's holds are left out.
+        await checkHolds(
+          looks.holds,
+          proposals,
+          tenant,
+          Object.values(bound.resources),
+          reserveFor ?? asked.booked,
+        );
         // Each read as fresh as the contract asks, or no decision is made on it,
         //   and no cache stands in (DSOR-FRS-02a, DSOR-FRS-02b; step 32's README, decision D5). At a
         //   release, CURRENT, whatever the contract permits: §26.4 re-evaluates "against CURRENT
@@ -612,6 +630,7 @@ export async function call(
         return bound;
       });
       boundInvoices = read;
+      boundResources = resources;
       return await line(10, async () => {
         // The company's controls on this operation come first, for every caller. A
         //   condition converts with the newest fresh sheet of the company's source. The most
@@ -749,7 +768,8 @@ export async function call(
     //   run, outside any claim, takes no lock and books nothing, and counts the proposal's own
     //   booking once (D13).
     const checkAgain = async (
-      stores: Omit<WorkStores, "payments">,
+      // Changed in step 37: with the payments, which line ⑨ reads when a contract binds one.
+      stores: WorkStores,
       loaded: Proposal,
       target: Contract,
       inClaim: boolean,
@@ -788,6 +808,7 @@ export async function call(
         }));
       }
       const { invoices, reservations, slips, brakes, rates, controls, proposals } = stores;
+      const { payments, holds } = stores;
       // Inside the claim, the booking is found again by the proposal's id, and not made twice (D4).
       // A limit that no usable rate can convert to is a check that cannot be made now: the payment
       //   still does not run (DSOR-MON-04), and it waits for a fresh sheet (D15). Found by step 31's
@@ -801,6 +822,7 @@ export async function call(
         rates,
         controls,
         proposals,
+        { payments, holds },
         inClaim ? id : undefined,
         asked,
       ).catch((thrown: unknown) => {
@@ -840,7 +862,9 @@ export async function call(
             proposals: registry.claims.proposals,
             // A dry run writes no note and commits nothing.
             intents: NO_INTENTS,
-            holds: NO_HOLDS,
+            // Changed in step 37: and reads the payments and the holds, outside any claim.
+            payments: registry.payments,
+            holds: registry.claims.holds,
             checkpoint: async () => {},
           };
           try {
@@ -889,6 +913,9 @@ export async function call(
           registry.controls,
           // And the proposals, outside any claim.
           registry.claims.proposals,
+          // And the payments and the holds, outside any claim, so a dry run hears RESOURCE_HELD
+          //   as the real call would (DSOR-OPR-06).
+          { payments: registry.payments, holds: registry.claims.holds },
         );
       } catch (thrown) {
         // Masked as the real call's refusal is, as it leaves the claim (step 23's README, decision
@@ -985,7 +1012,18 @@ export async function call(
                       if (keyOfRecord === undefined)
                         throw new Error("a bank was asked with no claim");
                       const now = new Date().toISOString();
+                      // NEW IN STEP 37: and the holds, with the note, in its transaction, before
+                      //   the bank is asked: every record the running contract's hold_on_unknown
+                      //   names, at the address line ⑨ bound it. So a silent bank, a lost
+                      //   connection, and a crash all find them placed (DSOR-UNK-03b; step 37's
+                      //   README, decision D6).
+                      const runningContract =
+                        "target" in job ? (job as { target: Contract }).target : contract;
+                      const held = holdsOf(runningContract).flatMap((alias) =>
+                        boundResources[alias] === undefined ? [] : [boundResources[alias]!],
+                      );
                       try {
+                        await stores.holds.place(tenant, id, held);
                         await stores.intents.write(tenant, {
                           proposal_id: id,
                           tenant_id: tenant,
@@ -1506,6 +1544,7 @@ export async function call(
                         rates,
                         controls,
                         proposals,
+                        { payments: stores.payments, holds: stores.holds },
                         reserveFor,
                       );
                       // When the work will run, its bundle is checked first

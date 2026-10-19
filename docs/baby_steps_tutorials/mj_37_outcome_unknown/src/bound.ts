@@ -7,11 +7,14 @@
 // Or state.<alias>.vendor_id, which binds the vendor of an invoice bound before it.
 //   The request never names a vendor: DSoR follows the invoice's own link (DSOR-MOD-03; step 32's
 //   README, decision D2).
+// NEW IN STEP 37: and the alias payment, input.<field>, which binds a payment, and
+//   state.<alias>.invoice_id, the invoice of a payment bound before it: DSoR finds the invoice on the
+//   payment itself, never in the request (step 37's README, decision D2).
 import { Refusal } from "./envelope.ts";
 import type { Freshness } from "./freshness.ts";
 import type { Invoice, InvoiceStore } from "./invoice.ts";
 import type { Money } from "./money.ts";
-import type { Draft, Drafted, PaymentStore } from "./payment.ts";
+import type { Draft, Drafted, Payment, PaymentStore } from "./payment.ts";
 import { preview, type Contract } from "./registry.ts";
 import { formatUri, parseUri } from "./uri.ts";
 import type { Vendor } from "./vendor.ts";
@@ -25,7 +28,11 @@ const BIND = /^input\.([a-z][a-z0-9_]*)$/;
 // State.<alias>.vendor_id: the vendor of an invoice the input binds. A field that
 //   ends in _id links to the record of that name, §6's pattern (step 17's README, decision 15).
 // not copied: the tutorial's own reading of a link, and its only one (step 32's README, decision D2).
-const LINK = /^state\.([a-z][a-z0-9_]*)\.vendor_id$/;
+// NEW IN STEP 37: or state.<alias>.invoice_id, the invoice of a payment.
+const LINK = /^state\.([a-z][a-z0-9_]*)\.(vendor_id|invoice_id)$/;
+// NEW IN STEP 37: the one alias that binds a payment, not an invoice. Not copied: the tutorial's
+//   own convention, as its plain paths are (step 37's README, decision D2).
+const PAYMENT = "payment";
 // state.<alias>.<field>: a money field of a bound invoice.
 // not copied: the specification has no field for what a command spends; this is the tutorial's own
 // (step 24's README, decision 2).
@@ -80,7 +87,7 @@ export function bindProblems(contracts: Iterable<Contract>): string[] {
       const link = typeof path === "string" ? LINK.exec(path) : null;
       if (link !== null && fromInput.has(link[1]!)) continue;
       const why =
-        "is not input.<field>, nor state.<alias>.vendor_id of an alias the input binds before it: CEL in a bind is not built yet (step 24's README, decision 2; step 32's README, decision D2)";
+        "is not input.<field>, nor state.<alias>.vendor_id or .invoice_id of an alias the input binds before it: CEL in a bind is not built yet (step 24's README, decision 2; step 32's README, decision D2; step 37's README, decision D2)";
       problems.push(`${contract.id}: the bind ${JSON.stringify(alias)} ${why}`);
     }
     const spends = spendsOf(contract);
@@ -114,11 +121,15 @@ function addressOf(tenant: string, entity: string, id: string): string | undefin
 //   was decided on, and the pin of the work's draft, are about them alone. Found while building:
 //   step 31's check of the version skipped itself once two records were bound.
 export type Bound = {
-  state: Record<string, Invoice | Vendor>;
+  // And, since step 37, each bound payment.
+  state: Record<string, Invoice | Vendor | Payment>;
   invoices: Record<string, Invoice>;
   spends?: Money;
   // And each read's label, which the contract's freshness is checked against (DSOR-FRS-02a).
   labels: Freshness[];
+  // NEW IN STEP 37: and each bound record's address, by its alias, which line ⑨'s look at the
+  //   holds matches, and a payment's holds are placed on (step 37's README, decision D2).
+  resources: Record<string, string>;
 };
 
 // One read line ⑨ made, for the decision's bundle: the record's address, its
@@ -139,15 +150,43 @@ export async function readBound(
   // And who hears of each read as it is made, a read that finds nothing too, before any refusal
   //   (step 33's README, D5).
   note: (read: BoundRead) => void = () => {},
+  // NEW IN STEP 37: and the company's payments, for a contract that binds one.
+  payments?: PaymentStore,
 ): Promise<Bound> {
-  const state: Record<string, Invoice | Vendor> = {};
+  const state: Record<string, Invoice | Vendor | Payment> = {};
   const read: Record<string, Invoice> = {};
   const labels: Freshness[] = [];
+  const resources: Record<string, string> = {};
+  // The payments read, by alias, so a link finds the invoice on its payment.
+  const paid: Record<string, Payment> = {};
   for (const [alias, path] of bindsOf(contract)) {
     // A link: the vendor of an invoice read above, in the call's own company. A
     //   vendor the accounts system does not list is not bound, and a condition that reads it cannot
     //   be evaluated (step 32's README, decision D4).
     const link = LINK.exec(String(path));
+    // NEW IN STEP 37: the invoice of a payment read above. It is state for a condition, and a
+    //   record a hold can hold, but not one of the invoices the request names: the version a cancel
+    //   names is its payment's, so the check of the version decided on leaves this invoice out.
+    if (link !== null && link[2] === "invoice_id") {
+      const payment = paid[link[1]!];
+      if (payment === undefined) continue;
+      const { invoice, freshness } = await invoices.get(tenant, payment.invoice_id);
+      labels.push(freshness);
+      const at = addressOf(tenant, "invoice", payment.invoice_id);
+      if (at === undefined) continue;
+      note(
+        invoice === undefined
+          ? { uri: at, label: freshness }
+          : { uri: at, version: invoice.version, label: freshness },
+      );
+      if (invoice === undefined) {
+        const why = `no invoice ${preview(payment.invoice_id)}`;
+        throw new Refusal("RESOURCE_NOT_FOUND", why, "internal");
+      }
+      state[alias] = invoice;
+      resources[alias] = at;
+      continue;
+    }
     if (link !== null) {
       const vendorId = read[link[1]!]!.vendor_id;
       // A vendor id that no address can name, such as one with a space, is not followed: no
@@ -169,6 +208,23 @@ export async function readBound(
     const field = BIND.exec(String(path))![1]!;
     const uri = (copy as Record<string, unknown>)[field];
     const { entity, id } = parseUri(uri as string);
+    // NEW IN STEP 37: a payment, read through the company's own payments, by an address of a
+    //   payment only. The same words as the code's refusal, so a dry run hears what the real call
+    //   hears. Its read is not in the bundle yet: the payments store gives no freshness label.
+    if (alias === PAYMENT) {
+      if (entity !== "payment") {
+        throw new Refusal("RESOURCE_NOT_FOUND", `no payment ${preview(id)}`, "internal");
+      }
+      if (payments === undefined) throw new Error("line ⑨ was given no payments to read");
+      const payment = await payments.get(tenant, id);
+      if (payment === undefined) {
+        throw new Refusal("RESOURCE_NOT_FOUND", `no payment ${preview(id)}`, "internal");
+      }
+      state[alias] = payment;
+      paid[alias] = payment;
+      resources[alias] = formatUri({ tenant_id: tenant, entity: "payment", id });
+      continue;
+    }
     // And the address must be an invoice's. The store reads by id alone, so an
     //   address of another kind with an invoice's id would read that invoice, and the look, which
     //   searches the invoice's own address, would miss the attempt. Only the input schema's
@@ -192,11 +248,12 @@ export async function readBound(
     }
     state[alias] = invoice;
     read[alias] = invoice;
+    resources[alias] = at;
   }
   const match = SPENDS.exec(String(spendsOf(contract)));
-  if (match === null) return { state, invoices: read, labels };
+  if (match === null) return { state, invoices: read, labels, resources };
   const spent = read[match[1]!]![match[2] as "open_amount" | "amount"];
-  return { state, invoices: read, spends: { ...spent }, labels };
+  return { state, invoices: read, spends: { ...spent }, labels, resources };
 }
 
 // The work writes only on what line ⑨ read. Line ⑩ checked the limits, and

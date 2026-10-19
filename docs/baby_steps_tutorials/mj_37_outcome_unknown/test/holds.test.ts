@@ -233,6 +233,23 @@ describe("C4: a hold ends with its payment", () => {
   });
 });
 
+describe("C4b: RESOURCE_HELD means not now, so nothing is kept", () => {
+  it("DSOR-UNK-03b: a cancel of PAY-901 refused while it is held leaves no claim and no proposal: once the payment is settled FAILED, the same key cancels it", async () => {
+    const w = await ruleWorldOnTuesday();
+    const { payment, unknown } = await unknownPayment(w);
+    const envelope = keyed(SUPERVISOR);
+    const input = { payment, expected_version: 1 };
+    expect(await w.ask(envelope, "payment.cancel", input)).toMatchObject(HELD);
+    const made = (await w.proposals.all()).filter(
+      (p) => p.idempotency_key === envelope.idempotency_key,
+    );
+    expect(made).toStrictEqual([]);
+    await settle(w, idOf(unknown), "FAILED");
+    expect(heard(await w.ask(envelope, "payment.cancel", input))).toBe("COMMITTED");
+    expect(w.drafted.map((p) => p.status)).toStrictEqual(["cancelled"]);
+  });
+});
+
 describe("C5: the contracts name what is held", () => {
   it("DSOR-UNK-03b: payment.execute holds its payment and its invoice; payment.cancel binds its payment and the invoice found on it", async () => {
     const { contracts } = (await ruleWorldOnTuesday()).registry;

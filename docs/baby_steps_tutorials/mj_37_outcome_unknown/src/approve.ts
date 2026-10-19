@@ -151,7 +151,15 @@ async function approve(input: unknown, work: OwnStores): Promise<unknown> {
   //   bound as a vendor. Since step 32 every record of the state was named as an invoice, VENDOR-44
   //   too (step 33's README, found while building). A record that is not there has no version.
   const read: BoundRead[] = [];
-  await readBound(target, found.payload, stores.invoices, tenant, (one) => read.push(one));
+  // Changed in step 37: with the payments, for a contract that binds one.
+  await readBound(
+    target,
+    found.payload,
+    stores.invoices,
+    tenant,
+    (one) => read.push(one),
+    stores.payments,
+  );
   const versions = Object.fromEntries(
     read.flatMap((one) => (one.version === undefined ? [] : [[one.uri, one.version]])),
   );

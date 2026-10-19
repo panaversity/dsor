@@ -219,6 +219,9 @@ const NOT_NOW: ReadonlySet<ErrorCode> = new Set<ErrorCode>([
   "DEPENDENCY_TIMEOUT",
   "RATE_LIMITED",
   "FRESHNESS_UNSATISFIABLE",
+  // NEW IN STEP 37: and a record held for an unknown payment: the release waits, as its proposal
+  //   does (step 37's README, decision D4).
+  "RESOURCE_HELD",
 ]);
 
 /** True when a refusal of the check again says no to the request, which invalidates it. */

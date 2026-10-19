@@ -14,6 +14,7 @@ import type { PaymentStore } from "./payment.ts";
 import { memoryReservations, type MemoryReservations, type ReservationStore } from "./limits.ts";
 import {
   memoryProposals,
+  proposalUri,
   type Opened,
   type Pending,
   type ProposalMode,
@@ -118,6 +119,8 @@ export type ClaimStore = {
   proposals: ProposalStore;
   // And the intent records, which a test, and the sweep at start-up, read.
   intents: IntentStore;
+  // NEW IN STEP 37: and the holds, which a dry run's line ⑨ looks at, outside any claim.
+  holds: HoldStore;
   /**
    * Claims the key and runs the work, or gives back the outcome recorded for the same request,
    * or refuses a different request with IDEMPOTENCY_CONFLICT.
@@ -192,6 +195,11 @@ export function usedInAnotherMode(operation: string, first: ProposalMode): Refus
  */
 export function isOutcome(thrown: unknown): thrown is Refusal {
   if (!(thrown instanceof Refusal) || thrown.code === "INTERNAL_ERROR") return false;
+  // NEW IN STEP 37: RESOURCE_HELD says "not now", nothing about the request: a record it binds is
+  //   held for a payment nobody knows the end of. So the claim keeps nothing, no proposal stays
+  //   DENIED, a waiting proposal keeps waiting, and the same key runs once the payment is settled,
+  //   as its retry class says (step 37's README, decisions D3 and D4).
+  if (thrown.code === "RESOURCE_HELD") return false;
   // A refusal that came after the note is kept, whatever its retry class.
   if (AFTER_NOTE.has(thrown)) return true;
   return RETRY[thrown.code] !== "safe_same_key";
@@ -345,7 +353,17 @@ export function memoryClaims(
       const stores: WorkStores = {
         invoices,
         payments,
-        proposals: { ...proposals, holdOver },
+        // NEW IN STEP 37: and a create that remembers the proposal this claim made, so a refusal
+        //   inside line ⑧, such as RESOURCE_HELD, which keeps nothing, undoes it as the database's
+        //   rollback does. Found while building: memory left it PROPOSED.
+        proposals: {
+          ...proposals,
+          holdOver,
+          create: async (tenant, id, draft, by, lifetime) => {
+            await proposals.create(tenant, id, draft, by, lifetime);
+            made ??= proposalUri(tenant, id);
+          },
+        },
         reservations,
         slips,
         brakes,
@@ -464,7 +482,7 @@ export function memoryClaims(
     if (held.mode !== mode) throw usedInAnotherMode(scope.operation, held.mode);
     return { ...fresh(ended), replay_of: held.requestId };
   };
-  return Object.freeze({ run, reservations, rates, proposals, intents });
+  return Object.freeze({ run, reservations, rates, proposals, intents, holds });
 }
 
 // The outcome, with a copy of its value, so no caller can change what the claim keeps.
