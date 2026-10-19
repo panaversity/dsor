@@ -124,6 +124,25 @@ describe("C4: a bank that does not answer settles nothing", () => {
   );
 });
 
+describe("C4b: a receipt that is not this payment settles nothing", () => {
+  it("DSOR-UNK-04a: the bank answers the key with a receipt for another amount: the proposal stays OUTCOME_UNKNOWN, PAY-901 a draft, and the answer says why", async () => {
+    const w = await ruleWorldOnTuesday();
+    const { proposal } = await unknownPayment(w);
+    const lookup = w.bank.lookup;
+    w.bank.lookup = async (key) => {
+      const found = await lookup(key);
+      return found === undefined
+        ? undefined
+        : { ...found, amount: { value: "89.00", currency: "USD" } };
+    };
+    const asked = await reconcile(w, proposal);
+    expect(asked).toMatchObject({ data: { state: "OUTCOME_UNKNOWN" } });
+    expect((asked as { data: { evidence: string } }).data.evidence).toContain("not this payment");
+    expect(await stateOf(w, proposal)).toBe("OUTCOME_UNKNOWN");
+    expect(w.drafted.map((p) => p.status)).toStrictEqual(["draft"]);
+  });
+});
+
 describe("C5: the evidence is kept", () => {
   it("DSOR-UNK-04a: the proposal's move to COMMITTED names what the bank said, and the call leaves its record", async () => {
     const w = await ruleWorldOnTuesday();
@@ -173,6 +192,24 @@ describe("C6: who may settle, and what", () => {
     expect(await reconcile(w, `dsor://org_456/proposal/${idOf(drafted)}`)).toMatchObject({
       code: "CONFLICT",
     });
+  });
+
+  it("DSOR-OPR-06: a dry run of a reconcile of a settled proposal hears CONFLICT, as the real call does, before the bank is asked", async () => {
+    const w = await ruleWorldOnTuesday();
+    const { proposal } = await unknownPayment(w);
+    await reconcile(w, proposal);
+    let asked = 0;
+    const lookup = w.bank.lookup;
+    w.bank.lookup = async (key) => {
+      asked += 1;
+      return lookup(key);
+    };
+    const dry = await w.ask({ ...SCHEDULER, mode: "validate_only" }, "payment.reconcile", {
+      proposal,
+    });
+    expect(dry).toMatchObject({ code: "CONFLICT" });
+    expect(await reconcile(w, proposal)).toMatchObject({ code: "CONFLICT" });
+    expect(asked).toBe(0);
   });
 
   it("DSOR-OPR-06: a dry run of a reconcile changes nothing", async () => {
