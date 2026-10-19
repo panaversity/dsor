@@ -107,3 +107,160 @@ this tutorial's decisions, below.
 | C1 to C5 | `test/alerts.test.ts`, in memory |
 | C2, C3, C4, C7 | `test/alerts.db.test.ts`, on the database, with a real `SIGKILL` |
 | C6 | `test/alerts-file.test.ts` |
+
+### The breaks
+
+The learner chose not to predict. Each break ran on 2026-10-19 in a fresh copy of this folder, with
+a fresh database, against `test/alerts.test.ts`, `test/alerts-file.test.ts`, and
+`test/alerts.db.test.ts`.
+
+| Break | What it removes | Unit tests failed | Database tests failed |
+|---|---|---|---|
+| **B1** | The move to `OUTCOME_UNKNOWN` raises no alert | 15 | 4 |
+| **B2** | The settlement does not close the alert | 4 | 1 |
+| **B3** | The sweep escalates every open alert, at once, whatever its age | 1 | 1 |
+| **B4** | The sweep escalates a closed alert too | 2 | 1 |
+| **B5** | The contract no longer says only a system login may call the sweep | 1 | not run |
+| **B6** | Start-up takes an agent or a system login as the person to escalate to | 2 | not run |
+| **B7** | The trigger lets any change through | 0 | 1 |
+
+B1 is the dangerous one: a payment goes unknown and nobody is ever told, which is the failure this
+step exists to stop. B5 first passed every test. No person's role holds `alert:escalate`, and an
+agent's slip needs a signer who holds it, so the permission check refused everyone before the
+system-only guard was reached. A test with the permission added to the AP supervisor's role now
+shows the guard working alone. B7 is caught only on the database, because the trigger is the
+database's.
+
+## What changed since step 38
+
+| File | What changed |
+| --- | --- |
+| `alerts.json`, `src/alerts.ts` | **New.** Each company's receivers, person, and bounds, checked at start-up (D2, D4, D7) |
+| `src/proposals.ts`, `src/postgres.ts`, `migrations/034_alerts.sql` | The proposal store's move raises and closes the alert; `dsor.alerts` and its trigger (D1, D5, D6) |
+| `src/escalation.ts`, `contracts/alert.escalate_due.json`, `inputs/AlertEscalateDueRequest.schema.json`, `examples/alert.escalate_due.json` | **New.** The escalation sweep (D3) |
+| `src/registry.ts`, `src/revocation.ts`, `src/pipeline.ts` | Start-up checks the file; DSoR's own work gets the company's alerts |
+| `roles.json`, `classifications.json`, `store.json` | `alert:escalate` for the scheduler; the sweep's answer's labels; the store map names `dsor.alerts` |
+| `src/main.ts` | The scene: PAY-902's alert raised, escalated, closed |
+| `test/alerts.test.ts`, `test/alerts-file.test.ts`, `test/alerts.db.test.ts`, `test/owner-alerts.ts` | **New.** The claims C1 to C7 |
+| The other tests | Twenty contracts, 225 attacks, the roles, the labels, the store map. Each says "Changed in step 38b" |
+
+```bash
+git diff --no-index ../mj_38_reconciliation/src src
+git diff --no-index ../mj_38_reconciliation/test test
+```
+
+## Run it
+
+As in step 38: a local PostgreSQL 17 and a database of its own. Migration 034 is new.
+
+```bash
+pnpm install
+pnpm migrate
+pnpm start
+```
+
+From a real run on 2026-10-19, the silent day in the bank's world, shortened:
+
+```text
+  a silent day; user_123 sends PAY-902: OUTCOME_UNKNOWN: payment "PAY-902": the bank did not answer within 200 ms, so it may or may not have been sent
+  user_123 tries to cancel PAY-902: RESOURCE_HELD: payment "PAY-902" is held while a payment's outcome is unknown; try again once it is reconciled
+  PAY-902's alert: open, raised 2026-10-06T15:05:00.000Z, for ap_supervisor
+  dsor-scheduler's escalation sweep, at once: 0 escalated to cfo_100
+  PT1H later, the sweep again: 1 escalated to cfo_100
+  PAY-902's alert: escalated, to cfo_100
+  dsor-scheduler reconciles PAY-902: COMMITTED, the bank sent TRF-2: 8900.50 USD to VENDOR-44
+  PAY-902's alert: closed, COMMITTED
+```
+
+In step 38 the same run went from `RESOURCE_HELD` to the reconcile, and nobody was told in between.
+
+## Build it yourself with Claude Code
+
+| # | Move | What was done |
+|---|---|---|
+| 1 | Understand | The problem, shown with a real run on step 38's code |
+| 2 | Decide | Seven choices by the learner, and the split into 38c |
+| 3 | The copy | Step 38 copied, its markers removed |
+| 4 | Red | 15 unit tests and the start-up check's, all red |
+| 5 | Memory and database | The move's alert, the file, the sweep, migration 034 |
+| 6 | Earlier tests | The lists and counts that name every operation, and the store map |
+| 7 | Break it | B1 to B7, in copies of the folder |
+| 8 | Review | A reviewer who had not seen the conversation |
+
+To start it in a new session:
+
+```text
+Build step 38b in learner mode from the design in
+docs/baby_steps_tutorials/mj_38b_alert_and_escalate/README.md.
+```
+
+## Check yourself
+
+1. PAY-901 goes unknown after a crash, and the start-up sweep moves it to `OUTCOME_UNKNOWN`. Is an
+   alert raised? Why?
+2. Why is the alert written by the proposal's move, and not by `payment.execute` where the bank
+   goes silent?
+3. The bank answers `payment.reconcile` 40 minutes after PAY-901 went unknown. What happens to the
+   alert, and does cfo_100 ever hear of it?
+4. Someone writes `"escalate_to": "accounts-payable-fte"` in `alerts.json`. What happens?
+5. Two sweeps run at once, an hour after PAY-901 went unknown. How many times is its alert escalated?
+
+<details>
+<summary>Answers</summary>
+
+1. Yes. Every way into `OUTCOME_UNKNOWN` goes through the proposal store's move, and the move raises
+   the alert in its own transaction (C2, D5). The database test proves it with a real `SIGKILL`.
+2. A payment goes unknown in three ways, and the crash is one where `payment.execute` never gets to
+   its next line. The move is the one place all three pass (D5).
+3. The reconcile's move closes it, naming `COMMITTED`, in the same transaction (C3). A closed alert
+   is never escalated, so cfo_100 is not told (C4).
+4. DSoR does not start: "is not a person of org_456". An agent is never the human DSOR-UNK-04c asks
+   for (C6, D4).
+5. Once. The database's escalation is one statement that changes only an open alert; the second
+   sweep waits for the first's row lock, then finds it escalated (C4).
+
+</details>
+
+## Think it through
+
+### Found while building
+
+- **A list in an answer must hold records of a named kind.** The sweep first answered a list of
+  addresses, and the masking check refused it as `INTERNAL_ERROR`. Each escalated alert is now a
+  small record, `{ proposal, raised_at }`, with its labels in `classifications.json`.
+- **A column the database fills must not also be one DSoR moves.** `state` had a default and an
+  `UPDATE` grant, and the store map's check refused that. The trigger now writes `open` on the
+  insert, and the column has no default.
+- **In memory, the alert is read from the move's records.** So when memory undoes a call after an
+  accident, as the database's rollback would, the alert goes with the move. Only the escalation is
+  kept apart, and memory does not undo it.
+- **The system-only guard is a second wall** (B5). The permission check already refuses everyone
+  but `dsor-scheduler`; the guard is what holds if someone later gives a person's role
+  `alert:escalate`.
+
+### What the review found
+
+(Filled in after the review.)
+
+### Left open on purpose
+
+- **The list of alerts** (step 38c). Until then, a person sees an alert only in the scene and the
+  tests.
+- **Delivery** by email or a pager is step 40's outbox. An alert is a row, and a row tells nobody
+  who does not read it.
+- **Nothing runs the sweep on a timer**, as for the expiry sweep. A deployment's timer would run it
+  every minute.
+- **`alert_within` is a promise, not a wait.** The alert is raised with the move, in no time at all,
+  so any value within one minute is met. The file declares it so a reviewer can see the bound.
+- **One person per company.** If cfo_100 is away, the alert waits for them.
+- **Two database tests fail on a throwaway server**, as in steps 34 to 38: one that accepts any
+  password, and an owner that belongs to no other role.
+
+## The rules this step meets
+
+| Rule | What it says | Spec | Tests |
+| --- | --- | --- | --- |
+| DSOR-UNK-04b | Each unknown outcome raises an alert within one minute | [§25.3](../../../specs/dsor/03-execution.md#253-reconciliation), [§44](../../../specs/dsor/06-conformance.md#44-operational-bounds) | [`test/alerts.test.ts`](test/alerts.test.ts), [`test/alerts-file.test.ts`](test/alerts-file.test.ts), [`test/alerts.db.test.ts`](test/alerts.db.test.ts) |
+| DSOR-UNK-04c | One still unresolved after one hour goes to a human | [§25.3](../../../specs/dsor/03-execution.md#253-reconciliation), [§44](../../../specs/dsor/06-conformance.md#44-operational-bounds) | [`test/alerts.test.ts`](test/alerts.test.ts), [`test/alerts-file.test.ts`](test/alerts-file.test.ts), [`test/alerts.db.test.ts`](test/alerts.db.test.ts) |
+
+**Next:** step 38c, the list of alerts: DSoR's first query over its own store.
