@@ -37,6 +37,26 @@ if (compiled === undefined) {
 
 const validateControl = compiled;
 
+// The authority a decision's record names must be one the audit schema takes, or the record cannot
+// be written and the decision goes unrecorded (decision 164).
+const authorityCompiled = ajv.getSchema("urn:dsor:schema:1.3:common#/$defs/authorityReference");
+
+if (authorityCompiled === undefined) {
+  throw new Error("the authority reference schema did not compile");
+}
+
+const validateAuthority = authorityCompiled;
+
+/**
+ * Whether controls govern an operation. DSoR's own commands, the brake, the tear-up and, later,
+ * a proposal's, are governed by none: the brake must work when the controls cannot be read, and
+ * a `proposal.*` command may never itself require approval (DSOR-APR-08). So no control is switched
+ * on for one, and the controls are not read for one (decision 164).
+ */
+export function governedByControls(operation: string): boolean {
+  return !["control.", "delegation.", "proposal."].some((own) => operation.startsWith(own));
+}
+
 /** The six states §17 gives a control. */
 export type ControlStatus =
   | "draft"
@@ -112,8 +132,10 @@ export async function controlsOf(tenant: string): Promise<readonly Control[]> {
 }
 
 /**
- * The controls in force on one operation in one company: the ones switched on. A control waiting
- * for review, suspended or retired governs nothing. Read at every decision, never kept: a control
+ * The controls in force on one operation in one company: the ones switched on, and the ones
+ * switched on and since marked stale, which step 28 marks and which are never dropped or skipped
+ * (DSOR-CTL-03b); a review found the stale ones left out (decision 164). A control waiting for
+ * review, suspended or retired governs nothing. Read at every decision, never kept: a control
  * switched on a moment ago applies to the next request.
  */
 export async function controlsInForce(
@@ -128,7 +150,8 @@ export async function controlsInForce(
     record: Record<string, unknown>;
   }>(
     `SELECT id, version, status, operation, record FROM dsor.controls
-      WHERE tenant = $1 AND operation = $2 AND status = 'active' ORDER BY id`,
+      WHERE tenant = $1 AND operation = $2 AND status IN ('active', 'stale_authority')
+      ORDER BY id`,
     [tenant, operation],
   );
 
@@ -189,17 +212,31 @@ function effectOf(control: Control): Pick<Evaluated, "outcome" | "requires" | "r
  */
 export function evaluateControl(control: Control, given: ConditionInput, rates: RateOf): Evaluated {
   const applies = effectOf(control);
-  const authority = control.record.authority as Readonly<Record<string, unknown>>;
+  const given_ = control.record.authority;
+  // An authority the record cannot name would leave the decision unrecorded; one that cannot be
+  // read is named as no governed source, beside the error that says why (decision 164).
+  const authority: Readonly<Record<string, unknown>> =
+    validateAuthority(given_) === true
+      ? (given_ as Readonly<Record<string, unknown>>)
+      : Object.freeze({ system: "local" });
   const condition = control.record.condition;
   const base = { id: control.id, version: control.version, authority };
 
-  // A control whose record the schema refuses cannot be read, so it is not trusted to say ALLOW.
-  if (typeof condition !== "string" || validateControl(control.record) !== true) {
+  // A control whose record the schema refuses, or whose condition this environment cannot take,
+  // cannot be read, so it is not trusted to say ALLOW: DENY, the strictest answer, in its place.
+  // Switching such a control on is refused; this is for one an administrator wrote in force.
+  const unreadable =
+    typeof condition !== "string" || validateControl(control.record) !== true
+      ? "does not match control.schema.json"
+      : checkCondition(condition);
+
+  if (unreadable !== undefined || typeof condition !== "string") {
     return Object.freeze({
       ...base,
       ...applies,
       outcome: "DENY",
-      evaluation_error: `${control.id} v${control.version} does not match control.schema.json`,
+      reason: `${control.id} v${control.version} cannot be read`,
+      evaluation_error: `${control.id} v${control.version}: ${unreadable}`,
     });
   }
 
@@ -279,6 +316,12 @@ export async function switchOn(tenant: string, id: string, version: number): Pro
     return refused(`${tenant} has no control ${id} v${version}`);
   }
 
+  if (!governedByControls(control.operation)) {
+    return refused(
+      `${id} v${version} governs ${control.operation}, one of DSoR's own commands, which no control governs`,
+    );
+  }
+
   if (control.status !== "draft" && control.status !== "in_review") {
     return refused(
       `${id} v${version} is ${control.status}; only a draft or one in review is switched on`,
@@ -334,12 +377,24 @@ export async function switchOn(tenant: string, id: string, version: number): Pro
         : { evaluation_error: evaluated.evaluation_error }),
     });
   });
-  const failed = results.filter((r) => r.expected !== r.got);
+  // A case passes on its answer, and not because its condition could not be evaluated: a condition
+  // that reads a field nobody sends applies every time, and would pass every case that expects it
+  // to. Only a case in XXX, ISO 4217's code for no currency, may pass that way: it is there to show
+  // that an amount with no rate applies the control (decision 164).
+  const failed = results.filter(
+    (r) =>
+      r.expected !== r.got ||
+      (r.evaluation_error !== undefined && !/\bXXX\b/.test(r.evaluation_error)),
+  );
 
   if (failed.length > 0) {
     return refused(
       `${id} v${version} failed its own test cases: ${failed
-        .map((r) => `case ${r.case} expects ${r.expected} and gives ${r.got}`)
+        .map((r) =>
+          r.expected !== r.got
+            ? `case ${r.case} expects ${r.expected} and gives ${r.got}`
+            : `case ${r.case} gives ${r.got} only because it could not be evaluated: ${r.evaluation_error ?? ""}`,
+        )
         .join("; ")}`,
       results,
     );
@@ -358,12 +413,24 @@ export async function switchOn(tenant: string, id: string, version: number): Pro
 
   // Only out of waiting, in one statement, so two people switching it on at once do it once; the
   // index of migration 028 refuses a second version in force beside the first.
-  const { rows } = await theDatabase(tenant).query<{ version: number }>(
-    `UPDATE dsor.controls SET status = 'active', switched_on_at = clock_timestamp()
-      WHERE tenant = $1 AND id = $2 AND version = $3 AND status IN ('draft', 'in_review')
-      RETURNING version`,
-    [tenant, id, version],
-  );
+  let rows: readonly { version: number }[];
+
+  try {
+    ({ rows } = await theDatabase(tenant).query<{ version: number }>(
+      `UPDATE dsor.controls SET status = 'active', switched_on_at = clock_timestamp()
+        WHERE tenant = $1 AND id = $2 AND version = $3 AND status IN ('draft', 'in_review')
+        RETURNING version`,
+      [tenant, id, version],
+    ));
+  } catch (failure) {
+    // Another version switched on at the same moment: migration 028's index lets one stand, and
+    // this one is told so, not handed PostgreSQL's words (decision 164).
+    if ((failure as { code?: unknown }).code === "23505") {
+      return refused(`another version of ${id} was switched on at the same moment`, results);
+    }
+
+    throw failure;
+  }
 
   if (rows.length !== 1) {
     return refused(`${id} v${version} changed while it was being switched on`, results);

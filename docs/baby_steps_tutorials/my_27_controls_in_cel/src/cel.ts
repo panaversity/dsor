@@ -17,7 +17,11 @@ import { money, type Money } from "./money.ts";
 
 /** Appendix B's eight variables, as a condition sees them. */
 export interface ConditionInput {
-  /** The validated, canonical operation input: what §21.6 wrote down, never the raw request. */
+  /**
+   * The operation's input as §21.6 wrote it down, never the raw request: a copy read once, with a
+   * payment's amount checked there. Fields the contract does not name are kept, so a condition
+   * reads only what it names.
+   */
   readonly input: Readonly<Record<string, unknown>>;
   /** The resources the contract binds. None until step 32's preconditions bind any. */
   readonly state: Readonly<Record<string, unknown>>;
@@ -90,10 +94,28 @@ const NO_RATES: RateOf = (currency) => {
 };
 
 /**
+ * CEL's `matches` runs a regular expression, and this library runs it as JavaScript does, with no
+ * bound on its time: a pattern like `^([a-z0-9]+\\s?)*$` against a field the agent fills took a
+ * quarter of a second at 26 characters and four times as long for every two more, the whole program
+ * waiting. §17.3 says a condition cannot loop forever, so a condition that names `matches` is refused
+ * (decision 164). Looked for outside quoted text, and refused even when in doubt: a control refused
+ * is a control nobody can rely on yet, never a payment let through.
+ */
+const UNBOUNDED = /\bmatches\b/;
+
+/** The condition with every quoted text emptied, so a word inside a quotation is not a call. */
+const withoutQuotedText = (condition: string): string =>
+  condition.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, '""');
+
+/**
  * Why this condition cannot be a control's, or `undefined` when it can: CEL this environment
- * understands, naming only its variables and functions, and saying true or false.
+ * understands, naming only its variables and functions, never `matches`, and saying true or false.
  */
 export function checkCondition(condition: string): string | undefined {
+  if (UNBOUNDED.test(withoutQuotedText(condition))) {
+    return "it uses matches, a regular expression whose time this program cannot bound";
+  }
+
   let checked;
 
   try {

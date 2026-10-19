@@ -93,6 +93,7 @@ import {
   controlsInForce,
   evaluateControl,
   type Evaluated,
+  governedByControls,
   mostRestrictive,
   WAITS_FOR_APPROVAL_MS,
 } from "./policy-controls.ts";
@@ -1514,6 +1515,21 @@ const validateTheInput: Stage["run"] = (context) => {
       }
     }
 
+    // NEW IN STEP 27: and a payment's amount, a fact about the arguments like the version above.
+    // The handler asked it, after the decision was recorded. A control now decides before any
+    // handler runs: a malformed amount could not be evaluated, the control applied, and the request
+    // waited for the CFO, recorded ALLOW, where it had been refused; and every limit was skipped,
+    // since they look only at an amount they can read. A review measured it (decision 164).
+    if (context.contract?.id === "payment.create") {
+      const amount = paymentAmountFrom(
+        Object.hasOwn(given, "amount") ? given["amount"] : undefined,
+      );
+
+      if (typeof amount === "string") {
+        return refuse(askedBy, "VALIDATION_FAILED", amount, context.requestId);
+      }
+    }
+
     // STEP 23: and how to call it, asked here too: a fact about the request, decided before
     // anything is claimed, and recorded like any other refusal (decision 138).
     const mode = modeFrom(context.requestedMode, context.contract?.kind);
@@ -2059,6 +2075,14 @@ const evaluateTheControls: Stage["run"] = async (context) => {
       "the controls were evaluated without a principal, a tenant, a contract and its arguments",
       context.requestId,
     );
+  }
+
+  // DSoR's own commands, the brake and the tear-up, are governed by no control, and their store is
+  // not even read for them: a brake must work when the controls cannot be read, and it only ever
+  // makes things safer. A review measured control.suspend refused with the controls unreadable
+  // (decision 164).
+  if (!governedByControls(contract.id)) {
+    return carryOn(context);
   }
 
   let inForce: readonly Control[];

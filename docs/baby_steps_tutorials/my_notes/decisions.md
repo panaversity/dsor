@@ -5977,3 +5977,59 @@ under the application's UPDATE of the parent, and the trigger question looks at 
 themselves only. Not measured, older than this step, and it needs the owner's hand.
 
 Step 27 was copied from step 26b before the review arrived; each fix is carried into it.
+
+## 164 · What the review of step 27 found, and what was chosen (2026-10-20)
+
+**Decided by:** Claude, on the standing rule that a review's findings are fixed or written down, and
+on the learner's instruction of 2026-10-19 to take the recommendation; open to reversal.
+
+A hostile reviewer read step 27's commits and measured in a copy. The agent cannot make the CFO's
+control say ALLOW above 25,000 USD: the control and the handler read the same frozen copy of the
+arguments, numbers and nested maps throw and so apply the control, conditions see the eight
+variables and nothing else, and records with controls verify after the database hands them back. It
+found one high gap, four medium, and nine changes the tests did not catch:
+
+1. **High: a malformed amount waited for the CFO** (measured). The slip's limits skip an amount they
+   cannot read, which was safe while the handler always ran next and refused it. With a control in
+   force, `60000.001` USD, a bare number, or no amount at all could not be evaluated, the control
+   applied, and the request waited at PENDING_APPROVAL, recorded ALLOW, with nothing booked and the
+   per-payment limit never asked. Now §21.6 refuses a malformed `payment.create` amount,
+   VALIDATION_FAILED, in all three modes, before anything is claimed. **Rejected:** refusing in the
+   controls' stage, which would leave the limits' skip in place for the next stage that runs early.
+2. **`matches` had no bound on its time** (measured: 26 characters, a quarter of a second, and four
+   times as long for every two more). This library runs CEL's `matches` as a JavaScript regular
+   expression, and §17.3 says a condition cannot loop forever. A condition that names `matches` is
+   refused, when switched on and when found in force.
+3. **One UPDATE switched the CFO's policy off** (measured). The application could set any status, and
+   a stale control was not read as in force. Migration 031 adds a second lock on `dsor.controls`: the
+   application may move a waiting control to active, with its moment, and nothing else. A control
+   marked `stale_authority` is in force (`DSOR-CTL-03b`). Marking one stale is step 28's, and will
+   widen the policy in the open.
+4. **A control in force with an authority the record cannot name** left the decision unrecorded.
+   Such an authority is named as no governed source, `local`, beside the error that says why.
+5. **The brake depended on the controls** (measured: `control.suspend` refused with the controls
+   unreadable). DSoR's own commands, `control.*`, `delegation.*` and `proposal.*`, are governed by no
+   control: their controls are not read, and none is switched on for one. A `proposal.*` command may
+   never itself require approval (`DSOR-APR-08`).
+6. **Changes no test caught**, each now a test that fails with the change: the schema check of a
+   control in force, an effect that cannot be carried out, a condition that is not true or false,
+   the controls inside the record's hash, the brake on the move to PENDING_APPROVAL, both lost-reply
+   paths of that move, the case's own pinned rate, and the eight variables the door hands a condition.
+7. **A case could pass only because its condition crashed** (low, measured): `input.amout`,
+   misspelled, passed every case that expected approval, and then every payment waited for the CFO.
+   A case now passes on its answer; only a case in XXX, ISO 4217's code for no currency, may pass by
+   an evaluation error, since it is there to show that an amount with no rate applies the control.
+8. **Two versions switched on at once** threw PostgreSQL's own error; it is a refusal now.
+9. **Words:** the README was step 26b's, `docs/status.md` had no row; `cel.ts` called `input`
+   validated without saying how.
+
+**Written down, not fixed.**
+
+- **A condition about who is asking cannot be switched on.** The schema's test cases carry `input`,
+  `state` and `rates`, and nothing for the principal, the slip or the actor chain, so a case runs with
+  none; such a condition applies by an evaluation error, and fails its cases. A question for the
+  specification: should a test vector name the other variables?
+- **`payment.create`'s contract still lists `"controls": []`.** A company's controls are found in its
+  own store, by operation; a contract is the same for every company. What the contract's list is for
+  is a question for the specification.
+- **True parallel `switchOn`** is not tested; PGlite has one connection.
