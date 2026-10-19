@@ -2356,6 +2356,21 @@ console.log(
   "  the bank is back; user_123 tries PAY-902 again with a new key:",
   heard(await bankCall(SUPERVISOR_123, "payment.execute", toPay("INV-1002", "PAY-902"))),
 );
+// NEW IN STEP 37: while PAY-902's outcome is unknown, PAY-902 and INV-1002 are held: a cancel and
+//   a new draft hear RESOURCE_HELD, and nothing changes (DSOR-UNK-03b; step 37's README, claim C2).
+console.log(
+  "  user_123 tries to cancel PAY-902:",
+  heard(
+    await bankCall(SUPERVISOR_123, "payment.cancel", {
+      payment: "dsor://org_456/payment/PAY-902",
+      expected_version: 1,
+    }),
+  ),
+);
+console.log(
+  "  user_123 tries a new draft of INV-1002:",
+  heard(await bankCall(SUPERVISOR_123, "payment.create", ofInvoice("INV-1002"))),
+);
 console.log(`  transfers the bank made: ${fakeBank.transfers().length}`);
 const draft1009 = await bankCall(SUPERVISOR_123, "payment.create", ofInvoice("INV-1009"));
 console.log("  user_123 drafts INV-1009, 7,425.00 USD:", heard(draft1009));
