@@ -17,6 +17,8 @@ import { moveProposal, movesOf, proposalsByRecord, proposalsOf } from "./proposa
 import { usedToday } from "./reservation.ts";
 // STEP 26: org_456's rate service, which the demo makes old for a moment.
 import { aRateService, useRateService } from "./rates.ts";
+// NEW IN STEP 27: switching org_456's CFO control on, in the administrator's place.
+import { switchOn } from "./policy-controls.ts";
 
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
 const INV_1009 = "dsor://org_456/invoice/INV-1009";
@@ -70,6 +72,15 @@ function show(answer: Awaited<ReturnType<typeof callOperation>>): string {
     // STEP 23: a command prepared or only asked about changed nothing, so its answer has no
     // row: a READY one says its proposal, a VALIDATED one its decision (decision 138).
     if (r.data === undefined) {
+      // NEW IN STEP 27: and one a control holds says whom it waits for, and until when.
+      if (r.outcome === "PENDING_APPROVAL") {
+        const waitsFor = (r.requires ?? [])
+          .map((q) => `${q.quorum} by ${q.role} (${q.control} v${q.version})`)
+          .join(", ");
+
+        return `${who} ${r.outcome.padEnd(24)} ${r.proposal ?? ""}  waits for ${waitsFor}\n${" ".repeat(46)}until ${r.expires_at ?? ""}`;
+      }
+
       return r.outcome === "READY"
         ? `${who} ${r.outcome.padEnd(24)} ${r.proposal ?? ""}  waiting to be released  ${r.semantics ?? ""}`
         : `${who} ${r.outcome.padEnd(24)} the decision would be ${r.decision ?? ""}; nothing was done`;
@@ -874,6 +885,56 @@ console.log(
   ),
 );
 useRateService("org_456", undefined);
+
+// NEW IN STEP 27: org_456's policy, "payments above 25,000 USD or equivalent require CFO approval",
+// as a control written in CEL (decision 162). It arrives waiting for review; switching it on runs
+// its five test cases, and only then is it in force. Here the demo switches it on in the
+// administrator's place: no operation reaches that, so the agent cannot. On a second run it is on
+// already, and says so. Then it governs every payment, a person's as well as the agent's.
+console.log();
+console.log("org_456's policy: payments above 25,000 USD or equivalent need the CFO. Its control:");
+console.log();
+
+const switched = await switchOn("org_456", "high-value-payment", 8);
+
+for (const result of switched.results) {
+  console.log(`  case ${result.case}  expects ${result.expected.padEnd(16)}  gives ${result.got}`);
+}
+
+console.log(
+  `  high-value-payment v8: ${switched.kind === "switched_on" ? "switched on" : `not switched on: ${switched.why}`}`,
+);
+console.log();
+console.log(
+  show(
+    await callOperation(
+      SUPERVISOR,
+      "payment.create",
+      { invoice: INV_1008, amount: { value: "31400.00", currency: "USD" } },
+      { ...keyFor("cfo-line-dry-run"), mode: "validate_only" },
+    ),
+  ),
+);
+console.log(
+  show(
+    await callOperation(
+      SUPERVISOR,
+      "payment.create",
+      { invoice: INV_1008, amount: { value: "31400.00", currency: "USD" } },
+      keyFor("cfo-line-person"),
+    ),
+  ),
+);
+console.log(
+  show(
+    await callOperation(
+      AGENT,
+      "payment.create",
+      { invoice: INV_1009, amount: { value: "2500.00", currency: "USD" } },
+      keyFor("cfo-line-small"),
+    ),
+  ),
+);
 
 // STEP 08: everything above already happened; this is what was written down while it did. Read the
 // `authorization` column: the DENY lines are the ones a program that logged only its successes would

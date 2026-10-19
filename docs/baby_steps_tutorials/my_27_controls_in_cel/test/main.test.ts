@@ -77,7 +77,9 @@ function demo(): { raw: string; report: string } {
       // STEP 19: and when the company's directory knew what the signer holds.
       .replace(/as of \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z/g, "as of TIME")
       // STEP 20: and each run's own prefix on its idempotency keys.
-      .replace(/the key [0-9a-f]{8}-/g, "the key RUN-"),
+      .replace(/the key [0-9a-f]{8}-/g, "the key RUN-")
+      // STEP 27: and until when a payment waits for the CFO, 72 hours from its decision.
+      .replace(/until \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z/g, "until TIME"),
   };
 }
 
@@ -157,7 +159,9 @@ describe("the program a learner runs", () => {
       // Decision 152: 62, with the agent's read of INV-1009 before it issues it.
       // STEP 26: 66, with the money section's four: the rupees paid, the pounds refused, the rupees
       // refused at rates four days old, and the dollars paid.
-      expect(rows).toHaveLength(66);
+      // STEP 27: 69, with the CFO's control: user_123's dry run, user_123's payment held for the
+      // CFO, and the agent's 2,500.00 paid.
+      expect(rows).toHaveLength(69);
 
       // Denials recorded, which is step 08's point: a program that logged only its successes
       // would have lost every one of them. Five of the nine are this step's — four refusals for being
@@ -166,7 +170,7 @@ describe("the program a learner runs", () => {
       // (DSOR-SRC-02b) where step 05 ignored it, so the demo's third request is a DENY now. Twelve
       // since step 12: one refusal per operation from the generated section.
       expect(rows.filter((r) => r.includes("DENY"))).toHaveLength(30); // STEP 24: four over the day; STEP 25: the brake's and the slip's addresses, and the agent stopped twice; STEP 26: the pounds, and the rupees at old rates
-      expect(rows.filter((r) => r.includes("ALLOW"))).toHaveLength(36); // STEP 13: three pages read; STEP 23: three ways; STEP 24: six made; STEP 25: six of the brake's; decision 152: the agent's read of INV-1009; STEP 26: the rupees, and the dollars at old rates
+      expect(rows.filter((r) => r.includes("ALLOW"))).toHaveLength(39); // STEP 13: three pages read; STEP 23: three ways; STEP 24: six made; STEP 25: six of the brake's; decision 152: the agent's read of INV-1009; STEP 26: the rupees, and the dollars at old rates; STEP 27: the CFO's three, a wait for approval being no refusal
 
       // Sequences for org_456 and then 0..1 for org_789: each chain counts from zero.
       // STEP 14: the gaps — 1, 5, 26, 28, 30 since decision 152 — are the records of reads, which
@@ -177,12 +181,14 @@ describe("the program a learner runs", () => {
       expect(rows.map((r) => Number(r.trim().split(/\s+/)[0]))).toEqual([
         0, 2, 3, 4, 6, 7, 9, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 31,
         33, 36, 41, 46, 51, 53, 54, 55, 57, 61, 63, 68, 73, 78, 82, 84, 87, 92, 97, 102, 107, 112,
-        117, 122, 125, 128, 131, 134, 138, 139, 141, 146, 151, 155, 157, 162, 167, 170, 173, 0, 1,
+        117, 122, 125, 128, 131, 134, 138, 139, 141, 146, 151, 155, 157, 162, 167, 170, 173, 177,
+        179, 182, 0, 1,
       ]);
 
       // Decision 152: 60 decisions, 5 reads. STEP 22, decision 157: and 96 records of moves.
       // STEP 26: 64 decisions and 108 moves, with the money section.
-      expect(out).toContain("org_456: 177 records, chain verifies against the head: true");
+      // STEP 27: 67 decisions and 114 moves, with the CFO's control.
+      expect(out).toContain("org_456: 186 records, chain verifies against the head: true");
       expect(out).toContain("org_789: 2 records, chain verifies against the head: true");
       expect(out).toContain("2 refusals counted without a record");
 
@@ -238,9 +244,10 @@ describe("the program a learner runs", () => {
 
       // Decision 152: 60 decisions and 5 reads. STEP 22, decision 157: and 96 records of moves.
       // STEP 26: 64 decisions and 108 moves, with the money section.
-      expect(records(first, "org_456")).toBe(177);
+      // STEP 27: 186, with the CFO's control.
+      expect(records(first, "org_456")).toBe(186);
       expect(records(first, "org_789")).toBe(2);
-      expect(first).toContain("org_456: 177 records, chain verifies against the head: true");
+      expect(first).toContain("org_456: 186 records, chain verifies against the head: true");
 
       // A second process. Nothing is shared with the first but the directory on disk.
       const second = demo().report;
@@ -248,16 +255,17 @@ describe("the program a learner runs", () => {
       // STEP 24: run two's day is nearly full, so its 31,400.00 payment and the two cancels of it
       // never happen. STEP 22, decision 157: 137 more records, moves included. STEP 26: 151 more,
       // with the money section, whose rupees run two's day refuses: 10,000.00 USD would pass it.
-      expect(records(second, "org_456")).toBe(328);
+      // STEP 27: 340, with the CFO's control on both runs; run two's 2,500.00 is past the day.
+      expect(records(second, "org_456")).toBe(340);
       expect(records(second, "org_789")).toBe(4);
-      expect(second).toContain("org_456: 328 records, chain verifies against the head: true");
+      expect(second).toContain("org_456: 340 records, chain verifies against the head: true");
       expect(second).toContain("org_789: 4 records, chain verifies against the head: true");
 
       // Run one's records are still there, unchanged, among run two's.
       expect(second).toContain(" 0  ALLOW  invoice.get@1");
       expect(
         second.split("\n").filter((line) => /^\s*\d+\s+(ALLOW|DENY)\s/.test(line)),
-      ).toHaveLength(130);
+      ).toHaveLength(136);
 
       // STEP 10: the invoices are durable too. Run one issued INV-1009; run two finds it
       // issued and the agent's second attempt is CONFLICT, where in step 09 — invoices in a list that
@@ -298,8 +306,9 @@ describe("the program a learner runs", () => {
 
       // Decision 152: 65 and 2, reads included. STEP 22, decision 157: 161 and 2, moves included.
       // STEP 26: 177 and 2, with the money section.
-      expect(hashesOf(first.raw)).toHaveLength(179);
-      expect(hashesOf(second.raw)).toHaveLength(179);
+      // STEP 27: 186 and 2, with the CFO's control.
+      expect(hashesOf(first.raw)).toHaveLength(188);
+      expect(hashesOf(second.raw)).toHaveLength(188);
       expect(hashesOf(second.raw)).not.toEqual(hashesOf(first.raw));
     }));
 
@@ -575,7 +584,8 @@ describe("the program a learner runs", () => {
     // four for the one carried out. STEP 24: and del_100's day, six payments made, four moves each,
     // and four refused over the day, two each. STEP 25: and the brake's and the slip's commands.
     // STEP 26: and the money section's, two payments made, four moves each, and two refused, two each.
-    expect(lines.filter((l) => /^\s*\d+\s+move\s/.test(l))).toHaveLength(108);
+    // STEP 27: 114, with the CFO's control: two moves for the payment held, four for the one made.
+    expect(lines.filter((l) => /^\s*\d+\s+move\s/.test(l))).toHaveLength(114);
     expect(lines).toContain(line("77", "move", "PROPOSED prop_10"));
     expect(lines).toContain(line("78", "ALLOW", "ALLOWED"));
     expect(lines).toContain(line("79", "move", "READY prop_10"));
@@ -744,6 +754,41 @@ describe("the program a learner runs", () => {
       expect(line).not.toContain("serves");
       expect(line.split("TENANT_MISMATCH")[1]).not.toContain("org_456");
     }
+  });
+
+  // NEW IN STEP 27: the CFO's control, switched on after its five cases, holding a person's payment
+  // for the CFO and letting the agent's small one through (decision 162).
+  it("DSOR-CTL-02c: the demo switches the CFO's control on after its five cases pass, and a payment above 25,000 USD waits", () => {
+    const out = demo().report;
+    const section =
+      out
+        .split("payments above 25,000 USD or equivalent need the CFO. Its control:")[1]
+        ?.split("The audit log of org_456:")[0] ?? "";
+
+    for (const [at, expected] of [
+      [1, "ALLOW"],
+      [2, "REQUIRE_APPROVAL"],
+      [3, "REQUIRE_APPROVAL"],
+      [4, "ALLOW"],
+      [5, "REQUIRE_APPROVAL"],
+    ] as const) {
+      expect(section).toContain(`  case ${at}  expects ${expected.padEnd(16)}  gives ${expected}`);
+    }
+
+    expect(section).toContain("  high-value-payment v8: switched on");
+    expect(section).toContain(
+      `${"user_123".padEnd(21)} ${"VALIDATED".padEnd(24)} the decision would be REQUIRE_APPROVAL; nothing was done`,
+    );
+    expect(section).toMatch(
+      /user_123 +PENDING_APPROVAL +dsor:\/\/org_456\/proposal\/prop_\d+ {2}waits for 1 by CFO \(high-value-payment v8\)\n +until TIME/,
+    );
+    expect(section).toMatch(/accounts-payable-fte +COMMITTED +dsor:\/\/org_456\/payment\/PAY-\d+/);
+  });
+
+  it("DSOR-EXE-02: the demo's log says the payment held for the CFO is PENDING_APPROVAL, and is no refusal", () => {
+    const out = demo().report;
+
+    expect(out).toMatch(/\d+ +ALLOW +payment\.create@1 +user_123 +PENDING_APPROVAL /);
   });
 
   it("DSOR-TEN-02a: the agent's unsaid request is in both employers' logs, and nothing else crosses", () => {
