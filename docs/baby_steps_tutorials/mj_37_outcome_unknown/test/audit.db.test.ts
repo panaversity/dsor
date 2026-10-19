@@ -142,6 +142,11 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
       // And change a slip's status, and nothing else, to suspend it
       // (step 19b's README, decision 3).
       { object: "dsor.delegations UPDATE", held: "status" },
+      // Step 37: the holds. Read every column, and add a hold through three named columns. Nothing
+      //   on placed_at, which the database fills, and no change or removal (step 37's README, D1).
+      { object: "dsor.holds", held: "SELECT" },
+      { object: "dsor.holds INSERT", held: "tenant_id resource proposal_id" },
+      { object: "dsor.holds SELECT", held: "tenant_id resource proposal_id placed_at" },
       // The claims of idempotency keys. Read every column, add a claim through
       // named columns, and fill its answer once (step 20's README, decision 12).
       { object: "dsor.idempotency", held: "SELECT" },

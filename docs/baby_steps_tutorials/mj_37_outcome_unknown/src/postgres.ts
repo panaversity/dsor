@@ -1,7 +1,7 @@
 // Everything that talks to PostgreSQL. The log is the table dsor.audit,
 // which dsor_runtime can add to and read, and never change (DSOR-AUD-04a in
 // specs/dsor/03-execution.md, section 30). The invoices are the table app.invoices.
-import { NO_HOLDS } from "./holds.ts";
+import type { HoldStore, KeptHold } from "./holds.ts";
 import {
   unknownFromNote,
   type IntentOutcome,
@@ -1090,8 +1090,8 @@ export function createDbClaims(
     proposals: createDbProposals(pool),
     // And the intent records, each read in a transaction of its own.
     intents: createDbIntents(pool),
-    // NEW IN STEP 37: and the holds. Not built yet.
-    holds: NO_HOLDS,
+    // NEW IN STEP 37: and the holds, each look in a transaction of its own, for a dry run.
+    holds: createDbHolds(pool),
     run: async (
       scope: ClaimScope,
       payloadHash: string,
@@ -1265,8 +1265,9 @@ function storesIn(
     // And the intent records, written inside the claim's transaction, which the
     //   checkpoint then commits (step 36's README, decision D2).
     intents: intentsThrough(run),
-    // NEW IN STEP 37: and the holds, in dsor.holds (step 37's README, decision D1). Not built yet.
-    holds: NO_HOLDS,
+    // NEW IN STEP 37: and the holds, in dsor.holds, placed in the claim's transaction with the
+    //   note, and read there at line ⑨ (step 37's README, decisions D1 and D6).
+    holds: holdsThrough(run),
     // And the claim's own connection, so the record is written in its
     //   transaction (decision D1).
     transaction: client,
@@ -1296,6 +1297,44 @@ function storesIn(
     // one inside the claim's transaction, with its record (step 28's README, decisions D14 and
     // D15).
     controls: controls === "database" ? controlsThrough(run) : controls,
+  };
+}
+
+// NEW IN STEP 37: the holds, in dsor.holds (step 37's README, decisions D1, D6, and D7).
+/** The holds, written to and read from dsor.holds, one company at a time. */
+export function createDbHolds(pool: pg.Pool): HoldStore {
+  return holdsThrough(onPool(pool));
+}
+
+// One hold as pg gives it back.
+type HoldRow = { tenant_id: string; resource: string; proposal_id: string; placed_at: Date };
+
+// The same statements, through a runner: on the pool, or inside a claim.
+function holdsThrough(run: Runner): HoldStore {
+  return {
+    // A hold placed twice is placed once: the key is the record and its proposal.
+    place: async (tenant, proposalId, resources) => {
+      if (resources.length === 0) return;
+      await run(tenant, async (client) => {
+        await client.query(
+          `INSERT INTO dsor.holds (tenant_id, resource, proposal_id)
+           SELECT $1, resource, $2 FROM unnest($3::text[]) AS resource
+           ON CONFLICT DO NOTHING`,
+          [tenant, proposalId, [...new Set(resources)]],
+        );
+      });
+    },
+    on: async (tenant, resources) => {
+      if (resources.length === 0) return [];
+      return run(tenant, async (client) => {
+        const { rows } = await client.query<HoldRow>(
+          `SELECT tenant_id, resource, proposal_id, placed_at FROM dsor.holds
+            WHERE tenant_id = $1 AND resource = ANY($2::text[]) ORDER BY placed_at, resource`,
+          [tenant, [...resources]],
+        );
+        return rows.map((row): KeptHold => ({ ...row, placed_at: row.placed_at.toISOString() }));
+      });
+    },
   };
 }
 

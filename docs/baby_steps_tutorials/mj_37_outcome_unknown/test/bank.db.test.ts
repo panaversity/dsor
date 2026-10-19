@@ -84,6 +84,9 @@ describe("C4: on the database, paid only once the bank has answered", () => {
     expect(bank.transfers().filter((t) => t.payment === id)).toHaveLength(1);
   });
 
+  // Step 37: unchanged on the database. Line ⑨ now reads the bound payment under its lock, so the
+  //   cancel waits for the send, and then the hold no longer counts: the payment is COMMITTED. In
+  //   memory, with no lock, the cancel hears RESOURCE_HELD (step 37's README, decision D6).
   it("step 35's decision D7: on the database, a cancel that arrives while the bank sends waits for the payment's lock, then hears STALE_STATE: the payment moved on to paid", async () => {
     ownerInvoices("add");
     const id = await draft();
@@ -103,7 +106,8 @@ describe("C4: on the database, paid only once the bank has answered", () => {
     expect(slowBank.transfers().filter((t) => t.payment === id)).toHaveLength(1);
   });
 
-  it("DSOR-UNK-01b: on the database, a silent bank: OUTCOME_UNKNOWN, the row in app.payments still a draft, its proposal OUTCOME_UNKNOWN, and a second attempt refused with CONFLICT", async () => {
+  // Changed in step 37: the second attempt hears RESOURCE_HELD, not CONFLICT (step 37's README, D3).
+  it("DSOR-UNK-01b: on the database, a silent bank: OUTCOME_UNKNOWN, the row in app.payments still a draft, its proposal OUTCOME_UNKNOWN, and a second attempt refused with RESOURCE_HELD", async () => {
     ownerInvoices("add");
     const id = await draft();
     bank.mode = "silent";
@@ -116,7 +120,7 @@ describe("C4: on the database, paid only once the bank has answered", () => {
     expect((await proposals.get("org_456", proposal))?.state).toBe("OUTCOME_UNKNOWN");
     expect(await payments.get("org_456", id)).toMatchObject({ status: "draft", version: 1 });
     bank.mode = "good";
-    expect(await execute(id)).toMatchObject({ code: "CONFLICT" });
+    expect(await execute(id)).toMatchObject({ code: "RESOURCE_HELD" });
     expect(bank.transfers().filter((t) => t.payment === id)).toHaveLength(1);
   });
 });

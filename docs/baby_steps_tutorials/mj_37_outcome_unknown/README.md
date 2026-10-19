@@ -110,8 +110,10 @@ second attempt (DSOR-UNK-02).
   stays `EXECUTING` with an open note until the next start-up, so a hold placed only at
   `OUTCOME_UNKNOWN` would leave a gap. So the holds are written with step 36's note, in the same
   transaction, before the bank is asked: every way in finds them already there. *Downside:* a cancel
-  that arrives during a normal send hears `RESOURCE_HELD` at once, where step 36b made it wait and
-  then hear `STALE_STATE`.
+  that arrives during a normal send behaves differently in the two stores. In memory, with no
+  locks, it hears `RESOURCE_HELD`. On the database, line ⑨ reads the payment under its row lock, so
+  the cancel waits for the send, and by then the payment is `COMMITTED` and the hold no longer
+  counts: it hears `STALE_STATE`, as in step 36b. Both refuse the cancel; only the words differ.
 - **D7. A hold ends with its payment; finding out is step 38** (the learner's choice). A hold counts
   only while its proposal is still `EXECUTING` or `OUTCOME_UNKNOWN` (refined with D6), so settling
   the payment, `COMMITTED` or `FAILED`, frees the records.

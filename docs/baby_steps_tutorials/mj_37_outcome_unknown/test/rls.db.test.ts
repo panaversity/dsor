@@ -111,7 +111,7 @@ describe("C1: every table with a company column has its lock", () => {
   // And dsor.notices, the notices to each rule's owner (step 28b's README, decision D5).
   // And dsor.approvals (step 29's README, decision D8).
   // And dsor.intents, the notes (step 36's README, decision D1).
-  it("DSOR-RP-01b: app.invoices, app.payments, app.vendors, dsor.approvals, dsor.audit, dsor.brakes, dsor.controls, dsor.decision_bundles, dsor.delegations, dsor.idempotency, dsor.intents, dsor.limit_counters, dsor.notices, dsor.proposals, dsor.rates, and dsor.reservations have row-level security enabled, forced, and policies", async () => {
+  it("DSOR-RP-01b: app.invoices, app.payments, app.vendors, dsor.approvals, dsor.audit, dsor.brakes, dsor.controls, dsor.decision_bundles, dsor.delegations, dsor.holds, dsor.idempotency, dsor.intents, dsor.limit_counters, dsor.notices, dsor.proposals, dsor.rates, and dsor.reservations have row-level security enabled, forced, and policies", async () => {
     const { rows } = await observer.query(TENANT_TABLES);
     expect(rows).toStrictEqual([
       { table: "app.invoices", enabled: true, forced: true, policies: 1 },
@@ -129,6 +129,8 @@ describe("C1: every table with a company column has its lock", () => {
       // And suspend_only (step 19b's README, decision 13), slip_moves since step 25.
       { table: "dsor.delegations", enabled: true, forced: true, policies: 2 },
       // The company's rule, and answer_once (step 20's README, decision 12).
+      // Step 37: the holds, with the company's rule.
+      { table: "dsor.holds", enabled: true, forced: true, policies: 1 },
       { table: "dsor.idempotency", enabled: true, forced: true, policies: 2 },
       // Step 36: the notes, with the company's rule; the trigger guards the end.
       { table: "dsor.intents", enabled: true, forced: true, policies: 1 },
@@ -309,6 +311,16 @@ describe("C1: every table with a company column has its lock", () => {
       // The claims. dsor_runtime may fill a claim's answer only while it is
       // empty, and must leave one in it: an answer is written once. Restrictive, beside the
       // company's rule (step 20's README, decision 12).
+      // Step 37: the company's rule on the holds.
+      {
+        table: "dsor.holds",
+        name: "tenant_isolation",
+        command: "ALL",
+        roles: ["public"],
+        using: `(tenant_id = ${company})`,
+        check: null,
+        kind: "PERMISSIVE",
+      },
       {
         table: "dsor.idempotency",
         name: "answer_once",

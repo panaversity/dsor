@@ -241,6 +241,14 @@
         }
       }
     },
+    "dsor.holds": {
+      "kind": "append-only",
+      "tenant": "tenant_id",
+      "runtime": {
+        "table": ["SELECT"],
+        "columns": { "INSERT": ["tenant_id", "resource", "proposal_id"] }
+      }
+    },
     "dsor.intents": {
       "kind": "control-moved",
       "tenant": "tenant_id",

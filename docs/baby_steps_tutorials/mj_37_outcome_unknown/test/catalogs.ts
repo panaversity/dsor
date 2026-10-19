@@ -71,6 +71,11 @@ const FILLED_BY_THE_DATABASE = ["sequence", "at"];
 //   changes or removes a bundle (step 33's README, decision D3).
 const BUNDLE_COLUMNS = ["decision_id", "tenant_id", "bundle", "sealed_at"];
 
+// Step 37: dsor.holds, as migration 033 makes it. dsor_runtime reads every column and adds a hold
+//   through three; placed_at is the database's to fill, and nothing changes or removes a hold
+//   (step 37's README, decision D1).
+const HOLD_COLUMNS = ["tenant_id", "resource", "proposal_id", "placed_at"];
+
 // Step 36: dsor.intents, as migration 032 makes it. dsor_runtime reads every column, adds a note
 //   through nine, and writes its outcome. written_at has a default; ended_at has none, and the
 //   trigger writes it with the outcome (step 36's README, decision D1).
@@ -389,6 +394,19 @@ export function today(): Catalog {
           held: name === "status" ? ["SELECT", "UPDATE"] : ["SELECT"],
           filled: false,
         })),
+        rowSecurity: { enabled: true, forced: true },
+        rules: [],
+        triggers: [],
+      },
+      // Step 37: the holds, behind the company's lock, added and never changed.
+      {
+        name: "dsor.holds",
+        kind: "table",
+        held: ["SELECT"],
+        columns: HOLD_COLUMNS.map((name) => {
+          const filled = name === "placed_at";
+          return { name, held: filled ? ["SELECT"] : ["SELECT", "INSERT"], filled };
+        }),
         rowSecurity: { enabled: true, forced: true },
         rules: [],
         triggers: [],
