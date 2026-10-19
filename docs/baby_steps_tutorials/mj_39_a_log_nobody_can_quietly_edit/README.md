@@ -109,7 +109,7 @@ that audit is not a global serialization point." Its audit-record schema already
   two rows share these values: the database refuses two records with the same chain and place, or
   the same chain and predecessor. The specification's audit-record schema calls the place in the
   chain `sequence`; here `sequence` is the log's own counter, kept from step 09, and the place is
-  `chain_position`. *Downside:* two more columns and two more indexes.
+  `chain_position` (open question 155). *Downside:* two more columns and two more indexes.
 - **D7. The chain of records with no company is named `no_company`** (Claude Code's). *Downside:*
   a company may never be called that, and the id pattern `org_` plus digits already ensures it.
 - **D8. A table of chain heads** (the learner's choice, after the review's L1). `dsor.audit_heads`

@@ -2152,6 +2152,27 @@ and the freshness label were not choices: DSOR-QRY-01 and DSOR-FRS-01a settle th
 - **Left open:** nothing tells a person who does not ask; no acknowledgement; no history screen;
   a look that mixes companies' roles cannot be caught yet.
 
+### Step 39, a log nobody can quietly edit, decided by the learner (2026-10-20)
+
+Copied from step 38c. The problem was shown with a real run (the owner turned a denied reconcile
+into a settled payment; nothing in the log could show it). The learner decided five choices, all
+recommended: chain only, checkpoints in 39b; one chain per company; the database writes the
+fingerprints; the migration chains the old records; a script run as the owner.
+
+- **Red first:** 13 unit tests and 7 database tests, all red.
+- **Found while building:** the chain's lock taken at the insert was held to the end of every call,
+  so a company's calls waited for each other and two rule drafts locked each other: chaining moved
+  to a trigger deferred to the commit. The store map refused a trigger on an append-only table,
+  so the log got its own kind. The map's exercise, and the careful editor who rewrites the chain,
+  were both run for real.
+- **The review:** an owner without BYPASSRLS kept records unchained and the checker said the log was
+  empty (H1, fixed to fail closed); any login could take the chain's lock (L1; the learner chose a
+  table of heads only the owner holds); migration 035 failed on records older than 003b (M1); no
+  test tied the recipe to every column, the predecessor, or the migration's chaining (M2, M3, M7).
+  Fixed; each fix undone once, but M1.
+- **Left open:** checkpoints (39b); a new record the owner adds; the checker's read not recorded
+  (DSOR-AUD-05b); the owner's own login for the checker; open question 155.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.

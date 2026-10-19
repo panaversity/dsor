@@ -1041,6 +1041,11 @@ for a human. An agent may gather evidence; it does not settle these alone.
     processing an order it has not recorded yet. Step 38's learner build believes the answer at
     once. Should the connector declare how long after a send its lookup is final, and reconciliation
     wait that long before it settles `FAILED`?
+155. **What is an audit record's `sequence`?** audit-record.schema.json requires `chain`, `sequence`,
+    `previous_hash`, and `record_hash`, and its example's `sequence` reads as the record's place in
+    its chain. Step 39's learner build keeps `sequence` as the log's own counter across every
+    chain, from step 09, and puts the place in a column of its own, `chain_position`. Should §30 or
+    the schema say which `sequence` is: the place in the chain, or a counter of the whole log?
 154. **When does an unknown outcome's hour start?** DSOR-UNK-04c escalates "an occurrence
     unresolved after the bound". Step 38b's learner build counts from the alert, raised with the
     move to `OUTCOME_UNKNOWN`. After a crash, that move is the start-up sweep's, so three hours down
