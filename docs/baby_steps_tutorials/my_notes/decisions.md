@@ -6077,6 +6077,54 @@ switch on a control the CFO owns, or a careless handler could switch on one nobo
 - **A control marked stale is never switched off quietly**: still in force, its decisions recorded
   with it as before.
 
+## 166 · What the review of step 28 found, and what was chosen (2026-10-20)
+
+**Decided by:** Claude, on the standing rule that a review's findings are fixed or written down, and
+on the learner's instruction of 2026-10-19 to take the recommendation; open to reversal.
+
+A hostile reviewer read step 28's commits and measured in a copy. The agent cannot switch a control
+on, even under a slip that names the permission; another company's address is refused; a missing
+control is refused in the words used for someone else's; a stale control stays in force; two sweeps
+at once give one mark and one notice. It found one high gap and five medium:
+
+1. **High: a stale mark could lose its record and its notice for good** (measured). The sweep marked
+   the control in one statement and wrote its record in another. With the log refusing the record,
+   the control was stale with no record and nobody told, and the next sweep skipped it as stale
+   already. The mark and its record are now one statement, decision 157's shape, as a revocation's
+   are; the owner is told only after it commits. A log that refuses leaves the control active, for
+   the next sweep.
+2. **§21.9 was the only lock on who switches a control on** (measured: a door with that stage made a
+   no-op let user_123 switch on the CFO's control, as decision 156 found for slips). `switchOn` now
+   takes the caller, refuses one who is not the owner, and its statement asks for the owner too.
+3. **A non-owner was recorded ALLOW** (measured): a version of `"8"`, `-1` or `1e21`, or no control
+   address, passed §21.9, which could not look the control up, and the handler refused only after
+   the log said ALLOW. §21.6 now refuses a malformed address or version, before anything is decided.
+4. **One policy KSoR would not answer for stopped the sweep** (measured): a control after it stayed
+   active through two sweeps. Each control is asked on its own; the sweep lists what it could not ask.
+5. **A stale control cannot be replaced, and two sentences said it could** (measured): the CFO's new
+   version is refused CONFLICT while the stale one is in force, because no command retires a control.
+   The notice and the demo now say only "review it"; replacing a stale control waits for the command
+   that retires one. Decision 165's own problem therefore stands in part: the line stays at 25,000 USD
+   until then, and the owner knows.
+6. **Migration 032's comment says the gap it names errs toward stopping payments. It does not**
+   (measured). The second lock sees the new row only, so the program could move a waiting control that
+   fails its own cases straight to stale, in force with no case run; the owner's tested version is then
+   refused CONFLICT for good, and a payment the untested one misses goes through. The lock also lets
+   the program rewrite an active control's `switched_on_at`. Each needs the program's own code to do
+   it, never the agent; a trigger owned by the database's owner, which start-up would have to allow by
+   name, is what would close it. **Written down, not fixed**, and the comment stays as it is, because a
+   migration that has been applied is never edited: this decision corrects it.
+
+**Smaller, fixed:** org_789's KSoR knew no policy of its own, so its control would have gone stale at
+the first sweep; and the demo said the sweep runs every 24 hours, where this tutorial has no timer.
+
+**Written down, not fixed:** a decision under a stale control records the authority version it cites,
+not the one in force, though the audit schema has a place (`superseded_version`); `switchOn` does not
+ask whether its operation is one this program has, so a control on `payment.execute` is switched on and
+governs nothing; a control whose authority is not KSoR is not asked about; the inbox lives in memory,
+so a restart loses a notice nobody read, while the record stays. And this step holds two ideas the map
+puts together: a policy that changes, and who may switch a control on.
+
 ## 167 · Step 29's decisions: an approval, by the approver's own login, on the exact request (2026-10-20)
 
 **Decided by:** Claude, on the learner's standing instruction of 2026-10-19, "select the recommended

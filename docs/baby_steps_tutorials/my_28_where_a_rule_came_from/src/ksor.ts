@@ -33,8 +33,18 @@ export interface FakePolicies {
   readonly policies?: Readonly<Record<string, PolicyVersion | null>>;
 }
 
-/** The story's one policy: org_456's, version 4, the one migration 029's control came from. */
+/**
+ * The story's policies: org_456's, version 4, the one migration 029's control came from, and
+ * org_789's own, the one migration 033's cites. Without org_789's, its control would be marked stale
+ * by the first sweep after it was switched on, a review found (decision 166).
+ */
 const STORY: Readonly<Record<string, PolicyVersion>> = Object.freeze({
+  "ksor://org_789/finance/payment-approval-policy": Object.freeze({
+    uri: "ksor://org_789/finance/payment-approval-policy",
+    version: 4,
+    content_hash: "sha256:9f2c1e7ab4d0",
+    text: "Payments above 25,000 USD or equivalent require CFO approval.",
+  }),
   "ksor://org_456/finance/payment-approval-policy": Object.freeze({
     uri: "ksor://org_456/finance/payment-approval-policy",
     version: 4,
