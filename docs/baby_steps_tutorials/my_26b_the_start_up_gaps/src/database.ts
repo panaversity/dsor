@@ -513,12 +513,11 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
   // refuse to start rather than let an unchecked policy through. And `reads_beyond` is the view
   // trap the same review measured: a view runs with its owner's rights, and its owner skips the
   // lock, so a view over the invoices shows every company to whoever may SELECT from it. So it
-  // refuses an application that may itself SELECT from the whole of a table or view beside the
-  // tenant tables. Decision 156: it asks nothing more yet, and the rest waits for step 26b, which
-  // decision 159 made a step of its own beside step 26's money. A grant
-  // that names its columns instead, even every one, is invisible to has_table_privilege, as step 17
-  // found for writing; and unlike the questions about writing, this one is not asked one SET ROLE
-  // away, or of a helper function's owner.
+  // refuses an application that may SELECT from a table or view beside the tenant tables.
+  // NEW IN STEP 26b: it asked the application alone, and of the whole table, and decision 156
+  // measured three ways round it: the view readable one SET ROLE away, through a helper whose
+  // owner may read it, or granted on some of its columns only, each showing every company's rows.
+  // It is asked now the way the questions about writing are (decision 161).
   const { rows: lock } = await db.query<{
     bypasses: boolean;
     bypassing_roles: string | null;
@@ -624,7 +623,9 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
                 AND ns.nspname NOT LIKE 'pg_temp%'
                 -- NOT EXISTS, not NOT IN: a NULL in a NOT IN list makes every row false.
                 AND NOT EXISTS (SELECT 1 FROM tenant_table t WHERE t.rel = c.oid)
-                AND has_table_privilege(current_user, c.oid, 'SELECT')) AS reads_beyond,
+                -- NEW IN STEP 26b: asked the way the write questions are, of every role the
+                -- application can act as, and of any column (decision 161).
+                AND ${forAnyRoleItCanActAs((role) => `has_any_column_privilege(${role}, c.oid, 'SELECT')`)}) AS reads_beyond,
             -- Nothing said yet. A statement with no company runs with whatever the session holds,
             -- and a session that already holds a company — a pooler that set it, an administrator's
             -- ALTER ROLE … SET — would hand every plain statement that company's rows.
@@ -718,7 +719,8 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
   if (second.reads_beyond !== null) {
     throw new Error(
       `this connection is \`${answer.who}\`, and it may read \`${second.reads_beyond}\`, which is ` +
-        `not one of the tenant tables. A view or a table beside them is a window past the lock: ` +
+        `not one of the tenant tables, itself, one SET ROLE away, or through a helper function, ` +
+        `by every column or by some. A view or a table beside them is a window past the lock: ` +
         `a view runs with its owner's rights, and a table without a policy hides nothing. The ` +
         `application may read ${TENANT_TABLE_NAMES}, and nothing else.`,
     );

@@ -212,3 +212,75 @@ describe("a view the application may write through", () => {
     await expect(refuseIfItCanRewriteHistory(overPGlite(db))).resolves.toBeUndefined();
   });
 });
+
+describe("a view the application may read some other way", () => {
+  /** An owner's view over every company's invoices, the window decision 156 measured. */
+  const everyInvoice = (): Promise<unknown> =>
+    asTheOwner(() =>
+      db.exec("CREATE VIEW public.every_invoice AS SELECT tenant_id, id FROM public.invoices"),
+    );
+
+  /** Who holds INV-1008, as read through the window, by whatever statement reaches it. */
+  async function companiesThrough(statement: string): Promise<string[]> {
+    const { rows } = await db.query<{ tenant_id: string }>(statement);
+
+    return rows.map((r) => r.tenant_id).sort();
+  }
+
+  it("DSOR-RP-01a: a view readable one SET ROLE away is refused", async () => {
+    // Start-up asked whether the application itself may read beside the tenant tables. The write
+    // questions have also asked every role it can become since step 17 (decision 126).
+    await everyInvoice();
+    await asTheOwner(() =>
+      db.exec(
+        "CREATE ROLE reader; GRANT SELECT ON public.every_invoice TO reader; GRANT reader TO dsor_runtime WITH INHERIT FALSE",
+      ),
+    );
+
+    // Not testing nothing: one SET ROLE, and both companies' INV-1008.
+    await db.exec("SET ROLE reader");
+    expect(
+      await companiesThrough("SELECT tenant_id FROM public.every_invoice WHERE id = 'INV-1008'"),
+    ).toStrictEqual(["org_456", "org_789"]);
+    await db.exec("SET ROLE dsor_runtime");
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
+      /may read `public\.every_invoice`/,
+    );
+  });
+
+  it("DSOR-RP-01a: a view readable through a helper function's owner is refused", async () => {
+    // A SECURITY DEFINER helper runs with its owner's rights, whoever calls it (decision 148).
+    await everyInvoice();
+    await asTheOwner(() =>
+      db.exec(`CREATE ROLE peeker; GRANT SELECT ON public.every_invoice TO peeker;
+               CREATE FUNCTION public.peek() RETURNS SETOF text LANGUAGE sql SECURITY DEFINER
+                 AS $$ SELECT tenant_id FROM public.every_invoice WHERE id = 'INV-1008' $$;
+               ALTER FUNCTION public.peek() OWNER TO peeker;
+               GRANT EXECUTE ON FUNCTION public.peek() TO dsor_runtime`),
+    );
+
+    expect(await companiesThrough("SELECT peek AS tenant_id FROM public.peek()")).toStrictEqual([
+      "org_456",
+      "org_789",
+    ]);
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
+      /may read `public\.every_invoice`/,
+    );
+  });
+
+  it("DSOR-RP-01a: a view granted on some of its columns only is refused", async () => {
+    // `has_table_privilege` says no to a grant that names columns, as step 17 found for writing.
+    await everyInvoice();
+    await asTheOwner(() => db.exec("GRANT SELECT (tenant_id, id) ON public.every_invoice TO dsor_runtime"));
+
+    expect(
+      await companiesThrough("SELECT tenant_id FROM public.every_invoice WHERE id = 'INV-1008'"),
+    ).toStrictEqual(["org_456", "org_789"]);
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
+      /may read `public\.every_invoice`/,
+    );
+  });
+});
