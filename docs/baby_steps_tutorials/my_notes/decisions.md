@@ -5821,3 +5821,54 @@ What it found:
 
 Earlier folders were not edited: the READMEs of steps 18, 22 and 25 still say their start-up gaps
 close "in step 26". They close in 26b (decision 159).
+
+## 161 · Step 26b's decisions: start-up asks about every way in, not only the front door (2026-10-19)
+
+**Decided by:** Claude, on the learner's standing instruction of this date, given before they slept:
+"select the recommended setting when you have to ask the human". The problem is stated first, as it
+would have been shown; each choice is the recommendation, and each is open to reversal.
+
+**The problem.** Every time the program starts, it asks the database what its own login may do, and
+refuses to start if the answer is too much (steps 09 to 25). Four questions were never asked, and
+decision 145 wrote them down for later. Each needs a careless database administrator, not a clever
+agent (decision 119), and each lets the program do what start-up exists to stop:
+
+- **A view it may write through, but not read.** A view runs with its owner's rights. An owner's
+  view over the slips, with INSERT granted to the application and no SELECT, passes start-up, and
+  through it the application writes itself a slip nobody signed (decision 149, measured in step 18
+  as del_100's limit lifted). The log, the invoices and the payments have the same gap.
+- **A rule on a tenant table.** `CREATE RULE ... DO ALSO INSERT INTO dsor.delegations` on the
+  invoices runs with the table owner's rights inside the application's own `invoice.issue`. Start-up
+  asks about triggers and not rules (decision 149).
+- **The read question, asked of the application alone.** A view over the invoices passes start-up
+  when it is readable one `SET ROLE` away, or through a helper function whose owner may read it, or
+  granted on some of its columns only; each shows every company's rows (decision 156).
+- **One sequence of four.** Start-up asks whether the application may move `public.payment_numbers`.
+  The sequences behind a proposal's number, a brake's number and a move's place are not asked;
+  `setval` on them is the application choosing numbers it should be given (decisions 153 and 156).
+
+1. **A rule on a tenant table is refused, whatever it does**, as a trigger is. **Rejected:** reading
+   what a rule does, which needs PostgreSQL's rule language understood; and refusing only rules that
+   write elsewhere, which lets `DO INSTEAD NOTHING` swallow the program's writes in silence.
+2. **The application may write to nothing beside the tenant tables**: no table, view or foreign
+   table, by any column, itself, one `SET ROLE` away, or through a helper function's owner. A view
+   nobody can write through harms nothing, so views are not refused for existing. **Rejected:**
+   refusing every view, which forbids an owner the reports people read; and naming the views to
+   look for, which misses the next one.
+3. **The read question is asked the way the write questions are**: of every role the application
+   can act as, and of any column. **Rejected:** writing down that it is asked of the application
+   alone.
+4. **Every sequence is asked, not a list of four**: the application may hold UPDATE on none, which
+   `setval` needs, and own none, which `ALTER SEQUENCE` needs, itself, one `SET ROLE` away, or
+   through a helper's owner. A later step's new sequence is then asked without anyone remembering
+   to add it, the lesson decision 143 learned for columns. **Rejected:** naming the four.
+
+**Told, not asked.**
+
+- **Start-up still repairs nothing.** It refuses to start and says which grant to take back.
+- **The questions about the business's tables keep their own words.** A right on
+  `public.payment_numbers` is still refused as "a payment's number", asked before the general
+  questions, so the refusal names the reason and not only the object.
+- **The READMEs of steps 18, 22 and 25 still say "step 26"** for these gaps. They are finished
+  steps and are not edited (decision 160); this step's README says where the gaps closed.
+- **One idea**: what start-up asks. No new table, no new command, and the demo does not change.
