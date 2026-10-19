@@ -108,8 +108,10 @@ Its table of limits, [§44](../../../specs/dsor/06-conformance.md#44-operational
 - **D11. The file and what is signed** (Claude Code's). One JSON file per checkpoint, named by its
   time, in `checkpoints/`, which git ignores: the checkpoints belong to the learner's own database.
   The signed text is the checkpoint as JSON, its fields in a fixed order and its chains sorted by
-  name, so the checker makes the same text again. *Downside:* a file that is changed by even one
-  space no longer verifies, which is the point, but it can surprise.
+  name, so the checker makes the same text again from the file's values. The checker refuses a file
+  with a field added or missing, two entries for one chain, or a place or fingerprint of the wrong
+  form, before it checks the signature. *Downside:* a change in spacing still verifies, because
+  only the values are signed; a change to any value does not.
 - **D12. One snapshot, and the database's clock** (Claude Code's). The script reads the chains, the
   heads, and the time in one read-only transaction that sees one moment, so the heads and the records
   agree. The checker compares a checkpoint's age with the database's clock too. *Downside:* a
@@ -120,12 +122,13 @@ Its table of limits, [§44](../../../specs/dsor/06-conformance.md#44-operational
 | Claim | Tests |
 |---|---|
 | C1 to C5 | `test/checkpoint.test.ts`: checkpoints made and signed in the test, held against chains built in the test, whole and broken each way |
-| C2, C4, C5 | `test/checkpoint.db.test.ts`: the owner's rewrite of step 39's "Why it matters", caught; a checkpoint refused on a broken log; every chain covered |
+| C2, C4, C5 | `test/checkpoint.db.test.ts` and `test/owner-checkpoint.ts`: the careful editor's rewrite, caught; the newest record removed with its head, caught; a checkpoint refused on a broken log; every chain covered; the two scripts refusing without a key or with a login that cannot see every record |
 | C6 | `test/checkpoint.test.ts`: a change after the newest checkpoint passes, said plainly |
 
 ### The learner's predictions
 
-Asked on 2026-10-20, before any code. Each will be settled by a real run under "Break it".
+Asked on 2026-10-20, before any code. Each was settled by a real run under "Break it": all four
+were right.
 
 | # | The story | The learner's prediction |
 |---|---|---|
@@ -136,13 +139,195 @@ Asked on 2026-10-20, before any code. Each will be settled by a real run under "
 
 ### The breaks
 
-Each break will be run for real on a fresh copy, and the number of tests that fail written here.
+Each break ran on 2026-10-20 in a copy of this folder outside the repository, with a fresh
+database, against `test/checkpoint.test.ts` and `test/checkpoint.db.test.ts`.
 
-| Break | What it removes |
-|---|---|
-| **B1** | The checker compares a checkpoint's place, not its fingerprint |
-| **B2** | The checker does not check the signature |
-| **B3** | The checkpoint leaves out the `no_company` chain |
-| **B4** | The checker ignores the checkpoint's age |
-| **B5** | `pnpm checkpoint-audit` signs a broken log |
-| **B6** | The checker reads only the newest checkpoint |
+| Break | What it removes | Unit tests failed | Database tests failed |
+|---|---|---|---|
+| **B1** | The checker compares a checkpoint's place, not its fingerprint | 2 | 1 |
+| **B2** | The checker does not check the signature | 3 | 1 |
+| **B3** | The checkpoint leaves out the `no_company` chain | 3 | 1 |
+| **B4** | The checker ignores the checkpoint's age | 1 | 0 |
+| **B5** | `pnpm checkpoint-audit` signs a broken log | 2 | 1 |
+| **B6** | The checker reads only the newest checkpoint | 1 | 0 |
+
+B6 first passed every test: the test gave the checker the newest file first, and the script reads
+them oldest first, so a checker that read only the last file read the old one. B3 first passed the
+database tests: a fresh database held no record of `no_company`. Both tests were fixed, and the
+counts above are from the rerun.
+
+## Break it
+
+The four stories, run for real on 2026-10-20, on a fresh scratch database filled by `pnpm start`.
+The key pair and the checkpoints were kept in a scratch folder, through `DSOR_CHECKPOINT_KEY` and
+`DSOR_CHECKPOINT_DIR`. First the keys, a checkpoint, and a check:
+
+```text
+$ pnpm checkpoint-keys ../keys/private.pem
+private key written: ../keys/private.pem. Keep it secret; set DSOR_CHECKPOINT_KEY to it in .env
+public key written: checkpoint-public-key.pem. Commit it
+$ pnpm checkpoint-audit
+checkpoint written: 2026-10-19T23-06-18.944Z.json, 3 chains
+$ pnpm verify-audit
+checkpoint 2026-10-19T23-06-18.944Z.json: signature holds
+no_company: whole, 3 records
+org_456: whole, 63 records
+org_789: whole, 1 records
+not checked: a record written after the newest checkpoint, a new record the owner adds, or anyone holding both the owner's login and the private key
+exit=0
+```
+
+The file's name is its time in UTC. The private key file reads `-rw-------`: only its owner can
+read it.
+
+**P4.** `pnpm start` runs again, so org_456 grows past the checkpoint. The owner turns a refusal at
+place 124 into a success and rewrites from there:
+
+```text
+P4, a record after the checkpoint: 124 | invoice.get@1 | DENY | FRESHNESS_UNSATISFIABLE
+after the rewrite:                 124 | invoice.get@1 | ALLOW | COMMITTED
+checkpoint 2026-10-19T23-06-18.944Z.json: signature holds
+no_company: whole, 6 records
+org_456: whole, 126 records
+org_789: whole, 2 records
+not checked: a record written after the newest checkpoint, a new record the owner adds, or anyone holding both the owner's login and the private key
+exit=0
+```
+
+The learner was right: nothing outside the database knows place 124. That is why a checkpoint must
+be taken at least every 24 hours, and more often where the log matters more.
+
+**P1.** The careful editor of "Why it matters", now with a checkpoint behind the chain:
+
+```text
+P1, the old record:  4 | invoice.issue@1 | DENY | AUTHORIZATION_DENIED
+after the rewrite:   4 | invoice.issue@1 | ALLOW | COMMITTED
+checkpoint 2026-10-19T23-06-18.944Z.json: signature holds
+no_company: whole, 6 records
+org_456: broken at place 63, record aud_6eacfaed-fef1-4cca-a1a4-4bf7ea15bbe5: its fingerprint is not the one checkpoint 2026-10-19T23-06-18.944Z.json noted
+org_789: whole, 2 records
+not checked: a record written after the newest checkpoint, a new record the owner adds, or anyone holding both the owner's login and the private key
+exit=1
+```
+
+The checker names place 63, not place 4: the checkpoint knows where the chain ended, not which
+record was changed. Every record from 4 to 63 is now in doubt, and a person compares them with
+another copy, such as a backup.
+
+**P2.** The owner also edits the checkpoint file, so that it holds org_456's new fingerprint at
+place 63:
+
+```text
+checkpoint 2026-10-19T23-06-18.944Z.json: broken: its signature does not match the committed public key
+no_company: whole, 6 records
+org_456: whole, 126 records
+org_789: whole, 2 records
+no_company: not yet in a checkpoint
+org_456: not yet in a checkpoint
+org_789: not yet in a checkpoint
+not checked: there is no checkpoint whose signature holds
+not checked: a record written after the newest checkpoint, a new record the owner adds, or anyone holding both the owner's login and the private key
+exit=1
+```
+
+**P3.** The owner deletes every checkpoint file instead:
+
+```text
+no_company: whole, 6 records
+org_456: whole, 126 records
+org_789: whole, 2 records
+no_company: not yet in a checkpoint
+org_456: not yet in a checkpoint
+org_789: not yet in a checkpoint
+not checked: there is no checkpoint
+not checked: a record written after the newest checkpoint, a new record the owner adds, or anyone holding both the owner's login and the private key
+exit=2
+```
+
+Never exit 0. The script cannot prove the log was rewritten, so it does not say "broken"; it cannot
+vouch for it either, so it does not say "whole".
+
+## What changed since step 39
+
+| File | What changed |
+| --- | --- |
+| `src/checkpoint.ts` | **New.** A checkpoint of every chain, never of a broken log; its signed text; signing; its file (D10, D11) |
+| `src/checkpoint-check.ts` | **New.** Every chain held against every checkpoint whose signature holds; the exit codes (D4 to D7, D9) |
+| `src/checkpoint-files.ts` | **New.** The key pair, the keys, the checkpoint files, and one moment of the log (D8, D12) |
+| `src/checkpoint-keys.ts`, `src/checkpoint-audit.ts`, `package.json` | **New.** `pnpm checkpoint-keys` and `pnpm checkpoint-audit` (C1, C2) |
+| `src/verify-audit.ts` | Holds the log against the checkpoints, in one moment (C3 to C6) |
+| `.gitignore` | `checkpoints/` |
+| `test/checkpoint.test.ts`, `test/checkpoint.db.test.ts`, `test/owner-checkpoint.ts`, `test/db.ts` | **New.** The claims C1 to C6 |
+
+No migration: nothing in the database changes.
+
+```bash
+git diff --no-index ../mj_39_a_log_nobody_can_quietly_edit/src src
+git diff --no-index ../mj_39_a_log_nobody_can_quietly_edit/test test
+```
+
+## Run it
+
+As in step 39: a local PostgreSQL 17 and a database of its own. Then, once:
+
+```bash
+pnpm install
+pnpm migrate
+pnpm checkpoint-keys ~/dsor-keys/checkpoint-private.pem
+git add checkpoint-public-key.pem
+```
+
+Put `DSOR_CHECKPOINT_KEY=` and the private key's path in `.env`. Then, at least every 24 hours:
+
+```bash
+pnpm checkpoint-audit
+pnpm verify-audit
+```
+
+`pnpm checkpoint-audit` reads the owner's login, `DSOR_MIGRATION_URL`, and the private key's path
+from `.env`, and never prints either. `pnpm verify-audit` does not read the private key at all.
+
+## Build it yourself with Claude Code
+
+| # | Move | What was done |
+|---|---|---|
+| 1 | Understand | The problem, shown with a real rewrite that step 39's checker calls whole |
+| 2 | Decide | Nine choices by the learner; three details by Claude Code |
+| 3 | Predict | Four stories, asked before any code |
+| 4 | The copy | Step 39 copied, its markers removed |
+| 5 | Red | 23 unit tests and the database tests, against stubs |
+| 6 | Code | The checkpoint, the check, the files, the two scripts |
+| 7 | Break it | P1 to P4, and B1 to B6, for real |
+| 8 | Review | A reviewer who had not seen the conversation |
+
+To start it in a new session:
+
+```text
+Build step 39b in learner mode from the design in
+docs/baby_steps_tutorials/mj_39b_a_checkpoint_kept_elsewhere/README.md.
+```
+
+## Check yourself
+
+1. Why does a checkpoint kept in the database protect nothing?
+2. The owner rewrites org_456 from place 4 on. The newest checkpoint noted place 63. Which place
+   does `pnpm verify-audit` name, and why not place 4?
+3. The owner deletes every checkpoint file. Why does the script exit 2, and not 0 or 1?
+4. Why is the public key committed, and the private key kept outside this folder?
+5. What can the owner still change without being caught?
+
+<details>
+<summary>Answers</summary>
+
+1. The owner can change everything in the database, so the owner rewrites the checkpoint with the
+   chain ("Common mistake").
+2. Place 63: the checkpoint knows only where the chain ended and that record's fingerprint. A
+   rewrite from place 4 changes every fingerprint after it, so place 63's changed too (C4, P1).
+3. It cannot prove the log was changed, so not 1; it cannot vouch that it was not, so not 0 (D6,
+   P3).
+4. The public key only checks signatures, so anyone may read it, and git shows any change to it.
+   The private key makes signatures; in the folder, git could carry it to everyone (D2, D8, C1).
+5. A record written after the newest checkpoint, and a new record the owner adds. And anyone who
+   holds both the owner's login and the private key can do anything (C6, P4).
+
+</details>
