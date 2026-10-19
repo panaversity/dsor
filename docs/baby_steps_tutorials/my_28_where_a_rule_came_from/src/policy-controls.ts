@@ -280,7 +280,17 @@ export interface CaseResult {
 /** What switching a control on did. */
 export type SwitchedOn =
   | { readonly kind: "switched_on"; readonly results: readonly CaseResult[] }
-  | { readonly kind: "refused"; readonly why: string; readonly results: readonly CaseResult[] };
+  | {
+      readonly kind: "refused";
+      readonly why: string;
+      readonly results: readonly CaseResult[];
+      /**
+       * NEW IN STEP 28: the §28 code a caller of `control.activate` is told: CONFLICT when the
+       * control is not waiting or another version is in force, VALIDATION_FAILED when it cannot
+       * be a control or fails its cases, RESOURCE_NOT_FOUND when there is none.
+       */
+      readonly code: "CONFLICT" | "VALIDATION_FAILED" | "RESOURCE_NOT_FOUND";
+    };
 
 /**
  * The rates a test case pins, per US dollar as every rate in this program is: the dollar is 1 by
@@ -313,12 +323,15 @@ function ratesPinnedBy(pinned: unknown): RateOf {
  * the administrator's place.
  */
 export async function switchOn(tenant: string, id: string, version: number): Promise<SwitchedOn> {
-  const refused = (why: string, results: readonly CaseResult[] = []): SwitchedOn =>
-    Object.freeze({ kind: "refused", why, results: Object.freeze(results) });
+  const refused = (
+    why: string,
+    results: readonly CaseResult[] = [],
+    code: "CONFLICT" | "VALIDATION_FAILED" | "RESOURCE_NOT_FOUND" = "VALIDATION_FAILED",
+  ): SwitchedOn => Object.freeze({ kind: "refused", why, results: Object.freeze(results), code });
   const control = (await controlsOf(tenant)).find((c) => c.id === id && c.version === version);
 
   if (control === undefined) {
-    return refused(`${tenant} has no control ${id} v${version}`);
+    return refused(`${tenant} has no control ${id} v${version}`, [], "RESOURCE_NOT_FOUND");
   }
 
   if (!governedByControls(control.operation)) {
@@ -330,6 +343,8 @@ export async function switchOn(tenant: string, id: string, version: number): Pro
   if (control.status !== "draft" && control.status !== "in_review") {
     return refused(
       `${id} v${version} is ${control.status}; only a draft or one in review is switched on`,
+      [],
+      "CONFLICT",
     );
   }
 
@@ -413,6 +428,7 @@ export async function switchOn(tenant: string, id: string, version: number): Pro
     return refused(
       `${id} version ${inForce.version} is in force; one version of a control is in force at a time`,
       results,
+      "CONFLICT",
     );
   }
 
@@ -431,14 +447,18 @@ export async function switchOn(tenant: string, id: string, version: number): Pro
     // Another version switched on at the same moment: migration 028's index lets one stand, and
     // this one is told so, not handed PostgreSQL's words (decision 164).
     if ((failure as { code?: unknown }).code === "23505") {
-      return refused(`another version of ${id} was switched on at the same moment`, results);
+      return refused(
+        `another version of ${id} was switched on at the same moment`,
+        results,
+        "CONFLICT",
+      );
     }
 
     throw failure;
   }
 
   if (rows.length !== 1) {
-    return refused(`${id} v${version} changed while it was being switched on`, results);
+    return refused(`${id} v${version} changed while it was being switched on`, results, "CONFLICT");
   }
 
   return Object.freeze({ kind: "switched_on", results: Object.freeze(results) });

@@ -90,6 +90,9 @@ import { ratesOf } from "./rates.ts";
 import type { ConditionInput } from "./cel.ts";
 import {
   type Control,
+  // NEW IN STEP 28: the controls by name, and switching one on, for control.activate.
+  controlsOf,
+  switchOn,
   controlsInForce,
   evaluateControl,
   type Evaluated,
@@ -657,6 +660,58 @@ const handlers: Readonly<Record<string, Handler>> = {
           id,
           target: read.target,
           suspended,
+        },
+        semantics,
+        payloadHash: hash,
+        tenant,
+        proposal,
+        principalId: askedBy,
+        requestId,
+      }),
+    };
+  },
+
+  // NEW IN STEP 28: switching a control on, by its owner (DSOR-CTL-02a, decision 165). Who may
+  // was decided at §21.9 and recorded. Here the control is switched on, which still runs every one of
+  // its cases first, and refuses if one fails (DSOR-CTL-02c).
+  "control.activate": async (args, contract, askedBy, tenant, hash, requestId, proposal) => {
+    const semantics = semanticsOf(contract);
+    const refused = (code: string, message: string): HandlerAnswer => ({
+      kind: "error",
+      askedBy,
+      envelope: refusal(code, message, requestId, askedBy),
+    });
+    const read = idFrom(args, "control", contract, askedBy, tenant, requestId);
+
+    if ("refused" in read) {
+      return { kind: "error", askedBy, envelope: read.refused };
+    }
+
+    const version = Object.hasOwn(args, "version") ? args["version"] : undefined;
+
+    if (typeof version !== "number" || !Number.isSafeInteger(version) || version < 1) {
+      return refused(
+        "VALIDATION_FAILED",
+        "a control is switched on by its version, a whole number above zero",
+      );
+    }
+
+    const switched = await switchOn(tenant, read.id, version);
+
+    if (switched.kind === "refused") {
+      return refused(switched.code, switched.why);
+    }
+
+    return {
+      kind: "result",
+      askedBy,
+      envelope: success({
+        data: {
+          uri: formatUri({ tenant, entity: "control", id: read.id }),
+          tenantId: tenant,
+          id: read.id,
+          version,
+          status: "active",
         },
         semantics,
         payloadHash: hash,
@@ -1909,6 +1964,68 @@ const checkTheTarget: Stage["run"] = async (context) => {
           principal.id,
           "AUTHORIZATION_DENIED",
           `only a person, logged in as themselves, may release a brake; ${principal.id} may not`,
+          context.requestId,
+        )
+      : carryOn(context);
+  }
+
+  // NEW IN STEP 28: control.activate — only the control's owner, a person logged in as themselves
+  // (DSOR-CTL-02a, DSOR-CTL-02b, decision 165). Both people hold control:activate, so it is this
+  // question that decides between them, as the signer's does for a slip.
+  if (contract.id === "control.activate") {
+    // An agent never, whatever its slip grants: §21.5 lets one through that a slip names it for.
+    if (principal.type !== "human") {
+      return refuse(
+        principal.id,
+        "AUTHORIZATION_DENIED",
+        `${principal.id} is an agent, and an agent never switches a control on`,
+        context.requestId,
+      );
+    }
+
+    const control = Object.hasOwn(given, "control") ? given["control"] : undefined;
+    const version = Object.hasOwn(given, "version") ? given["version"] : undefined;
+    let named;
+
+    try {
+      named = typeof control === "string" ? parseUri(control) : undefined;
+    } catch {
+      named = undefined;
+    }
+
+    // An address or a version that is not one is left for the handler, which refuses it.
+    if (
+      named === undefined ||
+      named.entity !== "control" ||
+      named.tenant !== tenant ||
+      typeof version !== "number" ||
+      !Number.isSafeInteger(version) ||
+      version < 1
+    ) {
+      return carryOn(context);
+    }
+
+    const controlId = named.id;
+    let owned;
+
+    try {
+      owned = (await controlsOf(tenant)).find((c) => c.id === controlId && c.version === version);
+    } catch {
+      return refuse(
+        principal.id,
+        "EVIDENCE_STORE_UNAVAILABLE",
+        `${controlId} could not be read; nothing was done`,
+        context.requestId,
+      );
+    }
+
+    // A control that does not exist is refused in the same words as one someone else owns, as a slip
+    // is (DSOR-ERR-01b): nobody learns which controls a company has by asking to switch them on.
+    return owned === undefined || owned.record.owner !== principal.id
+      ? refuse(
+          principal.id,
+          "AUTHORIZATION_DENIED",
+          `only the owner of ${controlId} may switch it on, and ${principal.id} is not`,
           context.requestId,
         )
       : carryOn(context);

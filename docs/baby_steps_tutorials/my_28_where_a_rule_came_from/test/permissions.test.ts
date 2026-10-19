@@ -107,6 +107,7 @@ describe("permissions", () => {
   it("DSOR-AUT-01b: a principal holds what their role grants, and nothing else", () => {
     // STEP 17: and the two payment permissions, for the supervisor and the agent, not the CFO.
     expect([...permissionsOf(person("user_123"))].sort()).toEqual([
+      "control:activate", // STEP 28
       "control:suspend", // STEP 25
       "delegation:revoke",
       "invoice:issue",
@@ -115,6 +116,7 @@ describe("permissions", () => {
       "payment:create",
     ]);
     expect([...permissionsOf(person("cfo_100"))].sort()).toEqual([
+      "control:activate", // STEP 28
       "control:suspend", // STEP 25
       // Decision 156: so she can revoke a slip she signed.
       "delegation:revoke",

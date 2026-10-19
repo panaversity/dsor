@@ -42,6 +42,14 @@ import { parseUri } from "../../src/uri.ts";
 /** The caller in org_456 for every test here. The agent belongs to both companies; user_123 to one. */
 export const SUPERVISOR = { loggedInAs: "user_123" };
 
+/**
+ * NEW IN STEP 28: who calls each operation: user_123, but for switching a control on, which only
+ * its owner may, the CFO (decision 165). The refusals this suite asks for are about the address
+ * whoever sends it; the example that works must be sent by someone it works for.
+ */
+const callerFor = (id: string): { readonly loggedInAs: string } =>
+  id === "control.activate" ? { loggedInAs: "cfo_100" } : SUPERVISOR;
+
 /** "an invoice", "a payment". */
 const withArticle = (word: string): string => `${/^[aeiou]/.test(word) ? "an" : "a"} ${word}`;
 
@@ -102,6 +110,11 @@ export const ROWS_OF = `SELECT 'invoice' AS entity, id, vendor, NULL::text AS in
                         -- tear up.
                         SELECT 'delegation', id, NULL, NULL, NULL, NULL, status, NULL
                           FROM dsor.delegations WHERE tenant = $1
+                        UNION ALL
+                        -- NEW IN STEP 28: and the controls, which a careless control.activate
+                        -- could switch on.
+                        SELECT 'control', id, NULL, NULL, NULL, NULL, status, version
+                          FROM dsor.controls WHERE tenant = $1
                         UNION ALL
                         SELECT 'tenant', $1, NULL, NULL, NULL, NULL,
                                CASE WHEN EXISTS (SELECT 1 FROM dsor.agent_controls c
@@ -219,7 +232,8 @@ export const questions = {
       const row = key(parsed);
 
       expect(
-        ["agent", "delegation", "invoice", "payment", "tenant"],
+        // STEP 28: and a control.
+        ["agent", "control", "delegation", "invoice", "payment", "tenant"],
         `${c.id}: ${address} is none of the rows rowsOf reads; teach rowsOf about ${parsed.entity}`,
       ).toContain(parsed.entity);
       expect(
@@ -300,7 +314,7 @@ export function crossTenantSuite(hooks: SuiteHooks): void {
   const registry = loadRegistry(contractsFromDisk());
   const deps: Deps = {
     ...hooks,
-    call: (id, request) => callOperation(SUPERVISOR, id, request),
+    call: (id, request) => callOperation(callerFor(id), id, request),
     logOf: theLog,
   };
 

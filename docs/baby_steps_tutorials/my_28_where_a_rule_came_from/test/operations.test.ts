@@ -21,8 +21,10 @@ function handlersForBoth() {
   const stub = () =>
     ({ kind: "error", askedBy: "user_123", envelope: refusal("CONFLICT", "x") }) as const;
 
-  // STEP 17: and the two payment operations. STEP 25: and the brake.
+  // STEP 17: and the two payment operations. STEP 25: and the brake. STEP 28: and a control
+  // switched on.
   return {
+    "control.activate": stub,
     "control.suspend": stub,
     "delegation.revoke": stub,
     "invoice.get": stub,
@@ -68,6 +70,7 @@ describe("callOperation", () => {
     // imports getInvoice behind the registry's back: there is no door to close until
     // step 42. It does prove the two lists cannot drift apart.
     expect(operationIds().sort()).toEqual([
+      "control.activate", // STEP 28
       "control.suspend", // STEP 25
       "delegation.revoke",
       "invoice.get",
@@ -165,8 +168,9 @@ describe("callOperation", () => {
     const ids = operationIds();
 
     // STEP 13: three. STEP 17: five, with the payments. STEP 25: seven, with the brake
-    // and the slip torn up.
+    // and the slip torn up. STEP 28: eight, with a control switched on.
     expect(ids).toEqual([
+      "control.activate",
       "control.suspend",
       "delegation.revoke",
       "invoice.get",
@@ -441,7 +445,8 @@ describe("callOperation", () => {
       expect(() =>
         assertPaired(loadRegistry(contractsFromDisk()), {
           // STEP 25: the brake's and the slip's handlers too, so the first one missing is still
-          // invoice.issue's.
+          // invoice.issue's. STEP 28: and switching a control on.
+          "control.activate": handlersForBoth()["control.activate"],
           "control.suspend": handlersForBoth()["control.suspend"],
           "delegation.revoke": handlersForBoth()["delegation.revoke"],
           "invoice.get": () => ({
@@ -470,6 +475,7 @@ describe("callOperation", () => {
     // A legitimate queue: every operation but invoice.get has a contract and, here, no handler yet.
     const onlyGet = { "invoice.get": handlersForBoth()["invoice.get"]! };
     const waiting = new Set([
+      "control.activate", // STEP 28
       "control.suspend", // STEP 25
       "delegation.revoke",
       "invoice.issue",

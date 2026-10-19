@@ -51,6 +51,8 @@ export function storyStatements(): readonly string[] {
     rowsFrom("026_org_789_has_a_slip_too.sql"),
     // STEP 27: and org_456's CFO control, waiting for review.
     rowsFrom("029_the_cfo_control.sql"),
+    // NEW IN STEP 28: and org_789's control of the same name, waiting too.
+    rowsFrom("033_org_789_has_a_control_too.sql"),
     // So a test that makes a payment knows it is PAY-902, whatever ran before it.
     "ALTER SEQUENCE public.payment_numbers RESTART WITH 902",
     // STEP 22: and so a test's first proposal is prop_1.

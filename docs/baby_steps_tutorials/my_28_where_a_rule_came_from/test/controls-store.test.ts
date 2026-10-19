@@ -39,7 +39,16 @@ describe("where controls live", () => {
   });
 
   it("DSOR-MOD-01: org_789 sees none of org_456's controls", async () => {
-    expect(await controlsOf("org_789")).toStrictEqual([]);
+    // STEP 28: org_789 has one of the same name, its own, owned by user_789 (migration 033).
+    expect(
+      (await controlsOf("org_789")).map((c) => [
+        c.id,
+        c.record.owner,
+        (c.record.authority as { uri: string }).uri,
+      ]),
+    ).toStrictEqual([
+      ["high-value-payment", "user_789", "ksor://org_789/finance/payment-approval-policy"],
+    ]);
   });
 
   it("DSOR-CTL-02c: a control waiting for review is in force nowhere", async () => {

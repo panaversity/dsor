@@ -22,6 +22,7 @@ describe("the operation registry", () => {
     const registry = loadRegistry(contractsFromDisk());
 
     expect([...registry.keys()].sort()).toEqual([
+      "control.activate", // STEP 28
       "control.suspend", // STEP 25
       "delegation.revoke",
       "invoice.get",

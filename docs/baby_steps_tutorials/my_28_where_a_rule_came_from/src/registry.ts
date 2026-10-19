@@ -305,7 +305,9 @@ export function contractsFromDisk(): readonly ContractDocument[] {
   //
   // STEP 17: payment.cancel and payment.create (decision 125). STEP 25: and the
   // emergency brake, control.suspend, and tearing up a slip, delegation.revoke (decision 142).
+  // NEW IN STEP 28: and switching a control on, control.activate, by its owner (decision 165).
   return [
+    "control.activate",
     "control.suspend",
     "delegation.revoke",
     "invoice.get",

@@ -123,6 +123,9 @@ describe("a command says the version it decided on", () => {
     );
 
     expect(strategies).toStrictEqual({
+      // STEP 28: a control is named by its own version, and switching on one that is not waiting
+      // is refused for what it is (decision 165).
+      "control.activate": "none",
       // STEP 25: a brake has no version to decide on; pulling one that is on, or
       // releasing one that is not, is refused for what it is (decision 142).
       "control.suspend": "none",

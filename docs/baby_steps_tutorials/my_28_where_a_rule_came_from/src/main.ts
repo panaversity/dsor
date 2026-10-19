@@ -17,8 +17,10 @@ import { moveProposal, movesOf, proposalsByRecord, proposalsOf } from "./proposa
 import { usedToday } from "./reservation.ts";
 // STEP 26: org_456's rate service, which the demo makes old for a moment.
 import { aRateService, useRateService } from "./rates.ts";
-// STEP 27: switching org_456's CFO control on, in the administrator's place.
-import { switchOn } from "./policy-controls.ts";
+// NEW IN STEP 28: a changed policy noticed, and its owner told (decision 165).
+import { noticeStalePolicies } from "./policy-controls.ts";
+import { aPolicySource, usePolicySource } from "./ksor.ts";
+import { inboxOf } from "./notices.ts";
 
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
 const INV_1009 = "dsor://org_456/invoice/INV-1009";
@@ -888,22 +890,35 @@ useRateService("org_456", undefined);
 
 // STEP 27: org_456's policy, "payments above 25,000 USD or equivalent require CFO approval",
 // as a control written in CEL (decision 162). It arrives waiting for review; switching it on runs
-// its five test cases, and only then is it in force. Here the demo switches it on in the
-// administrator's place: no operation reaches that, so the agent cannot. On a second run it is on
-// already, and says so. Then it governs every payment, a person's as well as the agent's.
+// its five test cases, and only then is it in force. Then it governs every payment, a person's as
+// well as the agent's.
+//
+// NEW IN STEP 28: switching it on is a command, control.activate, and only the control's owner, the
+// CFO, may run it (decision 165). user_123 holds the permission and is not its owner; the agent never
+// may. On a second run the control is stale already, from the first, and says so.
 console.log();
 console.log("org_456's policy: payments above 25,000 USD or equivalent need the CFO. Its control:");
 console.log();
 
-const switched = await switchOn("org_456", "high-value-payment", 8);
+const THE_CFOS_CONTROL = "dsor://org_456/control/high-value-payment";
 
-for (const result of switched.results) {
-  console.log(`  case ${result.case}  expects ${result.expected.padEnd(16)}  gives ${result.got}`);
+for (const [who, login] of [
+  ["user", SUPERVISOR],
+  ["agent", AGENT],
+  ["owner", CFO],
+] as const) {
+  console.log(
+    show(
+      await callOperation(
+        login,
+        "control.activate",
+        { control: THE_CFOS_CONTROL, version: 8 },
+        keyFor(`activate-as-${who}`),
+      ),
+    ),
+  );
 }
 
-console.log(
-  `  high-value-payment v8: ${switched.kind === "switched_on" ? "switched on" : `not switched on: ${switched.why}`}`,
-);
 console.log();
 console.log(
   show(
@@ -936,6 +951,59 @@ console.log(
   ),
 );
 
+// NEW IN STEP 28: finance publishes version 5 of the policy, and the line moves to 20,000 USD. The
+// sweep DSoR runs, at least every 24 hours, notices: the control cites version 4. It marks the
+// control stale, writes it in the log, and tells its owner. It does not switch it off: 31,400.00 USD
+// still waits for the CFO, under version 8, until the CFO reviews it (DSOR-CTL-03a, DSOR-CTL-03b).
+console.log();
+console.log("Finance publishes version 5 of the policy: payments above 20,000 USD need the CFO.");
+console.log();
+
+const POLICY = "ksor://org_456/finance/payment-approval-policy";
+
+usePolicySource(
+  "org_456",
+  aPolicySource("org_456", {
+    policies: {
+      [POLICY]: {
+        uri: POLICY,
+        version: 5,
+        content_hash: "sha256:5e5e5e5e5e5e",
+        text: "Payments above 20,000 USD or equivalent require CFO approval.",
+      },
+    },
+  }),
+);
+
+const noticed = await noticeStalePolicies("org_456");
+
+console.log(
+  noticed.marked.length === 0
+    ? "  the sweep marked nothing stale: it was marked already"
+    : noticed.marked
+        .map(
+          (m) =>
+            `  the sweep marked ${m.id} v${m.version} stale: it cites version ${m.cites}, and version ${m.inForce ?? "none"} is in force`,
+        )
+        .join("\n"),
+);
+
+for (const notice of inboxOf("org_456", "cfo_100")) {
+  console.log(`  in cfo_100's inbox: ${notice.text}`);
+}
+
+console.log(
+  show(
+    await callOperation(
+      SUPERVISOR,
+      "payment.create",
+      { invoice: INV_1008, amount: { value: "31400.00", currency: "USD" } },
+      keyFor("stale-still-waits"),
+    ),
+  ),
+);
+usePolicySource("org_456", undefined);
+
 // STEP 08: everything above already happened; this is what was written down while it did. Read the
 // `authorization` column: the DENY lines are the ones a program that logged only its successes would
 // have lost, and they are the most interesting lines here.
@@ -961,13 +1029,17 @@ for (const company of ["org_456", "org_789"]) {
     // entered, and the proposal, which its record names; the record of its creation cannot, and
     // the move that names that record says which it was.
     const isAMove = record.kind === "proposal_transition";
+    // NEW IN STEP 28: and a control the sweep marked stale, which no request asked for.
+    const isAChange = record.kind === "control_change";
     const proposal = record.resources?.[0]?.split("/").at(-1) ?? byRecord.get(record.record_id);
 
     console.log(
       [
         String(record.sequence).padStart(2),
-        (record.authorization ?? (isARead ? "read" : isAMove ? "move" : "-")).padEnd(5),
-        (record.operation ?? "(none resolved)").padEnd(19),
+        (
+          record.authorization ?? (isARead ? "read" : isAMove ? "move" : isAChange ? "stale" : "-")
+        ).padEnd(5),
+        (record.operation ?? (isAChange ? "(the sweep)" : "(none resolved)")).padEnd(19),
         record.identity.subject.padEnd(21),
         (isARead
           ? `${record.result}, ${rows} ${rows === 1 ? "row" : "rows"}`

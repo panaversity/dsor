@@ -18,6 +18,8 @@ import { useDatabase } from "../src/store.ts";
 import { aDatabase, asTheOwner, forgetTheLog, resetTheStory } from "./support/database.ts";
 
 const SUPERVISOR = { loggedInAs: "user_123" };
+// STEP 28: the one who owns the CFO's control, and so the one who may switch it on (decision 165).
+const CFO = { loggedInAs: "cfo_100" };
 const ISSUE_1009 = { invoice: "dsor://org_456/invoice/INV-1009", expected_version: 1 };
 
 let db: PGlite;
@@ -715,7 +717,9 @@ describe("every command can be called all three ways", () => {
       const before = await theRows();
       const { claims } = await leftBehind();
 
-      const dry = await callOperation(SUPERVISOR, contract.id, example, { mode: "validate_only" });
+      // STEP 28: each command by someone the rules let run it: a control by its owner.
+      const caller = contract.id === "control.activate" ? CFO : SUPERVISOR;
+      const dry = await callOperation(caller, contract.id, example, { mode: "validate_only" });
 
       expect(dry.kind === "result" && dry.envelope.outcome, `${contract.id}, a dry run`).toBe(
         "VALIDATED",
@@ -727,7 +731,7 @@ describe("every command can be called all three ways", () => {
       expect(await leftBehind()).toStrictEqual({ proposals: 0, claims });
       expect(await theRows(), `${contract.id}, after the dry run`).toStrictEqual(before);
 
-      const prepared = await callOperation(SUPERVISOR, contract.id, example, {
+      const prepared = await callOperation(caller, contract.id, example, {
         idempotencyKey: `every-command-prepared-${contract.id}`,
         mode: "propose_only",
       });
@@ -754,7 +758,7 @@ describe("every command can be called all three ways", () => {
 
       // Executed, it is done. So the example is one the rules allow, and VALIDATED and READY above
       // are the right answers, not refusals that happened to change nothing.
-      const done = await callOperation(SUPERVISOR, contract.id, example, {
+      const done = await callOperation(caller, contract.id, example, {
         idempotencyKey: `every-command-executed-${contract.id}`,
       });
 

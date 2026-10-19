@@ -90,6 +90,8 @@ describe("every command says whether it can be undone", () => {
       .sort();
 
     expect(commands).toStrictEqual([
+      // STEP 28: a control switched on in one statement, or not at all.
+      "control.activate atomic",
       // STEP 25: a brake pulled or released is done whole, and undone by the other.
       "control.suspend atomic",
       "delegation.revoke atomic",

@@ -150,11 +150,13 @@ describe("switching a control on", () => {
     expect(switched.kind === "refused" && switched.why).toMatch(/no control/);
   });
 
-  it("DSOR-MOD-01: org_789 cannot switch on org_456's control", async () => {
-    const switched = await switchOn("org_789", "high-value-payment", 8);
-
-    expect(switched.kind === "refused" && switched.why).toMatch(/no control/);
+  it("DSOR-MOD-01: org_789 switching on its own control of the same name leaves org_456's waiting", async () => {
+    // STEP 28: org_789 has a high-value-payment of its own (migration 033).
+    expect((await switchOn("org_789", "high-value-payment", 8)).kind).toBe("switched_on");
     expect(await controlsInForce("org_456", "payment.create")).toStrictEqual([]);
+    expect((await controlsInForce("org_789", "payment.create")).map((c) => c.id)).toStrictEqual([
+      "high-value-payment",
+    ]);
   });
 });
 
