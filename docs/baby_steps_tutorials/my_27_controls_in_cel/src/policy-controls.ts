@@ -11,7 +11,31 @@
 // Rule DSOR-CTL-01a: A control MUST validate against `control.schema.json`, which requires a version,
 // a condition, an effect, a status, a named human owner, and an authority reference.
 
+import { readFileSync } from "node:fs";
+import { Ajv2020 } from "ajv/dist/2020.js";
+import addFormatsModule, { type FormatsPlugin } from "ajv-formats";
+import { checkCondition, evaluateCondition, type ConditionInput } from "./cel.ts";
+import type { RateOf } from "./exchange.ts";
 import { theDatabase } from "./store.ts";
+
+// ajv-formats is CommonJS; under nodenext the callable sits on `.default`, as in audit.ts.
+const addFormats = (addFormatsModule as unknown as { default: FormatsPlugin }).default;
+
+const read = (path: string): object =>
+  JSON.parse(readFileSync(new URL(path, import.meta.url), "utf8")) as object;
+
+const ajv = new Ajv2020({ strict: false, allErrors: true });
+addFormats(ajv);
+ajv.addSchema(read("./schemas/common.schema.json"));
+ajv.addSchema(read("./schemas/control.schema.json"));
+
+const compiled = ajv.getSchema("urn:dsor:schema:1.3:control");
+
+if (compiled === undefined) {
+  throw new Error("the control schema did not compile");
+}
+
+const validateControl = compiled;
 
 /** The six states §17 gives a control. */
 export type ControlStatus =
@@ -109,4 +133,241 @@ export async function controlsInForce(
   );
 
   return controlsFrom(rows);
+}
+
+/** The three outcomes a control can give in this step (DSOR-AUT-02a). */
+export type Outcome = "ALLOW" | "DENY" | "REQUIRE_APPROVAL";
+
+/** One control's answer about one request, as the decision's record names it. */
+export interface Evaluated {
+  readonly id: string;
+  readonly version: number;
+  readonly outcome: Outcome;
+  /** The policy it came from, as the control says: the system, the sentence's address, its version. */
+  readonly authority: Readonly<Record<string, unknown>>;
+  /** Why the condition could not be evaluated, when it could not: then the control applied. */
+  readonly evaluation_error?: string;
+  /** What a `require_approval` control asks for: who, and how many of them. */
+  readonly requires?: { readonly role: string; readonly quorum: number };
+  /** What a `deny` control says, for the refusal. */
+  readonly reason?: string;
+}
+
+/** What a control does when it applies, read from its effect; anything this step cannot do is DENY. */
+function effectOf(control: Control): Pick<Evaluated, "outcome" | "requires" | "reason"> {
+  const effect = control.record.effect as Record<string, Record<string, unknown>> | undefined;
+  const approval = effect?.require_approval;
+  const denial = effect?.deny;
+
+  if (
+    approval !== undefined &&
+    typeof approval.role === "string" &&
+    typeof approval.quorum === "number"
+  ) {
+    return {
+      outcome: "REQUIRE_APPROVAL",
+      requires: { role: approval.role, quorum: approval.quorum },
+    };
+  }
+
+  if (denial !== undefined && typeof denial.reason === "string") {
+    return { outcome: "DENY", reason: denial.reason };
+  }
+
+  // A control in force whose effect this program cannot carry out cannot be honoured, so the
+  // strictest answer stands in for it. Switching such a control on is refused, below.
+  return {
+    outcome: "DENY",
+    reason: `${control.id} v${control.version} asks for what this program cannot do`,
+  };
+}
+
+/**
+ * One control's answer: its effect when the condition holds, ALLOW when it does not, and its
+ * effect again when the condition cannot be evaluated (DSOR-CTL-07). A currency with no rate, a
+ * missing field and a type error all mean "apply": a rule that crashes is never "no rule today".
+ */
+export function evaluateControl(control: Control, given: ConditionInput, rates: RateOf): Evaluated {
+  const applies = effectOf(control);
+  const authority = control.record.authority as Readonly<Record<string, unknown>>;
+  const condition = control.record.condition;
+  const base = { id: control.id, version: control.version, authority };
+
+  // A control whose record the schema refuses cannot be read, so it is not trusted to say ALLOW.
+  if (typeof condition !== "string" || validateControl(control.record) !== true) {
+    return Object.freeze({
+      ...base,
+      ...applies,
+      outcome: "DENY",
+      evaluation_error: `${control.id} v${control.version} does not match control.schema.json`,
+    });
+  }
+
+  try {
+    return Object.freeze(
+      evaluateCondition(condition, given, rates)
+        ? { ...base, ...applies }
+        : { ...base, outcome: "ALLOW" },
+    );
+  } catch (failure) {
+    return Object.freeze({
+      ...base,
+      ...applies,
+      evaluation_error: failure instanceof Error ? failure.message : String(failure),
+    });
+  }
+}
+
+/** DENY over any REQUIRE_*, any REQUIRE_* over ALLOW (DSOR-AUT-02b). */
+export function mostRestrictive(outcomes: readonly Outcome[]): Outcome {
+  return outcomes.includes("DENY")
+    ? "DENY"
+    : outcomes.includes("REQUIRE_APPROVAL")
+      ? "REQUIRE_APPROVAL"
+      : "ALLOW";
+}
+
+/** One test case's result, when a control is switched on. Cases are counted from 1. */
+export interface CaseResult {
+  readonly case: number;
+  readonly expected: string;
+  readonly got: Outcome;
+  readonly evaluation_error?: string;
+}
+
+/** What switching a control on did. */
+export type SwitchedOn =
+  | { readonly kind: "switched_on"; readonly results: readonly CaseResult[] }
+  | { readonly kind: "refused"; readonly why: string; readonly results: readonly CaseResult[] };
+
+/**
+ * The rates a test case pins, per US dollar as every rate in this program is: the dollar is 1 by
+ * definition, and a currency the case does not pin has no rate (DSOR-CTL-02e). The company's rate
+ * service is never asked: a case must give the same answer on every day it is run.
+ */
+function ratesPinnedBy(pinned: unknown): RateOf {
+  const rates =
+    pinned !== null && typeof pinned === "object" ? (pinned as Record<string, unknown>) : {};
+
+  return (currency) => {
+    const rate =
+      currency === "USD" ? "1" : Object.hasOwn(rates, currency) ? rates[currency] : undefined;
+
+    if (typeof rate !== "string") {
+      throw new Error(`the test case pins no rate for ${currency}`);
+    }
+
+    return rate;
+  };
+}
+
+/**
+ * Switch a control on (DSOR-CTL-02c). It must exist in this company, be waiting (a draft or in
+ * review), match control.schema.json as an active control must (DSOR-CTL-01a), have a condition this
+ * environment understands (DSOR-CTL-05, DSOR-CTL-06), ask for what this program can do, and give
+ * every one of its test cases the answer the case expects. Only then is its status `active`.
+ *
+ * Who may switch one on is step 28's. Here no operation reaches this function: the demo calls it in
+ * the administrator's place.
+ */
+export async function switchOn(tenant: string, id: string, version: number): Promise<SwitchedOn> {
+  const refused = (why: string, results: readonly CaseResult[] = []): SwitchedOn =>
+    Object.freeze({ kind: "refused", why, results: Object.freeze(results) });
+  const control = (await controlsOf(tenant)).find((c) => c.id === id && c.version === version);
+
+  if (control === undefined) {
+    return refused(`${tenant} has no control ${id} v${version}`);
+  }
+
+  if (control.status !== "draft" && control.status !== "in_review") {
+    return refused(
+      `${id} v${version} is ${control.status}; only a draft or one in review is switched on`,
+    );
+  }
+
+  const asActive = { ...control.record, status: "active" };
+
+  if (validateControl(asActive) !== true) {
+    return refused(
+      `${id} v${version} does not match control.schema.json: ${ajv.errorsText(validateControl.errors)}`,
+    );
+  }
+
+  const condition = control.record.condition as string;
+  const notCel = checkCondition(condition);
+
+  if (notCel !== undefined) {
+    return refused(`${id} v${version}'s condition cannot be a control's: ${notCel}`);
+  }
+
+  const effect = Object.keys(control.record.effect as object)[0];
+
+  if (effect !== "deny" && effect !== "require_approval") {
+    return refused(`${id} v${version} asks for ${effect}, which this program cannot carry out yet`);
+  }
+
+  // Each case with the eight variables: what it says, and nothing anybody else says. A case names
+  // `input` and `state`; the rest are neutral, so a case cannot pass by who happens to be asking.
+  const cases = control.record.tests as readonly Record<string, unknown>[];
+  const results = cases.map((testCase, at): CaseResult => {
+    const evaluated = evaluateControl(
+      control,
+      {
+        input: (testCase.input ?? {}) as Record<string, unknown>,
+        state: (testCase.state ?? {}) as Record<string, unknown>,
+        principal: {},
+        actor_chain: [],
+        delegation: null,
+        tenant: { id: tenant },
+        risk: "medium",
+        now: new Date(),
+      },
+      ratesPinnedBy(testCase.rates),
+    );
+
+    return Object.freeze({
+      case: at + 1,
+      expected: String(testCase.expect),
+      got: evaluated.outcome,
+      ...(evaluated.evaluation_error === undefined
+        ? {}
+        : { evaluation_error: evaluated.evaluation_error }),
+    });
+  });
+  const failed = results.filter((r) => r.expected !== r.got);
+
+  if (failed.length > 0) {
+    return refused(
+      `${id} v${version} failed its own test cases: ${failed
+        .map((r) => `case ${r.case} expects ${r.expected} and gives ${r.got}`)
+        .join("; ")}`,
+      results,
+    );
+  }
+
+  const inForce = (await controlsOf(tenant)).find(
+    (c) => c.id === id && (c.status === "active" || c.status === "stale_authority"),
+  );
+
+  if (inForce !== undefined) {
+    return refused(
+      `${id} version ${inForce.version} is in force; one version of a control is in force at a time`,
+      results,
+    );
+  }
+
+  // Only out of waiting, in one statement, so two people switching it on at once do it once; the
+  // index of migration 028 refuses a second version in force beside the first.
+  const { rows } = await theDatabase(tenant).query<{ version: number }>(
+    `UPDATE dsor.controls SET status = 'active', switched_on_at = clock_timestamp()
+      WHERE tenant = $1 AND id = $2 AND version = $3 AND status IN ('draft', 'in_review')
+      RETURNING version`,
+    [tenant, id, version],
+  );
+
+  if (rows.length !== 1) {
+    return refused(`${id} v${version} changed while it was being switched on`, results);
+  }
+
+  return Object.freeze({ kind: "switched_on", results: Object.freeze(results) });
 }
