@@ -47,6 +47,18 @@ async function aRead(): Promise<void> {
   expect(answer).toHaveProperty("data");
 }
 
+/** A caller with no valid login: refused before its company is known, so in the no_company chain. */
+async function aStranger(): Promise<void> {
+  const answer: Answer = await call(
+    registry,
+    log,
+    { token: "tok_nobody", tenant: "org_456" },
+    "invoice.get",
+    { invoice: "dsor://org_456/invoice/INV-1008" },
+  );
+  expect(answer).toMatchObject({ code: "AUTHENTICATION_REQUIRED" });
+}
+
 /** org_456's first record, which the careful editor rewrites from. */
 const firstOf456 = (): string =>
   (ownerCheckpoint("first", "org_456") as { record_id: string }).record_id;
@@ -56,6 +68,9 @@ beforeAll(async () => {
   writeFileSync(publicFile, keys.publicKey.export({ type: "spki", format: "pem" }));
   await aRead();
   await aRead();
+  // Found by break B3: on a fresh database the log held no record of no_company, so a checkpoint
+  //   that left that chain out passed.
+  await aStranger();
   expect(ownerCheckpoint("take", checkpoints, privateFile)).toHaveProperty("written");
 });
 
@@ -74,6 +89,7 @@ describe("C2: a checkpoint of the real log", () => {
       chains: string[];
       heads: { chain: string; chain_position: string }[];
     };
+    expect(now.chains).toEqual(expect.arrayContaining(["no_company", "org_456"]));
     expect(checkpoint.chains.map((c) => c.chain)).toStrictEqual(now.chains);
     // Each chain at its head as the database held it at the checkpoint: never past the head now.
     for (const noted of checkpoint.chains) {
