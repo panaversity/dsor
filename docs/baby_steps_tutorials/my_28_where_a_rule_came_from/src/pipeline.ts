@@ -138,7 +138,7 @@ export interface Context {
    */
   readonly recorded?: string;
   /**
-   * NEW IN STEP 27: each control on the operation, and what it said about this request, from
+   * STEP 27: each control on the operation, and what it said about this request, from
    * §21.10. §21.11 records them, and the door holds a request one of them requires approval for.
    */
   readonly controls?: readonly Evaluated[];
@@ -247,7 +247,7 @@ const REQUIRED: readonly string[] = Object.freeze([
   // STEP 25: after the arguments are validated and the proposal made, before the limit and the
   // decision, so who may act on a target is recorded as the DENY it is (decision 143).
   "check the target",
-  // NEW IN STEP 27: required by name, before the slip's limits book, because without it the
+  // STEP 27: required by name, before the slip's limits book, because without it the
   // company's policy is never asked and a payment above 25,000 USD goes through with no CFO, with
   // nothing to say a control was ever looked at (decision 162).
   "evaluate the controls",

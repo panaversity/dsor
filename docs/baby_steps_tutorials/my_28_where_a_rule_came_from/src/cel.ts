@@ -1,4 +1,4 @@
-// NEW IN STEP 27: the environment a control's condition is evaluated in (decision 162).
+// STEP 27: the environment a control's condition is evaluated in (decision 162).
 //
 // A control's condition is CEL, the Common Expression Language: it works like the condition of an
 // `if`, it cannot loop forever or call the network, and it sees only what it is handed. What it is

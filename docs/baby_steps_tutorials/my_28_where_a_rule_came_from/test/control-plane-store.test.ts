@@ -55,7 +55,7 @@ describe("DSoR's own store", () => {
       // STEP 25: the emergency brake (decision 142).
       "agent_controls",
       "audit",
-      // NEW IN STEP 27: the company's controls, its policy in CEL (decision 162).
+      // STEP 27: the company's controls, its policy in CEL (decision 162).
       "controls",
       // STEP 24: the day totals and the reservations (decision 140).
       "day_totals",

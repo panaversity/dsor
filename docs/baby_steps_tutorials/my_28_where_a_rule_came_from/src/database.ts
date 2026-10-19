@@ -267,7 +267,7 @@ const TENANT_TABLES: ReadonlyArray<readonly [table: string, column: string]> = O
   ["dsor.reservations", "tenant"],
   // STEP 25: the emergency brake (decision 142).
   ["dsor.agent_controls", "tenant"],
-  // NEW IN STEP 27: the company's controls, its policy in CEL (decision 162).
+  // STEP 27: the company's controls, its policy in CEL (decision 162).
   ["dsor.controls", "tenant"],
 ]);
 
@@ -566,7 +566,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
                    -- writes an IN list back in, measured.
                    WHEN rel = to_regclass('dsor.delegations')
                    THEN '(status = ANY (ARRAY[''active''::text, ''suspended''::text]))'
-                   -- NEW IN STEP 27: and the controls', which lets only a waiting control
+                   -- STEP 27: and the controls', which lets only a waiting control
                    -- change, as PostgreSQL writes it back, measured (decision 164).
                    WHEN rel = to_regclass('dsor.controls')
                    THEN '(status = ANY (ARRAY[''draft''::text, ''in_review''::text]))' END,
@@ -577,7 +577,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
               CASE WHEN rel = to_regclass('dsor.delegations')
                    THEN '((status = ''revoked''::text) AND (revoked_by IS NOT NULL)'
                         || ' AND (revoked_at IS NOT NULL) AND (revoked_reason IS NOT NULL))'
-                   -- NEW IN STEP 27: and a control changes only to active, with its moment.
+                   -- STEP 27: and a control changes only to active, with its moment.
                    WHEN rel = to_regclass('dsor.controls')
                    THEN '((status = ''active''::text) AND (switched_on_at IS NOT NULL))'
                    ELSE 'true' END
@@ -955,7 +955,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     );
   }
 
-  // NEW IN STEP 27: the controls. The application reads them, and changes a control's status and
+  // STEP 27: the controls. The application reads them, and changes a control's status and
   // when it was switched on, and nothing else: a control it could write is a policy it could
   // rewrite, one it could delete is a policy gone, and one whose condition or test cases it could
   // change would be switched on with cases nobody wrote (decision 162). Every column but those two,

@@ -83,7 +83,7 @@ describe("a rule on a tenant table", () => {
     "dsor.day_totals",
     "dsor.reservations",
     "dsor.agent_controls",
-    // NEW IN STEP 27: and the controls.
+    // STEP 27: and the controls.
     "dsor.controls",
   ]) {
     // The log's case is DSOR-EXE-02's: a decision the program believes recorded, swallowed. Every other

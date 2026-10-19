@@ -67,7 +67,7 @@ describe("the pipeline", () => {
       "create the proposal",
       // STEP 25: part of §21 step 9, who may act on the target (decision 143).
       "check the target",
-      // NEW IN STEP 27: part of §21 step 10, the company's controls, for commands only.
+      // STEP 27: part of §21 step 10, the company's controls, for commands only.
       "evaluate the controls",
       // STEP 18: part of §21 step 10, the slip's limit on one payment, for commands only.
       "check the slip's limit",
@@ -111,7 +111,7 @@ describe("the pipeline", () => {
     // STEP 22: and the proposal, because a query proposes nothing.
     for (const stage of PIPELINE) {
       const commandOnly =
-        // NEW IN STEP 27: and the controls, which govern commands (decision 162).
+        // STEP 27: and the controls, which govern commands (decision 162).
         stage.name === "evaluate the controls" ||
         stage.name === "check the slip's limit" ||
         stage.name === "claim the idempotency key" ||
@@ -793,7 +793,7 @@ describe("the pipeline", () => {
         // revoke.test.ts catches.
         "check the operational status",
         "check the target",
-        // NEW IN STEP 27: and the controls, which fill something only for a command with a control
+        // STEP 27: and the controls, which fill something only for a command with a control
         // in force: a no-op one lets a payment past the CFO, which controls-at-the-door.test.ts
         // catches.
         "evaluate the controls",

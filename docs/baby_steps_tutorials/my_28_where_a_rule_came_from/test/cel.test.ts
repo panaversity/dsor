@@ -1,4 +1,4 @@
-// NEW IN STEP 27: the environment a control's condition is evaluated in (decision 162).
+// STEP 27: the environment a control's condition is evaluated in (decision 162).
 //
 // A condition is CEL: a small expression language that cannot loop forever, call the network, or
 // see anything it was not handed. What it is handed is Appendix B's eight variables, and three of

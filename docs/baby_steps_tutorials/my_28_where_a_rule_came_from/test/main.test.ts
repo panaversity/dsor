@@ -756,7 +756,7 @@ describe("the program a learner runs", () => {
     }
   });
 
-  // NEW IN STEP 27: the CFO's control, switched on after its five cases, holding a person's payment
+  // STEP 27: the CFO's control, switched on after its five cases, holding a person's payment
   // for the CFO and letting the agent's small one through (decision 162).
   it("DSOR-CTL-02c: the demo switches the CFO's control on after its five cases pass, and a payment above 25,000 USD waits", () => {
     const out = demo().report;

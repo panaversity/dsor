@@ -86,7 +86,7 @@ import { money, type Money } from "./money.ts";
 // STEP 26: two amounts compared in any two currencies, at the company's rates (decision 159).
 import { CannotConvert, convertUp, exceeds, plus, type RateOf } from "./exchange.ts";
 import { ratesOf } from "./rates.ts";
-// NEW IN STEP 27: the company's policy, as controls written in CEL (decision 162).
+// STEP 27: the company's policy, as controls written in CEL (decision 162).
 import type { ConditionInput } from "./cel.ts";
 import {
   type Control,
@@ -1515,7 +1515,7 @@ const validateTheInput: Stage["run"] = (context) => {
       }
     }
 
-    // NEW IN STEP 27: and a payment's amount, a fact about the arguments like the version above.
+    // STEP 27: and a payment's amount, a fact about the arguments like the version above.
     // The handler asked it, after the decision was recorded. A control now decides before any
     // handler runs: a malformed amount could not be evaluated, the control applied, and the request
     // waited for the CFO, recorded ALLOW, where it had been refused; and every limit was skipped,
@@ -2036,7 +2036,7 @@ function againstTheLimit(amount: Money, limit: Money, rates: RateOf): AgainstThe
 }
 
 /**
- * NEW IN STEP 27: whether a control in force requires approval for this request, and nothing
+ * STEP 27: whether a control in force requires approval for this request, and nothing
  * refused it outright: then the door holds its proposal at PENDING_APPROVAL (decision 162).
  */
 function needsApproval(context: Context): boolean {
@@ -2047,7 +2047,7 @@ function needsApproval(context: Context): boolean {
 }
 
 /**
- * NEW IN STEP 27: part of §21.10 — the company's controls on this operation (decision 162).
+ * STEP 27: part of §21.10 — the company's controls on this operation (decision 162).
  *
  * Every control in force on the command's operation is evaluated, for every caller, a person or the
  * agent: a control is the company's policy, not the agent's leash. Each sees Appendix B's eight
@@ -2441,7 +2441,7 @@ const recordTheDecision: Stage["run"] = async (context) => {
             ? outcome.code
             : context.mode === "validate_only"
               ? "VALIDATED"
-              : // NEW IN STEP 27: allowed to wait, and not to run (decision 162).
+              : // STEP 27: allowed to wait, and not to run (decision 162).
                 needsApproval(context)
                 ? "PENDING_APPROVAL"
                 : "ALLOWED",
@@ -2456,7 +2456,7 @@ const recordTheDecision: Stage["run"] = async (context) => {
         // directory's time when it gave one; with none, the record has the decision's own.
         // Decision 149: and a slip it found and could not use, because a limit on it is not an amount.
         ...(underSlip === undefined ? {} : { underSlip }),
-        // NEW IN STEP 27: each control evaluated, refusals included (DSOR-EXE-02, decision 162).
+        // STEP 27: each control evaluated, refusals included (DSOR-EXE-02, decision 162).
         ...(context.controls === undefined ? {} : { controls: context.controls }),
       });
 
@@ -2589,7 +2589,7 @@ export const PIPELINE: readonly Stage[] = Object.freeze([
   stage(8, "create the proposal", "command", createTheProposal),
   // STEP 25. Part of §21.9: who may act on the target, and the state it is in (decision 143).
   stage(9, "check the target", "command", checkTheTarget),
-  // NEW IN STEP 27. Part of §21.10: the company's controls, before the slip's limits book.
+  // STEP 27. Part of §21.10: the company's controls, before the slip's limits book.
   stage(10, "evaluate the controls", "command", evaluateTheControls),
   // STEP 18. Part of §21.10: the slip's limit on one payment, from the validated amount.
   stage(10, "check the slip's limit", "command", checkTheSlipsLimit),
@@ -2790,7 +2790,7 @@ function prepare(context: Context, progress: Progress): Promise<OperationAnswer>
 }
 
 /**
- * STEP 23: a proposal moved out of PROPOSED to wait, and nothing carried out. NEW IN STEP 27: at
+ * STEP 23: a proposal moved out of PROPOSED to wait, and nothing carried out. STEP 27: at
  * READY, prepared with propose_only, or at PENDING_APPROVAL, for the approvals a control requires,
  * in either mode (decision 162). Its amount stays booked against the day while it waits.
  *
@@ -2810,7 +2810,7 @@ async function waitAt(
   const by = forTheRecord(context);
   // What the request is said to be, once it waits: prepared, or held for approval.
   const done = to === "READY" ? "prepared" : "held for approval";
-  // NEW IN STEP 27: each approval a control asked for, by whom and how many (decision 162).
+  // STEP 27: each approval a control asked for, by whom and how many (decision 162).
   const requires: readonly Requirement[] = (context.controls ?? []).flatMap((evaluated) =>
     evaluated.outcome === "REQUIRE_APPROVAL" && evaluated.requires !== undefined
       ? [{ control: evaluated.id, version: evaluated.version, ...evaluated.requires }]
@@ -2827,7 +2827,7 @@ async function waitAt(
     // STEP 22, decision 157: a type guard: there are words for the record whenever there is a
     // principal, a contract and a payload hash, which the clauses above ask for.
     by === undefined ||
-    // NEW IN STEP 27: a proposal held for approval says what it waits for.
+    // STEP 27: a proposal held for approval says what it waits for.
     (to === "PENDING_APPROVAL" && requires.length === 0)
   ) {
     return Object.freeze({
@@ -2961,7 +2961,7 @@ async function waitAt(
     envelope:
       to === "READY"
         ? ready(answer)
-        : // NEW IN STEP 27: what it waits for, and until when, on DSoR's own clock.
+        : // STEP 27: what it waits for, and until when, on DSoR's own clock.
           pendingApproval({
             ...answer,
             requires,
@@ -3008,7 +3008,7 @@ function aDryRunsAnswer(context: Context): OperationAnswer {
       semantics,
       requestId,
       principalId: principal.id,
-      // NEW IN STEP 27: what a real request would be told: to wait for approval (decision 162).
+      // STEP 27: what a real request would be told: to wait for approval (decision 162).
       decision: needsApproval(context) ? "REQUIRE_APPROVAL" : "ALLOW",
     }),
   });
@@ -3554,7 +3554,7 @@ export function makeDoor(
         ? walked.answer
         : walked.context.mode === "validate_only"
           ? aDryRunsAnswer(walked.context)
-          : // NEW IN STEP 27: a control requires approval, so it waits, in either mode.
+          : // STEP 27: a control requires approval, so it waits, in either mode.
             needsApproval(walked.context)
             ? await waitAt(walked.context, progress, "PENDING_APPROVAL")
             : walked.context.mode === "propose_only"

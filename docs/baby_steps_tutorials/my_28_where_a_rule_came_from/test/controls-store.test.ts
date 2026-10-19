@@ -1,4 +1,4 @@
-// NEW IN STEP 27: the company's controls, in DSoR's own store (decision 162).
+// STEP 27: the company's controls, in DSoR's own store (decision 162).
 //
 // Rule DSOR-MOD-01: A DSoR implementation MUST durably own, in a control-plane store separate from
 // agent context, its delegations, controls, proposals, approvals, idempotency records, intent

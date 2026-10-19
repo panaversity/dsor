@@ -1,4 +1,4 @@
-// NEW IN STEP 27: the company's controls, evaluated at §21.10 for every command (decision 162).
+// STEP 27: the company's controls, evaluated at §21.10 for every command (decision 162).
 //
 // With org_456's CFO control switched on, a payment above 25,000 USD, or its equivalent, stops at
 // PENDING_APPROVAL: the decision is recorded with the control that asked for it, the proposal waits,

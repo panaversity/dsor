@@ -1,4 +1,4 @@
-// NEW IN STEP 27: switching a control on runs its test cases first (decision 162).
+// STEP 27: switching a control on runs its test cases first (decision 162).
 //
 // A control is switched on only when every one of its own test cases gives the answer the case
 // expects, with the rates the case pins. In this step the demo switches it on in the administrator's

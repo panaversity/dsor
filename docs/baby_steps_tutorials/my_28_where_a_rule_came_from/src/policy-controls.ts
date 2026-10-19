@@ -1,4 +1,4 @@
-// NEW IN STEP 27: the company's policy, as controls kept in DSoR's own store (decision 162).
+// STEP 27: the company's policy, as controls kept in DSoR's own store (decision 162).
 //
 // A control is a policy sentence translated into a condition a program can evaluate: "payments
 // above 25,000 USD need the CFO" becomes `dsor_exceeds(input.amount, dsor_money("25000", "USD"))`,

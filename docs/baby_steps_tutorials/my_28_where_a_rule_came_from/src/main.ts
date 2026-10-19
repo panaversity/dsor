@@ -17,7 +17,7 @@ import { moveProposal, movesOf, proposalsByRecord, proposalsOf } from "./proposa
 import { usedToday } from "./reservation.ts";
 // STEP 26: org_456's rate service, which the demo makes old for a moment.
 import { aRateService, useRateService } from "./rates.ts";
-// NEW IN STEP 27: switching org_456's CFO control on, in the administrator's place.
+// STEP 27: switching org_456's CFO control on, in the administrator's place.
 import { switchOn } from "./policy-controls.ts";
 
 const INV_1008 = "dsor://org_456/invoice/INV-1008";
@@ -72,7 +72,7 @@ function show(answer: Awaited<ReturnType<typeof callOperation>>): string {
     // STEP 23: a command prepared or only asked about changed nothing, so its answer has no
     // row: a READY one says its proposal, a VALIDATED one its decision (decision 138).
     if (r.data === undefined) {
-      // NEW IN STEP 27: and one a control holds says whom it waits for, and until when.
+      // STEP 27: and one a control holds says whom it waits for, and until when.
       if (r.outcome === "PENDING_APPROVAL") {
         const waitsFor = (r.requires ?? [])
           .map((q) => `${q.quorum} by ${q.role} (${q.control} v${q.version})`)
@@ -886,7 +886,7 @@ console.log(
 );
 useRateService("org_456", undefined);
 
-// NEW IN STEP 27: org_456's policy, "payments above 25,000 USD or equivalent require CFO approval",
+// STEP 27: org_456's policy, "payments above 25,000 USD or equivalent require CFO approval",
 // as a control written in CEL (decision 162). It arrives waiting for review; switching it on runs
 // its five test cases, and only then is it in force. Here the demo switches it on in the
 // administrator's place: no operation reaches that, so the agent cannot. On a second run it is on

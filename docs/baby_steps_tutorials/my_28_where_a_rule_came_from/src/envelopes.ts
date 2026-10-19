@@ -104,7 +104,7 @@ export interface ErrorEnvelope {
  * semantics; VALIDATED names the decision, and has no proposal, because none was made. Decision 154:
  * VALIDATED says its semantics too, as every answer to a command must (DSOR-EXE-05b).
  */
-/** NEW IN STEP 27: one approval a proposal waits for: which control asked, and for whom. */
+/** STEP 27: one approval a proposal waits for: which control asked, and for whom. */
 export interface Requirement {
   readonly control: string;
   readonly version: number;
@@ -119,9 +119,9 @@ export interface ResultEnvelope {
   readonly semantics?: string;
   /** STEP 23: what a dry run would have been told: ALLOW. STEP 27: or REQUIRE_APPROVAL. */
   readonly decision?: "ALLOW" | "REQUIRE_APPROVAL";
-  /** NEW IN STEP 27: what a proposal waits for, one entry for each control that asked. */
+  /** STEP 27: what a proposal waits for, one entry for each control that asked. */
   readonly requires?: readonly Requirement[];
-  /** NEW IN STEP 27: until when it waits. */
+  /** STEP 27: until when it waits. */
   readonly expires_at?: string;
   /** The row the command changed. A READY or VALIDATED answer changed nothing, and has none. */
   readonly data?: Readonly<Record<string, unknown>>;
@@ -369,7 +369,7 @@ export function ready(answer: {
 }
 
 /**
- * NEW IN STEP 27: the answer to a command a control requires approval for (decision 162).
+ * STEP 27: the answer to a command a control requires approval for (decision 162).
  *
  * The proposal waits at PENDING_APPROVAL, and the caller is told what it waits for and until when.
  * Nothing ran, so there is no data. Built here, from the controls the door evaluated, and checked

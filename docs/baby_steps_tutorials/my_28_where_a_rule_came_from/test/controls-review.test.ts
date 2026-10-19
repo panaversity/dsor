@@ -1,4 +1,4 @@
-// NEW IN STEP 27: what the review of step 27 found, each case measured first (decision 164).
+// STEP 27: what the review of step 27 found, each case measured first (decision 164).
 //
 // Rule DSOR-CTL-07: When a control condition fails to evaluate, the control's effect MUST apply.
 // Rule DSOR-CTL-03b: A stale control MUST NOT be dropped or skipped.

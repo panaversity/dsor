@@ -1,8 +1,8 @@
 {
-  "name": "@dsor-steps/27-controls-in-cel",
+  "name": "@dsor-steps/28-where-a-rule-came-from",
   "version": "0.0.0",
   "private": true,
-  "description": "Step 27 of the DSoR baby steps: the company's policy becomes a control, a rule written in CEL with its owner, its source and its test cases, evaluated at every decision",
+  "description": "Step 28 of the DSoR baby steps: each control points at the policy it came from, a changed policy marks it stale and tells its owner without switching it off, and only its owner may switch a control on",
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {

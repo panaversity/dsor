@@ -130,7 +130,7 @@ export interface AuditRecord {
   readonly row_count?: number;
   /** STEP 19: the slip an agent acted under, for an `unattended` record. */
   readonly delegation?: string;
-  /** NEW IN STEP 27: each control the decision evaluated (DSOR-EXE-02, decision 162). */
+  /** STEP 27: each control the decision evaluated (DSOR-EXE-02, decision 162). */
   readonly controls?: readonly ControlOnTheRecord[];
   readonly correlation: {
     readonly request_id: string;
@@ -149,7 +149,7 @@ export interface AuditRecord {
  * `string | undefined` on purpose — see `audit`.
  */
 /**
- * NEW IN STEP 27: one control a decision evaluated, as the schema's `controls` names it: its id and
+ * STEP 27: one control a decision evaluated, as the schema's `controls` names it: its id and
  * version, its outcome, the policy it came from, and why it could not be evaluated, if it could not.
  */
 export interface ControlOnTheRecord {
@@ -197,7 +197,7 @@ export interface DecisionToRecord {
      */
     readonly asOf?: string;
   };
-  /** NEW IN STEP 27: the controls this decision evaluated, when it evaluated any. */
+  /** STEP 27: the controls this decision evaluated, when it evaluated any. */
   readonly controls?: readonly ControlOnTheRecord[];
 }
 
@@ -771,7 +771,7 @@ function copyOf(decision: DecisionToRecord): DecisionToRecord {
     rowCount,
     // STEP 19: copied once, like everything above.
     underSlip,
-    // NEW IN STEP 27: and the controls, each a copy.
+    // STEP 27: and the controls, each a copy.
     controls,
   } = decision;
 
@@ -985,7 +985,7 @@ function sealAt(
     body.delegation = underSlip.delegation;
   }
 
-  // NEW IN STEP 27: inside the hash too, so a record whose controls are changed afterwards does
+  // STEP 27: inside the hash too, so a record whose controls are changed afterwards does
   // not verify. Only when the decision evaluated some: none is left out, as the schema prefers.
   if (copy.controls !== undefined && copy.controls.length > 0) {
     body.controls = copy.controls;
@@ -1057,7 +1057,7 @@ function valuesOf(written: AuditRecord, params: unknown[]): string {
     written.row_count ?? null,
     // STEP 19: migration 016's column, for the schema's field.
     written.delegation ?? null,
-    // NEW IN STEP 27: migration 030's, as JSON text like identity and correlation.
+    // STEP 27: migration 030's, as JSON text like identity and correlation.
     written.controls === undefined ? null : JSON.stringify(written.controls),
   ];
 
@@ -1258,7 +1258,7 @@ export async function theLog(tenant: string): Promise<readonly AuditRecord[]> {
         "resources",
         "row_count",
         "delegation",
-        // NEW IN STEP 27.
+        // STEP 27.
         "controls",
       ]) {
         if (row[field] !== null && row[field] !== undefined) {
