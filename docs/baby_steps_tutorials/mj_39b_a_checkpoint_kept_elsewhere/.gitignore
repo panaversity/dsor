@@ -6,3 +6,6 @@ node_modules/
 .env
 .env.*
 !.env.example
+
+# Each learner's checkpoints belong to their own database (step 39b's README, decision D11).
+checkpoints/

@@ -3,6 +3,10 @@
 // rewrite from an edit on now shows, and a forged checkpoint shows too (DSOR-AUD-04b, DSOR-AUD-04d;
 // step 39b's README, claims C1 to C6).
 import { generateKeyPairSync, type KeyObject } from "node:crypto";
+import { mkdtempSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { fingerprint, GENESIS, NO_CHAIN, type ChainRow } from "../src/audit-chain.ts";
 import {
@@ -13,6 +17,7 @@ import {
   type Checkpoint,
 } from "../src/checkpoint.ts";
 import { checkAgainstCheckpoints, MAX_AGE_HOURS } from "../src/checkpoint-check.ts";
+import { makeKeyPair, readPrivateKey, readPublicKey } from "../src/checkpoint-files.ts";
 
 /** A chain of records, fingerprinted as the database does. */
 function chainOf(chain: string, records: (string | null)[][]): ChainRow[] {
@@ -62,6 +67,39 @@ function rewritten(): ChainRow[] {
 
 const check = (rows: ChainRow[], files: { name: string; text: string }[], now = AT_10) =>
   checkAgainstCheckpoints(rows, undefined, files, KEYS.publicKey, now);
+
+describe("C1: the key pair", () => {
+  const dir = mkdtempSync(join(tmpdir(), "dsor-39b-keys-"));
+  const privateFile = join(dir, "private.pem");
+  const publicFile = join(dir, "public.pem");
+
+  it("DSOR-AUD-04b: the private key is readable by its owner only, and the pair signs a checkpoint the checker accepts", () => {
+    makeKeyPair(privateFile, publicFile);
+    expect(statSync(privateFile).mode & 0o777).toBe(0o600);
+    const taken = takeCheckpoint(LOG(), undefined, AT_9);
+    if (!("checkpoint" in taken)) throw new Error("the test's log is broken");
+    const text = JSON.stringify(signCheckpoint(taken.checkpoint, readPrivateKey(privateFile)));
+    const name = checkpointFileName(taken.checkpoint);
+    const result = checkAgainstCheckpoints(
+      LOG(),
+      undefined,
+      [{ name, text }],
+      readPublicKey(publicFile),
+      AT_10,
+    );
+    expect(result.exit).toBe(0);
+  });
+
+  it("DSOR-AUD-04b: a private key file already there is never overwritten", () => {
+    expect(() => makeKeyPair(privateFile, publicFile)).toThrow();
+  });
+
+  it("DSOR-AUD-04b: a private key is never written inside this folder, where git could pick it up", () => {
+    const inside = fileURLToPath(new URL("../private.pem", import.meta.url));
+    expect(() => makeKeyPair(inside, publicFile)).toThrow(/outside this folder/);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
 
 describe("C2: taking a checkpoint", () => {
   it("DSOR-AUD-04d: a checkpoint covers every chain of the log, no_company included, each at its last place", () => {
