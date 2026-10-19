@@ -106,6 +106,36 @@ describe("C3: the bank never received it: FAILED, still a draft, and the hold li
   });
 });
 
+describe("C2 and C3: the day's booking is the draft's", () => {
+  // Found by step 38's review, F3: the agent's draft of INV-1002 books its amount on del_100's day,
+  //   and the send books nothing. So settling the send leaves the draft's booking as it is.
+  it.each([
+    { said: "sent", lost: false, state: "COMMITTED" },
+    { said: "never received", lost: true, state: "FAILED" },
+  ])(
+    "DSOR-UNK-04a: the agent drafts PAY-901 of INV-1002, user_123 sends it, and the bank $said: the proposal is $state and the draft's booking stays committed",
+    async ({ lost, state }) => {
+      const w = await ruleWorldOnTuesday();
+      const drafted = await w.draft("INV-1002");
+      const booked = idOf(drafted);
+      expect((await w.reservations.get("org_456", booked))?.state).toBe("committed");
+      const payment = `dsor://org_456/payment/${(drafted as { data: { id: string } }).data.id}`;
+      const pay = w.bank.pay;
+      if (lost) w.bank.pay = () => new Promise(() => {});
+      else w.bank.mode = "silent";
+      const unknown = await send(w, payment);
+      w.bank.pay = pay;
+      w.bank.mode = "good";
+      expect(unknown).toMatchObject({ code: "OUTCOME_UNKNOWN" });
+      expect(await w.reservations.get("org_456", idOf(unknown))).toBeUndefined();
+      expect(await reconcile(w, `dsor://org_456/proposal/${idOf(unknown)}`)).toMatchObject({
+        data: { state },
+      });
+      expect((await w.reservations.get("org_456", booked))?.state).toBe("committed");
+    },
+  );
+});
+
 describe("C4: a bank that does not answer settles nothing", () => {
   it.each(["silent", "broken"] as const)(
     "DSOR-UNK-04a: the bank is %s when asked: the proposal stays OUTCOME_UNKNOWN and PAY-901 stays held",

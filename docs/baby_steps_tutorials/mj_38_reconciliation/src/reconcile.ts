@@ -1,11 +1,13 @@
 // NEW IN STEP 38: reconciliation, DSoR's own command payment.reconcile (DSOR-UNK-04a and
 // DSOR-UNK-04d in specs/dsor/03-execution.md, section 25.3). It names one proposal of payment.execute
 // whose outcome is unknown, asks the company's bank by the key DSoR derived from that proposal, and
-// settles it with the bank's answer as the evidence, in one transaction: sent, so COMMITTED, the
-// payment marked paid, and its booking kept; not sent, so FAILED, the payment a draft, and its
-// booking given back. Either way its holds stop counting (step 37). A bank that does not answer
-// settles nothing. dsor-scheduler calls it, and so may a person with payment:reconcile; an agent
-// never may, which line ⑤ checks (step 38's README, decisions D1 to D3 and D5).
+// settles it with the bank's answer as the evidence, in one transaction: sent, so COMMITTED and the
+// payment marked paid; not sent, so FAILED and the payment a draft. Either way its holds stop
+// counting (step 37), and the proposal's booking ends as the pipeline ends any command's. Today
+// only a draft books, so a send holds none, and the draft's booking stays as it is. A bank that
+// does not answer settles nothing. dsor-scheduler calls it, and so may a person with
+// payment:reconcile; an agent never may, which line ⑤ checks (step 38's README, decisions D1 to D3
+// and D5).
 import { bankKeyOf, lookupThrough, type BankReceipt } from "./bank.ts";
 import { Refusal } from "./envelope.ts";
 import type { Mover } from "./log.ts";
@@ -117,11 +119,14 @@ async function reconcile(input: unknown, work: OwnStores): Promise<Reconciliatio
     throw new Refusal("CONFLICT", why, "internal");
   }
   if (sent === undefined) {
-    // Not sent: the payment stays a draft, and the day gets its booking back.
+    // Not sent: the payment stays a draft, and the proposal's booking, when it holds one, goes
+    //   back to the day, as a failed command's does. A send holds none today (found by step 38's
+    //   review, F3).
     await stores.reservations.release(tenant, id);
   } else {
-    // Sent: the payment is paid, at the version DSoR read under its lock, and the booking stays
-    //   counted. A draft that does not change at that version is a fault, and the work rolls back.
+    // Sent: the payment is paid, at the version DSoR read under its lock, and the proposal's
+    //   booking, when it holds one, stays counted. A draft that does not change at that version is
+    //   a fault, and the work rolls back.
     if (payment.status === "draft") {
       const { changed } = await stores.payments.pay(tenant, payment.id, payment.version);
       if (!changed) throw new Error(`payment ${payment.id} could not be marked paid`);
