@@ -139,13 +139,17 @@ and `test/holds.db.test.ts`.
 
 | Break | What it removes | Unit tests failed | Database tests failed |
 |---|---|---|---|
-| **B1** | No hold is placed before the bank is asked | 15 | 4 |
-| **B2** | The hold is checked after "one attempt at a time", so a second send hears `CONFLICT` | 6 | 1 |
-| **B3** | `payment.cancel` binds nothing again | 5 | 2 |
-| **B4** | A hold outlives its payment: `COMMITTED` and `FAILED` proposals still hold | 6 | 4 |
-| **B5** | A hold counts only at `OUTCOME_UNKNOWN`, not while `EXECUTING` | 2 | 1: the cancel after a crash |
+| **B1** | No hold is placed before the bank is asked | 17 | 6 |
+| **B2** | The hold of an unknown payment is checked after "one attempt at a time", so a second send hears `CONFLICT` | 6 | 1 |
+| **B3** | `payment.cancel` binds nothing again | 7 | 4 |
+| **B4** | A hold outlives its payment: `COMMITTED` and `FAILED` proposals still hold | 6 | 7 |
+| **B5** | A hold counts only at `OUTCOME_UNKNOWN`, not while `EXECUTING` | 2 | 2 |
 | **B6** | A release is not checked against the holds | 2 | 0: no database test releases a held bill |
 | **B7** | `RESOURCE_HELD` is kept with the claim, so the same key replays it after settlement | 1 | 1 |
+
+These are the numbers on the final code, after the review's fixes. B4 first passed every test
+there: the fix for the review's F1 had added a second filter, which made the list of holding states
+dead code. That list alone decides now, and B4 fails 13 tests.
 
 B5 is the gap the learner's refinement of D6 closed: after a lost connection or a crash, the
 proposal stays `EXECUTING` until the next start-up, and a hold that counted only at
@@ -214,7 +218,8 @@ The books no longer lie: PAY-901 stays a draft until someone finds out what the 
 | 5 | Memory | The contracts, line ⑨'s payment read, the look, the placing, "not now" |
 | 6 | Database | Migration 033, the store, the map, 5 database tests with a real `SIGKILL` |
 | 7 | Break it | B1 to B7, in copies of the folder |
-| 8 | Review | A reviewer who had not seen the conversation |
+| 8 | Review | A reviewer who had not seen the conversation, with runs of its own |
+| 9 | Fix | F1 to F4, L2, and T1; each fix with a test undone once in a copy |
 
 To start it in a new session:
 
@@ -228,8 +233,8 @@ docs/baby_steps_tutorials/mj_37_outcome_unknown/README.md.
 1. PAY-901's bank went silent. user_123 cancels PAY-901. What does DSoR answer, and why did step
    36b let it through?
 2. Why is INV-1002 held, and not only PAY-901?
-3. A cancel arrives while the bank is still sending PAY-901, on the database. What does it hear,
-   and why is that not `RESOURCE_HELD`?
+3. A second send of INV-1002 arrives while the bank is still sending PAY-901. What does it hear,
+   and why not `RESOURCE_HELD`?
 4. cfo_100 approves another payment of a held bill. Is it refused? And its release?
 5. A cancel heard `RESOURCE_HELD`. Reconciliation later settles PAY-901 `FAILED`. Can the same key
    cancel it now?
@@ -241,8 +246,8 @@ docs/baby_steps_tutorials/mj_37_outcome_unknown/README.md.
    "PAY-901 must not change", and `payment.cancel` named no record a hold could match (D2).
 2. The danger is a second payment of the same bill, whatever slip it goes out on. The contract's
    `hold_on_unknown` names both (D2).
-3. `STALE_STATE`. Line ⑨ reads the payment under its row lock, so the cancel waits for the send;
-   when it gets the lock, the payment is `COMMITTED` and its hold no longer counts (D6, D7).
+3. `CONFLICT`, naming PAY-901's proposal: another attempt is running right now, which "one attempt
+   at a time" answers. `RESOURCE_HELD` is for the wait until someone finds out (D3, the review's F1).
 4. The approval goes through: it changes no held record. The release hears `RESOURCE_HELD`, and the
    proposal stays approved, waiting (D4).
 5. Yes. `RESOURCE_HELD` keeps nothing with the claim, so the same key runs again once the hold no
@@ -270,17 +275,53 @@ docs/baby_steps_tutorials/mj_37_outcome_unknown/README.md.
 
 ### What the review found
 
-(Filled in after the review.)
+A reviewer who had not seen the conversation confirmed the main guarantee, and found these:
+
+- **F1 (high). A running send lost its `CONFLICT`.** A hold counts while its payment is
+  `EXECUTING`, so a second send of INV-1002, while the bank still sent PAY-901, heard
+  `RESOURCE_HELD`: "wait for reconciliation", for a payment about to finish. D3 says `CONFLICT`
+  keeps that meaning. Now a hold of a payment still being sent lets "one attempt at a time" answer
+  first: a second send hears `CONFLICT`, naming the running proposal, and a cancel or a new draft
+  still hears `RESOURCE_HELD`. Memory now lets go of the claim's locks at step 36's checkpoint, as
+  the database's COMMIT does, so a second attempt finds the first in flight instead of waiting.
+- **F2 (high). A `hold_on_unknown` that holds nothing passed start-up.** `["vendor"]` is bound, but
+  line ⑨ gives a vendor no address a hold can match. Start-up refuses it now, and a send stops
+  before its note if a listed alias has no address.
+- **F3. A draft in the moment before the holds commit.** A new draft of INV-1002 whose line ⑨ ran
+  between the send's line ⑨ and its checkpoint saw no hold. Placing a hold now takes each record's
+  database lock, and a look takes it shared, so the draft waits and then sees the hold. No test can
+  pause a send in that window, so this fix has no test of its own.
+- **F4. A dry run waited for the bank.** A dry run of a cancel read the payment under its row lock,
+  waited for the whole send, and then answered `VALIDATED`. It reads without the lock now, waits for
+  nothing, and hears `RESOURCE_HELD`, as the real call does.
+- **L2. The refusal named a record the caller had not named.** On the database a cancel of PAY-901
+  heard "invoice INV-9001 is held". The refusal now names the first held record in the bind's
+  order, the payment.
+- **T1. No test showed a dry run and the holds.** Two tests now: a dry run hears the hold, and places
+  none.
+
+Each fix with a test was undone once in a copy, and its test failed. Left as they are, and written
+below: the payment read is not in the bundle (L1); each look reads one proposal for each hold row
+(L3); a cancel now needs its invoice to be there (L4); and a dry run of a send whose payment pays
+another invoice says `VALIDATED` where the real call refuses, since step 35 (L5).
 
 ### Left open on purpose
 
 - **Reconciliation** (step 38). Nothing settles an unknown payment, so its holds stand until a
   person or step 38 does. The tests settle by hand.
-- **A draft at the same moment as a send.** A new draft of INV-1002 that passes line ⑨ before the
-  send's holds commit is drafted. It cannot be sent: its send meets the hold.
+- **Whether a claim records `RESOURCE_HELD`** (open question 151). This step keeps nothing, so the
+  same key runs once the hold is lifted.
+- **The F3 lock has no test.** No test can pause a send between its line ⑨ and its checkpoint.
 - **The payment read is not in the decision bundle yet.** The payments store gives no freshness
   label, so line ⑨'s payment read is not noted as the invoice's is.
-- **Hold rows are never removed.** A settled proposal's rows stay, and no longer count.
+- **Hold rows are never removed.** A settled proposal's rows stay, and no longer count. Each look
+  reads the proposal of every row on its records, so a bill sent and failed many times grows slower
+  (the review's L3).
+- **A cancel needs its invoice** (the review's L4). Line ⑨ reads the invoice found on the payment,
+  so a payment whose invoice is gone cannot be cancelled.
+- **A dry run of a mismatched send** (the review's L5, since step 35). A payment of INV-1002 sent
+  with INV-1009 named: the dry run checks INV-1009 and says `VALIDATED`, and the real call's code
+  refuses. Binding the invoice from the payment would fix it, and would move the version check.
 - **Two database tests fail on a throwaway server**, as in steps 34 to 36b: one that accepts any
   password, and an owner that belongs to no other role.
 
