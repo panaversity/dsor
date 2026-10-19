@@ -59,7 +59,8 @@ export const NO_HOLDS: HoldStore = Object.freeze({
 // A hold counts while nobody knows how its payment ended: while it is being sent, and once its
 //   outcome is unknown. A payment that is COMMITTED or FAILED frees what it held (step 37's README,
 //   decisions D6 and D7).
-const HOLDING: readonly State[] = ["EXECUTING", "OUTCOME_UNKNOWN"];
+//   In the order a look reports them: an unknown outcome before a send still running.
+const HOLDING: readonly State[] = ["OUTCOME_UNKNOWN", "EXECUTING"];
 
 // The binds line ⑨ gives an address to (src/bound.ts).
 const ADDRESSED = [/^input\.[a-z][a-z0-9_]*$/, /^state\.[a-z][a-z0-9_]*\.invoice_id$/];
@@ -99,7 +100,9 @@ export async function heldBy(
     resources
       .map((resource) => found.find((one) => one.resource === resource && one.state === state))
       .find((one) => one !== undefined);
-  return first("OUTCOME_UNKNOWN") ?? first("EXECUTING");
+  // Found by break B4 after the review: a second filter here once made HOLDING dead code. HOLDING
+  //   alone decides which states hold, and in which order they are reported.
+  return HOLDING.map(first).find((one) => one !== undefined);
 }
 
 /**
