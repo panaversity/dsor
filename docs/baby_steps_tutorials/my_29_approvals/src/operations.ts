@@ -86,6 +86,8 @@ import { money, type Money } from "./money.ts";
 // STEP 26: two amounts compared in any two currencies, at the company's rates (decision 159).
 import { CannotConvert, convertUp, exceeds, plus, type RateOf } from "./exchange.ts";
 import { ratesOf } from "./rates.ts";
+// NEW IN STEP 29: RFC 8785, one spelling for every request (decision 167).
+import { canonicalJson, NotCanonical } from "./canonical.ts";
 // STEP 27: the company's policy, as controls written in CEL (decision 162).
 import type { ConditionInput } from "./cel.ts";
 import {
@@ -1397,9 +1399,6 @@ const authorize: Stage["run"] = (context) => {
   return carryOn(context);
 };
 
-/** STEP 17: an argument JSON would write as something else, named. */
-class NotWritable extends Error {}
-
 /**
  * Decision 153: the most bytes a command's arguments may take, written down. A command's arguments
  * are kept whole in its proposal, for good, in a table the application can never delete from, so
@@ -1438,13 +1437,12 @@ const validateTheInput: Stage["run"] = (context) => {
     // as null, so a request for NaN used to be hashed as a request for null; with the copy below made
     // from the text, the handler would read null too. A number JSON cannot write is refused here, by
     // name, which is what step 13 asked of a refusal (decision 126).
-    const written = JSON.stringify({ ...context.args }, (key: string, value: unknown) => {
-      if (typeof value === "number" && !Number.isFinite(value)) {
-        throw new NotWritable(`${key} is ${String(value)}`);
-      }
-
-      return value;
-    });
+    //
+    // NEW IN STEP 29: and written in RFC 8785's one spelling, its keys in one order, so the same
+    // request sent with its fields in another order is the same request, with one fingerprint for an
+    // approver to approve and one claim on its key (DSOR-APR-02b, decision 167). A number JSON
+    // cannot write is still refused, and now so is text that is not valid Unicode.
+    const written = canonicalJson({ ...context.args });
 
     // Decision 153: and refused when a command's text is over the ceiling, before its key is claimed
     // or its proposal written. With no ceiling, a payment refused for its amount still kept a
@@ -1604,7 +1602,8 @@ const validateTheInput: Stage["run"] = (context) => {
     return refuse(
       askedBy,
       "VALIDATION_FAILED",
-      error instanceof NotWritable
+      // STEP 17: an argument JSON would write as something else, named. STEP 29: by canonical.ts.
+      error instanceof NotCanonical
         ? `${nameOf(context.id)} was given arguments that cannot be written down: ${error.message}`
         : `${nameOf(context.id)} was given arguments that cannot be written down`,
       context.requestId,

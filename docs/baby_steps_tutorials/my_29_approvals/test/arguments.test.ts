@@ -10,6 +10,7 @@
 // the agent holds it under del_100, the slip user_123 signed.
 
 import { createHash } from "node:crypto";
+import { canonicalJson } from "../src/canonical.ts";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { callOperation } from "./support/door.ts";
 import type { Login } from "../src/login.ts";
@@ -129,8 +130,9 @@ describe("the caller's arguments", () => {
     expect(hashed).toBe(1);
     expect(answer.envelope.outcome).toBe("COMMITTED");
 
+    // STEP 29: written in RFC 8785's one spelling, keys sorted, as §21.6 writes it (decision 167).
     const honest = createHash("sha256")
-      .update(JSON.stringify({ invoice: INV_1009, expected_version: 1, trap: 1 }))
+      .update(canonicalJson({ invoice: INV_1009, expected_version: 1, trap: 1 }))
       .digest("hex");
 
     expect(answer.envelope.payload_hash).toBe(`sha256:${honest}`);
