@@ -1,14 +1,21 @@
 // NEW IN STEP 39b: the log held against its checkpoints (DSOR-AUD-04b in
 // specs/dsor/03-execution.md, section 30). Step 39's checker first; then every checkpoint file
-// whose signature holds is used, and each chain it notes must still have, at the noted place, the
-// noted fingerprint. A rewrite from an edit on changes that fingerprint, so it shows (step 39b's
-// README, claims C3 to C6, decisions D4 to D7 and D9).
-import { verify, type KeyObject } from "node:crypto";
-import { verifyChains, type ChainHead, type ChainReport, type ChainRow } from "./audit-chain.ts";
-import { checkpointText, type Checkpoint } from "./checkpoint.ts";
+// of this database whose signature holds is used, and each chain it notes must still have, at the
+// noted place, the noted fingerprint. A rewrite from an edit on changes that fingerprint, so it
+// shows. Each checkpoint must follow the one before it, and the newest must be 24 hours old or less
+// by the checker's own clock (step 39b's README, claims C3 to C6, decisions D4 to D7, D9, and D13).
+import type { ChainReport } from "./audit-chain.ts";
+import { verifyChains } from "./audit-chain.ts";
+import { checkpointHash, type Checkpoint, type Log } from "./checkpoint.ts";
+import { parseCheckpoint } from "./checkpoint-parse.ts";
 
 /** The oldest the newest checkpoint may be: the specification's table of limits, §44, at L2. */
 export const MAX_AGE_HOURS = 24;
+/** How far a checkpoint's time may run ahead of the checker's clock: clocks differ a little. */
+export const MAX_SKEW_MINUTES = 5;
+
+/** One file of the checkpoint folder: its text, or why it could not be read. */
+export type CheckpointFile = { name: string; text: string } | { name: string; broken: string };
 
 /** What the checker found: each chain, each checkpoint file, what it could not check, the exit. */
 export type Checked = {
@@ -16,78 +23,72 @@ export type Checked = {
   reports: ChainReport[];
   files: { name: string; broken?: string }[];
   notes: string[];
+  // The newest checkpoint used, which the signer compares with the last one it signed (D13).
+  newest?: { name: string; hash: string };
 };
 
 /** What the checkpoint cannot see, said every time (claim C6). */
 const BLIND =
-  "not checked: a record written after the newest checkpoint, a new record the owner adds, or anyone holding both the owner's login and the private key";
+  "not checked: a record written after the newest checkpoint, a new record the owner adds, a database server that shows the checker other rows than it shows everyone, or anyone holding both the owner's login and the private key";
 
-const TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
-const PLACE = /^[1-9][0-9]*$/;
-const HASH = /^sha256:[0-9a-f]{64}$/;
-
-/** An object with exactly these keys, and no other. */
-function exactly(value: unknown, keys: string[]): value is Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  return Object.keys(value).sort().join() === [...keys].sort().join();
-}
-
-/** The file's checkpoint and signature, or undefined when the file is not exactly a checkpoint. */
-function parse(text: string): { checkpoint: Checkpoint; signature: string } | undefined {
-  let file: unknown;
-  try {
-    file = JSON.parse(text);
-  } catch {
-    return undefined;
+/** The checkpoints of this database whose signature holds, oldest first; every file's verdict. */
+function usable(
+  log: Log,
+  files: readonly CheckpointFile[],
+  publicKey: Parameters<typeof parseCheckpoint>[1],
+  now: string,
+): { used: { name: string; checkpoint: Checkpoint }[]; verdicts: Checked["files"] } {
+  const used: { name: string; checkpoint: Checkpoint }[] = [];
+  const verdicts: Checked["files"] = [];
+  const latest = Date.parse(now) + MAX_SKEW_MINUTES * 60_000;
+  for (const file of files) {
+    const parsed = "broken" in file ? file : parseCheckpoint(file.text, publicKey);
+    const { name } = file;
+    if ("broken" in parsed) verdicts.push({ name, broken: parsed.broken });
+    else if (
+      parsed.checkpoint.database.system_identifier !== log.database.system_identifier ||
+      parsed.checkpoint.database.name !== log.database.name
+    ) {
+      // Found by the review, M2: one key, two databases, and the other's checkpoint was used.
+      verdicts.push({ name, broken: "it is a checkpoint of another database" });
+    } else if (Date.parse(parsed.checkpoint.taken_at) > latest) {
+      // Found by the review, H2: a checkpoint dated 2099 never grew old.
+      verdicts.push({ name, broken: "its time is after the checker's clock" });
+    } else {
+      verdicts.push({ name });
+      used.push({ name, checkpoint: parsed.checkpoint });
+    }
   }
-  if (!exactly(file, ["checkpoint", "signature"]) || typeof file["signature"] !== "string") return;
-  const checkpoint = file["checkpoint"];
-  if (!exactly(checkpoint, ["taken_at", "chains"]) || !Array.isArray(checkpoint["chains"])) return;
-  if (typeof checkpoint["taken_at"] !== "string" || !TIME.test(checkpoint["taken_at"])) return;
-  const names = new Set<string>();
-  for (const noted of checkpoint["chains"] as unknown[]) {
-    if (!exactly(noted, ["chain", "chain_position", "record_hash"])) return;
-    const { chain, chain_position, record_hash } = noted;
-    if (typeof chain !== "string" || names.has(chain)) return;
-    if (typeof chain_position !== "string" || !PLACE.test(chain_position)) return;
-    if (typeof record_hash !== "string" || !HASH.test(record_hash)) return;
-    names.add(chain);
+  used.sort((a, b) => (a.checkpoint.taken_at < b.checkpoint.taken_at ? -1 : 1));
+  // Each follows the one before it; the oldest may follow one removed to keep the folder small.
+  for (const [i, { name, checkpoint }] of used.entries()) {
+    if (i > 0 && checkpoint.previous !== checkpointHash(used[i - 1]!.checkpoint)) {
+      const verdict = verdicts.find((v) => v.name === name)!;
+      verdict.broken = "it does not follow the checkpoint before it in the folder: one was removed";
+    }
   }
-  return { checkpoint: checkpoint as Checkpoint, signature: file["signature"] };
+  return { used, verdicts };
 }
 
 /**
- * Every chain held against every checkpoint file whose signature holds with the public key. Exit 1
- * when anything is broken; else 2 when the log is not vouched for by a checkpoint 24 hours old or
- * less; else 0. `now` is the database's clock (decision D12).
+ * Every chain held against every usable checkpoint. Exit 1 when anything is broken; else 2 when no
+ * checkpoint 24 hours old or less by the checker's clock, `now`, vouches for the log; else 0.
  */
 export function checkAgainstCheckpoints(
-  rows: readonly ChainRow[],
-  heads: ReadonlyMap<string, ChainHead> | undefined,
-  files: readonly { name: string; text: string }[],
-  publicKey: KeyObject | undefined,
+  log: Log,
+  files: readonly CheckpointFile[],
+  publicKey: Parameters<typeof parseCheckpoint>[1] | undefined,
   now: string,
 ): Checked {
-  const reports = verifyChains(rows, heads);
-  const places = new Map<string, Map<string, ChainRow>>();
-  for (const row of rows) {
+  const reports = verifyChains(log.rows, log.heads);
+  const { used, verdicts } =
+    publicKey === undefined ? { used: [], verdicts: [] } : usable(log, files, publicKey, now);
+  const checked: Checked = { exit: 0, reports, files: verdicts, notes: [] };
+  const places = new Map<string, Map<string, (typeof log.rows)[number]>>();
+  for (const row of log.rows) {
     places.set(row.chain, (places.get(row.chain) ?? new Map()).set(row.chain_position, row));
   }
-  const checked: Checked = { exit: 0, reports, files: [], notes: [] };
-  const used: { name: string; checkpoint: Checkpoint }[] = [];
-  for (const { name, text } of publicKey === undefined ? [] : files) {
-    const file = parse(text);
-    const signed = (c: Checkpoint, s: string) =>
-      verify(null, Buffer.from(checkpointText(c), "utf8"), publicKey!, Buffer.from(s, "base64"));
-    if (file === undefined) checked.files.push({ name, broken: "it is not a checkpoint" });
-    else if (!signed(file.checkpoint, file.signature)) {
-      checked.files.push({ name, broken: "its signature does not match the committed public key" });
-    } else {
-      checked.files.push({ name });
-      used.push({ name, checkpoint: file.checkpoint });
-    }
-  }
-  // Every checkpoint kept, not only the newest: delete the newest, and the older still hold (D7).
+  // Every checkpoint used, not only the newest (D7).
   for (const { name, checkpoint } of used) {
     for (const noted of checkpoint.chains) {
       let report = reports.find((r) => r.chain === noted.chain);
@@ -110,26 +111,26 @@ export function checkAgainstCheckpoints(
   for (const { chain } of reports) {
     if (!covered.has(chain)) checked.notes.push(`${chain}: not yet in a checkpoint`);
   }
-  let vouched = true;
-  const newest = used
-    .map(({ checkpoint }) => checkpoint.taken_at)
-    .sort()
-    .at(-1);
+  const newest = used.at(-1);
+  if (newest !== undefined) {
+    checked.newest = { name: newest.name, hash: checkpointHash(newest.checkpoint) };
+  }
+  let vouched = false;
   if (publicKey === undefined) {
     checked.notes.push("not checked: there is no public key, checkpoint-public-key.pem");
-    vouched = false;
   } else if (newest === undefined) {
     const which = files.length === 0 ? "" : " whose signature holds";
     checked.notes.push(`not checked: there is no checkpoint${which}`);
-    vouched = false;
-  } else if (Date.parse(now) - Date.parse(newest) > MAX_AGE_HOURS * 3_600_000) {
+  } else if (Date.parse(now) - Date.parse(newest.checkpoint.taken_at) > MAX_AGE_HOURS * 3_600_000) {
+    const at = newest.checkpoint.taken_at;
     checked.notes.push(
-      `not checked: the newest checkpoint is older than ${MAX_AGE_HOURS} hours (${newest})`,
+      `not checked: the newest checkpoint is older than ${MAX_AGE_HOURS} hours (${at})`,
     );
-    vouched = false;
+  } else {
+    vouched = true;
   }
   checked.notes.push(BLIND);
-  const broken = reports.some((r) => r.broken !== undefined) || checked.files.some((f) => f.broken);
+  const broken = reports.some((r) => r.broken !== undefined) || verdicts.some((f) => f.broken);
   checked.exit = broken ? 1 : vouched ? 0 : 2;
   return checked;
 }

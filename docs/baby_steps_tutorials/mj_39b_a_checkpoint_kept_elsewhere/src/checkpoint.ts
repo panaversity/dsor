@@ -1,31 +1,54 @@
 // NEW IN STEP 39b: checkpoints of DSoR's log (DSOR-AUD-04b and DSOR-AUD-04d in
-// specs/dsor/03-execution.md, section 30). A checkpoint notes where every chain ended at one
-// moment, and is signed with an Ed25519 private key that lives outside the database. Kept in a file,
-// it lets the checker catch a chain the owner rewrote from an edit on, which step 39's chain alone
-// cannot (step 39b's README, decisions D1, D2, D10, and D11).
-import { sign, type KeyObject } from "node:crypto";
+// specs/dsor/03-execution.md, section 30). A checkpoint notes where every chain of one database
+// ended at one moment, names the checkpoint before it, and is signed with an Ed25519 private key
+// that lives outside the database. Kept in a file, it lets the checker catch a chain the owner
+// rewrote from an edit on, which step 39's chain alone cannot (step 39b's README, decisions D1, D2,
+// D10, D11, and D13).
+import { createHash, sign, type KeyObject } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { verifyChains, type ChainHead, type ChainReport, type ChainRow } from "./audit-chain.ts";
 
+/** One database, as PostgreSQL names it: the server's own id and the database's name. */
+export type DatabaseId = { system_identifier: string; name: string };
+
+/** The log as the checkpoint scripts read it: every record, every head, and its database. */
+export type Log = {
+  rows: readonly ChainRow[];
+  heads?: ReadonlyMap<string, ChainHead>;
+  database: DatabaseId;
+};
+
 /** One chain as a checkpoint notes it: its last place and that record's fingerprint. */
 export type NotedChain = { chain: string; chain_position: string; record_hash: string };
 
-/** Where every chain ended at one moment. */
-export type Checkpoint = { taken_at: string; chains: NotedChain[] };
+/** Where every chain of one database ended at one moment, and the checkpoint before it. */
+export type Checkpoint = {
+  database: DatabaseId;
+  taken_at: string;
+  previous: string | null;
+  chains: NotedChain[];
+};
 
 /** A checkpoint and its signature, as the file holds them. */
 export type SignedCheckpoint = { checkpoint: Checkpoint; signature: string };
 
 /**
  * The text that is signed: the checkpoint as JSON, its fields in a fixed order and its chains
- * sorted by name, so the checker makes exactly the same text from the file (decision D11).
+ * sorted by name, so the checker makes exactly the same text from the file's values (decision D11).
  */
 export function checkpointText(checkpoint: Checkpoint): string {
+  const { database, taken_at, previous } = checkpoint;
   const chains = [...checkpoint.chains]
     .sort((a, b) => (a.chain < b.chain ? -1 : a.chain > b.chain ? 1 : 0))
     .map(({ chain, chain_position, record_hash }) => ({ chain, chain_position, record_hash }));
-  return JSON.stringify({ taken_at: checkpoint.taken_at, chains });
+  const named = { system_identifier: database.system_identifier, name: database.name };
+  return JSON.stringify({ database: named, taken_at, previous, chains });
+}
+
+/** A checkpoint's own fingerprint, which the next checkpoint names as its previous (D13). */
+export function checkpointHash(checkpoint: Checkpoint): string {
+  return `sha256:${createHash("sha256").update(checkpointText(checkpoint), "utf8").digest("hex")}`;
 }
 
 /** The file a checkpoint is kept in: its time, with no colon, which some disks refuse. */
@@ -40,14 +63,14 @@ export function checkpointFileName(checkpoint: Checkpoint): string {
  * chain (DSOR-AUD-04d).
  */
 export function takeCheckpoint(
-  rows: readonly ChainRow[],
-  heads: ReadonlyMap<string, ChainHead> | undefined,
+  log: Log,
   taken_at: string,
+  previous: string | null,
 ): { checkpoint: Checkpoint } | { refused: ChainReport[] } {
-  const reports = verifyChains(rows, heads);
+  const reports = verifyChains(log.rows, log.heads);
   if (reports.some((report) => report.broken !== undefined)) return { refused: reports };
   const last = new Map<string, ChainRow>();
-  for (const row of rows) {
+  for (const row of log.rows) {
     const seen = last.get(row.chain);
     if (seen === undefined || Number(row.chain_position) > Number(seen.chain_position)) {
       last.set(row.chain, row);
@@ -58,7 +81,7 @@ export function takeCheckpoint(
     chain_position: last.get(chain)!.chain_position,
     record_hash: last.get(chain)!.record_hash,
   }));
-  return { checkpoint: { taken_at, chains } };
+  return { checkpoint: { database: log.database, taken_at, previous, chains } };
 }
 
 /** The checkpoint and its signature, made with the private key over the checkpoint's text. */
