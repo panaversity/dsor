@@ -122,7 +122,7 @@ The database has to exist first, made with one `CREATE DATABASE dsor_step26` thr
 login. `pnpm migrate` applies the twenty-seven migrations; on a server that already had step 25's
 twenty-six, it applies 027. This step adds no test to the tier. Money is compared in the program,
 before the database is asked anything, and the statement that books a day is step 24's, unchanged:
-it is handed an amount already in dollars. Run on a throwaway PostgreSQL 17 on this machine on 2026-10-16, with an owner shaped like Neon's: 75 passed. It has not yet run on Neon: `dsor_step26` does not exist yet.
+it is handed an amount already in dollars. Run on a throwaway PostgreSQL 17 on this machine on 2026-10-16, with an owner shaped like Neon's: 75 passed. Run on Neon on 2026-10-19, on a database of its own, `dsor_step26`: 75 passed, in seven and a half minutes. The first of those two runs passed all 75 as well, and Vitest also reported an idle connection whose network read timed out; the second, with nothing changed, reported nothing.
 
 ## Break it
 
