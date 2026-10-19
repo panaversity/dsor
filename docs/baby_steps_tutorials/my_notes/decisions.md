@@ -5941,3 +5941,39 @@ network, or see anything it was not handed (Appendix B).
 - **`state` is empty in this step.** A contract binds no resources until step 32's preconditions.
 - **The demo's story runs with the control switched on**; the tests that do not ask about controls
   run with it waiting for review, as migration 029 leaves it.
+
+## 163 · What the review of step 26b found, and what was chosen (2026-10-19)
+
+**Decided by:** Claude, on the standing rule that a review's findings are fixed or written down, and
+on the learner's instruction of this date to take the recommendation; open to reversal.
+
+A hostile reviewer read step 26b's commits, measured in a copy, and found no way round the four new
+questions that a plausible administrator's mistake opens. It found two gaps in how they were asked
+and tested, and five smaller things:
+
+1. **The questions skipped schemas by name** (measured). A view over every company's invoices in
+   `information_schema`, or in a schema named `pgxtemp`, passed start-up: `LIKE 'pg_temp%'` read
+   `pgxtemp` as a temporary schema, because `_` matches any character. The read, write and number
+   questions now choose relations by what they are: nothing in `pg_catalog`, where nobody may create,
+   nothing PostgreSQL made when the database was created (numbers below 16384), and not this
+   session's own temporary relations. A test for each placement; with the old filter, both fail.
+   The older question about helper functions keeps its name test, unchanged by this step.
+2. **The write question's DELETE and TRUNCATE had no test** (measured: removed, the whole suite
+   passed). Every other DELETE in the suite is on a tenant table, which an earlier question refuses
+   first. A test now deletes every record of the log through a view the application may only delete
+   from; another truncates a side table. With the two clauses removed, both fail.
+3. **A comment still said the three sequences in `dsor` wait for step 26b.** Rewritten.
+4. **"Choose the next number" was the wrong verb.** USAGE, which the application keeps, already
+   moves a sequence forward one number at a time. UPDATE and ownership let it *set* one, backward
+   too. The refusal and the tests say "set".
+5. **Three test titles named rules they do not prove.** The read tests and the rule tests on the
+   business's tables are `DSOR-TEN-01b`'s, the second lock; the rule test on the log stays
+   `DSOR-EXE-02`'s; the sequence tests carry no rule id, since no rule's guarantee rests on a number
+   (decision 153).
+6. **The README was step 26's, and `docs/status.md` did not know step 26b.** Written with the step.
+
+**Written down, not fixed:** a row trigger on a table that *inherits* from a tenant table fires
+under the application's UPDATE of the parent, and the trigger question looks at the tenant tables
+themselves only. Not measured, older than this step, and it needs the owner's hand.
+
+Step 27 was copied from step 26b before the review arrived; each fix is carried into it.
