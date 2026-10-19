@@ -1,6 +1,6 @@
 // The checklist every call goes through. DSOR-EXE-01a in specs/dsor/03-execution.md,
 // section 21, and DSOR-OPR-04a in specs/dsor/01-model.md, section 7.
-import { checkHolds, holdsOf, NO_HOLDS, type HoldStore } from "./holds.ts";
+import { heldBy, heldRefusal, holdsOf, NO_HOLDS, type HoldStore } from "./holds.ts";
 import { NO_INTENTS } from "./intents.ts";
 import { randomUUID } from "node:crypto";
 import { pinned, readBound, type Bound, type BoundRead } from "./bound.ts";
@@ -65,7 +65,7 @@ import {
   type ReservationStore,
 } from "./limits.ts";
 import { decisionOf, type Authority, type Decision, type DecisionLog, type Read } from "./log.ts";
-import { NO_PAYMENTS, type PaymentStore } from "./payment.ts";
+import { NO_PAYMENTS, unlocked, type PaymentStore } from "./payment.ts";
 import { checkResultSize } from "./pages.ts";
 import { checkPermission, effectivePermissions, permissionsOf } from "./permissions.ts";
 import { clearanceOf, maskRefusal, show } from "./masking.ts";
@@ -554,13 +554,14 @@ export async function call(
         //   attempt at a time: a command that binds a record held for an unknown payment hears
         //   RESOURCE_HELD, retried only after reconciliation, whatever else is true (DSOR-UNK-03b;
         //   step 37's README, decision D3). Its own proposal's holds are left out.
-        await checkHolds(
+        const held = await heldBy(
           looks.holds,
           proposals,
           tenant,
           Object.values(bound.resources),
           reserveFor ?? asked.booked,
         );
+        if (held?.state === "OUTCOME_UNKNOWN") throw heldRefusal(held.resource);
         // Each read as fresh as the contract asks, or no decision is made on it,
         //   and no cache stands in (DSOR-FRS-02a, DSOR-FRS-02b; step 32's README, decision D5). At a
         //   release, CURRENT, whatever the contract permits: §26.4 re-evaluates "against CURRENT
@@ -585,6 +586,11 @@ export async function call(
         //   no test could show what a release's lock protected.
         const locks = reserveFor !== undefined && asked.release !== true;
         await checkExclusive(contract, bound, proposals, tenant, reserveFor ?? asked.booked, locks);
+        // NEW IN STEP 37: a record held for a payment still being sent. A second attempt of the
+        //   same operation heard CONFLICT just above: another attempt is running right now, as D3
+        //   keeps it. Any other command that binds the record, such as a cancel, waits for that
+        //   send to end. Found by step 37's review, F1: a second send heard RESOURCE_HELD.
+        if (held !== undefined) throw heldRefusal(held.resource);
         // What another proposal in flight spends is spent: the invoice's open
         //   amount that a precondition reads. The proposal being decided is left out of its own
         //   count (DSOR-EXC-02; step 32's README, decisions D9 and D11).
@@ -862,8 +868,9 @@ export async function call(
             proposals: registry.claims.proposals,
             // A dry run writes no note and commits nothing.
             intents: NO_INTENTS,
-            // Changed in step 37: and reads the payments and the holds, outside any claim.
-            payments: registry.payments,
+            // Changed in step 37: and reads the payments, without their lock, and the holds, outside
+            //   any claim.
+            payments: unlocked(registry.payments),
             holds: registry.claims.holds,
             checkpoint: async () => {},
           };
@@ -914,8 +921,9 @@ export async function call(
           // And the proposals, outside any claim.
           registry.claims.proposals,
           // And the payments and the holds, outside any claim, so a dry run hears RESOURCE_HELD
-          //   as the real call would (DSOR-OPR-06).
-          { payments: registry.payments, holds: registry.claims.holds },
+          //   as the real call would (DSOR-OPR-06). The payment is read without its lock: a dry run
+          //   waits for no send. Found by step 37's review, F4: it waited for the bank's answer.
+          { payments: unlocked(registry.payments), holds: registry.claims.holds },
         );
       } catch (thrown) {
         // Masked as the real call's refusal is, as it leaves the claim (step 23's README, decision
@@ -1019,9 +1027,13 @@ export async function call(
                       //   README, decision D6).
                       const runningContract =
                         "target" in job ? (job as { target: Contract }).target : contract;
-                      const held = holdsOf(runningContract).flatMap((alias) =>
-                        boundResources[alias] === undefined ? [] : [boundResources[alias]!],
-                      );
+                      // A listed alias with no address is a bug start-up refuses; one here stops the
+                      //   payment before the note. Found by step 37's review, F2.
+                      const held = holdsOf(runningContract).map((alias) => {
+                        const at = boundResources[alias];
+                        if (at === undefined) throw new Error(`${alias} has no address to hold`);
+                        return at;
+                      });
                       try {
                         await stores.holds.place(tenant, id, held);
                         await stores.intents.write(tenant, {

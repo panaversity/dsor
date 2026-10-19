@@ -375,6 +375,10 @@ export function memoryClaims(
         //   on the claim is kept, as the database's is once its checkpoint commits.
         checkpoint: async () => {
           noted = true;
+          // NEW IN STEP 37: and the claim's locks go, as the database's COMMIT lets go of its
+          //   advisory locks: from here a second attempt over the record finds this one in flight,
+          //   and hears CONFLICT, rather than waiting for the bank. Found by step 37's review, F1.
+          held.splice(0).forEach((free) => free());
         },
       };
       // Set when an accident after the checkpoint made the outcome unknown: nobody seals that one.

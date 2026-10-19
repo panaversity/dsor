@@ -183,3 +183,75 @@ describe("C4: on the database, a good day frees the payment", () => {
     expect(await cancel(id)).not.toMatchObject({ code: "RESOURCE_HELD" });
   });
 });
+
+// Step 37's review, on the database (step 37's README, "What the review found").
+describe("the review, on the database", () => {
+  // A bank slow enough that a second call arrives while it sends.
+  const slowBank = createFakeBank();
+  slowBank.mode = "slow";
+  slowBank.slowMs = 1500;
+  const patient = dbRegistry(
+    pool,
+    none,
+    none,
+    none,
+    none,
+    none,
+    none,
+    none,
+    new Map([["fake-bank", { bank: slowBank, waitMs: 5000 }]]),
+  );
+
+  it("DSOR-EXC-01: F1: a second payment of INV-9001 sent while the bank still sends the first hears CONFLICT, naming the first's proposal", async () => {
+    const first = await draft();
+    const second = (
+      (await call(registry, log, keyed(SUPERVISOR), "payment.create", {
+        invoice: INV_9001,
+        expected_version: 1,
+      })) as { data: { id: string } }
+    ).data.id;
+    let during: Answer | undefined;
+    const pay = bank.pay;
+    bank.pay = async (key, order) => {
+      bank.pay = pay;
+      during = await send(second);
+      return pay(key, order);
+    };
+    const sent = await send(first);
+    expect(sent).toMatchObject({ outcome: "COMMITTED" });
+    expect(during).toMatchObject({ code: "CONFLICT" });
+    expect(JSON.stringify(during)).toContain(idOf(sent));
+  });
+
+  it("DSOR-ERR-01b: L2: a cancel of a held payment names the payment the caller named, not its invoice", async () => {
+    const { id } = await unknownPayment();
+    const refused = await cancel(id);
+    expect(refused).toMatchObject(HELD);
+    expect((refused as { message: string }).message).toMatch(/^payment /);
+  });
+
+  it("DSOR-OPR-06: F4: a dry run of a cancel while the bank sends does not wait for the send: it answers first", async () => {
+    const id = await draft();
+    const order: string[] = [];
+    const sending = call(patient, log, keyed(SUPERVISOR), "payment.execute", {
+      invoice: INV_9001,
+      payment: `dsor://org_456/payment/${id}`,
+      expected_version: 1,
+    }).then((answer) => {
+      order.push("send");
+      return answer;
+    });
+    await new Promise((done) => setTimeout(done, 300));
+    const dry = await call(
+      patient,
+      log,
+      { ...SUPERVISOR, mode: "validate_only" },
+      "payment.cancel",
+      { payment: `dsor://org_456/payment/${id}`, expected_version: 1 },
+    );
+    order.push("dry run");
+    expect(dry).toMatchObject(HELD);
+    expect(await sending).toMatchObject({ outcome: "COMMITTED" });
+    expect(order).toStrictEqual(["dry run", "send"]);
+  });
+});

@@ -61,6 +61,9 @@ export const NO_HOLDS: HoldStore = Object.freeze({
 //   decisions D6 and D7).
 const HOLDING: readonly State[] = ["EXECUTING", "OUTCOME_UNKNOWN"];
 
+// The binds line ⑨ gives an address to (src/bound.ts).
+const ADDRESSED = [/^input\.[a-z][a-z0-9_]*$/, /^state\.[a-z][a-z0-9_]*\.invoice_id$/];
+
 /** The aliases a contract's in_flight.hold_on_unknown names, as written. */
 export function holdsOf(contract: Contract): string[] {
   const inFlight = contract["in_flight"] as { hold_on_unknown?: unknown } | undefined;
@@ -68,28 +71,45 @@ export function holdsOf(contract: Contract): string[] {
   return Array.isArray(listed) ? listed.map(String) : [];
 }
 
+/** A record held for a proposal still EXECUTING or OUTCOME_UNKNOWN, and that proposal's state. */
+export type Held = { resource: string; state: State };
+
 /**
- * Line ⑨'s look at the holds: a command that binds a held record is refused with RESOURCE_HELD,
- * unless the hold is its own proposal's. The proposal's state decides whether the hold counts.
+ * Line ⑨'s look at the holds: the first of these records, in the order given, that a hold of
+ * another proposal holds now, OUTCOME_UNKNOWN before EXECUTING. The order given is the bind's, so
+ * the record named is the first the request names. Found by step 37's review, L2: the store's
+ * order named an invoice the caller never named.
  */
-export async function checkHolds(
+export async function heldBy(
   holds: HoldStore,
   proposals: ProposalStore,
   tenant: string,
   resources: readonly string[],
   own?: string,
-): Promise<void> {
-  if (resources.length === 0) return;
+): Promise<Held | undefined> {
+  if (resources.length === 0) return undefined;
+  const found: Held[] = [];
   for (const hold of await holds.on(tenant, resources)) {
     if (hold.proposal_id === own) continue;
     const holder = await proposals.get(tenant, hold.proposal_id);
     if (holder === undefined || !HOLDING.includes(holder.state)) continue;
-    // The record the caller named, by its kind and id, and why it is held, never whose payment
-    //   holds it: the proposal may be another person's.
-    const { entity, id } = parseUri(hold.resource);
-    const why = `${entity} ${preview(id)} is held while a payment's outcome is unknown; try again once it is reconciled`;
-    throw new Refusal("RESOURCE_HELD", why, "internal");
+    found.push({ resource: hold.resource, state: holder.state });
   }
+  const first = (state: State): Held | undefined =>
+    resources
+      .map((resource) => found.find((one) => one.resource === resource && one.state === state))
+      .find((one) => one !== undefined);
+  return first("OUTCOME_UNKNOWN") ?? first("EXECUTING");
+}
+
+/**
+ * The refusal of a command that binds a held record. It names the record, which the caller named,
+ * and why it is held, never whose payment holds it: the proposal may be another person's.
+ */
+export function heldRefusal(resource: string): Refusal {
+  const { entity, id } = parseUri(resource);
+  const why = `${entity} ${preview(id)} is held while a payment's outcome is unknown; try again once it is reconciled`;
+  return new Refusal("RESOURCE_HELD", why, "internal");
 }
 
 /**
@@ -100,11 +120,20 @@ export function holdProblems(contracts: Iterable<Contract>): string[] {
   const problems: string[] = [];
   for (const contract of contracts) {
     const bind = contract["bind"];
-    const bound = typeof bind === "object" && bind !== null ? Object.keys(bind) : [];
+    const binds = typeof bind === "object" && bind !== null ? Object.entries(bind) : [];
     for (const alias of holdsOf(contract)) {
-      if (!bound.includes(alias)) {
+      const path = binds.find(([name]) => name === alias)?.[1];
+      if (path === undefined) {
         problems.push(
           `${contract.id}: in_flight.hold_on_unknown names ${JSON.stringify(alias)}, which the contract does not bind (DSOR-UNK-03b)`,
+        );
+        continue;
+      }
+      // Line ⑨ gives an address to what the input names and to the invoice of a payment, never
+      //   to a vendor link, so a hold there would hold nothing. Found by step 37's review, F2.
+      if (!ADDRESSED.some((form) => form.test(String(path)))) {
+        problems.push(
+          `${contract.id}: in_flight.hold_on_unknown names ${JSON.stringify(alias)}, which line ⑨ gives no address a hold can match: only input.<field>, or state.<alias>.invoice_id, can be held (DSOR-UNK-03b)`,
         );
       }
     }

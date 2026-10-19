@@ -232,8 +232,9 @@ describe("C4: a note is evidence: only its outcome is ever written, once", () =>
 
 describe("C5 and C6: a process killed while the bank holds the payment", () => {
   it(
-    // Changed in step 37: a new key hears RESOURCE_HELD, not CONFLICT (step 37's README, D3).
-    "DSOR-EXE-04b: killed with SIGKILL after the bank took the payment: the note open and the proposal EXECUTING; the same key hears OUTCOME_UNKNOWN, a new key RESOURCE_HELD, and the bank is not asked again; the sweep ends both OUTCOME_UNKNOWN, and the claim keeps it",
+    // Step 37: unchanged. Before the sweep the proposal is EXECUTING, so one attempt at a time
+    //   answers a new key, CONFLICT; a cancel would hear RESOURCE_HELD (step 37's review, F1).
+    "DSOR-EXE-04b: killed with SIGKILL after the bank took the payment: the note open and the proposal EXECUTING; the same key hears OUTCOME_UNKNOWN, a new key CONFLICT, and the bank is not asked again; the sweep ends both OUTCOME_UNKNOWN, and the claim keeps it",
     { timeout: 120_000 },
     async () => {
       const id = await draft();
@@ -262,7 +263,7 @@ describe("C5 and C6: a process killed while the bank holds the payment", () => {
         retry: "after_reconciliation",
         proposal: `dsor://org_456/proposal/${proposal}`,
       });
-      expect(await execute(id)).toMatchObject({ code: "RESOURCE_HELD" });
+      expect(await execute(id)).toMatchObject({ code: "CONFLICT" });
       expect(sentFor(id)).toBe(0);
       // The sweep, as start-up runs it.
       expect(await sweepIntents(pool, ["org_456"])).toBe(1);

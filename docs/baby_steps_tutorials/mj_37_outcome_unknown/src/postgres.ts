@@ -576,6 +576,16 @@ function paymentsThrough(run: Runner): PaymentStore {
         const found = rows[0];
         return found === undefined ? undefined : paymentOf(found);
       }),
+    // NEW IN STEP 37: and the same read without the lock, for a dry run (step 37's review, F4).
+    look: async (tenant, id) =>
+      run(tenant, async (client) => {
+        const { rows } = await client.query<PaymentRow>(
+          `SELECT ${PAYMENT_COLUMNS} FROM app.payments WHERE tenant_id = $1 AND id = $2`,
+          [tenant, id],
+        );
+        const found = rows[0];
+        return found === undefined ? undefined : paymentOf(found);
+      }),
     // One UPDATE decides, as for a cancel: only a draft at this version is paid
     //   (step 35's README, decision D7).
     pay: async (tenant, id, version) =>
@@ -1316,6 +1326,15 @@ function holdsThrough(run: Runner): HoldStore {
     place: async (tenant, proposalId, resources) => {
       if (resources.length === 0) return;
       await run(tenant, async (client) => {
+        // Each record's hold lock, exclusive, until the transaction commits, so a look that began
+        //   before waits for it, and one that comes after sees the hold. In the order of the
+        //   address, as every look takes them. Found by step 37's review, F3: a draft between a
+        //   send's line ⑨ and its commit saw no hold.
+        await client.query(
+          `SELECT pg_advisory_xact_lock(hashtextextended('dsor.holds/' || resource, 0))
+             FROM unnest($1::text[]) AS resource ORDER BY resource`,
+          [[...new Set(resources)]],
+        );
         await client.query(
           `INSERT INTO dsor.holds (tenant_id, resource, proposal_id)
            SELECT $1, resource, $2 FROM unnest($3::text[]) AS resource
@@ -1327,6 +1346,12 @@ function holdsThrough(run: Runner): HoldStore {
     on: async (tenant, resources) => {
       if (resources.length === 0) return [];
       return run(tenant, async (client) => {
+        // And shared, for a look: a placing in progress is waited for (F3).
+        await client.query(
+          `SELECT pg_advisory_xact_lock_shared(hashtextextended('dsor.holds/' || resource, 0))
+             FROM unnest($1::text[]) AS resource ORDER BY resource`,
+          [[...new Set(resources)]],
+        );
         const { rows } = await client.query<HoldRow>(
           `SELECT tenant_id, resource, proposal_id, placed_at FROM dsor.holds
             WHERE tenant_id = $1 AND resource = ANY($2::text[]) ORDER BY placed_at, resource`,

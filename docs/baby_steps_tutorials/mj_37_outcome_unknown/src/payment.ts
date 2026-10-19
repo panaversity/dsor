@@ -50,6 +50,9 @@ export type PaymentStore = {
   //   which payment.execute makes once the bank has answered (step 35's README, decision D7).
   /** One of this company's payments, or undefined when there is none. */
   get: (tenant: string, id: string) => Promise<Payment | undefined>;
+  // NEW IN STEP 37: and the same read without the row's lock, for a dry run, which must wait for
+  //   no send. A store without one locks nothing (step 37's review, F4).
+  look?: (tenant: string, id: string) => Promise<Payment | undefined>;
   /** Changes one company's payment from draft to paid, when it is a draft at this version. */
   pay: (tenant: string, id: string, version: number) => Promise<Cancelled>;
   // The paid payments of one invoice, so an invoice is paid once. Found by step
@@ -141,3 +144,9 @@ export const NO_PAYMENTS: PaymentStore = Object.freeze({
     throw new Error("this registry was built without a store of payments");
   },
 });
+
+// NEW IN STEP 37: the payments as a dry run reads them: get is the read without the row's lock.
+/** These payments, whose get takes no lock. */
+export function unlocked(payments: PaymentStore): PaymentStore {
+  return payments.look === undefined ? payments : { ...payments, get: payments.look };
+}
