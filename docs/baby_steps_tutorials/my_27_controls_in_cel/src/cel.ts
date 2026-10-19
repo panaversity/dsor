@@ -101,6 +101,7 @@ const NO_RATES: RateOf = (currency) => {
  * (decision 164). Looked for outside quoted text, and refused even when in doubt: a control refused
  * is a control nobody can rely on yet, never a payment let through.
  */
+// not copied: the name of CEL's one function whose time this library does not bound; no schema says it.
 const UNBOUNDED = /\bmatches\b/;
 
 /** The condition with every quoted text emptied, so a word inside a quotation is not a call. */
