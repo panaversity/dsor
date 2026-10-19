@@ -165,6 +165,17 @@ describe("C1: every operation in the registry is attacked with foreign URIs, and
   it("DSOR-TEN-02b: the shipped registry: every operation attacked from both companies, 228 swaps, no findings", async () => {
     const report = await crossTenantSuite(registry, createLog(), examples);
     expect(report.findings).toStrictEqual([]);
+    // Changed in step 38c: and the alerts it planted are settled again (found by step 38c's
+    //   review: removing the settlement passed every test).
+    for (const home of ["org_456", "org_789"]) {
+      const open = await registry.claims.proposals.unsettled(
+        home,
+        ["open", "escalated"],
+        undefined,
+        100,
+      );
+      expect(open).toStrictEqual([]);
+    }
     // Typed out, and the registry's own list: nothing skipped. invoice.list
     // has no URI to swap. Its rows are checked instead, and it adds no swap below. Step 17's
     // two commands are attacked like any other operation, and so is step 25's tear-up.

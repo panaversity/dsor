@@ -121,7 +121,10 @@ describe("C1: every permission is <resource>:<action>, checked at start-up", () 
     ["a hyphen", "purchase-order:release"],
     ["a line break", "invoice:read\nx"],
   ])("DSOR-AUT-01a: a role granting a permission with %s stops start-up", async (_why, bad) => {
-    const table = rolesFile({ ...STARTING_ROLES, CFO: ["payment:reconcile", "invoice:read", bad] });
+    const table = rolesFile({
+      ...STARTING_ROLES,
+      CFO: ["payment:reconcile", "alert:read", "invoice:read", bad],
+    });
     expect(refusal(() => buildRegistry(shipped, handlers, table))).toMatch(
       `roles.json: the role "CFO" grants ${JSON.stringify(bad)}, which is not <resource>:<action>`,
     );
@@ -139,7 +142,7 @@ describe("C1: every permission is <resource>:<action>, checked at start-up", () 
   ])("DSOR-AUT-01a: a role may grant a permission with %s", async (_why, good) => {
     const table = rolesFile({
       ...STARTING_ROLES,
-      CFO: ["payment:reconcile", "invoice:read", good],
+      CFO: ["payment:reconcile", "alert:read", "invoice:read", good],
     });
     expect(refusal(() => buildRegistry(shipped, handlers, table))).toBe("");
   });
@@ -149,7 +152,7 @@ describe("C1: every permission is <resource>:<action>, checked at start-up", () 
   it("DSOR-AUT-01a: every bad permission is named, wherever it sits in the list", async () => {
     const table = rolesFile({
       ...STARTING_ROLES,
-      CFO: ["payment:reconcile", "invoice:*", "Invoice:Read", "invoice:read"],
+      CFO: ["payment:reconcile", "alert:read", "invoice:*", "Invoice:Read", "invoice:read"],
     });
     expect(checkRoles(table, logins.values()).problems).toEqual([
       'roles.json: the role "CFO" grants "invoice:*", which is not <resource>:<action>',
@@ -259,7 +262,7 @@ describe("C1: every permission is <resource>:<action>, checked at start-up", () 
     ["a number", 42],
     ["a list that holds a permission", ["invoice:read"]],
   ])("DSOR-AUT-01a: a role granting %s stops start-up", async (_why, bad) => {
-    const table = rolesFile({ ...STARTING_ROLES, CFO: ["payment:reconcile", bad] });
+    const table = rolesFile({ ...STARTING_ROLES, CFO: ["payment:reconcile", "alert:read", bad] });
     expect(refusal(() => buildRegistry(shipped, handlers, table))).toMatch(
       `roles.json: the role "CFO" grants ${JSON.stringify(bad)}, which is not <resource>:<action>`,
     );
@@ -441,7 +444,7 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
     // pass (step 30's README, decision D5).
     const cfoDrafts = {
       ...STARTING_ROLES,
-      CFO: ["payment:reconcile", "invoice:read", "rule:draft"],
+      CFO: ["payment:reconcile", "alert:read", "invoice:read", "rule:draft"],
     };
     const { roles } = checkRoles(rolesFile(cfoDrafts), []);
     const twoRoles = person([{ tenant_id: "org_456", roles: ["ap_supervisor", "CFO"] }]);
@@ -485,7 +488,11 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
       shippedLabels,
       memoryInvoices(),
     );
-    buildRegistry(shipped, handlers, rolesFile({ ...STARTING_ROLES, CFO: ["payment:reconcile"] }));
+    buildRegistry(
+      shipped,
+      handlers,
+      rolesFile({ ...STARTING_ROLES, CFO: ["payment:reconcile", "alert:read"] }),
+    );
     expect(
       await call(first, log, CFO, "invoice.get", { invoice: "dsor://org_456/invoice/INV-1008" }),
     ).toMatchObject({
@@ -508,7 +515,10 @@ describe("C3: a call whose permission the caller does not hold is refused", () =
 
   // The other half of the map's "done when": a caller without invoice:read cannot read.
   it("DSOR-AUT-01b: cfo_100 is denied invoice.get when the CFO role grants nothing", async () => {
-    const grantsNothing = rolesFile({ ...STARTING_ROLES, CFO: ["payment:reconcile"] });
+    const grantsNothing = rolesFile({
+      ...STARTING_ROLES,
+      CFO: ["payment:reconcile", "alert:read"],
+    });
     const answer = await call(
       buildRegistry(shipped, handlers, grantsNothing),
       log,
@@ -732,7 +742,7 @@ describe("C5: who is calling, then the contract, then the permission, then 'is i
   it("DSOR-AUT-01b: a caller holding only invoice:issue.propose is denied invoice.issue", async () => {
     const proposeOnly = rolesFile({
       ...STARTING_ROLES,
-      CFO: ["payment:reconcile", "invoice:read", "invoice:issue.propose"],
+      CFO: ["payment:reconcile", "alert:read", "invoice:read", "invoice:issue.propose"],
     });
     const proposing = buildRegistry(shipped, handlers, proposeOnly);
     const refused = denied("invoice.issue", "invoice:issue", THE_CFO);

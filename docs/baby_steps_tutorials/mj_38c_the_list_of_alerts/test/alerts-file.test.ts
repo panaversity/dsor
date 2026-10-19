@@ -48,8 +48,30 @@ describe("C6: start-up checks alerts.json", () => {
 
   // Found by step 38b's review, M3: cfo_100 was the person, and could not settle the payment.
   it("DSOR-UNK-04c: a person who holds no payment:reconcile in the company is refused: admin_100, a tenant administrator", () => {
+    // Changed in step 38c: and no alert:read (step 38c's README, decision D9).
     expect(problemsOf({ ...GOOD, escalate_to: "admin_100" })).toStrictEqual([
       'alerts.json: org_456\'s escalate_to "admin_100" holds no payment:reconcile in org_456',
+      'alerts.json: org_456\'s escalate_to "admin_100" holds no alert:read in org_456',
+    ]);
+  });
+
+  // Found by step 38c's review, H1: a role table without alert:read started cleanly, and then
+  //   nobody could list an alert.
+  it("DSOR-UNK-04c: a receivers role, and a person, that hold no alert:read are refused", () => {
+    const without = Object.fromEntries(
+      [...ROLES].map(([role, held]) => [
+        role,
+        new Set([...held].filter((p) => p !== "alert:read")),
+      ]),
+    );
+    const roles = new Map(Object.entries(without));
+    const text = JSON.stringify({ org_456: GOOD, org_789: ORG_789 });
+    const problems = checkAlerts({ file: "alerts.json", text }, logins.values(), roles).problems;
+    expect(problems).toStrictEqual([
+      'alerts.json: org_456\'s escalate_to "cfo_100" holds no alert:read in org_456',
+      'alerts.json: org_456\'s receivers "ap_supervisor" is a role that holds no alert:read',
+      'alerts.json: org_789\'s escalate_to "user_700" holds no alert:read in org_789',
+      'alerts.json: org_789\'s receivers "ap_supervisor" is a role that holds no alert:read',
     ]);
   });
 

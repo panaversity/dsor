@@ -14,6 +14,9 @@ import { isTenantId } from "./uri.ts";
 
 /** One alert, as the proposal store keeps it. */
 export type Alert = {
+  // Changed in step 38c: the alert's own company, as the store keeps it, so a list's company
+  //   check reads it from the alert, never from the call (found by step 38c's review, M1).
+  tenant_id: string;
   proposal: string;
   state: "open" | "escalated" | "closed";
   raised_at: string;
@@ -54,6 +57,9 @@ const HOUR = 60 * MINUTE;
 // The permission that settles an unknown payment: the person an alert goes to must hold it, or
 //   the escalation reaches someone who cannot act (found by step 38b's review, M3).
 const SETTLES = "payment:reconcile";
+// NEW IN STEP 38c: and the permission alert.list's contract names. The receivers role and the
+//   person must hold it, or the alerts reach nobody (found by step 38c's review, H1).
+const SEES = "alert:read";
 
 /** The problems of one company's line, or its checked alerts. */
 function checkOne(
@@ -87,13 +93,19 @@ function checkOne(
   const person = people.find((p) => p.id === escalate_to);
   if (person === undefined) {
     problems.push(`${named("escalate_to", escalate_to)} is not a person of ${tenant}`);
-  } else if (!rolesOf(person).some((role) => roles.get(role)?.has(SETTLES) === true)) {
-    problems.push(`${named("escalate_to", escalate_to)} holds no ${SETTLES} in ${tenant}`);
+  } else {
+    for (const permission of [SETTLES, SEES]) {
+      if (!rolesOf(person).some((role) => roles.get(role)?.has(permission) === true)) {
+        problems.push(`${named("escalate_to", escalate_to)} holds no ${permission} in ${tenant}`);
+      }
+    }
   }
   if (!roles.has(receivers)) {
     problems.push(`${named("receivers", receivers)} is not a role in roles.json`);
   } else if (!people.some((p) => rolesOf(p).includes(receivers))) {
     problems.push(`${named("receivers", receivers)} is a role no person of ${tenant} holds`);
+  } else if (roles.get(receivers)?.has(SEES) !== true) {
+    problems.push(`${named("receivers", receivers)} is a role that holds no ${SEES}`);
   }
   const ms: Record<string, number> = {};
   for (const field of ["alert_within", "escalate_after", "sweep_every"] as const) {

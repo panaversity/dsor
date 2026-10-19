@@ -294,7 +294,13 @@ describe("C3: the agent may use only what its slip lists and its signer holds no
     const cut = rolesFile({
       ...STARTING_ROLES,
       // Changed in step 38b: user_700, org_789's person for alerts, keeps payment:reconcile.
-      ap_supervisor: ["invoice:read", "invoice:issue", "payment:cancel", "payment:reconcile"],
+      ap_supervisor: [
+        "invoice:read",
+        "invoice:issue",
+        "payment:cancel",
+        "payment:reconcile",
+        "alert:read",
+      ],
     });
     const after: Payment[] = [];
     const log = createLog();

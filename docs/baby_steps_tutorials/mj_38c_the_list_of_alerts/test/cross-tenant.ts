@@ -205,48 +205,53 @@ export async function crossTenantSuite(
   const report: Report = { attacked: [], attacks: [], pairs: [], findings: [] };
   // Changed in step 38c: an unsettled alert in each company, escalated to its named person, so
   //   alert.list's rows are there to check, as the story's invoices are for invoice.list. Settled
-  //   at the end (step 38c's README, "Found while building").
+  //   at the end, whatever happens (step 38c's README, "Found while building"). The escalation
+  //   escalates every open alert of the company, as a real sweep would; on the database that
+  //   includes other tests' leftovers.
   const planted = await plantAlerts(registry);
-  // An example that no operation names is most likely a name spelled wrong, and the
-  // operation it was meant for has none (step 12's README, decision 2).
-  for (const { file } of examples) {
-    const named = file.slice(0, -".json".length);
-    if (!registry.contracts.has(named)) {
-      report.findings.push(`examples/${file}: no operation has this name`);
+  try {
+    // An example that no operation names is most likely a name spelled wrong, and the
+    // operation it was meant for has none (step 12's README, decision 2).
+    for (const { file } of examples) {
+      const named = file.slice(0, -".json".length);
+      if (!registry.contracts.has(named)) {
+        report.findings.push(`examples/${file}: no operation has this name`);
+      }
     }
+    for (const operation of registry.contracts.keys()) {
+      // A gap is a finding, never a skip: a skipped operation looks exactly like a tested
+      // one when every test is green (step 12's README, outcome 5). Every gap is named.
+      let example = exampleOf(registry, operation, examples, report.findings);
+      // An example with no URI of org_456 has nothing to swap. It is kept
+      // only when the operation answers with a page, whose rows are checked instead. If not,
+      // it is step 12's finding, word for word (step 13's README, decision 6).
+      if (example !== undefined && swaps(example, WRITTEN_IN).length === 0) {
+        if (!(await answersWithPage(registry, log, send, operation, example))) {
+          report.findings.push(`${operation}: no URI of ${WRITTEN_IN} in its example`);
+          example = undefined;
+        }
+      }
+      let everywhere = example !== undefined;
+      for (const home of HOMES) {
+        const attackers = await attackersOf(registry, operation, home);
+        if (attackers.length === 0) {
+          const permission = String(permissionOf(registry, operation));
+          const why = `nobody in ${home} holds ${permission}, so nobody can attack it there`;
+          report.findings.push(`${operation}: ${why}`);
+          everywhere = false;
+        }
+        if (example === undefined) continue;
+        const own = movedTo(home, example);
+        for (const attacker of attackers) {
+          await attackAs(attacker, { registry, log, send, operation, home, own }, report);
+        }
+      }
+      // Attacked from both companies, with nothing in the way.
+      if (everywhere) report.attacked.push(operation);
+    }
+  } finally {
+    await settleAlerts(registry, planted);
   }
-  for (const operation of registry.contracts.keys()) {
-    // A gap is a finding, never a skip: a skipped operation looks exactly like a tested
-    // one when every test is green (step 12's README, outcome 5). Every gap is named.
-    let example = exampleOf(registry, operation, examples, report.findings);
-    // An example with no URI of org_456 has nothing to swap. It is kept
-    // only when the operation answers with a page, whose rows are checked instead. If not,
-    // it is step 12's finding, word for word (step 13's README, decision 6).
-    if (example !== undefined && swaps(example, WRITTEN_IN).length === 0) {
-      if (!(await answersWithPage(registry, log, send, operation, example))) {
-        report.findings.push(`${operation}: no URI of ${WRITTEN_IN} in its example`);
-        example = undefined;
-      }
-    }
-    let everywhere = example !== undefined;
-    for (const home of HOMES) {
-      const attackers = await attackersOf(registry, operation, home);
-      if (attackers.length === 0) {
-        const permission = String(permissionOf(registry, operation));
-        const why = `nobody in ${home} holds ${permission}, so nobody can attack it there`;
-        report.findings.push(`${operation}: ${why}`);
-        everywhere = false;
-      }
-      if (example === undefined) continue;
-      const own = movedTo(home, example);
-      for (const attacker of attackers) {
-        await attackAs(attacker, { registry, log, send, operation, home, own }, report);
-      }
-    }
-    // Attacked from both companies, with nothing in the way.
-    if (everywhere) report.attacked.push(operation);
-  }
-  await settleAlerts(registry, planted);
   return report;
 }
 

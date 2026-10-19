@@ -2343,7 +2343,8 @@ function proposalsThrough(run: Runner): ProposalStore {
     alerts: async (tenant: string): Promise<Alert[]> =>
       run(tenant, async (client) => {
         const { rows } = await client.query<AlertRow>(
-          `SELECT proposal_id, state, raised_at, escalated_to, escalated_at, outcome, closed_at
+          `SELECT tenant_id, proposal_id, state, raised_at, escalated_to, escalated_at, outcome,
+                  closed_at
              FROM dsor.alerts WHERE tenant_id = $1 ORDER BY raised_at, proposal_id`,
           [tenant],
         );
@@ -2352,13 +2353,34 @@ function proposalsThrough(run: Runner): ProposalStore {
     // And the escalation, in one statement by the database's clock: of two sweeps at once, the
     //   second waits for the first's row lock, then finds the alert escalated, and skips it
     //   (step 38b's README, claim C4).
+    // NEW IN STEP 38c: a page of the company's unsettled alerts, DSoR's own WHERE first, with
+    //   row-level security behind it (DSOR-TEN-01b). In id order, as invoice.list's is.
+    unsettled: async (
+      tenant: string,
+      states: readonly ("open" | "escalated")[],
+      after: string | undefined,
+      count: number,
+    ): Promise<Alert[]> =>
+      run(tenant, async (client) => {
+        const { rows } = await client.query<AlertRow>(
+          `SELECT tenant_id, proposal_id, state, raised_at, escalated_to, escalated_at, outcome,
+                  closed_at
+             FROM dsor.alerts
+            WHERE tenant_id = $1 AND state = ANY ($2::text[])
+              AND ($3::text IS NULL OR proposal_id > $3::text)
+            ORDER BY proposal_id LIMIT $4`,
+          [tenant, states, after ?? null, count],
+        );
+        return rows.map(alertFrom);
+      }),
     escalateDue: async (tenant: string, afterMs: number, to: string): Promise<Alert[]> =>
       run(tenant, async (client) => {
         const { rows } = await client.query<AlertRow>(
           `UPDATE dsor.alerts SET state = 'escalated', escalated_to = $2
             WHERE tenant_id = $1 AND state = 'open'
               AND raised_at <= now() - make_interval(secs => $3::double precision / 1000)
-            RETURNING proposal_id, state, raised_at, escalated_to, escalated_at, outcome, closed_at`,
+            RETURNING tenant_id, proposal_id, state, raised_at, escalated_to, escalated_at, outcome,
+                      closed_at`,
           [tenant, to, afterMs],
         );
         return rows.map(alertFrom).sort((a, b) => a.proposal.localeCompare(b.proposal));
@@ -2446,6 +2468,7 @@ async function moveWith(
 
 // One row of dsor.alerts.
 type AlertRow = {
+  tenant_id: string;
   proposal_id: string;
   state: Alert["state"];
   raised_at: Date;
@@ -2458,6 +2481,7 @@ type AlertRow = {
 /** One alert from its row, with only the fields it has. */
 function alertFrom(row: AlertRow): Alert {
   return {
+    tenant_id: row.tenant_id,
     proposal: row.proposal_id,
     state: row.state,
     raised_at: row.raised_at.toISOString(),

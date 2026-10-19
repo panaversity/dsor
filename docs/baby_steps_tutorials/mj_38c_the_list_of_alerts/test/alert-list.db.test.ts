@@ -12,7 +12,7 @@ import { call } from "../src/pipeline.ts";
 import { createDbLog } from "../src/postgres.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import { dbRegistry, newPool, ownerInvoices, ownerProposals } from "./db.ts";
-import { CFO, keyed, SUPERVISOR, USER_700 } from "./helpers.ts";
+import { ADMIN, AGENT, CFO, keyed, SUPERVISOR, USER_700 } from "./helpers.ts";
 
 const pool = newPool();
 const log = createDbLog(pool);
@@ -83,6 +83,9 @@ async function unknownPayment(): Promise<string> {
 describe("C8: on the database, each person sees the alerts meant for them", () => {
   it("DSOR-UNK-04c: user_123 sees the open alert and cfo_100 does not; once escalated, cfo_100 sees it; user_700 of org_789 never does; settled, it drops off", async () => {
     const proposal = await unknownPayment();
+    // Settled after the file, if a check fails before the reconcile below (found by step 38c's
+    //   review, D1).
+    settle.push(proposal.split("/").at(-1)!);
     // Every page, since other tests' unsettled alerts may be listed before this one.
     const all = async (who: RequestEnvelope): Promise<string[]> => {
       const found: string[] = [];
@@ -110,5 +113,15 @@ describe("C8: on the database, each person sees the alerts meant for them", () =
     await call(registry, log, keyed(SCHEDULER), "payment.reconcile", { proposal });
     expect(await all(SUPERVISOR)).not.toContain(proposal);
     expect(await all(CFO)).not.toContain(proposal);
+  });
+
+  // Found by step 38c's review, D3: no refusal was tested on the database.
+  it("DSOR-UNK-04b: on the database, admin_100, named in no line of alerts.json, and the agent are refused", async () => {
+    expect(await call(registry, log, ADMIN, "alert.list", {})).toMatchObject({
+      code: "AUTHORIZATION_DENIED",
+    });
+    expect(await call(registry, log, AGENT, "alert.list", {})).toMatchObject({
+      code: "AUTHORIZATION_DENIED",
+    });
   });
 });

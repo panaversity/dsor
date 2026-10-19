@@ -176,7 +176,10 @@ describe("the program", () => {
         const roles = join(dir, "roles.json");
         writeFileSync(
           roles,
-          JSON.stringify({ ...STARTING_ROLES, CFO: ["payment:reconcile", "invoice:*"] }),
+          JSON.stringify({
+            ...STARTING_ROLES,
+            CFO: ["payment:reconcile", "alert:read", "invoice:*"],
+          }),
         );
         const main = fileURLToPath(new URL("../src/main.ts", import.meta.url));
         const contracts = fileURLToPath(new URL("../contracts", import.meta.url));

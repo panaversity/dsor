@@ -965,6 +965,21 @@ export async function call(
       job: Job = { handler, own, input: copy },
     ): Promise<unknown> => {
       const work = async (): Promise<unknown> => {
+        // NEW IN STEP 38c: DSoR's own read gets DSoR's own store, read only, bound to the
+        //   company, and noting each read's label in the call's reads (step 38c's README, decision
+        //   D6). Its check runs first, so a refusal is recorded as a denial (found by step 38c's
+        //   review, H2).
+        const look =
+          ownRead === undefined
+            ? undefined
+            : ownReadOf(
+                registry.claims.proposals,
+                tenant,
+                caller,
+                registry.alerts.get(tenant),
+                reads,
+              );
+        if (ownRead !== undefined && look !== undefined) await ownRead.check(job.input, look);
         allowed = true;
         // The code works inside the active company only. It gets line ①'s copy, the one
         // every check read (step 07's README, decision 9). Found by the Stage 2 review, and
@@ -983,16 +998,8 @@ export async function call(
           // DSoR's own change gets DSoR's own stores, inside the claim, with the
           //   caller. The company's code never gets them (step 25's README, decision D2).
           let returned: unknown;
-          if (ownRead !== undefined) {
-            // NEW IN STEP 38c: DSoR's own read gets DSoR's own store, read only, bound to the
-            //   company, and noting each read's label in the call's reads (step 38c's README,
-            //   decision D6).
-            const alerting = registry.alerts.get(tenant);
-            const proposals = registry.claims.proposals;
-            returned = await ownRead.read(
-              job.input,
-              ownReadOf(proposals, tenant, caller, alerting, reads),
-            );
+          if (ownRead !== undefined && look !== undefined) {
+            returned = await ownRead.read(job.input, look);
           } else if (job.own !== undefined) {
             const now = new Date().toISOString();
             // And DSoR's question to the company's own KSoR, for the sweep.

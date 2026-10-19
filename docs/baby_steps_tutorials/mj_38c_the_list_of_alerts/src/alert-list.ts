@@ -9,7 +9,7 @@ import { Refusal } from "./envelope.ts";
 import { checkedLabel, type Reads } from "./freshness.ts";
 import { pageOf, pageSize } from "./pages.ts";
 import type { Principal } from "./principals.ts";
-import { proposalUri, type Proposal, type ProposalStore } from "./proposals.ts";
+import type { Proposal, ProposalStore } from "./proposals.ts";
 import type { Contract } from "./registry.ts";
 
 /** DSoR's own store, read only and bound to one company, for a query of DSoR's own. */
@@ -20,12 +20,23 @@ export type OwnReadLook = {
   roles: readonly string[];
   // The company's alerts.json line, which start-up checked.
   alerting: Alerting | undefined;
-  alerts: () => Promise<Alert[]>;
+  // A page of the company's unsettled alerts in these states, after this id, at most this many.
+  unsettled: (
+    states: readonly ("open" | "escalated")[],
+    after: string | undefined,
+    count: number,
+  ) => Promise<Alert[]>;
   proposal: (id: string) => Promise<Proposal | undefined>;
 };
 
-/** DSoR's own read, for a query over DSoR's own store. It changes nothing. */
-export type OwnRead = { read: (input: unknown, look: OwnReadLook) => Promise<unknown> };
+/**
+ * DSoR's own read, for a query over DSoR's own store. It changes nothing. Its check runs before
+ * the work, so a refusal is recorded as a denial (found by step 38c's review, H2).
+ */
+export type OwnRead = {
+  check: (input: unknown, look: OwnReadLook) => Promise<void>;
+  read: (input: unknown, look: OwnReadLook) => Promise<unknown>;
+};
 
 // The connector a read of DSoR's own store names in its label. DSoR's store is not a company
 //   connector, so this is the tutorial's own name (step 38c's README, decision D6).
@@ -37,7 +48,7 @@ const OWN_STORE = "dsor";
  * ended, it reads nothing more, as a Company does (step 15's README, decision 5).
  */
 export function ownReadOf(
-  proposals: Pick<ProposalStore, "alerts" | "get">,
+  proposals: Pick<ProposalStore, "unsettled" | "get">,
   tenant: string,
   caller: Principal,
   alerting: Alerting | undefined,
@@ -56,10 +67,10 @@ export function ownReadOf(
     caller,
     roles,
     alerting,
-    alerts: async () => {
+    unsettled: async (states, after, count) => {
       open();
       const observed_at = new Date().toISOString();
-      const found = await proposals.alerts(tenant);
+      const found = await proposals.unsettled(tenant, states, after, count);
       open();
       note(observed_at);
       return found;
@@ -78,42 +89,50 @@ export function ownReadOf(
 /** One alert as the list shows it: a row of its company, named by its proposal's id. */
 type Listed = Record<string, unknown> & { id: string };
 
-/** The alerts this caller may see, or a refusal: whom alerts.json names (decision D1). */
-function meantFor(look: OwnReadLook, alerts: Alert[]): Alert[] {
+/**
+ * The states of the alerts this caller sees, or a refusal: whom alerts.json names (decision D1).
+ * The receivers role sees every unsettled alert, open and escalated (decision D3); the named
+ * person every escalated one, whoever it went to, so a change of person orphans none (the
+ * learner's choice after step 38c's review, M2; decision D8).
+ */
+function statesFor(look: OwnReadLook): readonly ("open" | "escalated")[] {
   const { alerting, caller, roles, tenant } = look;
   // Start-up refused a company where a login works and no alerts are named, so this is a bug.
   if (alerting === undefined) throw new Error(`${tenant} has no alerts, and start-up let it run`);
-  // Unsettled only: open and escalated (decision D3).
-  const unsettled = alerts.filter((alert) => alert.state !== "closed");
-  if (roles.includes(alerting.receivers)) return unsettled;
-  if (caller.id === alerting.escalate_to) {
-    return unsettled.filter((alert) => alert.escalated_to === caller.id);
-  }
+  if (roles.includes(alerting.receivers)) return ["open", "escalated"];
+  if (caller.id === alerting.escalate_to) return ["escalated"];
   const why = `alerts.json names neither ${caller.id} nor a role it holds as one who sees ${tenant}'s alerts`;
   throw new Refusal("AUTHORIZATION_DENIED", why, "internal");
+}
+
+/** Line ⑨'s check, before the work: the caller is one alerts.json names. */
+async function mayList(_input: unknown, look: OwnReadLook): Promise<void> {
+  statesFor(look);
 }
 
 /** The read: a page of the alerts meant for the caller, in the order of their proposals' ids. */
 async function listAlerts(input: unknown, look: OwnReadLook): Promise<unknown> {
   // Line ⑥ has checked the input against AlertListRequest.
   const { limit, cursor } = input as { limit?: number; cursor?: string };
-  const seen = meantFor(look, await look.alerts())
-    .sort((a, b) => a.proposal.localeCompare(b.proposal))
-    // The cursor is a place in this company's list, never a lookup (step 13's README, decision 4).
-    .filter((alert) => cursor === undefined || alert.proposal > cursor)
-    // One row more than the page holds, to know whether another page follows.
-    .slice(0, pageSize(limit) + 1);
+  // One row more than the page holds, to know whether another page follows. The cursor is a
+  //   place in this company's list, never a lookup (step 13's README, decision 4).
+  const seen = await look.unsettled(statesFor(look), cursor, pageSize(limit) + 1);
   const rows: Listed[] = [];
   for (const alert of seen) {
     const proposal = await look.proposal(alert.proposal);
     if (proposal === undefined) throw new Error(`alert ${alert.proposal} has no proposal`);
-    // The payment and the invoice the proposal sends, as line ⑥ checked them (decision D4).
-    const { payment, invoice } = proposal.payload as { payment: string; invoice: string };
+    // The payment and the invoice the proposal sends, as line ⑥ checked them (decision D4). Only
+    //   a payment's send goes unknown today; any other shape is a bug, never a row without them.
+    const { payment, invoice } = proposal.payload as { payment?: unknown; invoice?: unknown };
+    if (typeof payment !== "string" || typeof invoice !== "string") {
+      throw new Error(`alert ${alert.proposal}'s proposal names no payment and invoice`);
+    }
     rows.push({
-      // A row of its company, so the call's record names each alert it read (decision D7).
-      tenant_id: look.tenant,
+      // The alert's own company and its proposal's own address, as the store keeps them, so the
+      //   answer's company check reads them from the alert (found by step 38c's review, M1).
+      tenant_id: alert.tenant_id,
       id: alert.proposal,
-      proposal: proposalUri(look.tenant, alert.proposal),
+      proposal: proposal.uri,
       state: alert.state,
       raised_at: alert.raised_at,
       ...(alert.escalated_to === undefined
@@ -128,7 +147,7 @@ async function listAlerts(input: unknown, look: OwnReadLook): Promise<unknown> {
 
 /** DSoR's own reads: alert.list. */
 export function ownReadsFor(): Record<string, OwnRead> {
-  return { "alert.list": { read: listAlerts } };
+  return { "alert.list": { check: mayList, read: listAlerts } };
 }
 
 /** Every problem with DSoR's own reads: a read with no contract, with company code, or a command. */

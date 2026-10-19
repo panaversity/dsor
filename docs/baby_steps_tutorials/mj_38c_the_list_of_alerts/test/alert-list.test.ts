@@ -4,7 +4,11 @@
 // labels (DSOR-UNK-04b, DSOR-UNK-04c, DSOR-QRY-01, DSOR-CLS-03, DSOR-FRS-01a; step 38c's README,
 // claims C1 to C7).
 import { describe, expect, it } from "vitest";
+import type { OwnReadLook } from "../src/alert-list.ts";
 import type { Answer } from "../src/envelope.ts";
+import { createLog } from "../src/log.ts";
+import { call } from "../src/pipeline.ts";
+import { dsorMover } from "../src/proposals.ts";
 import { handlersFor } from "../src/operations.ts";
 import { buildRegistry } from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
@@ -20,7 +24,7 @@ import {
   SUPERVISOR,
   USER_700,
 } from "./helpers.ts";
-import { ruleWorldOnTuesday, type RuleWorld } from "./rule-world.ts";
+import { ruleWorld, ruleWorldOnTuesday, type RuleWorld } from "./rule-world.ts";
 
 // dsor-scheduler, DSoR's own login for scheduled work (step 25c's README, decision D1).
 const SCHEDULER: RequestEnvelope = { token: "tok_5c4e", tenant: "org_456" };
@@ -231,7 +235,7 @@ describe("C7: the answer's labels", () => {
 describe("C9: start-up checks DSoR's own reads", () => {
   // Found while building: the check had no test. A read changes nothing, so it must be a query,
   //   must have a contract, and must not share a name with other code.
-  const read = { read: async () => ({ items: [] }) };
+  const read = { check: async () => {}, read: async () => ({ items: [] }) };
   it("DSOR-OPR-01: a read with no contract, a read of DSoR's own command, and a read of the company's own query each stop start-up, named", () => {
     const refused = (reads: Record<string, typeof read>): string => {
       try {
@@ -257,6 +261,170 @@ describe("C9: start-up checks DSoR's own reads", () => {
     );
     expect(refused({ "invoice.get": read })).toContain(
       "invoice.get has DSoR's own read and other code",
+    );
+  });
+});
+
+// Found by step 38c's review: each test below is one a small break passed.
+describe("the review", () => {
+  /** Plants a payment of this company, gone unknown, with this id, straight in the store. */
+  async function plant(w: RuleWorld, tenant: string, id: string): Promise<void> {
+    const requester = {
+      identity_mode: "direct" as const,
+      subject: "user_123",
+      subject_type: "human",
+      actor_chain: [],
+      active_tenant: tenant,
+      subject_authority: { source: "token" as const, as_of: new Date(w.clock.now).toISOString() },
+    };
+    const by = {
+      mover: dsorMover(requester),
+      cause: "the test plants it",
+      correlation: { request_id: `req_${id}` },
+    };
+    const invoice = `dsor://${tenant}/invoice/INV-PLANTED`;
+    const draft = {
+      operation: "payment.execute@1",
+      mode: "execute" as const,
+      payload: { invoice, payment: `dsor://${tenant}/payment/PAY-PLANTED`, expected_version: 1 },
+      payload_hash: `sha256:${"b".repeat(64)}`,
+      resources: [invoice],
+      requester,
+      idempotency_key: `plant-${id}`,
+    };
+    await w.proposals.create(tenant, id, draft, by, "P7D");
+    await w.proposals.move(tenant, id, "PROPOSED", "READY", by);
+    await w.proposals.move(tenant, id, "READY", "EXECUTING", by);
+    await w.proposals.move(tenant, id, "EXECUTING", "OUTCOME_UNKNOWN", by);
+  }
+  const ID = (last: string) => `prop_00000000-0000-4000-8000-00000000000${last}`;
+
+  it("DSOR-EXE-02: H2: admin_100, who holds alert:read but is not named in alerts.json, is refused, and the record says DENY", async () => {
+    const roles = JSON.parse(shippedRoles.text) as Record<string, string[]>;
+    roles["tenant_admin"] = [...roles["tenant_admin"]!, "alert:read"];
+    const table = { file: "roles.json", text: JSON.stringify(roles) };
+    const w = await ruleWorldOnTuesday(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      table,
+    );
+    await twoAlerts(w);
+    expect(await list(w, ADMIN)).toMatchObject({ code: "AUTHORIZATION_DENIED" });
+    expect((await w.log.records()).at(-1)).toMatchObject({
+      operation: "alert.list@1",
+      authorization: "DENY",
+    });
+  });
+
+  it("DSOR-UNK-04c: M2: an alert escalated to another person, before alerts.json named cfo_100, is seen by cfo_100, the person named now", async () => {
+    const w = await ruleWorldOnTuesday();
+    await plant(w, "org_456", ID("a"));
+    await w.proposals.escalateDue("org_456", 0, "cfo_099");
+    expect(proposalsIn(await list(w, CFO))).toStrictEqual(["dsor://org_456/proposal/" + ID("a")]);
+  });
+
+  it("DSOR-QRY-01: three alerts, raised in the order c, a, b, come back in the order of their ids, a page of one at a time, each once, in three pages", async () => {
+    const w = await ruleWorldOnTuesday();
+    for (const last of ["c", "a", "b"]) {
+      await plant(w, "org_456", ID(last));
+      w.clock.now += MINUTE;
+    }
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    let pages = 0;
+    do {
+      const page = (await list(
+        w,
+        SUPERVISOR,
+        cursor ? { limit: 1, cursor } : { limit: 1 },
+      )) as unknown as AlertPage;
+      seen.push(...page.data.items.map((item) => String(item["id"])));
+      cursor = page.data.next_cursor;
+      pages += 1;
+    } while (cursor !== undefined && pages < 5);
+    expect(seen).toStrictEqual([ID("a"), ID("b"), ID("c")]);
+    expect(pages).toBe(3);
+  });
+
+  it("DSOR-FRS-01a: the label's observed_at is the time of the call, not before it and not after", async () => {
+    const w = await ruleWorldOnTuesday();
+    await twoAlerts(w);
+    const before = Date.now();
+    const answer = (await list(w, SUPERVISOR)) as unknown as AlertPage;
+    const after = Date.now();
+    const observed = Date.parse(String(answer.freshness["observed_at"]));
+    expect(observed).toBeGreaterThanOrEqual(before);
+    expect(observed).toBeLessThanOrEqual(after);
+  });
+
+  it("DSOR-UNK-04d: the agent hears that alert.list is never for an agent: the contract refuses it at line ⑤", async () => {
+    const w = await ruleWorldOnTuesday();
+    const refused = await list(w, AGENT);
+    expect((refused as { message: string }).message).toContain("is never for an agent");
+  });
+
+  it("DSOR-TEN-01a: org_789 names another receivers role: admin_700, its tenant administrator, sees org_789's open alert; user_700, its named person, sees no open one; org_456's file still decides org_456's", async () => {
+    const roles = JSON.parse(shippedRoles.text) as Record<string, string[]>;
+    roles["tenant_admin"] = [...roles["tenant_admin"]!, "alert:read"];
+    const table = { file: "roles.json", text: JSON.stringify(roles) };
+    const line = { alert_within: "PT0S", escalate_after: "PT59M", sweep_every: "PT1M" };
+    const alerts = {
+      file: "alerts.json",
+      text: JSON.stringify({
+        org_456: { ...line, receivers: "ap_supervisor", escalate_to: "cfo_100" },
+        org_789: { ...line, receivers: "tenant_admin", escalate_to: "user_700" },
+      }),
+    };
+    const args = Array.from({ length: 11 }) as unknown as Parameters<typeof ruleWorld>;
+    args[5] = table;
+    args[10] = alerts;
+    const w = ruleWorld(...args);
+    await plant(w, "org_789", ID("d"));
+    const ADMIN_700 = { token: "tok_a700", tenant: "org_789" };
+    expect(proposalsIn(await list(w, ADMIN_700))).toStrictEqual([
+      "dsor://org_789/proposal/" + ID("d"),
+    ]);
+    expect(proposalsIn(await list(w, USER_700))).toStrictEqual([]);
+    expect(await list(w, ADMIN)).toMatchObject({ code: "AUTHORIZATION_DENIED" });
+  });
+
+  it("DSOR-FRS-01a: a look kept after the call reads nothing more", async () => {
+    let kept: OwnReadLook | undefined;
+    const keeping = {
+      "alert.list": {
+        check: async () => {},
+        read: async (_input: unknown, look: OwnReadLook) => {
+          kept = look;
+          await look.unsettled(["open"], undefined, 1);
+          return { items: [] };
+        },
+      },
+    };
+    const args = Array.from({ length: 21 }) as unknown as Parameters<typeof buildRegistry>;
+    args[0] = shipped;
+    args[1] = handlersFor();
+    args[2] = shippedRoles;
+    args[11] = ownWorkFor();
+    args[20] = keeping;
+    const registry = buildRegistry(...args);
+    await call(registry, createLog(), SUPERVISOR, "alert.list", {});
+    await expect(kept!.unsettled(["open"], undefined, 1)).rejects.toThrow("this call has ended");
+    await expect(kept!.proposal(ID("a"))).rejects.toThrow("this call has ended");
+  });
+
+  it("DSOR-OPR-01: a read of a command that has no other code stops start-up: a read changes nothing, so it is a query", () => {
+    const { "payment.reconcile": _left, ...own } = ownWorkFor();
+    const args = Array.from({ length: 21 }) as unknown as Parameters<typeof buildRegistry>;
+    args[0] = shipped;
+    args[1] = handlersFor();
+    args[2] = shippedRoles;
+    args[11] = own;
+    args[20] = { "payment.reconcile": { check: async () => {}, read: async () => ({}) } };
+    expect(() => buildRegistry(...args)).toThrow(
+      "payment.reconcile: DSoR's own read changes nothing, so it is a query",
     );
   });
 });

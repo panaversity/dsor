@@ -157,7 +157,7 @@ describe("C2: when two lines would refuse, the earlier one answers", () => {
     const grantsNothing = buildRegistry(
       shipped,
       handlers,
-      rolesFile({ ...STARTING_ROLES, CFO: ["payment:reconcile"] }),
+      rolesFile({ ...STARTING_ROLES, CFO: ["payment:reconcile", "alert:read"] }),
     );
     const { answer, lines } = await linesRun(grantsNothing, CFO, "invoice.get", { invoice: 1008 });
     expect(answer).toMatchObject({ code: "AUTHORIZATION_DENIED" });
@@ -734,7 +734,7 @@ describe("C5: the code behind an operation is reached only through the checklist
     const grantsNothing = buildRegistry(
       shipped,
       { ...handlers, "invoice.get": spy },
-      rolesFile({ ...STARTING_ROLES, CFO: ["payment:reconcile"] }),
+      rolesFile({ ...STARTING_ROLES, CFO: ["payment:reconcile", "alert:read"] }),
     );
     expect(
       await call(grantsNothing, log, CFO, "invoice.get", {

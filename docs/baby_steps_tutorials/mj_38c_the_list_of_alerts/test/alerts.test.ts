@@ -82,7 +82,8 @@ describe("C1: the move to OUTCOME_UNKNOWN raises the alert, in the same moment",
     const move = kept.transitions.at(-1)!;
     expect(move.to).toBe("OUTCOME_UNKNOWN");
     expect(await w.proposals.alerts("org_456")).toStrictEqual([
-      { proposal: id, state: "open", raised_at: move.at },
+      // Changed in step 38c: and its own company (step 38c's README, decision D7).
+      { tenant_id: "org_456", proposal: id, state: "open", raised_at: move.at },
     ]);
   });
 

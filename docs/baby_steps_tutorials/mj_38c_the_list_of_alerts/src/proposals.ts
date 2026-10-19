@@ -206,6 +206,15 @@ export type ProposalStore = {
   //   store's clock, to this person, once each: the alerts it escalated, in the order of their
   //   proposals' ids (DSOR-UNK-04c; step 38b's README, decisions D3 and D4).
   escalateDue: (tenant: string, afterMs: number, to: string) => Promise<Alert[]>;
+  // NEW IN STEP 38c: and a page of the company's unsettled alerts in these states, in the order
+  //   of their proposals' ids, after this id, at most this many: what alert.list reads, so a
+  //   call never reads the company's whole history (found by step 38c's review).
+  unsettled: (
+    tenant: string,
+    states: readonly ("open" | "escalated")[],
+    after: string | undefined,
+    count: number,
+  ) => Promise<Alert[]>;
 };
 
 // The five states of §25.1's "in flight": the proposal may still run, or it runs.
@@ -326,6 +335,7 @@ export const NO_PROPOSALS: ProposalStore = Object.freeze({
   escalateDue: async (): Promise<never> => {
     throw new Error("this call makes no proposal");
   },
+  unsettled: async () => [],
 });
 
 /** A record kept in memory: the record, its id, its place in the log, and its time. */
@@ -385,6 +395,7 @@ export function memoryProposals(now: () => number = Date.now): MemoryProposals {
       const escalated = escalations.get(keyOf(tenant, row.id));
       const state = closed !== undefined ? "closed" : escalated ? "escalated" : "open";
       found.push({
+        tenant_id: row.tenant,
         proposal: row.id,
         state,
         raised_at: raised.at,
@@ -611,6 +622,14 @@ export function memoryProposals(now: () => number = Date.now): MemoryProposals {
       // In the order of their proposals' ids, as the database's answer is sorted.
       return escalated.sort((a, b) => a.proposal.localeCompare(b.proposal));
     },
+    // NEW IN STEP 38c: < compares text by its character codes, as the database's C.UTF-8 does,
+    //   and as invoice.list's memory does.
+    unsettled: async (tenant, states, after, count): Promise<Alert[]> =>
+      alertsNow(tenant)
+        .filter((alert) => (states as readonly string[]).includes(alert.state))
+        .filter((alert) => after === undefined || alert.proposal > after)
+        .sort((a, b) => (a.proposal < b.proposal ? -1 : a.proposal > b.proposal ? 1 : 0))
+        .slice(0, count),
     transitions: async (): Promise<KeptTransition[]> => structuredClone(records),
     all: async (): Promise<Proposal[]> => [...rows.values()].map(shown),
     undo: async (uri: string, requestId: string): Promise<"kept" | "restored" | "gone"> => {
