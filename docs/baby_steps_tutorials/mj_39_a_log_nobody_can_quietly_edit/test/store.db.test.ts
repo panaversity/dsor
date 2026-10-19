@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { readCatalog, type Catalog } from "../src/catalog.ts";
 import { storeDifferences } from "../src/inspector.ts";
 import { checkStore, readStore } from "../src/store.ts";
-import { columnIn, relationIn, today, INVOICE_TRIGGER } from "./catalogs.ts";
+import { AUDIT_CHAIN_TRIGGER, columnIn, relationIn, today, INVOICE_TRIGGER } from "./catalogs.ts";
 import { newPool, ownerCatalog } from "./db.ts";
 
 // The test's own window into the database: dsor_runtime, as the program logs in.
@@ -151,7 +151,10 @@ describe("decision 8: the inspector sees each thing it must refuse, made by the 
     const audit = relationIn(catalog, "dsor.audit");
     expect(audit.rules).toStrictEqual(["fixture_swallow"]);
     // Written out in full since step 21 (step 21's README, decision 11).
+    // Changed in step 39: and the log's own chain, first in the order of their text (step 39's
+    //   README, decision D2).
     expect(audit.triggers).toStrictEqual([
+      AUDIT_CHAIN_TRIGGER,
       "CREATE TRIGGER fixture_drop BEFORE INSERT ON dsor.audit FOR EACH ROW EXECUTE FUNCTION dsor.fixture_stop()",
     ]);
   });
