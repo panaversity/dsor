@@ -68,9 +68,12 @@ describe("C4: every chain against every checkpoint", () => {
 
   it("DSOR-AUD-04b: every checkpoint is checked: a newer one, taken after the rewrite, does not hide it from an older one", () => {
     const older = fileOf(LOG(), AT_9);
-    const newer = fileOf(rewritten(), AT_10);
+    // The newer follows the older, so only the chains can show the rewrite, not the link.
+    const newer = fileOf(rewritten(), AT_10, { previous: older.hash });
     // In the order the script reads them, by name, oldest first. Found by break B6.
-    expect(check(rewritten(), [older, newer]).exit).toBe(1);
+    const result = check(rewritten(), [older, newer]);
+    expect(result.files).toStrictEqual([{ name: older.name }, { name: newer.name }]);
+    expect(org456(result).broken?.position).toBe(3);
   });
 
   // Found by the review, M5b: a checker that read only the oldest checkpoint passed every test.
