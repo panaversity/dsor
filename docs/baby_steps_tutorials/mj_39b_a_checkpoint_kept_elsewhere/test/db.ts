@@ -210,6 +210,13 @@ export function ownerAudit(...args: string[]): unknown {
   return asOwner("owner-audit.ts", args);
 }
 
+// NEW IN STEP 39b: the owner takes checkpoints, tampers as the careful editor would, and reads
+//   the checker's report against them (test/owner-checkpoint.ts; step 39b's README, claim C4).
+/** What the owner's checkpoint program printed, for these words. */
+export function ownerCheckpoint(...args: string[]): unknown {
+  return asOwner("owner-checkpoint.ts", args);
+}
+
 // Step 32: the owner ends every proposal in flight, between two tests of one file that each
 //   need an invoice free (test/owner-attempts.ts; step 32's README, decision D7).
 /** What the owner's attempts program printed: how many proposals it ended. */
