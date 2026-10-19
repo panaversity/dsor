@@ -1,5 +1,6 @@
 // Every operation has a name and a contract, checked at start-up.
 // DSOR-OPR-01, DSOR-OPR-02a, DSOR-OPR-02b in specs/dsor/01-model.md, section 7.
+import { checkAlerts, readAlerts, type Alerting, type AlertsSource } from "./alerts.ts";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Ajv2020, type ErrorObject } from "ajv/dist/2020.js";
@@ -133,6 +134,9 @@ export type Registry = {
   // Which connector holds each company's records, and whether it is in service.
   //   Line ④ reads it (DSOR-CNR-01b; step 34's README, decision D4).
   plugs: Plugs;
+  // NEW IN STEP 38b: each company's alerts, checked at start-up. The escalation sweep reads its
+  //   person and its bound (step 38b's README, decisions D2, D4, and D7).
+  alerts: ReadonlyMap<string, Alerting>;
 };
 
 // The specification's own schemas, copied byte for byte (step 03's README, decision 3).
@@ -232,6 +236,9 @@ export function buildRegistry(
   banks: ReadonlyMap<string, BankLine> = new Map([
     ["fake-bank", { bank: createFakeBank(), waitMs: 1000 }],
   ]),
+  // NEW IN STEP 38b: each company's alerts. This step's own file, unless the caller gives another
+  //   (step 38b's README, decision D7).
+  alertSource: AlertsSource = readAlerts(),
 ): Registry {
   // Every problem is collected first, and the refusal names them all (step 03's
   // README, decision 2).
@@ -333,6 +340,10 @@ export function buildRegistry(
   // at most §44's 30 days for an approval (step 25c's README, claim C6).
   const { lifetimes, problems: lifetimeProblems } = checkLifetimes(lifetimeSource, logins.values());
   problems.push(...lifetimeProblems);
+  // NEW IN STEP 38b: and every company where a login works names who its alerts go to, a person
+  //   to escalate to, and bounds within §44's (step 38b's README, claim C6).
+  const { alerts, problems: alertProblems } = checkAlerts(alertSource, logins.values(), roles);
+  problems.push(...alertProblems);
   // And every company where a login works has a money policy, as the
   // specification's schema has it, with a max_rate_age within §44's 7 days (step 26's README,
   // claim C6).
@@ -463,6 +474,7 @@ export function buildRegistry(
     checkRule,
     ksors,
     plugs,
+    alerts,
   };
 }
 

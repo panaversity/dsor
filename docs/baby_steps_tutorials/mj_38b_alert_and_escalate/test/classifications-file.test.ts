@@ -61,6 +61,10 @@ const LABELS = {
   // (step 25c's README, decision D9).
   // Step 38: what a reconcile answers. The evidence names the bank's reference and the amount.
   PaymentReconciliation: { proposal: "internal", state: "internal", evidence: "confidential" },
+  // Changed in step 38b: the escalation sweep's answer, and each alert it escalated (step 38b's
+  //   README, decision D3).
+  AlertEscalation: { tenant_id: "internal", escalated: "EscalatedAlert[]", to: "internal" },
+  EscalatedAlert: { proposal: "internal", raised_at: "internal" },
   ProposalExpiry: { tenant_id: "internal", expired: "internal" },
   // The sheet that rate.load wrote, and how many currencies it holds (step 26's
   // README, decision L2).

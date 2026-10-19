@@ -53,6 +53,8 @@ const CRASH = fileURLToPath(new URL("crash-while-paying.ts", import.meta.url));
 // dsor-scheduler, DSoR's own login for scheduled work (step 25c's README, decision D1).
 const SCHEDULER: RequestEnvelope = { token: "tok_5c4e", tenant: "org_456" };
 const settle: string[] = [];
+/** What the escalation sweep answers. */
+type Escalation = { data: { escalated: { proposal: string }[] } };
 
 beforeAll(() => {
   ownerInvoices("add");
@@ -162,13 +164,13 @@ describe("C4: on the database, escalated once", () => {
     const proposal = await unknownPayment();
     settle.push(proposal);
     const early = await escalate();
-    expect((early as { data: { escalated: string[] } }).data.escalated).not.toContain(
+    expect((early as Escalation).data.escalated.map((alert) => alert.proposal)).not.toContain(
       `dsor://org_456/proposal/${proposal}`,
     );
     await wait(1100);
     const both = await Promise.all([escalate(), escalate()]);
-    const named = both.flatMap(
-      (answer) => (answer as { data: { escalated: string[] } }).data.escalated,
+    const named = both.flatMap((answer) =>
+      (answer as Escalation).data.escalated.map((alert) => alert.proposal),
     );
     expect(named.filter((uri) => uri.endsWith(proposal))).toHaveLength(1);
     expect(await alertOf(proposal)).toMatchObject({ state: "escalated", escalated_to: "cfo_100" });

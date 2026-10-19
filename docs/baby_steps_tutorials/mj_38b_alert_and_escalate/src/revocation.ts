@@ -8,6 +8,8 @@
 // under the slip that waits for an approval moves to CANCELLED, and its reservation is released,
 // in the same transaction (DSOR-DEL-04a, DSOR-DEL-04c, and DSOR-DEL-06d in
 // specs/dsor/02-security.md, section 13).
+import type { Alerting } from "./alerts.ts";
+import { escalationWorkFor } from "./escalation.ts";
 import type { BankLine } from "./bank.ts";
 import { approveWorkFor } from "./approve.ts";
 import { reconcileWorkFor } from "./reconcile.ts";
@@ -75,6 +77,9 @@ export type OwnStores = {
   // And the company's bank, for an operation that asks it, when it is in service
   //   (step 38's README, decision D2).
   bank?: BankLine;
+  // NEW IN STEP 38b: and the company's alerts, for the escalation sweep (step 38b's README,
+  //   decision D4).
+  alerting?: Alerting;
 };
 
 /** DSoR's own work for a command that changes DSoR's own store, never the company's. */
@@ -104,6 +109,8 @@ export function ownWorkFor(): Record<string, OwnWork> {
     ...approveWorkFor(),
     // And reconciliation (step 38's README, decision D2).
     ...reconcileWorkFor(),
+    // NEW IN STEP 38b: and the escalation sweep (step 38b's README, decision D3).
+    ...escalationWorkFor(),
   };
 }
 

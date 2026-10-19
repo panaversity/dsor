@@ -25,12 +25,14 @@ describe("C2: a contract passes the specification's own schema", () => {
   // Changed in step 29: sixteen, with proposal.approve (step 29's README, decision D1).
   // Changed in step 31: seventeen, with proposal.execute (step 31's README, decision D12).
   // Changed in step 35: eighteen, with payment.execute (step 35's README, decision D7).
-  it("DSOR-OPR-01: the nineteen shipped contracts pass", async () => {
+  // Changed in step 38b: twenty, with alert.escalate_due (step 38b's README, decision D3).
+  it("DSOR-OPR-01: the twenty shipped contracts pass", async () => {
     const registry = buildRegistry(shipped, handlers, shippedRoles);
     // invoice.list. Step 17's two commands, payment.cancel and payment.create.
     // And delegation.revoke, DSoR's own command. And the brake's two, DSoR's own commands too.
     // And the sweep, DSoR's own command too (step 25c's README, decision L3).
     expect([...registry.contracts.keys()].sort()).toEqual([
+      "alert.escalate_due",
       "control.lift",
       "control.suspend",
       "delegation.revoke",

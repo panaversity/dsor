@@ -105,7 +105,9 @@ describe("C1: every command declares its semantics in its contract", () => {
     // And the brake's two, atomic too: one transaction in DSoR's own store.
     // And the sweep, atomic too: every due proposal expires, or none does (step
     // 25c's README, decision D8).
+    // Changed in step 38b: and the escalation sweep, atomic too (step 38b's README, decision D3).
     expect(commands.map((c) => [c["id"], c["execution"]?.semantics])).toStrictEqual([
+      ["alert.escalate_due", "atomic"],
       ["control.lift", "atomic"],
       ["control.suspend", "atomic"],
       ["delegation.revoke", "atomic"],

@@ -162,13 +162,14 @@ function pairDiffers(operation: string, who: string, home: string): string {
 }
 
 describe("C1: every operation in the registry is attacked with foreign URIs, and refused", () => {
-  it("DSOR-TEN-02b: the shipped registry: every operation attacked from both companies, 219 swaps, no findings", async () => {
+  it("DSOR-TEN-02b: the shipped registry: every operation attacked from both companies, 225 swaps, no findings", async () => {
     const report = await crossTenantSuite(registry, createLog(), examples);
     expect(report.findings).toStrictEqual([]);
     // Typed out, and the registry's own list: nothing skipped. invoice.list
     // has no URI to swap. Its rows are checked instead, and it adds no swap below. Step 17's
     // two commands are attacked like any other operation, and so is step 25's tear-up.
     expect(report.attacked).toStrictEqual([
+      "alert.escalate_due",
       "control.lift",
       "control.suspend",
       "delegation.revoke",
@@ -228,15 +229,18 @@ describe("C1: every operation in the registry is attacked with foreign URIs, and
     // Changed in step 38: payment.reconcile adds 2 callers in each company, the AP supervisor and
     //   dsor-scheduler, whose roles hold payment:reconcile, and its example names one URI, so 3 swaps
     //   each (step 38's README, decision D3): 207 + (2 + 2) × 3 = 219, of which org_789's 90 + 6 = 96.
-    expect(report.attacks).toHaveLength(219);
-    expect(new Set(report.attacks.map((attack) => attack.request_id)).size).toBe(219);
-    expect(report.attacks.filter((attack) => attack.home === "org_789")).toHaveLength(96);
+    // Changed in step 38b: alert.escalate_due adds dsor-scheduler in each company, whose role holds
+    //   alert:escalate, and its example names one URI (step 38b's README, decision D3): 219 + (1 + 1)
+    //   × 3 = 225, of which org_789's 96 + 3 = 99.
+    expect(report.attacks).toHaveLength(225);
+    expect(new Set(report.attacks.map((attack) => attack.request_id)).size).toBe(225);
+    expect(report.attacks.filter((attack) => attack.home === "org_789")).toHaveLength(99);
   });
 
   // As if step 10's URI check were gone (break W1): the fake answers every request with
   // the invoice of the company the call works in. Found by the review: with the suite's
   // call to its judge deleted, every test stayed green.
-  it("DSOR-TEN-02b: handed a fake DSoR with no URI check, the suite names every one of the 219 attacks", async () => {
+  it("DSOR-TEN-02b: handed a fake DSoR with no URI check, the suite names every one of the 225 attacks", async () => {
     // A list has no URI to check, so its calls go to DSoR itself.
     const noUriCheck: Send = async (reg, log, request, name, input) =>
       name === "invoice.list"
@@ -249,7 +253,7 @@ describe("C1: every operation in the registry is attacked with foreign URIs, and
             correlation: { request_id: `req_${randomUUID()}` },
           };
     const report = await crossTenantSuite(registry, createLog(), examples, noUriCheck);
-    expect(report.findings).toHaveLength(219);
+    expect(report.findings).toHaveLength(225);
     for (const finding of report.findings) {
       expect(finding).toMatch(/: answered with data, not TENANT_MISMATCH$/);
     }
@@ -257,7 +261,9 @@ describe("C1: every operation in the registry is attacked with foreign URIs, and
     // out. Found by the sweep: a finding that named the wrong way passed every test.
     // The first operation in name order is the brake's lift since step 25b, and its first caller
     // user_123: the agent before user_123 in the table may not call it.
-    const first = "control.lift as user_123 in org_456, dsor://org_456/agent/intake-fte";
+    // Changed in step 38b: the escalation sweep is first in name order, and dsor-scheduler its only
+    //   caller (step 38b's README, decision D3).
+    const first = "alert.escalate_due as dsor-scheduler in org_456, dsor://org_456/tenant/org_456";
     const said = "answered with data, not TENANT_MISMATCH";
     expect(report.findings.slice(0, 3)).toStrictEqual([
       `${first} sent to org_789, with the same id: ${said}`,
@@ -430,7 +436,9 @@ describe("C2: the three foreign answers are the same, apart from the request id"
     // Changed in step 31: and proposal.execute's 7 + 5 (step 31's README, decision D12).
     // Changed in step 35: and payment.execute's 2 + 2: user_123 and user_700, each for its two
     // URIs (step 35's README, decision D7).
-    expect(report.findings).toHaveLength(73);
+    // Changed in step 38b: and alert.escalate_due's 1 + 1, dsor-scheduler in each company (step
+    //   38b's README, decision D3).
+    expect(report.findings).toHaveLength(75);
     for (const finding of report.findings) expect(finding).toMatch(/: the three answers differ$/);
   });
 
@@ -627,6 +635,7 @@ describe("C4: nothing is skipped: every gap is a finding", () => {
       expect(report.findings).toStrictEqual(findings);
       // invoice.list, and step 17's two commands, and step 25's tear-up.
       expect(report.attacked).toStrictEqual([
+        "alert.escalate_due",
         "control.lift",
         "control.suspend",
         "delegation.revoke",
@@ -666,6 +675,7 @@ describe("C4: nothing is skipped: every gap is a finding", () => {
     ]);
     // invoice.list, and step 17's two commands, and step 25's tear-up.
     expect(report.attacked).toStrictEqual([
+      "alert.escalate_due",
       "control.lift",
       "control.suspend",
       "delegation.revoke",
@@ -730,7 +740,7 @@ describe("C4: nothing is skipped: every gap is a finding", () => {
     ["VALIDATION_FAILED", "has an input that is not valid"],
     ["RESOURCE_NOT_FOUND", "names nothing"],
   ])(
-    "DSOR-TEN-02b: handed a fake DSoR that refuses every foreign request with %s, the suite names each of the 219 attacks",
+    "DSOR-TEN-02b: handed a fake DSoR that refuses every foreign request with %s, the suite names each of the 225 attacks",
     async (code, why) => {
       const wrongReason: Send = async (reg, log, request, name, input) => {
         const answer = await call(reg, log, request, name, input);
@@ -738,12 +748,12 @@ describe("C4: nothing is skipped: every gap is a finding", () => {
         return { ...answer, code, message: `"${name}" ${why}` };
       };
       const report = await crossTenantSuite(registry, createLog(), examples, wrongReason);
-      expect(report.findings).toHaveLength(219);
+      expect(report.findings).toHaveLength(225);
       const said = `answered ${code}, not TENANT_MISMATCH`;
       for (const finding of report.findings) expect(finding.endsWith(`: ${said}`)).toBe(true);
       const first =
-        // The first operation in name order is the brake's lift (step 25b).
-        "control.lift as user_123 in org_456, dsor://org_456/agent/intake-fte";
+        // The first operation in name order is the escalation sweep (step 38b).
+        "alert.escalate_due as dsor-scheduler in org_456, dsor://org_456/tenant/org_456";
       expect(report.findings.slice(0, 3)).toStrictEqual([
         `${first} sent to org_789, with the same id: ${said}`,
         `${first} sent to org_789, with an id it does not have: ${said}`,
@@ -897,7 +907,7 @@ describe("C6: every attack leaves its record in the caller's company", () => {
   it("DSOR-EXE-02: the suite's log holds one record for each attack, in the company it worked in", async () => {
     const fresh = createLog();
     const report = await crossTenantSuite(registry, fresh, examples);
-    expect(report.attacks).toHaveLength(219);
+    expect(report.attacks).toHaveLength(225);
     const records = await fresh.records();
     for (const { home, operation, request_id } of report.attacks) {
       const its = records.filter((record) => record.correlation.request_id === request_id);

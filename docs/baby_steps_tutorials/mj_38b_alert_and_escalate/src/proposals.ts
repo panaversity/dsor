@@ -9,6 +9,7 @@
 import { randomUUID } from "node:crypto";
 import { approvalOf, stillOpen, type Approval, type Approving, type Offer } from "./approvals.ts";
 import { millisecondsOf } from "./authority.ts";
+import type { Alert } from "./alerts.ts";
 import type { Correlation, Refusal, Requirement } from "./envelope.ts";
 import { transitionOf, type Authority, type Mover, type ProposalTransition } from "./log.ts";
 import type { Principal } from "./principals.ts";
@@ -196,6 +197,15 @@ export type ProposalStore = {
   // And the lock of one operation over one record, held alone until the claim
   //   ends, so two attempts over one invoice look one after the other (step 32's README, D7).
   holdOver: (tenant: string, operation: string, uri: string) => Promise<void>;
+  // NEW IN STEP 38b: and the company's alerts, in the order they were raised. The move to
+  //   OUTCOME_UNKNOWN raises one and the move out of it closes it, both with the move's record, so
+  //   every path raises it and no settlement leaves it open (DSOR-UNK-04b; step 38b's README,
+  //   decisions D1, D5, and D6).
+  alerts: (tenant: string) => Promise<Alert[]>;
+  // And the escalation of each of the company's open alerts raised at least `afterMs` before the
+  //   store's clock, to this person, once each: the alerts it escalated, in the order of their
+  //   proposals' ids (DSOR-UNK-04c; step 38b's README, decisions D3 and D4).
+  escalateDue: (tenant: string, afterMs: number, to: string) => Promise<Alert[]>;
 };
 
 // The five states of §25.1's "in flight": the proposal may still run, or it runs.
@@ -311,6 +321,11 @@ export const NO_PROPOSALS: ProposalStore = Object.freeze({
   // And none in flight, and no lock.
   inFlightOver: async () => [],
   holdOver: async () => {},
+  // And no alert, and escalates none.
+  alerts: async () => [],
+  escalateDue: async (): Promise<never> => {
+    throw new Error("this call makes no proposal");
+  },
 });
 
 /** A record kept in memory: the record, its id, its place in the log, and its time. */
@@ -355,6 +370,8 @@ export function memoryProposals(now: () => number = Date.now): MemoryProposals {
   const approvalsOf = (tenant: string, uri: string): Approval[] =>
     given.filter((approval) => approval.tenant === tenant && approval.proposal === uri);
   const keyOf = (tenant: string, id: string): string => JSON.stringify([tenant, id]);
+  // NEW IN STEP 38b: who each escalated alert went to, and when, by company and proposal.
+  const escalations = new Map<string, { to: string; at: string }>();
   const record = (made: ProposalTransition): void => {
     records.push({
       ...made,
@@ -373,7 +390,7 @@ export function memoryProposals(now: () => number = Date.now): MemoryProposals {
     const ids = approvalsOf(tenant, uri).map((approval) => approval.id);
     return { uri, tenant, ...draft, ...(ids.length > 0 ? { approvals: ids } : {}), transitions };
   };
-  return Object.freeze({
+  const store: MemoryProposals = Object.freeze({
     create: async (
       tenant: string,
       id: string,
@@ -549,6 +566,46 @@ export function memoryProposals(now: () => number = Date.now): MemoryProposals {
       const row = rows.get(keyOf(tenant, id));
       return row !== undefined && Date.parse(row.expires_at) <= now();
     },
+    // NEW IN STEP 38b: the alerts, read from the moves' records, so an undone move undoes its
+    //   alert too, as the database's rollback does. Only the escalation is kept apart.
+    alerts: async (tenant: string): Promise<Alert[]> => {
+      const found: Alert[] = [];
+      for (const row of rows.values()) {
+        if (row.tenant !== tenant) continue;
+        const { transitions } = shown(row);
+        const raised = transitions.find((t) => t.to === "OUTCOME_UNKNOWN");
+        if (raised === undefined) continue;
+        const closed = transitions.find((t) => t.from === "OUTCOME_UNKNOWN");
+        const escalated = escalations.get(keyOf(tenant, row.id));
+        const state = closed !== undefined ? "closed" : escalated ? "escalated" : "open";
+        found.push({
+          proposal: row.id,
+          state,
+          raised_at: raised.at,
+          ...(escalated === undefined
+            ? {}
+            : { escalated_to: escalated.to, escalated_at: escalated.at }),
+          ...(closed === undefined
+            ? {}
+            : { outcome: closed.to as "COMMITTED" | "FAILED", closed_at: closed.at }),
+        });
+      }
+      return found.sort(
+        (a, b) => a.raised_at.localeCompare(b.raised_at) || a.proposal.localeCompare(b.proposal),
+      );
+    },
+    // By the store's clock, as due reads it. Only an open alert, once each.
+    escalateDue: async (tenant: string, afterMs: number, to: string): Promise<Alert[]> => {
+      const at = new Date(now()).toISOString();
+      const escalated: Alert[] = [];
+      for (const alert of await store.alerts(tenant)) {
+        if (alert.state !== "open" || Date.parse(alert.raised_at) + afterMs > now()) continue;
+        escalations.set(keyOf(tenant, alert.proposal), { to, at });
+        escalated.push({ ...alert, state: "escalated", escalated_to: to, escalated_at: at });
+      }
+      // In the order of their proposals' ids, as the database's answer is sorted.
+      return escalated.sort((a, b) => a.proposal.localeCompare(b.proposal));
+    },
     transitions: async (): Promise<KeptTransition[]> => structuredClone(records),
     all: async (): Promise<Proposal[]> => [...rows.values()].map(shown),
     undo: async (uri: string, requestId: string): Promise<"kept" | "restored" | "gone"> => {
@@ -571,6 +628,7 @@ export function memoryProposals(now: () => number = Date.now): MemoryProposals {
       return "restored";
     },
   });
+  return store;
 }
 
 /** Who asked, from line ①'s caller and line ③'s slip, at this time (decision 11). */

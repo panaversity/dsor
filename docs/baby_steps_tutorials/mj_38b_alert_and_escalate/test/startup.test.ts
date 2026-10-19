@@ -51,8 +51,11 @@ describe("reading the contracts folder", () => {
   // Changed in step 29: sixteen, with proposal.approve (step 29's README, decision D1).
   // Changed in step 31: seventeen, with proposal.execute (step 31's README, decision D12).
   // Changed in step 35: eighteen, with payment.execute (step 35's README, decision D7).
-  it("the shipped folder holds the nineteen contracts", () => {
+  // Changed in step 38b: twenty, with alert.escalate_due, first in name order (step 38b's README,
+  //   decision D3).
+  it("the shipped folder holds the twenty contracts", () => {
     expect(shipped.map((s) => s.file)).toEqual([
+      "alert.escalate_due.json",
       "control.lift.json",
       "control.suspend.json",
       "delegation.revoke.json",

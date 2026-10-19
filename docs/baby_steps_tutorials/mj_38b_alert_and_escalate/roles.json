@@ -28,6 +28,6 @@
     "proposal:approve",
     "payment:approve"
   ],
-  "scheduler": ["proposal:expire", "rule:check", "payment:reconcile"],
+  "scheduler": ["proposal:expire", "rule:check", "payment:reconcile", "alert:escalate"],
   "rate_loader": ["rate:load"]
 }

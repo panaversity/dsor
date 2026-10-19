@@ -1,6 +1,7 @@
 // Everything that talks to PostgreSQL. The log is the table dsor.audit,
 // which dsor_runtime can add to and read, and never change (DSOR-AUD-04a in
 // specs/dsor/03-execution.md, section 30). The invoices are the table app.invoices.
+import type { Alert } from "./alerts.ts";
 import type { HoldStore, KeptHold } from "./holds.ts";
 import {
   unknownFromNote,
@@ -2314,6 +2315,31 @@ function proposalsThrough(run: Runner): ProposalStore {
       run(tenant, (client) => approvalsIn(client, tenant, id)),
     // The lock of one operation over one record, an advisory lock, as a slip's is,
     //   alone, until the transaction ends: the claim's, inside a claim (step 32's README, D7).
+    // NEW IN STEP 38b: the company's alerts, DSoR's own WHERE first, with row-level security
+    //   behind it (DSOR-TEN-01b).
+    alerts: async (tenant: string): Promise<Alert[]> =>
+      run(tenant, async (client) => {
+        const { rows } = await client.query<AlertRow>(
+          `SELECT proposal_id, state, raised_at, escalated_to, escalated_at, outcome, closed_at
+             FROM dsor.alerts WHERE tenant_id = $1 ORDER BY raised_at, proposal_id`,
+          [tenant],
+        );
+        return rows.map(alertFrom);
+      }),
+    // And the escalation, in one statement by the database's clock: of two sweeps at once, the
+    //   second waits for the first's row lock, then finds the alert escalated, and skips it
+    //   (step 38b's README, claim C4).
+    escalateDue: async (tenant: string, afterMs: number, to: string): Promise<Alert[]> =>
+      run(tenant, async (client) => {
+        const { rows } = await client.query<AlertRow>(
+          `UPDATE dsor.alerts SET state = 'escalated', escalated_to = $2
+            WHERE tenant_id = $1 AND state = 'open'
+              AND raised_at <= now() - make_interval(secs => $3::double precision / 1000)
+            RETURNING proposal_id, state, raised_at, escalated_to, escalated_at, outcome, closed_at`,
+          [tenant, to, afterMs],
+        );
+        return rows.map(alertFrom).sort((a, b) => a.proposal.localeCompare(b.proposal));
+      }),
     holdOver: async (tenant: string, operation: string, uri: string): Promise<void> =>
       run(tenant, async (client) => {
         await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
@@ -2389,7 +2415,51 @@ async function moveWith(
     client,
     transitionOf(tenant, uri, rows[0]!.operation, from, to, by.mover, by.cause, by.correlation),
   );
+  // NEW IN STEP 38b: the move to OUTCOME_UNKNOWN raises its alert, and the move out of it closes
+  //   it, in this transaction, so every path raises one and no settlement leaves one open
+  //   (DSOR-UNK-04b; step 38b's README, decisions D1, D5, and D6). The trigger sets the times.
+  if (to === "OUTCOME_UNKNOWN") {
+    const { rowCount } = await client.query(
+      "INSERT INTO dsor.alerts (tenant_id, proposal_id) VALUES ($1, $2)",
+      [tenant, id],
+    );
+    if (rowCount !== 1) throw new Error(`the alerts kept ${rowCount ?? 0} rows, not 1`);
+  }
+  if (from === "OUTCOME_UNKNOWN") {
+    // A proposal that went unknown before migration 034 has no alert to close.
+    await client.query(
+      `UPDATE dsor.alerts SET state = 'closed', outcome = $3
+        WHERE tenant_id = $1 AND proposal_id = $2 AND state IN ('open', 'escalated')`,
+      [tenant, id, to],
+    );
+  }
   return true;
+}
+
+// NEW IN STEP 38b: one row of dsor.alerts.
+type AlertRow = {
+  proposal_id: string;
+  state: Alert["state"];
+  raised_at: Date;
+  escalated_to: string | null;
+  escalated_at: Date | null;
+  outcome: "COMMITTED" | "FAILED" | null;
+  closed_at: Date | null;
+};
+
+/** One alert from its row, with only the fields it has. */
+function alertFrom(row: AlertRow): Alert {
+  return {
+    proposal: row.proposal_id,
+    state: row.state,
+    raised_at: row.raised_at.toISOString(),
+    ...(row.escalated_to === null
+      ? {}
+      : { escalated_to: row.escalated_to, escalated_at: row.escalated_at!.toISOString() }),
+    ...(row.outcome === null
+      ? {}
+      : { outcome: row.outcome, closed_at: row.closed_at!.toISOString() }),
+  };
 }
 
 /** Every approval of one proposal, in the order they were given. */

@@ -146,7 +146,7 @@ describe("C4: an alert still open after the bound goes to the named person, once
     const swept = await escalate(w);
     expect(swept).toMatchObject({
       outcome: "COMMITTED",
-      data: { escalated: [`dsor://org_456/proposal/${id}`], to: "cfo_100" },
+      data: { escalated: [{ proposal: `dsor://org_456/proposal/${id}` }], to: "cfo_100" },
     });
     const [alert] = await w.proposals.alerts("org_456");
     expect(alert).toMatchObject({ proposal: id, state: "escalated", escalated_to: "cfo_100" });

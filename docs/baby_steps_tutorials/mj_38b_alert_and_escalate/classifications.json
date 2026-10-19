@@ -43,6 +43,15 @@
     "target": "internal",
     "status": "internal"
   },
+  "AlertEscalation": {
+    "tenant_id": "internal",
+    "escalated": "EscalatedAlert[]",
+    "to": "internal"
+  },
+  "EscalatedAlert": {
+    "proposal": "internal",
+    "raised_at": "internal"
+  },
   "PaymentReconciliation": {
     "proposal": "internal",
     "state": "internal",

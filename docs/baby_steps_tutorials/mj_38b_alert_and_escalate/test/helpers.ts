@@ -161,7 +161,8 @@ export const STARTING_ROLES: Record<string, string[]> = {
     "payment:approve",
   ],
   // And, since step 28b, sweeps the policies the rules cite (step 28b's README, decision D4).
-  scheduler: ["proposal:expire", "rule:check", "payment:reconcile"],
+  // Changed in step 38b: and alert:escalate (step 38b's README, decision D3).
+  scheduler: ["proposal:expire", "rule:check", "payment:reconcile", "alert:escalate"],
   rate_loader: ["rate:load"],
 };
 

@@ -802,7 +802,7 @@ describe("from the review: every command, in each mode", () => {
       // ③ lets through, 7 in org_456 and 5 in org_789 (step 31's README, decision D12).
       // Changed in step 35: and 12 for payment.execute, user_123 and user_700, 6 swaps each of its
       // two URIs (step 35's README, decision D7).
-      expect(report.attacks).toHaveLength(219);
+      expect(report.attacks).toHaveLength(225);
     },
   );
 

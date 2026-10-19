@@ -1,6 +1,7 @@
 // What step 28's tests share: a world in memory whose company keeps its rules in a store. Not a
 // test file itself. The registry and the claims are given the same store, as with the brakes, so
 // a change that a command makes is the change that line ⑩ reads (step 28's README, decision D5).
+import { readAlerts, type AlertsSource } from "../src/alerts.ts";
 import { memoryHolds, type MemoryHolds } from "../src/holds.ts";
 import { memoryIntents, type MemoryIntents } from "../src/intents.ts";
 import { readRoleSettings } from "../src/authority.ts";
@@ -128,6 +129,8 @@ export function ruleWorld(
   bank: FakeBank = createFakeBank(),
   // Step 35: and the company's code, the shipped code unless a test gives its own.
   code: Record<string, Handler> = handlersFor(),
+  // NEW IN STEP 38b: and each company's alerts, this step's own file unless a test gives another.
+  alerts: AlertsSource = readAlerts(),
 ): RuleWorld {
   const clock = { now: T0 };
   const bills = [...structuredClone(invoices), ...structuredClone(BILLS)];
@@ -183,6 +186,7 @@ export function ruleWorld(
     ksors,
     connectors,
     new Map([["fake-bank", { bank, waitMs: 50 }]]),
+    alerts,
   );
   const log = createLog();
   const ask = (who: RequestEnvelope, name: string, input: unknown): Promise<Answer> =>

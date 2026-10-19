@@ -988,7 +988,19 @@ export async function call(
             const contracts = registry.contracts;
             // And the company's bank, for an operation that asks it.
             const bank = ASKS_BANK.has(contract.id) ? registry.plugs.bankOf(tenant) : undefined;
-            const work = { tenant, caller, stores, correlation, now, ksor, contracts, bank };
+            // NEW IN STEP 38b: and the company's alerts, for the escalation sweep.
+            const alerting = registry.alerts.get(tenant);
+            const work = {
+              tenant,
+              caller,
+              stores,
+              correlation,
+              now,
+              ksor,
+              contracts,
+              bank,
+              alerting,
+            };
             returned = await job.own.change(job.input, work);
           } else if (job.handler !== undefined) {
             // And the company's bank, for an operation that sends money, with a

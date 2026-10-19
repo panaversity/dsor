@@ -150,6 +150,8 @@ describe("C1: nothing can be called without a contract", () => {
       ksors: NO_KSORS,
       // And no connector, since this registry routes nothing (step 34's README, decision D3).
       plugs: NO_PLUGS,
+      // Changed in step 38b: and no alerts, since this registry runs no command.
+      alerts: new Map(),
     };
     // The refusal is an envelope, not a throw.
     expect(await call(handMade, log, AGENT, "invoice.delete", {})).toMatchObject({
@@ -240,7 +242,8 @@ describe("C7: a loaded contract is exactly what was written", () => {
     // And proposal.execute (step 31's README, decision D12).
     // Changed in step 35: and payment.execute (step 35's README, decision D7).
     // Changed in step 38: and payment.reconcile (step 38's README, decision D2).
-    expect(shipped).toHaveLength(19);
+    // Changed in step 38b: and alert.escalate_due (step 38b's README, decision D3).
+    expect(shipped).toHaveLength(20);
     for (const s of shipped) {
       const written = JSON.parse(s.text) as { id: string };
       expect(registry.contracts.get(written.id)).toStrictEqual(written);

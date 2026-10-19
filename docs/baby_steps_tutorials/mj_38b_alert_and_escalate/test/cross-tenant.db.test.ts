@@ -49,6 +49,7 @@ describe("the suite, on the database", () => {
     // And rate.load, by dsor-rates in each company: 6 more (step 26's README,
     // decision D1).
     expect(report.attacked).toStrictEqual([
+      "alert.escalate_due",
       "control.lift",
       "control.suspend",
       "delegation.revoke",
@@ -88,7 +89,8 @@ describe("the suite, on the database", () => {
     // through, 7 in org_456 and 5 in org_789: 36 more (step 31's README, decision D12).
     // Changed in step 35: and payment.execute's 12 (step 35's README, decision D7).
     // Changed in step 38: and payment.reconcile's 12 (step 38's README, decision D3).
-    expect(report.attacks).toHaveLength(219);
+    // Changed in step 38b: and alert.escalate_due's 6 (step 38b's README, decision D3).
+    expect(report.attacks).toHaveLength(225);
     // And the in-company pair, from org_456's four readers and org_789's two, through the
     // database's store. Found by the Stage 2 review, and fixed from step 12 on.
     expect(report.pairs).toHaveLength(6);
@@ -144,7 +146,8 @@ describe("the suite, on the database", () => {
       // each (step 30's README, decision D5).
       // Changed in step 31: and proposal.execute, 7 callers in org_456 and 5 in org_789, × 3 each
       // (step 31's README, decision D12).
-      expect(made).toHaveLength(home === "org_456" ? 123 : 96);
+      // Changed in step 38b: and alert.escalate_due, dsor-scheduler in each company, 1 × 3.
+      expect(made).toHaveLength(home === "org_456" ? 126 : 99);
       const ids = made.map((attack) => attack.request_id);
       expect(await recordsIn(home, ids)).toStrictEqual(
         made.map(({ operation, request_id }) => ({

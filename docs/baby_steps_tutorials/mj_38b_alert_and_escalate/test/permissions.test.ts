@@ -355,7 +355,12 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
     // decision D10).
     // And, since step 28b, sweep the rules' policies too (step 28b's README, decision D4).
     // Changed in step 38: and payment:reconcile (step 38's README, decision D2).
-    ["dsor-scheduler", "tok_5c4e", ["payment:reconcile", "proposal:expire", "rule:check"]],
+    // Changed in step 38b: and alert:escalate (step 38b's README, decision D3).
+    [
+      "dsor-scheduler",
+      "tok_5c4e",
+      ["alert:escalate", "payment:reconcile", "proposal:expire", "rule:check"],
+    ],
     // The rates' login may load rates, and do nothing else (step 26's README,
     // decision D1).
     ["dsor-rates", "tok_3b8f", ["rate:load"]],
@@ -649,6 +654,8 @@ describe("C4: an operation nobody was granted is denied to everyone", () => {
         ksors: registry.ksors,
         // And the shipped connectors (step 34's README, decision D4).
         plugs: registry.plugs,
+        // Changed in step 38b: and the shared registry's alerts.
+        alerts: registry.alerts,
       };
       expect(
         await call(handMade, log, SUPERVISOR, "invoice.get", {
