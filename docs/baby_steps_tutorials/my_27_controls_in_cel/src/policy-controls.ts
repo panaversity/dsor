@@ -371,3 +371,10 @@ export async function switchOn(tenant: string, id: string, version: number): Pro
 
   return Object.freeze({ kind: "switched_on", results: Object.freeze(results) });
 }
+
+/**
+ * How long a proposal waits for the approvals a control requires: 72 hours, §44's strictest bound
+ * on an approval for a HIGH operation (decision 162). The receipt says until when; nothing moves a
+ * waiting proposal on before step 29.
+ */
+export const WAITS_FOR_APPROVAL_MS: number = 72 * 60 * 60 * 1000;

@@ -437,13 +437,13 @@ export function leaveTheDoor(principal: Principal, answer: HandlerAnswer): Opera
   // `requires` or `extensions`, which the schema lets hold anything, left for the agent beside a
   // filtered `data`, with `amount` listed as withheld.
   //
-  // `data` is optional in that schema, and step 27's first PENDING_APPROVAL receipt will have
-  // none. A receipt with no data has nothing to filter and nothing to label, so it leaves with no
-  // label and no list, and is built and checked like any other: a review made the door throw on
-  // it, after the command had run, and another found it leaving unchecked. A PENDING_APPROVAL one
-  // cannot leave yet: its schema requires `requires`, which is left out above, so the check below
-  // refuses it. Step 27 brings `requires` back through the filter. STEP 17: this said step
-  // 17, which holds no command for approval; the map's step 27 is the first (decision 125).
+  // `data` is optional in that schema. A receipt with no data has nothing to filter and nothing to
+  // label, so it leaves with no label and no list, and is built and checked like any other: a review
+  // made the door throw on it, after the command had run, and another found it leaving unchecked.
+  // A handler's PENDING_APPROVAL could not leave: its schema requires `requires`, which is left out
+  // above, so the check below refuses it. STEP 27: the PENDING_APPROVAL receipts that do leave are
+  // the door's own, built from the controls it evaluated, and never pass through here, so a
+  // handler still cannot put anything under `requires` (decision 162).
   const closed = closedPartsOf(answer.envelope);
   const data: unknown = answer.envelope.data;
   let envelope: Readonly<Record<string, unknown>> = Object.freeze(closed);

@@ -20,6 +20,7 @@
 // Rule DSOR-EXE-01b: an interface, connector, or operation MUST NOT skip a pipeline step that
 // applies to it.
 
+import type { Evaluated } from "./policy-controls.ts";
 import type { Delegation } from "./delegation.ts";
 import type { Claim } from "./idempotency.ts";
 import type { Login } from "./login.ts";
@@ -137,6 +138,11 @@ export interface Context {
    */
   readonly recorded?: string;
   /**
+   * NEW IN STEP 27: each control on the operation, and what it said about this request, from
+   * §21.10. §21.11 records them, and the door holds a request one of them requires approval for.
+   */
+  readonly controls?: readonly Evaluated[];
+  /**
    * STEP 08: the refusal that has already happened, if one has.
    *
    * It is here because §21.11 must record a `DENY`, and the stage that records cannot record a
@@ -241,6 +247,10 @@ const REQUIRED: readonly string[] = Object.freeze([
   // STEP 25: after the arguments are validated and the proposal made, before the limit and the
   // decision, so who may act on a target is recorded as the DENY it is (decision 143).
   "check the target",
+  // NEW IN STEP 27: required by name, before the slip's limits book, because without it the
+  // company's policy is never asked and a payment above 25,000 USD goes through with no CFO, with
+  // nothing to say a control was ever looked at (decision 162).
+  "evaluate the controls",
   // STEP 18: required too, because without it a payment above the slip's limit goes
   // through with nothing to say it was ever checked.
   "check the slip's limit",

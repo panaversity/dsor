@@ -104,13 +104,25 @@ export interface ErrorEnvelope {
  * semantics; VALIDATED names the decision, and has no proposal, because none was made. Decision 154:
  * VALIDATED says its semantics too, as every answer to a command must (DSOR-EXE-05b).
  */
+/** NEW IN STEP 27: one approval a proposal waits for: which control asked, and for whom. */
+export interface Requirement {
+  readonly control: string;
+  readonly version: number;
+  readonly role: string;
+  readonly quorum: number;
+}
+
 export interface ResultEnvelope {
-  readonly outcome: "COMMITTED" | "READY" | "VALIDATED";
+  readonly outcome: "COMMITTED" | "READY" | "VALIDATED" | "PENDING_APPROVAL";
   readonly proposal?: string;
   readonly payload_hash?: string;
   readonly semantics?: string;
-  /** STEP 23: what a dry run would have been told: ALLOW. */
-  readonly decision?: "ALLOW";
+  /** STEP 23: what a dry run would have been told: ALLOW. STEP 27: or REQUIRE_APPROVAL. */
+  readonly decision?: "ALLOW" | "REQUIRE_APPROVAL";
+  /** NEW IN STEP 27: what a proposal waits for, one entry for each control that asked. */
+  readonly requires?: readonly Requirement[];
+  /** NEW IN STEP 27: until when it waits. */
+  readonly expires_at?: string;
   /** The row the command changed. A READY or VALIDATED answer changed nothing, and has none. */
   readonly data?: Readonly<Record<string, unknown>>;
   readonly correlation: Correlation;
@@ -357,6 +369,51 @@ export function ready(answer: {
 }
 
 /**
+ * NEW IN STEP 27: the answer to a command a control requires approval for (decision 162).
+ *
+ * The proposal waits at PENDING_APPROVAL, and the caller is told what it waits for and until when.
+ * Nothing ran, so there is no data. Built here, from the controls the door evaluated, and checked
+ * against the schema like every answer: `requires` holds only these four fields, so nothing else
+ * can travel in it.
+ */
+export function pendingApproval(answer: {
+  tenant: string;
+  proposal: string;
+  payloadHash: string;
+  semantics: string;
+  requires: readonly Requirement[];
+  expiresAt: string;
+  requestId?: string;
+  principalId?: string;
+}): ResultEnvelope {
+  if (!answer.proposal.startsWith(`dsor://${answer.tenant}/proposal/`)) {
+    throw new TypeError(
+      `a PENDING_APPROVAL answer for a command in ${answer.tenant} named ${answer.proposal}, which is not one of its proposals`,
+    );
+  }
+
+  const envelope: ResultEnvelope = Object.freeze({
+    outcome: "PENDING_APPROVAL" as const,
+    proposal: answer.proposal,
+    payload_hash: answer.payloadHash,
+    semantics: answer.semantics,
+    requires: Object.freeze(
+      answer.requires.map(({ control, version, role, quorum }) =>
+        Object.freeze({ control, version, role, quorum }),
+      ),
+    ),
+    expires_at: answer.expiresAt,
+    correlation: correlationFor(answer.requestId, answer.principalId),
+  });
+
+  if (!validateEnvelope("result", envelope)) {
+    throw new TypeError("built a PENDING_APPROVAL envelope that does not validate");
+  }
+
+  return envelope;
+}
+
+/**
  * STEP 23: the answer to a dry run the rules would allow (DSOR-OPR-06, decision 138).
  *
  * The decision, the fingerprint of what was asked, and the semantics the command would run with; no
@@ -372,10 +429,12 @@ export function validated(answer: {
   semantics: string;
   requestId?: string;
   principalId?: string;
+  /** STEP 27: what the controls would decide; ALLOW unless one would require approval. */
+  decision?: "ALLOW" | "REQUIRE_APPROVAL";
 }): ResultEnvelope {
   const envelope: ResultEnvelope = Object.freeze({
     outcome: "VALIDATED" as const,
-    decision: "ALLOW" as const,
+    decision: answer.decision ?? ("ALLOW" as const),
     payload_hash: answer.payloadHash,
     semantics: answer.semantics,
     correlation: correlationFor(answer.requestId, answer.principalId),

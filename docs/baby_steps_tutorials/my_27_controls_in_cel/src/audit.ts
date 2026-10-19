@@ -130,6 +130,8 @@ export interface AuditRecord {
   readonly row_count?: number;
   /** STEP 19: the slip an agent acted under, for an `unattended` record. */
   readonly delegation?: string;
+  /** NEW IN STEP 27: each control the decision evaluated (DSOR-EXE-02, decision 162). */
+  readonly controls?: readonly ControlOnTheRecord[];
   readonly correlation: {
     readonly request_id: string;
     readonly tenant_id?: string;
@@ -146,6 +148,18 @@ export interface AuditRecord {
  * fields that make the record trustworthy, so the caller does not get to set them. `subject` is
  * `string | undefined` on purpose — see `audit`.
  */
+/**
+ * NEW IN STEP 27: one control a decision evaluated, as the schema's `controls` names it: its id and
+ * version, its outcome, the policy it came from, and why it could not be evaluated, if it could not.
+ */
+export interface ControlOnTheRecord {
+  readonly id: string;
+  readonly version: number;
+  readonly outcome: string;
+  readonly authority: Readonly<Record<string, unknown>>;
+  readonly evaluation_error?: string;
+}
+
 export interface DecisionToRecord {
   readonly kind: AuditKind;
   /** Who DSoR authenticated, or `undefined` when nobody logged in. */
@@ -183,6 +197,8 @@ export interface DecisionToRecord {
      */
     readonly asOf?: string;
   };
+  /** NEW IN STEP 27: the controls this decision evaluated, when it evaluated any. */
+  readonly controls?: readonly ControlOnTheRecord[];
 }
 
 /**
@@ -755,6 +771,8 @@ function copyOf(decision: DecisionToRecord): DecisionToRecord {
     rowCount,
     // STEP 19: copied once, like everything above.
     underSlip,
+    // NEW IN STEP 27: and the controls, each a copy.
+    controls,
   } = decision;
 
   const copy: DecisionToRecord = Object.freeze({
@@ -770,6 +788,22 @@ function copyOf(decision: DecisionToRecord): DecisionToRecord {
     resources: resources === undefined ? undefined : Object.freeze([...resources]),
     rowCount,
     underSlip: underSlip === undefined ? undefined : Object.freeze({ ...underSlip }),
+    controls:
+      controls === undefined
+        ? undefined
+        : Object.freeze(
+            controls.map(({ id, version, outcome, authority, evaluation_error }) =>
+              Object.freeze({
+                id,
+                version,
+                outcome,
+                authority: Object.freeze({ ...authority }),
+                ...(evaluation_error === undefined
+                  ? {}
+                  : { evaluation_error: clip(evaluation_error) }),
+              }),
+            ),
+          ),
   });
 
   copiesMade.add(copy);
@@ -951,6 +985,12 @@ function sealAt(
     body.delegation = underSlip.delegation;
   }
 
+  // NEW IN STEP 27: inside the hash too, so a record whose controls are changed afterwards does
+  // not verify. Only when the decision evaluated some: none is left out, as the schema prefers.
+  if (copy.controls !== undefined && copy.controls.length > 0) {
+    body.controls = copy.controls;
+  }
+
   body.record_hash = hashOf(body);
 
   // Frozen, and frozen deeply enough to matter: `readonly` is erased before Node runs, so without
@@ -987,11 +1027,11 @@ function sealAt(
 /** STEP 22, decision 157: the log's columns, in the order every INSERT of a record names them. */
 const COLUMNS = `record_id, chain, sequence, previous_hash, record_hash, at, tenant, kind,
        identity, correlation, operation, payload_hash, "authorization", result, reason,
-       resources, row_count, delegation`;
+       resources, row_count, delegation, controls`;
 
 /**
  * STEP 22, decision 157: one record's values, added to `params` in the order of `COLUMNS`,
- * and their placeholders. Today's eighteen, in today's order: a test that fails the write of a read
+ * and their placeholders. Nineteen since step 27, in today's order: a test that fails the write of a read
  * finds the record's `kind` at `params[7]`.
  */
 function valuesOf(written: AuditRecord, params: unknown[]): string {
@@ -1017,6 +1057,8 @@ function valuesOf(written: AuditRecord, params: unknown[]): string {
     written.row_count ?? null,
     // STEP 19: migration 016's column, for the schema's field.
     written.delegation ?? null,
+    // NEW IN STEP 27: migration 030's, as JSON text like identity and correlation.
+    written.controls === undefined ? null : JSON.stringify(written.controls),
   ];
 
   return values
@@ -1179,7 +1221,7 @@ export async function theLog(tenant: string): Promise<readonly AuditRecord[]> {
     `SELECT record_id, chain, sequence::text AS at_position, previous_hash, record_hash,
             to_char(at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at,
             tenant, kind, identity, correlation, operation, payload_hash, "authorization", result,
-            reason, resources, row_count, delegation
+            reason, resources, row_count, delegation, controls
      FROM dsor.audit WHERE chain = $1 ORDER BY sequence`,
     [chainOf(tenant)],
   );
@@ -1216,6 +1258,8 @@ export async function theLog(tenant: string): Promise<readonly AuditRecord[]> {
         "resources",
         "row_count",
         "delegation",
+        // NEW IN STEP 27.
+        "controls",
       ]) {
         if (row[field] !== null && row[field] !== undefined) {
           record[field] = row[field];

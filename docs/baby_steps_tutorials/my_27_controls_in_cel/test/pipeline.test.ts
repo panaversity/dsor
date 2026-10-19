@@ -67,6 +67,8 @@ describe("the pipeline", () => {
       "create the proposal",
       // STEP 25: part of §21 step 9, who may act on the target (decision 143).
       "check the target",
+      // NEW IN STEP 27: part of §21 step 10, the company's controls, for commands only.
+      "evaluate the controls",
       // STEP 18: part of §21 step 10, the slip's limit on one payment, for commands only.
       "check the slip's limit",
       "record the decision",
@@ -78,7 +80,8 @@ describe("the pipeline", () => {
   // preconditions and the rest of the controls. STEP 22: the proposal is 8.
   it("DSOR-EXE-01a: each stage carries its §21 number, and they only ever go up", () => {
     // STEP 25: and 4, the operational status, no longer missing.
-    expect(PIPELINE.map((s) => s.at)).toEqual([1, 2, null, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    // STEP 27: and two stages at 10, the controls and then the slip's limits.
+    expect(PIPELINE.map((s) => s.at)).toEqual([1, 2, null, 3, 4, 5, 6, 7, 8, 9, 10, 10, 11]);
 
     const numbered = PIPELINE.map((s) => s.at).filter((at): at is number => at !== null);
 
@@ -108,6 +111,8 @@ describe("the pipeline", () => {
     // STEP 22: and the proposal, because a query proposes nothing.
     for (const stage of PIPELINE) {
       const commandOnly =
+        // NEW IN STEP 27: and the controls, which govern commands (decision 162).
+        stage.name === "evaluate the controls" ||
         stage.name === "check the slip's limit" ||
         stage.name === "claim the idempotency key" ||
         stage.name === "create the proposal" ||
@@ -149,12 +154,13 @@ describe("the pipeline", () => {
       fake(7, "claim the idempotency key", "command"), // STEP 20
       fake(8, "create the proposal", "command"), // STEP 22
       fake(9, "check the target", "command"), // STEP 25
+      fake(10, "evaluate the controls", "command"), // STEP 27
       fake(10, "check the slip's limit", "command"), // STEP 18
       fake(11, "record the decision"),
     ];
 
     // The whole list is fine, so the cases below fail for the reason claimed.
-    expect(assertPipeline(whole)).toBe(12);
+    expect(assertPipeline(whole)).toBe(13);
 
     for (const missing of whole) {
       const short = whole.filter((s) => s !== missing);
@@ -583,6 +589,7 @@ describe("the pipeline", () => {
       fake(6, "validate the input"),
       fake(8, "create the proposal", "command"), // STEP 22: required, so present
       fake(9, "check the target", "command"), // STEP 25: required, so present
+      fake(10, "evaluate the controls", "command"),
       fake(10, "check the slip's limit", "command"),
       fake(11, "record the decision"),
     ];
@@ -601,11 +608,12 @@ describe("the pipeline", () => {
       fake(7, "claim the idempotency key", "command"),
       fake(8, "create the proposal", "command"),
       fake(9, "check the target", "command"),
+      fake(10, "evaluate the controls", "command"),
       fake(10, "check the slip's limit", "command"),
       fake(11, "record the decision"),
     ];
 
-    expect(assertPipeline(inOrder)).toBe(12);
+    expect(assertPipeline(inOrder)).toBe(13);
   });
 
   // A door is how an interface gets the pipeline. DSOR-OPR-04a says every interface must invoke the
@@ -785,6 +793,10 @@ describe("the pipeline", () => {
         // revoke.test.ts catches.
         "check the operational status",
         "check the target",
+        // NEW IN STEP 27: and the controls, which fill something only for a command with a control
+        // in force: a no-op one lets a payment past the CFO, which controls-at-the-door.test.ts
+        // catches.
+        "evaluate the controls",
       ]);
       const fillers = PIPELINE.filter((stage) => !fillsNothing.has(stage.name));
 
@@ -1109,8 +1121,8 @@ describe("the pipeline", () => {
       }
     }
 
-    // Twelve stages: 220 threes with 5 reorderings each, and 495 fours with 23.
-    expect(tried).toBe(220 * 5 + 495 * 23);
+    // STEP 27: thirteen stages: 286 threes with 5 reorderings each, and 715 fours with 23.
+    expect(tried).toBe(286 * 5 + 715 * 23);
   });
 
   it("DSOR-EXE-01a: of a hundred thousand orderings drawn at random, only the real one is accepted", () => {

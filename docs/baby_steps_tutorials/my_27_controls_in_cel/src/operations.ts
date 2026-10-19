@@ -13,11 +13,13 @@
 import {
   nextRequestId,
   payloadHash,
+  pendingApproval,
   refusal,
   ready,
   success,
   validated,
   type ErrorEnvelope,
+  type Requirement,
   type ResultEnvelope,
 } from "./envelopes.ts";
 // Every call says who is asking, and STEP 06 every call is checked against what that
@@ -72,7 +74,7 @@ import { formatUri, parseUri } from "./uri.ts";
 import { cancelPayment, createPayment, paymentAmountFrom } from "./payment.ts";
 // STEP 08: the log. operations.ts is where the pipeline lives, so it is where the stage that
 // writes a record lives too.
-import { audit, type DecisionToRecord, OutcomeUnknown } from "./audit.ts";
+import { audit, type DecisionToRecord, now, OutcomeUnknown } from "./audit.ts";
 // STEP 20: the idempotency key, claimed at §21.7 and settled by the door (decision 131).
 import { type Claim, claimKey, KEY, settleKey, TakenButUnread } from "./idempotency.ts";
 // STEP 24: the day's total, booked at §21.10 and settled by the door (decision 140).
@@ -84,6 +86,16 @@ import { money, type Money } from "./money.ts";
 // STEP 26: two amounts compared in any two currencies, at the company's rates (decision 159).
 import { CannotConvert, convertUp, exceeds, plus, type RateOf } from "./exchange.ts";
 import { ratesOf } from "./rates.ts";
+// NEW IN STEP 27: the company's policy, as controls written in CEL (decision 162).
+import type { ConditionInput } from "./cel.ts";
+import {
+  type Control,
+  controlsInForce,
+  evaluateControl,
+  type Evaluated,
+  mostRestrictive,
+  WAITS_FOR_APPROVAL_MS,
+} from "./policy-controls.ts";
 // STEP 22: the proposal, made at §21.8 and moved by the door (decision 136).
 import {
   type ForTheRecord,
@@ -2008,6 +2020,103 @@ function againstTheLimit(amount: Money, limit: Money, rates: RateOf): AgainstThe
 }
 
 /**
+ * NEW IN STEP 27: whether a control in force requires approval for this request, and nothing
+ * refused it outright: then the door holds its proposal at PENDING_APPROVAL (decision 162).
+ */
+function needsApproval(context: Context): boolean {
+  return (
+    context.controls !== undefined &&
+    mostRestrictive(context.controls.map((evaluated) => evaluated.outcome)) === "REQUIRE_APPROVAL"
+  );
+}
+
+/**
+ * NEW IN STEP 27: part of §21.10 — the company's controls on this operation (decision 162).
+ *
+ * Every control in force on the command's operation is evaluated, for every caller, a person or the
+ * agent: a control is the company's policy, not the agent's leash. Each sees Appendix B's eight
+ * variables, built here from what DSoR established and from the validated input, never from the
+ * request beside it, and compares money at the company's own rates (DSOR-CTL-05, DSOR-CTL-06,
+ * DSOR-MON-03). A condition that cannot be evaluated applies its control (DSOR-CTL-07), and the most
+ * restrictive answer wins (DSOR-AUT-02b). DENY refuses here, POLICY_DENIED, before anything is
+ * booked; REQUIRE_APPROVAL carries on, the slip's limits still book, and the door holds the proposal
+ * once the decision is recorded. What each control said goes on the context either way, so §21.11
+ * records it (DSOR-EXE-02).
+ */
+const evaluateTheControls: Stage["run"] = async (context) => {
+  const { principal, tenant, contract, given } = context;
+  const askedBy = principal?.id ?? "(nobody)";
+
+  if (
+    principal === undefined ||
+    tenant === undefined ||
+    contract === undefined ||
+    given === undefined
+  ) {
+    return refuse(
+      askedBy,
+      "INTERNAL_ERROR",
+      "the controls were evaluated without a principal, a tenant, a contract and its arguments",
+      context.requestId,
+    );
+  }
+
+  let inForce: readonly Control[];
+
+  try {
+    inForce = await controlsInForce(tenant, contract.id);
+  } catch {
+    // A control that cannot be read cannot be honoured, so nothing is done; it is never "no control".
+    return refuse(
+      askedBy,
+      "EVIDENCE_STORE_UNAVAILABLE",
+      `the controls on ${contract.id} in ${tenant} could not be read; nothing was done`,
+      context.requestId,
+    );
+  }
+
+  if (inForce.length === 0) {
+    return carryOn(context);
+  }
+
+  const slip = context.delegation;
+  const environment: ConditionInput = {
+    input: given,
+    // No contract binds a resource until step 32's preconditions.
+    state: {},
+    principal: { id: principal.id, type: principal.type, roles: [principal.role] },
+    actor_chain: principal.type === "agent" ? [principal.id] : [],
+    delegation:
+      slip === undefined
+        ? null
+        : { id: slip.id, delegator: slip.delegator, delegate: slip.delegate },
+    tenant: { id: tenant },
+    risk: contract.risk.level,
+    // DSoR's own clock, the one the log reads.
+    now: new Date(now()),
+  };
+  const rates = ratesOf(tenant);
+  const controls: readonly Evaluated[] = Object.freeze(
+    inForce.map((control) => evaluateControl(control, environment, rates)),
+  );
+  const withControls = { ...context, controls };
+
+  if (mostRestrictive(controls.map((evaluated) => evaluated.outcome)) === "DENY") {
+    const why = controls
+      .filter((evaluated) => evaluated.outcome === "DENY")
+      .map((evaluated) => `${evaluated.id} v${evaluated.version}: ${evaluated.reason ?? "denied"}`)
+      .join("; ");
+
+    return Object.freeze({
+      ...refuse(askedBy, "POLICY_DENIED", `refused by ${why}`, context.requestId),
+      context: withControls,
+    });
+  }
+
+  return carryOn(withControls);
+};
+
+/**
  * STEP 18: part of §21.10 — the slip's limit on one payment (DSOR-DEL-02, decision 127).
  *
  * After the input is validated, because the amount is the validated copy's: the one the payload hash
@@ -2185,8 +2294,8 @@ const checkTheSlipsLimit: Stage["run"] = async (context) => {
  * the answer leaves the door. That is the **ordering** half of `DSOR-EXE-02`, and this comment used to
  * claim it was "the whole of" the rule. It is not, on two counts:
  *
- *   - *"controls evaluated"* — nothing evaluates a control until step 27, so the schema's `controls`
- *     array is absent rather than empty.
+ *   - *"controls evaluated"* — STEP 27: each control on the operation, with what it said, from
+ *     §21.10; absent rather than empty for a request no control governs.
  *   - *"durably"* — the log is an array in one process. A restart loses every record, which is the
  *     exact failure §21's "Why it matters" describes. Step 09 puts it in PostgreSQL.
  *
@@ -2308,7 +2417,10 @@ const recordTheDecision: Stage["run"] = async (context) => {
             ? outcome.code
             : context.mode === "validate_only"
               ? "VALIDATED"
-              : "ALLOWED",
+              : // NEW IN STEP 27: allowed to wait, and not to run (decision 162).
+                needsApproval(context)
+                ? "PENDING_APPROVAL"
+                : "ALLOWED",
         reason: outcome === undefined ? undefined : outcome.message,
         ...(contract === undefined ? {} : { operation: `${contract.id}@${contract.version}` }),
         ...(context.payloadHash === undefined ? {} : { payloadHash: context.payloadHash }),
@@ -2320,6 +2432,8 @@ const recordTheDecision: Stage["run"] = async (context) => {
         // directory's time when it gave one; with none, the record has the decision's own.
         // Decision 149: and a slip it found and could not use, because a limit on it is not an amount.
         ...(underSlip === undefined ? {} : { underSlip }),
+        // NEW IN STEP 27: each control evaluated, refusals included (DSOR-EXE-02, decision 162).
+        ...(context.controls === undefined ? {} : { controls: context.controls }),
       });
 
       if (written !== undefined && tenant !== undefined) {
@@ -2451,6 +2565,8 @@ export const PIPELINE: readonly Stage[] = Object.freeze([
   stage(8, "create the proposal", "command", createTheProposal),
   // STEP 25. Part of §21.9: who may act on the target, and the state it is in (decision 143).
   stage(9, "check the target", "command", checkTheTarget),
+  // NEW IN STEP 27. Part of §21.10: the company's controls, before the slip's limits book.
+  stage(10, "evaluate the controls", "command", evaluateTheControls),
   // STEP 18. Part of §21.10: the slip's limit on one payment, from the validated amount.
   stage(10, "check the slip's limit", "command", checkTheSlipsLimit),
   // STEP 08. §21.11, and the only stage in the list that runs after a refusal.
@@ -2644,17 +2760,38 @@ const NOTHING_WAS_DONE: ReadonlySet<string> = new Set([
  * STEP 23: a command called propose_only, which the rules allow: its proposal moves to READY
  * and waits there, and nothing is carried out (DSOR-OPR-05, decision 138). Releasing it is
  * proposal.execute's, which checks everything again on live data, and is step 31's.
+ */
+function prepare(context: Context, progress: Progress): Promise<OperationAnswer> {
+  return waitAt(context, progress, "READY");
+}
+
+/**
+ * STEP 23: a proposal moved out of PROPOSED to wait, and nothing carried out. NEW IN STEP 27: at
+ * READY, prepared with propose_only, or at PENDING_APPROVAL, for the approvals a control requires,
+ * in either mode (decision 162). Its amount stays booked against the day while it waits.
  *
  * A move that cannot be written is read back, as the door's moves before a handler are (decision
- * 137): at READY, it was this request's own; at PROPOSED, nothing was written yet, and the request
- * is refused and the proposal DENIED. Decision 153: the claim is released only once DENIED is
- * written, because a write whose reply was lost can land after the read.
+ * 137): at the state it was moving to, it was this request's own; at PROPOSED, nothing was written
+ * yet, and the request is refused and the proposal DENIED. Decision 153: the claim is released only
+ * once DENIED is written, because a write whose reply was lost can land after the read.
  */
-async function prepare(context: Context, progress: Progress): Promise<OperationAnswer> {
+async function waitAt(
+  context: Context,
+  progress: Progress,
+  to: "READY" | "PENDING_APPROVAL",
+): Promise<OperationAnswer> {
   const { principal, tenant, contract, proposal, payloadHash: hash, recorded, requestId } = context;
   const semantics = contract?.execution?.semantics;
-  // STEP 22, decision 157: the request, as the record of the move to READY names it.
+  // STEP 22, decision 157: the request, as the record of the move names it.
   const by = forTheRecord(context);
+  // What the request is said to be, once it waits: prepared, or held for approval.
+  const done = to === "READY" ? "prepared" : "held for approval";
+  // NEW IN STEP 27: each approval a control asked for, by whom and how many (decision 162).
+  const requires: readonly Requirement[] = (context.controls ?? []).flatMap((evaluated) =>
+    evaluated.outcome === "REQUIRE_APPROVAL" && evaluated.requires !== undefined
+      ? [{ control: evaluated.id, version: evaluated.version, ...evaluated.requires }]
+      : [],
+  );
 
   if (
     principal === undefined ||
@@ -2665,35 +2802,37 @@ async function prepare(context: Context, progress: Progress): Promise<OperationA
     semantics === undefined ||
     // STEP 22, decision 157: a type guard: there are words for the record whenever there is a
     // principal, a contract and a payload hash, which the clauses above ask for.
-    by === undefined
+    by === undefined ||
+    // NEW IN STEP 27: a proposal held for approval says what it waits for.
+    (to === "PENDING_APPROVAL" && requires.length === 0)
   ) {
     return Object.freeze({
       kind: "error",
       askedBy: principal?.id ?? "(nobody)",
       envelope: refusal(
         "INTERNAL_ERROR",
-        `${nameOf(context.id)} was prepared without a principal, a tenant, a proposal, a payload hash, a record of the decision and its semantics`,
+        `${nameOf(context.id)} was ${done} without a principal, a tenant, a proposal, a payload hash, a record of the decision and its semantics`,
         requestId,
         principal?.id,
       ),
     });
   }
 
+  const cause =
+    to === "READY"
+      ? `allowed: the decision is recorded as ${recorded}; waiting to be released`
+      : `requires approval: ${requires
+          .map((r) => `${r.quorum} by ${r.role}, for ${r.control} v${r.version}`)
+          .join("; ")}; the decision is recorded as ${recorded}`;
   let moved: MoveOutcome | undefined;
 
   try {
     // STEP 25, decision 143: and, for an agent, not if a brake was pulled since §21.4: a stopped
-    // agent's command must not wait at READY to be released.
+    // agent's command must not wait to be released.
     moved = await moveProposalThrough(
       tenant,
       proposal,
-      [
-        [
-          "PROPOSED",
-          "READY",
-          `allowed: the decision is recorded as ${recorded}; waiting to be released`,
-        ],
-      ],
+      [["PROPOSED", to, cause]],
       "dsor",
       principal.type === "agent" ? principal.id : null,
       // STEP 22, decision 157: with its record, in the same statement.
@@ -2729,14 +2868,14 @@ async function prepare(context: Context, progress: Progress): Promise<OperationA
         askedBy: principal.id,
         envelope: refusal(
           "OUTCOME_UNKNOWN",
-          `${proposal} may or may not have been moved to READY, and could not be read back; it is left for reconciliation`,
+          `${proposal} may or may not have been moved to ${to}, and could not be read back; it is left for reconciliation`,
           requestId,
           principal.id,
         ),
       });
     }
 
-    moved = now === "READY" ? Object.freeze({ kind: "moved" }) : undefined;
+    moved = now === to ? Object.freeze({ kind: "moved" }) : undefined;
     progress.state = now;
   }
 
@@ -2748,7 +2887,7 @@ async function prepare(context: Context, progress: Progress): Promise<OperationA
       askedBy: principal.id,
       envelope: refusal(
         "AGENT_SUSPENDED",
-        `${principal.id} was stopped in ${tenant} before ${proposal} was prepared; a person must lift it`,
+        `${principal.id} was stopped in ${tenant} before ${proposal} was ${done}; a person must lift it`,
         requestId,
         principal.id,
       ),
@@ -2768,32 +2907,42 @@ async function prepare(context: Context, progress: Progress): Promise<OperationA
         moved === undefined
           ? refusal(
               "EVIDENCE_STORE_UNAVAILABLE",
-              `${proposal} could not be moved to READY, so it was not prepared; nothing was done`,
+              `${proposal} could not be moved to ${to}, so it was not ${done}; nothing was done`,
               requestId,
               principal.id,
             )
           : refusal(
               "INTERNAL_ERROR",
-              `${proposal} was not PROPOSED, so it was not prepared`,
+              `${proposal} was not PROPOSED, so it was not ${done}`,
               requestId,
               principal.id,
             ),
     });
   }
 
-  progress.state = "READY";
+  progress.state = to;
+
+  const answer = {
+    tenant,
+    proposal: `dsor://${tenant}/proposal/${proposal}`,
+    payloadHash: hash,
+    semantics,
+    requestId,
+    principalId: principal.id,
+  };
 
   return Object.freeze({
     kind: "result",
     askedBy: principal.id,
-    envelope: ready({
-      tenant,
-      proposal: `dsor://${tenant}/proposal/${proposal}`,
-      payloadHash: hash,
-      semantics,
-      requestId,
-      principalId: principal.id,
-    }),
+    envelope:
+      to === "READY"
+        ? ready(answer)
+        : // NEW IN STEP 27: what it waits for, and until when, on DSoR's own clock.
+          pendingApproval({
+            ...answer,
+            requires,
+            expiresAt: new Date(Date.parse(now()) + WAITS_FOR_APPROVAL_MS).toISOString(),
+          }),
   });
 }
 
@@ -2830,7 +2979,14 @@ function aDryRunsAnswer(context: Context): OperationAnswer {
   return Object.freeze({
     kind: "result",
     askedBy: principal.id,
-    envelope: validated({ payloadHash: hash, semantics, requestId, principalId: principal.id }),
+    envelope: validated({
+      payloadHash: hash,
+      semantics,
+      requestId,
+      principalId: principal.id,
+      // NEW IN STEP 27: what a real request would be told: to wait for approval (decision 162).
+      decision: needsApproval(context) ? "REQUIRE_APPROVAL" : "ALLOW",
+    }),
   });
 }
 
@@ -3374,9 +3530,12 @@ export function makeDoor(
         ? walked.answer
         : walked.context.mode === "validate_only"
           ? aDryRunsAnswer(walked.context)
-          : walked.context.mode === "propose_only"
-            ? await prepare(walked.context, progress)
-            : await carryOut(walked.context, startedAt, progress);
+          : // NEW IN STEP 27: a control requires approval, so it waits, in either mode.
+            needsApproval(walked.context)
+            ? await waitAt(walked.context, progress, "PENDING_APPROVAL")
+            : walked.context.mode === "propose_only"
+              ? await prepare(walked.context, progress)
+              : await carryOut(walked.context, startedAt, progress);
     const claim = walked.context.claim;
     const { proposal, tenant } = walked.context;
     // STEP 22, decision 157: the request, as the record of the move to DENIED names it.
