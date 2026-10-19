@@ -269,6 +269,8 @@ const TENANT_TABLES: ReadonlyArray<readonly [table: string, column: string]> = O
   ["dsor.agent_controls", "tenant"],
   // STEP 27: the company's controls, its policy in CEL (decision 162).
   ["dsor.controls", "tenant"],
+  // NEW IN STEP 29: what a waiting proposal waits for (decision 167).
+  ["dsor.requirements", "tenant"],
 ]);
 
 /** The tables as SQL, each looked up with `to_regclass`, which says NULL for one that is missing. */
@@ -984,6 +986,27 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
         `delete one, itself, one SET ROLE away, or through a helper function. The application ` +
         `reads the company's controls and changes a control's status, and nothing else. See ` +
         `migrations/028_controls.sql.`,
+    );
+  }
+
+  // NEW IN STEP 29: what a waiting proposal waits for. The application adds it and nothing else:
+  // a requirement it could change is an approval asked of somebody else, or of nobody, and one it
+  // could delete is a proposal that waits for nothing (decision 167).
+  const { rows: requirements } = await db.query<{ may: boolean }>(
+    `SELECT ${forAnyRoleItCanActAs((role) =>
+      [
+        `has_any_column_privilege(${role}, 'dsor.requirements', 'UPDATE')`,
+        `has_table_privilege(${role}, 'dsor.requirements', 'DELETE')`,
+        `has_table_privilege(${role}, 'dsor.requirements', 'TRUNCATE')`,
+      ].join(" OR "),
+    )} AS may`,
+  );
+
+  if (requirements[0]?.may !== false) {
+    throw new Error(
+      `this connection is \`${answer.who}\`, and it may change or delete what a proposal waits for, ` +
+        `itself, one SET ROLE away, or through a helper function. The application adds a waiting ` +
+        `proposal's requirements, and nothing else. See migrations/034_what_a_proposal_waits_for.sql.`,
     );
   }
 

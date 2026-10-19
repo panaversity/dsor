@@ -57,6 +57,11 @@ export interface Principal {
    * do. An agent with none reads public fields only — see `clearanceOf`.
    */
   readonly clearance?: Classification;
+  /**
+   * NEW IN STEP 29: the job a person holds, which a control's requirement names: one approval by
+   * the CFO is one by the person whose title is CFO (decision 167). An agent holds none.
+   */
+  readonly title?: string;
 }
 
 // STEP 10: the companies come last, one or more. A membership of a company this program
@@ -93,8 +98,12 @@ const person = (id: string, type: PrincipalType, role: string, ...tenants: strin
 // working for — which is what gives DSOR-IDN-03a's "exactly one" something to bite on. The two
 // people belong to org_456 only.
 const people: readonly Principal[] = Object.freeze([
-  person("user_123", "human", "ap_supervisor", "org_456"),
-  person("cfo_100", "human", "approver", "org_456"),
+  // STEP 29: and their titles, which an approval's requirement names (decision 167).
+  Object.freeze({
+    ...person("user_123", "human", "ap_supervisor", "org_456"),
+    title: "AP supervisor",
+  }),
+  Object.freeze({ ...person("cfo_100", "human", "approver", "org_456"), title: "CFO" }),
   // STEP 14: cleared for `internal`. The amount of an invoice is confidential, so the agent
   // sees the invoice and not the amount, which is the map's "done when".
   Object.freeze({

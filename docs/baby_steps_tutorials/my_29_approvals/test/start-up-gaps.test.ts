@@ -85,6 +85,8 @@ describe("a rule on a tenant table", () => {
     "dsor.agent_controls",
     // STEP 27: and the controls.
     "dsor.controls",
+    // NEW IN STEP 29: and what a proposal waits for.
+    "dsor.requirements",
   ]) {
     // The log's case is DSOR-EXE-02's: a decision the program believes recorded, swallowed. Every other
     // table's is the second lock's: a rule runs with the owner's rights, past it (decision 163).

@@ -64,6 +64,8 @@ describe("DSoR's own store", () => {
       "proposal_map",
       "proposal_moves",
       "proposals",
+      // NEW IN STEP 29: what a waiting proposal waits for (decision 167).
+      "requirements",
       "reservations",
     ]);
     expect(await tablesIn("public")).not.toContain("audit");

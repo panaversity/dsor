@@ -88,6 +88,8 @@ import { CannotConvert, convertUp, exceeds, plus, type RateOf } from "./exchange
 import { ratesOf } from "./rates.ts";
 // NEW IN STEP 29: RFC 8785, one spelling for every request (decision 167).
 import { canonicalJson, NotCanonical } from "./canonical.ts";
+// NEW IN STEP 29: what a waiting proposal waits for (decision 167).
+import { keepRequirements } from "./requirements.ts";
 // STEP 27: the company's policy, as controls written in CEL (decision 162).
 import type { ConditionInput } from "./cel.ts";
 import {
@@ -2990,6 +2992,26 @@ async function waitAt(
         principal?.id,
       ),
     });
+  }
+
+  // NEW IN STEP 29: what it will wait for, written before it starts waiting, so an approval always
+  // has requirements to be checked against. Written and then not moved, it is requirements of a
+  // proposal that never waited, which no approval can reach (decision 167).
+  if (to === "PENDING_APPROVAL") {
+    try {
+      await keepRequirements(tenant, proposal, requires);
+    } catch {
+      return Object.freeze({
+        kind: "error",
+        askedBy: principal.id,
+        envelope: refusal(
+          "EVIDENCE_STORE_UNAVAILABLE",
+          `what ${proposal} waits for could not be written, so it was not held for approval; nothing was done`,
+          requestId,
+          principal.id,
+        ),
+      });
+    }
   }
 
   const cause =
