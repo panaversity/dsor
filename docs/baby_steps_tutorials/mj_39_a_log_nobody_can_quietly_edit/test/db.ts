@@ -203,6 +203,13 @@ export function ownerAlerts(...args: string[]): unknown {
   return asOwner("owner-alerts.ts", args);
 }
 
+// NEW IN STEP 39: the owner edits the log as a tamperer would, and reads the checker's report
+//   (test/owner-audit.ts; step 39's README, claim C4).
+/** What the owner's audit program printed, for these words. */
+export function ownerAudit(...args: string[]): unknown {
+  return asOwner("owner-audit.ts", args);
+}
+
 // Step 32: the owner ends every proposal in flight, between two tests of one file that each
 //   need an invoice free (test/owner-attempts.ts; step 32's README, decision D7).
 /** What the owner's attempts program printed: how many proposals it ended. */
