@@ -1,4 +1,4 @@
-// NEW IN STEP 26b: the four questions start-up never asked (decision 161).
+// STEP 26b: the four questions start-up never asked (decision 161).
 //
 // Every time the program starts, it asks the database what its own login may do, and refuses to
 // start if the answer is too much. Decision 145 wrote down four ways round those questions. Each

@@ -401,7 +401,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
               WHERE t.tgrelid IN (${TENANT_REGCLASSES})
                 AND NOT t.tgisinternal
             ) AS has_trigger,
-            -- NEW IN STEP 26b: and rules. A tenant table is a table, and a table has no rule of
+            -- STEP 26b: and rules. A tenant table is a table, and a table has no rule of
             -- its own; every rule on one is somebody's (decision 161).
             EXISTS (
               SELECT 1 FROM pg_rewrite w
@@ -471,7 +471,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     );
   }
 
-  // NEW IN STEP 26b: a rule is the trigger's older cousin. It rewrites this program's own
+  // STEP 26b: a rule is the trigger's older cousin. It rewrites this program's own
   // statement, or adds statements of its own, with the table owner's rights, and start-up asked
   // only about triggers. Decision 149 measured del_100's limit lifted by a rule on the invoices,
   // fired by an ordinary invoice.issue; and `DO INSTEAD NOTHING` on the log would swallow a
@@ -514,7 +514,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
   // trap the same review measured: a view runs with its owner's rights, and its owner skips the
   // lock, so a view over the invoices shows every company to whoever may SELECT from it. So it
   // refuses an application that may SELECT from a table or view beside the tenant tables.
-  // NEW IN STEP 26b: it asked the application alone, and of the whole table, and decision 156
+  // STEP 26b: it asked the application alone, and of the whole table, and decision 156
   // measured three ways round it: the view readable one SET ROLE away, through a helper whose
   // owner may read it, or granted on some of its columns only, each showing every company's rows.
   // It is asked now the way the questions about writing are (decision 161).
@@ -623,7 +623,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
                 AND ns.nspname NOT LIKE 'pg_temp%'
                 -- NOT EXISTS, not NOT IN: a NULL in a NOT IN list makes every row false.
                 AND NOT EXISTS (SELECT 1 FROM tenant_table t WHERE t.rel = c.oid)
-                -- NEW IN STEP 26b: asked the way the write questions are, of every role the
+                -- STEP 26b: asked the way the write questions are, of every role the
                 -- application can act as, and of any column (decision 161).
                 AND ${forAnyRoleItCanActAs((role) => `has_any_column_privilege(${role}, c.oid, 'SELECT')`)}) AS reads_beyond,
             -- Nothing said yet. A statement with no company runs with whatever the session holds,
@@ -966,7 +966,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     );
   }
 
-  // NEW IN STEP 26b: everything beside the tenant tables, asked last, so that a right on one of
+  // STEP 26b: everything beside the tenant tables, asked last, so that a right on one of
   // the business's own tables is refused above in words that name the reason. A view runs with its
   // owner's rights, and start-up asked only whether the application may READ one: an owner's view
   // over the slips with INSERT and no SELECT passed, and through it the application signed itself a
@@ -1010,7 +1010,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     );
   }
 
-  // NEW IN STEP 26b: every sequence, not a list. `setval` needs UPDATE on a sequence, and
+  // STEP 26b: every sequence, not a list. `setval` needs UPDATE on a sequence, and
   // `ALTER SEQUENCE` needs its owner; either lets the application choose the number it should be
   // given. Start-up asked about the payments' sequence alone, above, and a proposal's number, a
   // brake's number and a move's place come from three more (decisions 153 and 156). Asked of every

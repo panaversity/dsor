@@ -1,8 +1,8 @@
 {
-  "name": "@dsor-steps/26b-the-start-up-gaps",
+  "name": "@dsor-steps/27-controls-in-cel",
   "version": "0.0.0",
   "private": true,
-  "description": "Step 26b of the DSoR baby steps: start-up asks the database about every way the program could write or read past its rights, not only the front door",
+  "description": "Step 27 of the DSoR baby steps: the company's policy becomes a control, a rule written in CEL with its owner, its source and its test cases, evaluated at every decision",
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
