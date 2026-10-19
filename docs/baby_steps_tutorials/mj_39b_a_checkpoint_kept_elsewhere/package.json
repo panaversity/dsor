@@ -12,7 +12,9 @@
     "test:db": "vitest run --config vitest.db.config.ts",
     "typecheck": "tsc --noEmit",
     "check": "pnpm typecheck && pnpm test",
-    "verify-audit": "node src/verify-audit.ts"
+    "verify-audit": "node src/verify-audit.ts",
+    "checkpoint-keys": "node src/checkpoint-keys.ts",
+    "checkpoint-audit": "node src/checkpoint-audit.ts"
   },
   "dependencies": {
     "@marcbachmann/cel-js": "8.0.0",
