@@ -204,7 +204,7 @@ export function checkPermission(
   // NEW IN STEP 38: and a contract may say that no agent may call it, as payment.reconcile does:
   //   an agent never settles an unknown outcome, whatever its slip lists (DSOR-UNK-04d; step 38's
   //   README, decision D3).
-  if (noAgents(contract) && caller.type === "agent") {
+  if (noAgents(contract) && actsAsAgent(caller)) {
     const why = `${name} is never for an agent, and ${caller.id} is one`;
     throw new Refusal("AUTHORIZATION_DENIED", why);
   }

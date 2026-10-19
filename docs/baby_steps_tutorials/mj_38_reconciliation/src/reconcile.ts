@@ -73,19 +73,29 @@ async function reconcile(input: unknown, work: OwnStores): Promise<Reconciliatio
     const why = `${tenant}'s bank is out of service, so the payment cannot be looked up`;
     throw new Refusal("CONNECTOR_UNAVAILABLE", why, "internal");
   }
-  const looked = await lookupThrough(bank, bankKeyOf(tenant, id));
+  const key = bankKeyOf(tenant, id);
+  const looked = await lookupThrough(bank, key);
   // A bank that does not answer, or cannot be asked, tells nothing: the proposal stays unknown and
   //   held, and the next call asks again. Never read as "not sent" (step 38's README, claim C4).
   if ("silent" in looked) {
-    return { proposal: uri, state: "OUTCOME_UNKNOWN", evidence: `${looked.silent} at ${now}` };
+    const evidence = `${looked.silent} by key ${key}, in the call at ${now}`;
+    return { proposal: uri, state: "OUTCOME_UNKNOWN", evidence };
   }
   const paymentId = parseUri((proposal.payload as { payment: string }).payment).id;
   const payment = await stores.payments.get(tenant, paymentId);
   if (payment === undefined) throw new Error(`proposal ${id} names a payment that is not kept`);
+  const sent = looked.sent;
   // A receipt that is not for this payment, as DSoR sent it, settles nothing: a person must look.
-  if (looked.sent !== undefined && !sameAs(looked.sent, payment)) {
-    const evidence = `the bank answered with ${looked.sent.reference}, which is not this payment as DSoR sent it, at ${now}`;
-    return { proposal: uri, state: "OUTCOME_UNKNOWN", evidence };
+  //   A refusal, so the call's record keeps the reason (found by step 38's review, F4).
+  if (sent !== undefined && !sameAs(sent, payment)) {
+    const why = `the bank answered key ${key} with ${sent.reference}, which is not this payment as DSoR sent it; a person must look`;
+    throw new Refusal("CONFLICT", why, "internal");
+  }
+  // Sent, but the payment is no longer a draft or paid: a person must look. Paid by another path
+  //   is the same fact the bank gives, and settles (found by step 38's review, F1).
+  if (sent !== undefined && payment.status !== "draft" && payment.status !== "paid") {
+    const why = `the bank sent ${sent.reference}, but payment ${preview(payment.id)} is ${payment.status}; a person must look`;
+    throw new Refusal("CONFLICT", why, "internal");
   }
   // The move's record names the caller, through its own call, as the expiry sweep's does (step
   //   25c's README, decision D4), and its cause is the evidence (step 38's README, decision D5).
@@ -95,11 +105,11 @@ async function reconcile(input: unknown, work: OwnStores): Promise<Reconciliatio
     actor_chain: [],
     subject_authority: { source: "token", as_of: now },
   };
-  const sent = looked.sent;
+  // The call's time, not the moment of the bank's answer, which comes a little later.
   const evidence =
     sent === undefined
-      ? `the bank has no payment with this proposal's key, asked at ${now}`
-      : `the bank sent ${sent.reference}: ${sent.amount.value} ${sent.amount.currency} to ${sent.vendor}, asked by this proposal's key at ${now}`;
+      ? `the bank has no payment with key ${key}, asked in the call at ${now}`
+      : `the bank sent ${sent.reference}: ${sent.amount.value} ${sent.amount.currency} to ${sent.vendor}, asked by key ${key} in the call at ${now}`;
   const to = sent === undefined ? "FAILED" : "COMMITTED";
   const by = { mover, cause: `reconciled: ${evidence}`, correlation };
   if (!(await stores.proposals.move(tenant, id, "OUTCOME_UNKNOWN", to, by))) {
@@ -111,9 +121,11 @@ async function reconcile(input: unknown, work: OwnStores): Promise<Reconciliatio
     await stores.reservations.release(tenant, id);
   } else {
     // Sent: the payment is paid, at the version DSoR read under its lock, and the booking stays
-    //   counted. A payment that is not a draft at that version is a fault, and the work rolls back.
-    const { changed } = await stores.payments.pay(tenant, payment.id, payment.version);
-    if (!changed) throw new Error(`payment ${payment.id} could not be marked paid`);
+    //   counted. A draft that does not change at that version is a fault, and the work rolls back.
+    if (payment.status === "draft") {
+      const { changed } = await stores.payments.pay(tenant, payment.id, payment.version);
+      if (!changed) throw new Error(`payment ${payment.id} could not be marked paid`);
+    }
     await stores.reservations.commit(tenant, id);
   }
   return { proposal: uri, state: to, evidence };

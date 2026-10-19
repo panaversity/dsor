@@ -3,7 +3,9 @@
 // bank that does not answer leaves it unknown and held; an agent may never settle one
 // (DSOR-UNK-04a, DSOR-UNK-04d; step 38's README, claims C1 to C7).
 import { describe, expect, it } from "vitest";
+import { bankKeyOf } from "../src/bank.ts";
 import type { Answer } from "../src/envelope.ts";
+import { dsorMover } from "../src/proposals.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import { AGENT, CFO, DEL_100, keyed, SUPERVISOR } from "./helpers.ts";
 import { heard, ruleWorldOnTuesday, type RuleWorld } from "./rule-world.ts";
@@ -125,21 +127,51 @@ describe("C4: a bank that does not answer settles nothing", () => {
 });
 
 describe("C4b: a receipt that is not this payment settles nothing", () => {
-  it("DSOR-UNK-04a: the bank answers the key with a receipt for another amount: the proposal stays OUTCOME_UNKNOWN, PAY-901 a draft, and the answer says why", async () => {
+  // Changed in step 38's review: the mismatch is refused with CONFLICT, so the record keeps its
+  //   reason; an answer of OUTCOME_UNKNOWN left the record without one (finding F4).
+  it.each([
+    ["another payment", { payment: "PAY-999" }],
+    ["another vendor", { vendor: "VENDOR-99" }],
+    ["another amount", { amount: { value: "89.00", currency: "USD" } }],
+    ["another currency", { amount: { value: "8900.50", currency: "EUR" } }],
+  ])(
+    "DSOR-UNK-04a: the bank answers the key with a receipt for %s: CONFLICT, the proposal stays OUTCOME_UNKNOWN, PAY-901 a draft, and the record says why",
+    async (_, changed) => {
+      const w = await ruleWorldOnTuesday();
+      const { proposal } = await unknownPayment(w);
+      const lookup = w.bank.lookup;
+      w.bank.lookup = async (key) => {
+        const found = await lookup(key);
+        return found === undefined ? undefined : { ...found, ...changed };
+      };
+      const asked = await reconcile(w, proposal);
+      expect(asked).toMatchObject({ code: "CONFLICT" });
+      expect((asked as { message: string }).message).toContain("not this payment");
+      expect(await stateOf(w, proposal)).toBe("OUTCOME_UNKNOWN");
+      expect(w.drafted.map((p) => p.status)).toStrictEqual(["draft"]);
+      const record = (await w.log.records()).at(-1)!;
+      expect(record.operation).toBe("payment.reconcile@1");
+      expect(record.reason).toContain("not this payment");
+    },
+  );
+});
+
+describe("C1b: a payment already marked paid", () => {
+  it("DSOR-UNK-04a: PAY-901 is marked paid by another path before the reconcile: the bank's matching receipt still settles it COMMITTED", async () => {
     const w = await ruleWorldOnTuesday();
     const { proposal } = await unknownPayment(w);
-    const lookup = w.bank.lookup;
-    w.bank.lookup = async (key) => {
-      const found = await lookup(key);
-      return found === undefined
-        ? undefined
-        : { ...found, amount: { value: "89.00", currency: "USD" } };
-    };
-    const asked = await reconcile(w, proposal);
-    expect(asked).toMatchObject({ data: { state: "OUTCOME_UNKNOWN" } });
-    expect((asked as { data: { evidence: string } }).data.evidence).toContain("not this payment");
+    w.drafted[0]!.status = "paid";
+    expect(await reconcile(w, proposal)).toMatchObject({ data: { state: "COMMITTED" } });
+    expect(await stateOf(w, proposal)).toBe("COMMITTED");
+    expect(w.drafted.map((p) => p.status)).toStrictEqual(["paid"]);
+  });
+
+  it("DSOR-UNK-04a: PAY-901 is cancelled by another path before the reconcile: nothing settles, and the proposal stays OUTCOME_UNKNOWN", async () => {
+    const w = await ruleWorldOnTuesday();
+    const { proposal } = await unknownPayment(w);
+    w.drafted[0]!.status = "cancelled";
+    expect(await reconcile(w, proposal)).toMatchObject({ code: "CONFLICT" });
     expect(await stateOf(w, proposal)).toBe("OUTCOME_UNKNOWN");
-    expect(w.drafted.map((p) => p.status)).toStrictEqual(["draft"]);
   });
 });
 
@@ -157,6 +189,7 @@ describe("C5: the evidence is kept", () => {
     });
     expect(last.cause).toContain("TRF-1");
     expect(last.cause).toContain("8900.50 USD");
+    expect(last.cause).toContain(bankKeyOf("org_456", proposal.split("/").at(-1)!));
     const record = (await w.log.records()).at(-1)!;
     expect(record).toMatchObject({ operation: "payment.reconcile@1", authorization: "ALLOW" });
   });
@@ -238,7 +271,50 @@ describe("C7: once settled, the same-key retry answers the settled outcome", () 
     const { payment, proposal, envelope } = await unknownPayment(w, true);
     await reconcile(w, proposal);
     const again = await send(w, payment, envelope);
-    expect(again).toMatchObject({ code: "CONNECTOR_UNAVAILABLE", proposal });
+    // Changed in step 38's review: CONFLICT, whose retry is never, not CONNECTOR_UNAVAILABLE,
+    //   whose retry is the same key, which would ask again for ever (finding F6).
+    expect(again).toMatchObject({ code: "CONFLICT", retry: "never", proposal });
     expect((again as { message: string }).message).toContain("new key");
+  });
+
+  it("DSOR-UNK-02: a proposal moved to COMMITTED while PAY-901 is still a draft: the same-key retry still answers OUTCOME_UNKNOWN, never COMMITTED with a draft", async () => {
+    const w = await ruleWorldOnTuesday();
+    const { payment, proposal, envelope } = await unknownPayment(w);
+    const id = proposal.split("/").at(-1)!;
+    const kept = (await w.proposals.get("org_456", id))!;
+    const by = {
+      mover: dsorMover(kept.requester),
+      cause: "settled by the test",
+      correlation: { request_id: "req_settled" },
+    };
+    expect(await w.proposals.move("org_456", id, "OUTCOME_UNKNOWN", "COMMITTED", by)).toBe(true);
+    expect(await send(w, payment, envelope)).toMatchObject({ code: "OUTCOME_UNKNOWN" });
+  });
+
+  it("DSOR-UNK-02: a payment prepared, then released on a silent day, is reconciled: the release's same-key retry answers COMMITTED with PAY-901 paid", async () => {
+    const w = await ruleWorldOnTuesday();
+    const payment = await draft(w);
+    const prepared = await w.ask(
+      { ...keyed(SUPERVISOR), mode: "propose_only" },
+      "payment.execute",
+      {
+        invoice: INV_1002,
+        payment,
+        expected_version: 1,
+      },
+    );
+    expect(heard(prepared)).toBe("READY");
+    const kept = (await w.proposals.get("org_456", idOf(prepared)))!;
+    const release = keyed(SUPERVISOR);
+    w.bank.mode = "silent";
+    const unknown = await w.ask(release, "proposal.execute", { proposal: kept.uri });
+    w.bank.mode = "good";
+    expect(unknown).toMatchObject({ code: "OUTCOME_UNKNOWN" });
+    expect(await reconcile(w, kept.uri)).toMatchObject({ data: { state: "COMMITTED" } });
+    expect(await w.ask(release, "proposal.execute", { proposal: kept.uri })).toMatchObject({
+      outcome: "COMMITTED",
+      data: { status: "paid" },
+    });
+    expect(w.bank.transfers()).toHaveLength(1);
   });
 });

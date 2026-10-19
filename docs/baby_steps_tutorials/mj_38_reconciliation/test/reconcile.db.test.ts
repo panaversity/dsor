@@ -6,7 +6,7 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createFakeBank } from "../src/bank.ts";
+import { bankKeyOf, createFakeBank } from "../src/bank.ts";
 import type { Answer } from "../src/envelope.ts";
 import { call } from "../src/pipeline.ts";
 import { createDbIntents, createDbLog, inCompany, sweepIntents } from "../src/postgres.ts";
@@ -107,6 +107,12 @@ describe("C1 and C2: on the database, the bank sent it", () => {
     const settled = await reconcile(proposal);
     expect(settled).toMatchObject({ outcome: "COMMITTED", data: { state: "COMMITTED" } });
     expect(await statusOf(id, proposal)).toStrictEqual({ payment: "paid", proposal: "COMMITTED" });
+    // The move's record in dsor.audit names what the bank said, by which key (found by step 38's
+    //   review, F4).
+    const kept = await registry.claims.proposals.get("org_456", proposal);
+    const cause = kept!.transitions.at(-1)!.cause;
+    expect(cause).toContain("the bank sent TRF-");
+    expect(cause).toContain(bankKeyOf("org_456", proposal));
     const cancel = await call(registry, log, keyed(SUPERVISOR), "payment.cancel", {
       payment: `dsor://org_456/payment/${id}`,
       expected_version: 1,

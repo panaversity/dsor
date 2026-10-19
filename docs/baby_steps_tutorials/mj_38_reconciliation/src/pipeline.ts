@@ -1163,14 +1163,18 @@ export async function call(
       const now = await proposals.get(tenant, proposalIdOf(tenant, claimed.proposal));
       const payment = (now?.payload as { payment?: unknown } | undefined)?.payment;
       if (now?.state === "COMMITTED" && typeof payment === "string") {
-        // The payment as it is now, paid, read without its lock, as a replay waits for no send.
+        // The payment as it is now, read without its lock, as a replay waits for no send. Only a
+        //   paid one answers COMMITTED (found by step 38's review, F8).
         const value = await unlocked(registry.payments).get(tenant, parseUri(payment).id);
+        if (value?.status !== "paid") return claimed;
         return { value, proposal: claimed.proposal, replay_of: claimed.replay_of };
       }
       if (now?.state === "FAILED") {
+        // CONFLICT, whose retry is never: the same key can only hear this again (found by step
+        //   38's review, F6).
         const why =
           "reconciliation found that the bank never received this payment; send it again with a new key";
-        const refused = new Refusal("CONNECTOR_UNAVAILABLE", why, "internal");
+        const refused = new Refusal("CONFLICT", why, "internal");
         return { refused, proposal: claimed.proposal, replay_of: claimed.replay_of };
       }
       return claimed;
