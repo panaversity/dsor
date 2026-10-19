@@ -63,6 +63,19 @@ const LABELS = {
   PaymentReconciliation: { proposal: "internal", state: "internal", evidence: "confidential" },
   // Changed in step 38b: the escalation sweep's answer, and each alert it escalated (step 38b's
   //   README, decision D3).
+  // Changed in step 38c: alert.list's page, and each alert on it (step 38c's README, D4 and D7).
+  AlertPage: { items: "Alert[]", next_cursor: "internal", capped: "public Capped" },
+  Alert: {
+    tenant_id: "internal",
+    id: "internal",
+    proposal: "internal",
+    state: "internal",
+    raised_at: "internal",
+    escalated_to: "internal",
+    escalated_at: "internal",
+    payment: "internal",
+    invoice: "internal",
+  },
   AlertEscalation: { tenant_id: "internal", escalated: "EscalatedAlert[]", to: "internal" },
   EscalatedAlert: { proposal: "internal", raised_at: "internal" },
   ProposalExpiry: { tenant_id: "internal", expired: "internal" },

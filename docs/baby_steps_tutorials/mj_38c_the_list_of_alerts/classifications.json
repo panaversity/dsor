@@ -43,6 +43,22 @@
     "target": "internal",
     "status": "internal"
   },
+  "AlertPage": {
+    "items": "Alert[]",
+    "next_cursor": "internal",
+    "capped": "public Capped"
+  },
+  "Alert": {
+    "tenant_id": "internal",
+    "id": "internal",
+    "proposal": "internal",
+    "state": "internal",
+    "raised_at": "internal",
+    "escalated_to": "internal",
+    "escalated_at": "internal",
+    "payment": "internal",
+    "invoice": "internal"
+  },
   "AlertEscalation": {
     "tenant_id": "internal",
     "escalated": "EscalatedAlert[]",

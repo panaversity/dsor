@@ -1,5 +1,6 @@
 // The checklist every call goes through. DSOR-EXE-01a in specs/dsor/03-execution.md,
 // section 21, and DSOR-OPR-04a in specs/dsor/01-model.md, section 7.
+import { ownReadOf } from "./alert-list.ts";
 import { heldBy, heldRefusal, holdsOf, NO_HOLDS, type HoldStore } from "./holds.ts";
 import { NO_INTENTS } from "./intents.ts";
 import { randomUUID } from "node:crypto";
@@ -447,8 +448,10 @@ export async function call(
     // Or DSoR's own work, for a command that changes DSoR's own store: its check
     //   at line ⑨, and its change after line ⑩ (step 25's README, decisions D2 and D7).
     const own = registry.own.get(name);
+    // NEW IN STEP 38c: or DSoR's own read, for a query over DSoR's own store.
+    const ownRead = registry.reads.get(name);
     // And a release, which runs the code of the proposal it loads.
-    if (!handler && !own && !releases(contract)) {
+    if (!handler && !own && !ownRead && !releases(contract)) {
       throw new Refusal("UNSUPPORTED_CAPABILITY", `${preview(name)} is not built yet`);
     }
     // A command's code runs. Step 04's decision 1 refused every command
@@ -980,7 +983,17 @@ export async function call(
           // DSoR's own change gets DSoR's own stores, inside the claim, with the
           //   caller. The company's code never gets them (step 25's README, decision D2).
           let returned: unknown;
-          if (job.own !== undefined) {
+          if (ownRead !== undefined) {
+            // NEW IN STEP 38c: DSoR's own read gets DSoR's own store, read only, bound to the
+            //   company, and noting each read's label in the call's reads (step 38c's README,
+            //   decision D6).
+            const alerting = registry.alerts.get(tenant);
+            const proposals = registry.claims.proposals;
+            returned = await ownRead.read(
+              job.input,
+              ownReadOf(proposals, tenant, caller, alerting, reads),
+            );
+          } else if (job.own !== undefined) {
             const now = new Date().toISOString();
             // And DSoR's question to the company's own KSoR, for the sweep.
             const ksor = policyLook(registry.ksors, tenant);

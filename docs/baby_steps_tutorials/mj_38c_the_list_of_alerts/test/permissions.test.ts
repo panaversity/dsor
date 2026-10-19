@@ -310,7 +310,9 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
       "tok_2c91",
       // And the brake (step 25b's README, decision L3).
       // Changed in step 30: and approve, as an AP supervisor (step 30's README, decision D5).
+      // Changed in step 38c: and alert:read (step 38c's README, decision D1).
       [
+        "alert:read",
         "control:suspend",
         "delegation:revoke",
         "invoice:issue",
@@ -334,7 +336,9 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
       "cfo_100",
       "tok_d4e8",
       // Changed in step 38b: and payment:reconcile (step 38b's README, decision D11).
+      // Changed in step 38c: and alert:read (step 38c's README, decision D1).
       [
+        "alert:read",
         "delegation:revoke",
         "invoice:read",
         "payment:approve",
@@ -397,6 +401,8 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
         "proposal:approve",
         "payment:approve",
         "payment:reconcile",
+        // Changed in step 38c: and alert:read (step 38c's README, decision D1).
+        "alert:read",
       ],
     ],
     [
@@ -413,6 +419,8 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
         "proposal:approve",
         "payment:approve",
         "payment:reconcile",
+        // Changed in step 38c: and alert:read (step 38c's README, decision D1).
+        "alert:read",
       ],
     ],
     ["a company whose id starts with org_456", [{ tenant_id: "org_4567", roles: ["CFO"] }], []],
@@ -439,7 +447,9 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
     const twoRoles = person([{ tenant_id: "org_456", roles: ["ap_supervisor", "CFO"] }]);
     // ap_supervisor's payment permissions are step 17's decision 6, and its tear-up step 25's.
     // And since step 25b, the brake, and since step 30, the approval.
+    // Changed in step 38c: and alert:read, which ap_supervisor holds (step 38c's README, D1).
     expect([...permissionsOf(twoRoles, roles, "org_456")].sort()).toEqual([
+      "alert:read",
       "control:suspend",
       "delegation:revoke",
       "invoice:issue",
@@ -666,6 +676,8 @@ describe("C4: an operation nobody was granted is denied to everyone", () => {
         plugs: registry.plugs,
         // Changed in step 38b: and the shared registry's alerts.
         alerts: registry.alerts,
+        // Changed in step 38c: and the shared registry's own reads.
+        reads: registry.reads,
       };
       expect(
         await call(handMade, log, SUPERVISOR, "invoice.get", {

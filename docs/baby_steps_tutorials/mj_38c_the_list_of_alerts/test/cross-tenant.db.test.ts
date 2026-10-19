@@ -50,6 +50,7 @@ describe("the suite, on the database", () => {
     // decision D1).
     expect(report.attacked).toStrictEqual([
       "alert.escalate_due",
+      "alert.list",
       "control.lift",
       "control.suspend",
       "delegation.revoke",

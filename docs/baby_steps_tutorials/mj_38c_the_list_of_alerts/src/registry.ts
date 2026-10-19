@@ -1,5 +1,6 @@
 // Every operation has a name and a contract, checked at start-up.
 // DSOR-OPR-01, DSOR-OPR-02a, DSOR-OPR-02b in specs/dsor/01-model.md, section 7.
+import { ownReadProblems, ownReadsFor, type OwnRead } from "./alert-list.ts";
 import { checkAlerts, readAlerts, type Alerting, type AlertsSource } from "./alerts.ts";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -137,6 +138,9 @@ export type Registry = {
   // Each company's alerts, checked at start-up. The escalation sweep reads its
   //   person and its bound (step 38b's README, decisions D2, D4, and D7).
   alerts: ReadonlyMap<string, Alerting>;
+  // NEW IN STEP 38c: DSoR's own reads, for the queries over DSoR's own store, kept apart from the
+  //   company's code and from DSoR's own work, which changes things (step 38c's README).
+  reads: ReadonlyMap<string, OwnRead>;
 };
 
 // The specification's own schemas, copied byte for byte (step 03's README, decision 3).
@@ -239,6 +243,9 @@ export function buildRegistry(
   // Each company's alerts. This step's own file, unless the caller gives another
   //   (step 38b's README, decision D7).
   alertSource: AlertsSource = readAlerts(),
+  // NEW IN STEP 38c: DSoR's own reads. Given, or else this step's own for each contract the
+  //   registry has, so a registry of a few contracts gets no read of a contract it lacks.
+  given?: Record<string, OwnRead>,
 ): Registry {
   // Every problem is collected first, and the refusal names them all (step 03's
   // README, decision 2).
@@ -290,6 +297,13 @@ export function buildRegistry(
   // the company's code, and must be a command (step 25's README, decision D2).
   problems.push(...ownProblems(own, new Set(fileOf.keys()), contracts, code));
   const ownWork = new Map<string, OwnWork>(Object.entries(own));
+  // NEW IN STEP 38c: and DSoR's own reads, which must have a contract, no other code, and be
+  //   queries.
+  const reads =
+    given ??
+    Object.fromEntries(Object.entries(ownReadsFor()).filter(([name]) => fileOf.has(name)));
+  problems.push(...ownReadProblems(reads, new Set(fileOf.keys()), contracts, code, own));
+  const ownReads = new Map<string, OwnRead>(Object.entries(reads));
 
   // The role table, and every role in DSoR's table of logins, are checked too. Their
   // problems are named with the contracts' problems (DSOR-AUT-01a).
@@ -475,6 +489,7 @@ export function buildRegistry(
     ksors,
     plugs,
     alerts,
+    reads: ownReads,
   };
 }
 

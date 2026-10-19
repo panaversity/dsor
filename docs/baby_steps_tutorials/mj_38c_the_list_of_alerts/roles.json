@@ -9,7 +9,8 @@
     "delegation:revoke",
     "control:suspend",
     "proposal:approve",
-    "payment:approve"
+    "payment:approve",
+    "alert:read"
   ],
   "CFO": [
     "invoice:read",
@@ -18,7 +19,8 @@
     "rule:manage",
     "proposal:approve",
     "payment:approve",
-    "payment:reconcile"
+    "payment:reconcile",
+    "alert:read"
   ],
   "ap_clerk": ["invoice:read", "payment:create.propose", "delegation:revoke"],
   "tenant_admin": [

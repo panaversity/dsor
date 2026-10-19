@@ -137,6 +137,8 @@ export const STARTING_ROLES: Record<string, string[]> = {
     "control:suspend",
     "proposal:approve",
     "payment:approve",
+    // Changed in step 38c: and list the company's alerts (step 38c's README, decision D1).
+    "alert:read",
   ],
   // The CFO and the tenant administrator may ask to draft and to manage a rule.
   // Line ⑨ decides whose rule (step 28's README, decision D8).
@@ -153,6 +155,8 @@ export const STARTING_ROLES: Record<string, string[]> = {
     // Changed in step 38b: so the person an unknown payment escalates to can settle it (step
     //   38b's README, decision D11).
     "payment:reconcile",
+    // Changed in step 38c: and list the alerts escalated to cfo_100 (step 38c's README, D1).
+    "alert:read",
   ],
   ap_clerk: ["invoice:read", "payment:create.propose", "delegation:revoke"],
   tenant_admin: [

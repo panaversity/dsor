@@ -170,6 +170,7 @@ describe("C1: every operation in the registry is attacked with foreign URIs, and
     // two commands are attacked like any other operation, and so is step 25's tear-up.
     expect(report.attacked).toStrictEqual([
       "alert.escalate_due",
+      "alert.list",
       "control.lift",
       "control.suspend",
       "delegation.revoke",
@@ -243,8 +244,9 @@ describe("C1: every operation in the registry is attacked with foreign URIs, and
   // call to its judge deleted, every test stayed green.
   it("DSOR-TEN-02b: handed a fake DSoR with no URI check, the suite names every one of the 228 attacks", async () => {
     // A list has no URI to check, so its calls go to DSoR itself.
+    // Changed in step 38c: and alert.list is a list too (step 38c's README).
     const noUriCheck: Send = async (reg, log, request, name, input) =>
-      name === "invoice.list"
+      name === "invoice.list" || name === "alert.list"
         ? call(reg, log, request, name, input)
         : {
             data: { tenant_id: request.tenant, id: "INV-1008" },
@@ -638,6 +640,7 @@ describe("C4: nothing is skipped: every gap is a finding", () => {
       // invoice.list, and step 17's two commands, and step 25's tear-up.
       expect(report.attacked).toStrictEqual([
         "alert.escalate_due",
+        "alert.list",
         "control.lift",
         "control.suspend",
         "delegation.revoke",
@@ -678,6 +681,7 @@ describe("C4: nothing is skipped: every gap is a finding", () => {
     // invoice.list, and step 17's two commands, and step 25's tear-up.
     expect(report.attacked).toStrictEqual([
       "alert.escalate_due",
+      "alert.list",
       "control.lift",
       "control.suspend",
       "delegation.revoke",

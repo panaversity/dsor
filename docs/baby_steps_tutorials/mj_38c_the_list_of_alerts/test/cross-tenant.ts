@@ -2,6 +2,7 @@
 // tests in cross-tenant.test.ts and cross-tenant.db.test.ts run it.
 // It walks the registry, so an operation added later is attacked the moment it is
 // registered, and nobody has to remember to write its test (step 12's README).
+import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { checkDelegation } from "../src/delegation.ts";
@@ -11,6 +12,7 @@ import { effectivePermissions, peopleOnly } from "../src/permissions.ts";
 import { releases } from "../src/release.ts";
 import { call } from "../src/pipeline.ts";
 import { logins, type Principal } from "../src/principals.ts";
+import { dsorMover } from "../src/proposals.ts";
 import type { Slip } from "../src/slips.ts";
 import {
   readContracts,
@@ -201,6 +203,10 @@ export async function crossTenantSuite(
       ...rest,
     );
   const report: Report = { attacked: [], attacks: [], pairs: [], findings: [] };
+  // Changed in step 38c: an unsettled alert in each company, escalated to its named person, so
+  //   alert.list's rows are there to check, as the story's invoices are for invoice.list. Settled
+  //   at the end (step 38c's README, "Found while building").
+  const planted = await plantAlerts(registry);
   // An example that no operation names is most likely a name spelled wrong, and the
   // operation it was meant for has none (step 12's README, decision 2).
   for (const { file } of examples) {
@@ -240,7 +246,70 @@ export async function crossTenantSuite(
     // Attacked from both companies, with nothing in the way.
     if (everywhere) report.attacked.push(operation);
   }
+  await settleAlerts(registry, planted);
   return report;
+}
+
+// Changed in step 38c: one payment of each company whose outcome is unknown, written straight to
+//   the registry's own proposal store, in memory or on the database, which raises its alert.
+/** Plants an unsettled, escalated alert in each company: the proposals it made, by company. */
+async function plantAlerts(registry: Registry): Promise<[string, string][]> {
+  if (!registry.contracts.has("alert.list")) return [];
+  const proposals = registry.claims.proposals;
+  const planted: [string, string][] = [];
+  for (const home of HOMES) {
+    const id = `prop_${randomUUID()}`;
+    const invoice = `dsor://${home}/invoice/INV-ALERTED`;
+    const requester = {
+      identity_mode: "direct" as const,
+      subject: "dsor-scheduler",
+      subject_type: "system",
+      actor_chain: [],
+      active_tenant: home,
+      subject_authority: { source: "token" as const, as_of: new Date().toISOString() },
+    };
+    const by = {
+      mover: dsorMover(requester),
+      cause: "the cross-company suite plants an unknown payment",
+      correlation: { request_id: `req_${randomUUID()}` },
+    };
+    const draft = {
+      operation: "payment.execute@1",
+      mode: "execute" as const,
+      payload: { invoice, payment: `dsor://${home}/payment/PAY-ALERTED`, expected_version: 1 },
+      payload_hash: `sha256:${"a".repeat(64)}`,
+      resources: [invoice],
+      requester,
+      idempotency_key: `plant-${id}`,
+    };
+    await proposals.create(home, id, draft, by, "P7D");
+    await proposals.move(home, id, "PROPOSED", "READY", by);
+    await proposals.move(home, id, "READY", "EXECUTING", by);
+    await proposals.move(home, id, "EXECUTING", "OUTCOME_UNKNOWN", by);
+    const person = registry.alerts.get(home)?.escalate_to;
+    if (person !== undefined) await proposals.escalateDue(home, 0, person);
+    planted.push([home, id]);
+  }
+  return planted;
+}
+
+/** Settles the planted payments FAILED, which closes their alerts. */
+async function settleAlerts(registry: Registry, planted: [string, string][]): Promise<void> {
+  for (const [home, id] of planted) {
+    const by = {
+      mover: dsorMover({
+        identity_mode: "direct",
+        subject: "dsor-scheduler",
+        subject_type: "system",
+        actor_chain: [],
+        active_tenant: home,
+        subject_authority: { source: "token", as_of: new Date().toISOString() },
+      }),
+      cause: "the cross-company suite settles its planted payment",
+      correlation: { request_id: `req_${randomUUID()}` },
+    };
+    await registry.claims.proposals.move(home, id, "OUTCOME_UNKNOWN", "FAILED", by);
+  }
 }
 
 /** One operation, attacked from one company: what an attacker needs to know. */
