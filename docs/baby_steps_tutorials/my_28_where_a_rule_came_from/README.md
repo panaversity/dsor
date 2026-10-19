@@ -1,76 +1,61 @@
-# Step 27 · Controls in CEL
+# Step 28 · Where a rule came from
 
-**New in this step:** the company's policy becomes a *control*, a rule written in CEL with its owner,
-the policy it came from, and test cases that must pass before it is switched on; DSoR evaluates it at
-every payment.
+**New in this step:** a control is checked against the policy it came from; when the policy
+changes, the control is marked stale and its owner is told, and it is never switched off quietly;
+and only the control's owner, a person, may switch it on.
 
 ## In plain words
 
-org_456's finance policy says: "Payments above 25,000 USD or equivalent require CFO approval." It
-lives in KSoR, the company's record of what it knows, as version 4 of
-`finance/payment-approval-policy`. Until this step, nothing in DSoR knew it. `del_100` lets the agent
-pay up to 50,000.00 USD a payment, so the agent's 31,400.00 USD payment for INV-1008 was made, and no
-CFO ever saw it.
+Step 27's CFO control says where it came from: version 4 of
+`ksor://org_456/finance/payment-approval-policy`, "Payments above 25,000 USD or equivalent require CFO
+approval." KSoR is the company's record of what it knows, its policies among them. Until this step
+nothing ever checked that pointer.
 
-A policy is English, and a program cannot run English. Someone translates the sentence into a
-condition a program can evaluate. That translation is a **control**:
+Now DSoR runs a **sweep**: for every control in force, it asks KSoR which version of the control's
+policy is in force. When finance publishes version 5, "payments above 20,000 USD", the sweep
+notices that the control still cites version 4. It marks the control **stale**, writes that in the
+company's log, and puts a notice in the inbox of the control's owner, `cfo_100`: review it.
 
-```text
-policy (KSoR, v4)   "Payments above 25,000 USD or equivalent require CFO approval."
-control (DSoR, v8)  dsor_exceeds(input.amount, dsor_money("25000", "USD"))  →  REQUIRE_APPROVAL by the CFO
-```
+A stale control is **not switched off**. It keeps enforcing exactly what it said, a 25,000 USD line,
+and its owner knows. Out of date is still safer than absent. Replacing it with a version that cites the
+policy in force needs a command that retires a control, which this step does not build.
 
-The condition is written in **CEL**, the Common Expression Language. CEL works like the condition of
-an `if` statement. It cannot loop forever, call the network, or read anything it was not handed. What
-it is handed is listed in the specification's
-[Appendix B](../../../specs/dsor/appendix-b-cel.md): eight variables, such as `input`, the payment's
-arguments, and `principal`, who is asking, and the money functions. `dsor_exceeds` is step 26's
-`exceeds`, so 50,000,000.00 PKR is compared exactly, at the company's own rates.
-
-A control is kept in DSoR's own store, `dsor.controls`, with its owner (`cfo_100`), the policy
-sentence and version it came from, and five **test cases**. It arrives *in review*. Switching it on
-runs every case, with the exchange rates the case pins, and refuses if one gives the wrong answer.
-
-Once it is on, every payment is checked, a person's as well as the agent's. Above the line, the
-payment does not run: its proposal waits at **PENDING_APPROVAL**, its amount still booked against the
-day, and the caller is told who must approve, how many, and until when. Nobody can approve it until
-step 29. If the condition cannot be evaluated, a currency with no rate, say, the control applies:
-a rule that crashes is never "no rule today".
+And switching a control on is a command now, `control.activate`, which goes through the whole
+pipeline and is recorded. Both people in the story hold the permission `control:activate`. What
+decides is whether the caller is the control's **owner**, the person it names: the CFO owns the CFO's
+control, so user_123 is refused. An agent is refused whatever its permission slip says.
 
 ## Why it matters
 
-Each quick fix for the CFO's policy is a hole:
+- **A policy changes and nobody notices.** Finance lowers the line to 20,000 USD. The control keeps
+  enforcing 25,000, a payment of 22,000.00 USD goes through with no CFO, and the control still looks
+  current. Now the control is marked stale the next time the sweep runs, and its owner is told. The
+  line itself moves only when the control is replaced, which waits for a later step.
+- **"Stale" read as "off".** Dropping a stale control would turn a policy change into no policy at
+  all, until somebody gets round to it. A stale control applies exactly as before.
+- **Anyone can switch a control on.** In step 27 the demo called `switchOn` itself. A supervisor
+  could switch on the CFO's control, a careless handler one nobody reviewed, and an agent with a slip
+  that named the permission could switch one on for itself. Now only the owner, a person, can.
 
-- **Write it in TypeScript**, `if (amount > 25000)`. The CFO cannot read it or test it, nobody can
-  walk from a payment back to the sentence that allowed it, and changing the policy needs a
-  programmer.
-- **Write it as numbers and a currency name**, `amount > 25000 && currency == "USD"`. 50,000,000.00
-  PKR, about 178,571 USD, goes straight through, because it is not in dollars. Measured below.
-- **Skip a rule that crashes.** On the day the rate service is down, a rule that cannot convert would
-  mean no rule at all.
-
-## What changed since step 26b
+## What changed since step 27
 
 ```bash
 # in Git Bash on Windows
-diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_26b_the_start_up_gaps ../my_27_controls_in_cel
+diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_27_controls_in_cel ../my_28_where_a_rule_came_from
 ```
 
 | File | What |
 | --- | --- |
-| `src/cel.ts` | new — Appendix B's environment: eight variables, `dsor_money`, `dsor_exceeds` and `dsor_covers` over step 26's exact comparisons; `checkCondition` refuses a name outside it, `matches`, and anything that is not true or false |
-| `src/policy-controls.ts` | new — the controls in the store; `evaluateControl`, which applies a control whose condition cannot be evaluated and denies one that cannot be read; `mostRestrictive`; `switchOn`, which runs the cases |
-| `migrations/028_controls.sql` | new — `dsor.controls`, under the second lock; the application reads them and changes a status |
-| `migrations/029_the_cfo_control.sql` | new — org_456's `high-value-payment` v8 on `payment.create`, in review, with its five cases |
-| `migrations/030_the_record_names_its_controls.sql` | new — the log's `controls` column |
-| `migrations/031_a_control_is_only_switched_on.sql` | new — the application may move a waiting control to active, and nothing else |
-| `src/operations.ts` | a new stage, *evaluate the controls*, at §21.10 before the slip's limits; DENY refuses `POLICY_DENIED`; REQUIRE_APPROVAL waits at PENDING_APPROVAL (`waitAt`, from step 23's `prepare`); §21.6 refuses a malformed amount |
-| `src/pipeline.ts`, `src/envelopes.ts`, `src/audit.ts` | the context's controls; the PENDING_APPROVAL receipt; the record's controls, inside the hash |
-| `src/database.ts` | start-up's questions about `dsor.controls` and its second policy; step 26b's review fixes, carried |
-| `src/main.ts` | the control switched on, and a payment above the line waiting for the CFO |
-| `test/cel.test.ts`, `test/controls-store.test.ts`, `test/switching-on.test.ts`, `test/controls-at-the-door.test.ts`, `test/controls-review.test.ts` | new |
-| `test/pipeline.test.ts`, `test/main.test.ts` and four others | the new stage, the demo's counts, the new table |
-| `package.json` | `@marcbachmann/cel-js` 8.0.0, exactly, the CEL library the repository's own specification tests use |
+| `src/ksor.ts` | new — the fake KSoR, one per company: each policy's version in force, its fingerprint and its text; a test or the demo can publish a new version or switch it off |
+| `src/notices.ts` | new — an inbox for each person, which DSoR puts notices in |
+| `src/policy-controls.ts` | `noticeStalePolicies`, the sweep; the code each refusal to switch on is told |
+| `migrations/032_a_control_can_go_stale.sql` | new — the second lock lets the application mark a control in force stale, and still never retire one |
+| `migrations/033_org_789_has_a_control_too.sql` | new — org_789's own control of the same name, so the cross-tenant suite has something a careless command could touch |
+| `src/contracts/control.activate.json`, `src/operations.ts`, `src/permissions.ts`, `src/registry.ts`, `src/classification.ts` | the new command: its contract, its handler, §21.9's question about the owner, the permission for both people, its receipt's labels |
+| `src/database.ts` | start-up reads migration 032's policy |
+| `src/main.ts` | the control switched on by its owner after two refusals; then version 5, the sweep, the CFO's inbox, and a payment still waiting |
+| `test/stale-policies.test.ts`, `test/activation.test.ts` | new |
+| `test/support/cross-tenant-suite.ts`, `test/support/story.ts` and nine test files | the controls' rows in the suite, org_789's control in the story, and the new operation in every list of operations |
 
 ## Run it
 
@@ -84,138 +69,128 @@ After the money section:
 ```text
 org_456's policy: payments above 25,000 USD or equivalent need the CFO. Its control:
 
-  case 1  expects ALLOW             gives ALLOW
-  case 2  expects REQUIRE_APPROVAL  gives REQUIRE_APPROVAL
-  case 3  expects REQUIRE_APPROVAL  gives REQUIRE_APPROVAL
-  case 4  expects ALLOW             gives ALLOW
-  case 5  expects REQUIRE_APPROVAL  gives REQUIRE_APPROVAL
-  high-value-payment v8: switched on
+user_123              AUTHORIZATION_DENIED     retry: never                only the owner of high-value-payment may switch it on, and user_123 is not
+accounts-payable-fte  AUTHORIZATION_DENIED     retry: never                accounts-payable-fte may not call control.activate under del_100: the slip, what user_123 holds now, or the login's scopes leave out control:activate
+cfo_100               COMMITTED                dsor://org_456/control/high-value-payment  active     atomic
 
 user_123              VALIDATED                the decision would be REQUIRE_APPROVAL; nothing was done
-user_123              PENDING_APPROVAL         dsor://org_456/proposal/prop_32  waits for 1 by CFO (high-value-payment v8)
-                                              until 2026-10-22T19:22:52.249Z
+user_123              PENDING_APPROVAL         dsor://org_456/proposal/prop_34  waits for 1 by CFO (high-value-payment v8)
+                                              until 2026-10-22T22:02:36.461Z
 accounts-payable-fte  COMMITTED                dsor://org_456/payment/PAY-916  draft      compensatable
                         withheld: amount (clearance)
+
+Finance publishes version 5 of the policy: payments above 20,000 USD need the CFO.
+
+  the sweep marked high-value-payment v8 stale: it cites version 4, and version 5 is in force
+  in cfo_100's inbox: Your control high-value-payment v8 cites version 4 of ksor://org_456/finance/payment-approval-policy, and the version in force is version 5. It is marked stale and is still enforced exactly as it is: review it.
+user_123              PENDING_APPROVAL         dsor://org_456/proposal/prop_36  waits for 1 by CFO (high-value-payment v8)
+                                              until 2026-10-22T22:02:36.472Z
 ```
 
-The five cases run before the control is switched on. Then user_123 asks first, with a dry run, and
-is told the decision would be REQUIRE_APPROVAL. The real payment waits for one approval by the CFO,
-for 72 hours, and nothing is paid. The agent's 2,500.00 USD is below the line, and is made. Run it a
-second time, without deleting `.local-database`, and the control says it is on already; the agent's
-2,500.00 is then past the day's limit.
+user_123 is refused because the control is not theirs; the agent because nothing it holds reaches
+`control:activate`; the CFO switches it on. Then finance publishes version 5. The sweep marks the
+control stale and tells the CFO, and user_123's next payment above the line still waits, under
+version 8. On a second run the control is stale already: the CFO's `control.activate` is a
+`CONFLICT`, and the sweep has nothing new to mark. In the log, the sweep's record reads
+`stale  (the sweep)  dsor  STALE_AUTHORITY`: DSoR itself made the change, and nobody asked for it.
 
 ### The database tier
 
-`pnpm check` needs no server. The seventy-five tests in `pnpm test:db` need two real logins and a
-database of this step's own:
-
 ```bash
-cp ../my_26b_the_start_up_gaps/.env .env     # then dsor_step26b -> dsor_step27 in both lines
+cp ../my_27_controls_in_cel/.env .env     # then dsor_step27 -> dsor_step28 in both lines
 pnpm migrate && pnpm test:db
 ```
 
-`pnpm migrate` applies 028 to 031 on a server that has step 26b's twenty-seven. This step adds no
-test to the tier: a control is read through the same store as everything else, and the start-up
-questions about `dsor.controls` are asked of the real server by `test/audit.db.test.ts`. Run on Neon on 2026-10-19, on `dsor_step27`: 75 passed; and 75 again after the review's migration 031.
+`pnpm migrate` applies 032 and 033 on a server that has step 27's thirty-one. Run on Neon on 2026-10-20, on `dsor_step28`: 81 passed, six more than step 27's, because the cross-tenant suite asks `control.activate` its six questions; 81 again after the review's fixes.
 
 ## Break it
 
 Three, each measured on the full suite in a copy outside the repository, where one test skips
 because the specification is not beside it.
 
-### Break 1 · the rule written in numbers
+### Break 1 · a stale control is dropped
 
-The map's break. In `migrations/029_the_cfo_control.sql`, change the condition to
-`double(input.amount.value) > 25000.0 && input.amount.currency == "USD"`.
-
-```text
-      Tests  43 failed | 1151 passed | 1 skipped (1195)
-```
-
-The control is never switched on: cases 3 and 5 fail, 50,000,000.00 PKR and a currency with no rate,
-which the rule calls ALLOW. Every test that needs the control on fails with it, and so does the demo,
-which prints `not switched on: high-value-payment v8 failed its own test cases`. Written in numbers,
-the rule is caught before it governs anything.
-
-### Break 2 · a condition that cannot be evaluated allows
-
-In `src/policy-controls.ts`, in `evaluateControl`'s `catch`, answer `outcome: "ALLOW"` instead of the
-control's effect.
+In `src/policy-controls.ts`, in `controlsInForce`, read `status = 'active'` instead of
+`status IN ('active', 'stale_authority')`.
 
 ```text
-      Tests  43 failed | 1151 passed | 1 skipped (1195)
+      Tests  7 failed | 1224 passed | 1 skipped (1232)
 ```
 
-The same 43, for a different reason: case 5, 100.00 in XXX, has no rate, and now gives ALLOW, so the
-control again fails its own cases and is never switched on. The case in XXX is there for exactly this.
+Once the policy changes, the CFO's control governs nothing: the payment that should still wait is
+made, in the tests and in the demo. "Stale" read as "off".
 
-### Break 3 · a payment that needs the CFO runs anyway
+### Break 2 · the owner is not told
 
-In `src/operations.ts`, make `needsApproval` answer `false`.
+In `noticeStalePolicies`, replace the call to `tell` with a function that does nothing.
 
 ```text
-      Tests  18 failed | 1176 passed | 1 skipped (1195)
+      Tests  4 failed | 1227 passed | 1 skipped (1232)
 ```
 
-The control is evaluated and recorded, and nobody waits: every payment above the line is made. The
-receipts, the dry run, the replay, the stale control and the demo all say so.
+The control is marked and the log has its record, and the person who must review it never hears.
+
+### Break 3 · an agent's slip lets it switch a control on
+
+In `src/operations.ts`, at §21.9, make the question `principal.type !== "human"` never true.
+
+```text
+      Tests  1 failed | 1230 passed | 1 skipped (1232)
+```
+
+Only one test, the agent under a slip that names `control:activate`: everywhere else, §21.5 refuses
+the agent first, because nothing it holds reaches the permission. One question is all that stands
+between a slip written carelessly and an agent switching on its own rules.
 
 ## Build it yourself with Claude Code
 
-Copy `my_26b_the_start_up_gaps` to a new folder, without its `.env`, and ask:
+Copy `my_27_controls_in_cel` to a new folder, without its `.env`, and ask:
 
-> Start step 27, controls in CEL. Before any code: show me the agent's 31,400.00 USD payment made
-> with no CFO, and the rule `amount > 25000 && currency == "USD"` letting 50,000,000 PKR through.
-> Then ask me the step's decisions one at a time. Then build it a piece at a time, red first, and
-> break each piece on purpose.
+> Start step 28, where a rule came from. Before any code: show me version 5 of the policy published
+> and the CFO's control still enforcing 25,000 USD with nobody told, and user_123 switching on a
+> control the CFO owns. Then ask me the step's decisions one at a time. Then build it a piece at a
+> time, red first, and break each piece on purpose.
 
 ## Check yourself
 
-1. Why is the CFO's condition `dsor_exceeds(input.amount, dsor_money("25000", "USD"))` and not
-   `amount > 25000`?
-2. The rate service is down, and user_123 pays 2,800,000.00 PKR. What does the control say, and why?
-3. What happens to a control whose test cases fail?
-4. A payment above the line waits at PENDING_APPROVAL. Is its amount booked against the day?
-5. Why is the brake, `control.suspend`, governed by no control?
+1. The policy changes. Why does DSoR not switch the control off?
+2. What three things does the sweep do when a control's policy has moved on?
+3. user_123 holds `control:activate`. Why may they not switch on the CFO's control?
+4. An agent's slip names `control:activate`, and its signer holds it. What happens?
 
 <details>
 <summary>Answers</summary>
 
-1. `dsor_exceeds` converts to dollars at the company's rates and compares exactly, so 50,000,000.00
-   PKR is above 25,000 USD. A number compared with 25000 knows nothing about currency.
-2. It requires approval. Its condition cannot be evaluated, because the rupees cannot be converted,
-   and a control whose condition cannot be evaluated applies (`DSOR-CTL-07`).
-3. It is not switched on, and governs nothing. The rule written in numbers fails cases 3 and 5.
-4. Yes. It stays booked while it waits, so the day errs toward refusing, never toward paying more.
-5. A brake only ever makes things safer, and must work when the controls cannot be read.
+1. A control out of date is still safer than none. It keeps enforcing what it said, and its owner is
+   told to review it (`DSOR-CTL-03b`).
+2. It marks the control `stale_authority`, writes a `control_change` record in the company's log, and
+   puts a notice in its owner's inbox (`DSOR-CTL-03a`).
+3. The permission says who may ask; §21.9 asks whose control it is. Only its owner, the person it
+   names, may switch it on (`DSOR-CTL-02a`).
+4. Refused at §21.9: an agent never switches a control on, whatever its slip says (`DSOR-CTL-02b`).
 
 </details>
 
 ## The rules this step meets
 
-- **[DSOR-CTL-01a · L1]** A control MUST validate against `control.schema.json` — checked when it is
-  switched on, and a control in force that does not is denied.
-- **[DSOR-CTL-02c · L2]** Activation MUST run the control's test vectors and fail if any vector fails.
-- **[DSOR-CTL-02e · L2]** A test vector that depends on a currency conversion MUST pin the rates it
-  assumes — and those rates, never the live service's, are used.
-- **[DSOR-CTL-05 · L1]** Control conditions MUST be CEL expressions evaluated in the environment of
-  Appendix B — three of its six functions in this step.
-- **[DSOR-CTL-06 · L1]** An expression MUST NOT have access to anything outside that environment.
-- **[DSOR-CTL-07 · L2]** When a control condition fails to evaluate, the control's effect MUST apply.
-- **[DSOR-AUT-02a · L1]** ALLOW, DENY and REQUIRE_APPROVAL. **[DSOR-AUT-02b · L1]** The most
-  restrictive outcome wins.
-- **[DSOR-EXE-02 · L1]** The decision is recorded with the controls evaluated, before the response.
+- **[DSOR-CTL-02a · L2]** A control MUST be activated only by its human control owner — activation
+  only: no command modifies, suspends or retires a control yet, so nobody can.
+- **[DSOR-CTL-02b · L2]** An agent principal MUST NOT activate a control.
+- **[DSOR-CTL-03a · L2]** DSoR MUST detect that the authority a control cites has been superseded,
+  and then mark the control `stale_authority` and notify its owner — by a sweep the program runs; the
+  demo runs it, since this tutorial has no timer.
+- **[DSOR-CTL-03b · L2]** A stale control MUST NOT be dropped or skipped.
+- **[DSOR-CTL-04 · L1]** Every decision record identifies each evaluated control by id and version,
+  with the authority reference and its version: step 27's record, which a stale control keeps.
 
-**What this step leaves, said plainly.** Nobody can approve a waiting payment until step 29, and
-nothing carries one out until step 31; nothing moves one to EXPIRED when its 72 hours end. Who may
-switch a control on, and what happens when the policy it came from changes, are step 28's: here no
-operation reaches `switchOn`, and the demo calls it in the administrator's place. `dsor_sum`,
-`dsor_in_flight` and `dsor_is_new_counterparty` wait for the steps that need them, and `state` is
-empty until step 32 binds resources. A condition about who is asking cannot be switched on, because
-the schema's test cases have no place for the principal; `payment.create`'s contract still lists no
-controls, since a company's controls are in its own store. Both are questions for the specification
-(decision 164). Everything earlier steps claimed still holds.
+**What this step leaves, said plainly.** A stale control enforces what it said, whatever its
+`on_stale` says, and `stale_grace` is not counted (`DSOR-CTL-03c`). The sweep has no timer. No command retires a
+control, so a stale one cannot be replaced yet, and the line stays where it was. The second lock sees
+only the row a control becomes, so the program's own code could move a waiting control straight to
+stale, in force with no case run, in place of its owner's tested version: migration 032's comment says
+that errs toward refusing, and it does not (decision 166, which says what would close it). A decision
+under a stale control records the policy version it cites, not the one in force. The inbox lives in
+memory. A waiting payment still waits for an approval nobody can give: step 29.
 
-**Next:** step 28, `where_a_rule_came_from`: each control points at the policy sentence it was built
-from, a changed policy marks it stale without switching it off, and only the control's human owner
-may switch one on.
+**Next:** step 29, `approvals`: `proposal.approve`, by an approver logged in as themselves, tied to a
+fingerprint of the exact request, and expiring.
