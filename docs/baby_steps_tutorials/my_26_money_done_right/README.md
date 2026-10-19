@@ -1,94 +1,78 @@
-# Step 25 · Revocation and the emergency brake
+# Step 26 · Money done right
 
-**New in this step:** a person can tear up a permission slip, stop one agent, or freeze every agent
-in the company, and none of it asks the agent to cooperate.
+**New in this step:** two amounts in two currencies are compared exactly, at rates DSoR looks up
+itself, and an amount it cannot convert counts as over the limit.
 
 ## In plain words
 
-Two switches, both on DSoR's side, both for people.
+Until this step, every amount DSoR compared was in dollars, like `del_100`'s limits: 50,000.00 USD a
+payment and 200,000.00 USD a day. Now `VENDOR-44` sends two bills in other currencies: INV-1010 for
+2,800,000.00 Pakistani rupees (PKR), and INV-1011 for 45,000.00 British pounds (GBP).
 
-**The brake.** `control.suspend` stops one agent in one company, or, given the company's own
-address, every agent in it:
+To compare a bill in rupees with a limit in dollars, DSoR needs an *exchange rate*: how many rupees
+one dollar buys. Each company now has a **rate service** to ask. In this story it says that one US
+dollar buys 280 PKR, or 0.80 GBP, and it says when it published that. DSoR asks it itself, at the
+moment it decides. It never takes a rate from the request: an agent that says a dollar buys a
+million rupees could make any bill look small.
+
+Then DSoR compares **exactly**. "Is 2,800,000 PKR more than 50,000 USD?" becomes "is 2,800,000 more
+than 50,000 × 280, which is 14,000,000?" It multiplies and never divides, so nothing is ever rounded.
 
 ```ts
-await callOperation(supervisor, "control.suspend", {
-  target: "dsor://org_456/agent/accounts-payable-fte",
-  suspended: true,
-  reason: "paying invoices it should not",
-}, { idempotencyKey });
+const rates = ratesOf("org_456"); // org_456's rate service, asked only if a rate is needed
+exceeds(money("2800000.00", "PKR"), money("50000.00", "USD"), rates); // false: 10,000.00 USD
+exceeds(money("45000.00", "GBP"), money("50000.00", "USD"), rates); // true: 56,250.00 USD
 ```
 
-From then on, every command the agent sends is refused `AGENT_SUSPENDED` at §21.4, a stage of its own
-in the checklist, before anything is decided. It can still read: reading changes nothing. Releasing
-the brake is the same command with `suspended: false`, and only a person may send it. The brake is a
-record in DSoR's own store, with who pulled it, when and why, and who released it; the agent never
-reads that table and nothing it sends can change it.
+So the bill in rupees is paid, and the bill in pounds is refused.
 
-**Tearing up a slip.** `delegation.revoke` marks a slip revoked, with who and why. Its signer may: for
-del_100, `user_123`. After that the agent has no slip, and every command it sends is refused. In the
-same statement, every proposal under the slip that was waiting for approval, or approved, is
-cancelled, and each cancellation has its record in the company's audit log, in the name of the
-request that revoked. Then the amount each one held against the day is given back. An amount that
-cannot be given back stays held, which errs toward refusing.
+The day's limit counts in dollars. A payment in rupees is converted when it is booked against the
+day, and rounded **up** to the cent: 1,000,000.00 PKR is 3,571.428571... USD, and the day counts
+3,571.43. The day can count a fraction of a cent too much, never too little. The booking keeps that
+number, so a payment that fails gives back exactly what it took, even if the rate has moved since.
 
-The records are made from what DSoR read just before: which proposals wait, and in which state. So
-the statement revokes the slip only if what waits is still what was read. A proposal that started
-waiting in between has no record ready, and would be left waiting under a revoked slip. If what
-waits changed, nothing is written, and DSoR reads again, at most five times. After five, the answer
-is `CONFLICT`, and nothing was revoked. Nothing can wait for approval before step 29, so today only
-a test reaches this.
-
-**Two locks, not one.** §21.4 refuses a stopped agent's command before anything is decided. But a
-person can pull the brake while one of the agent's commands is already past §21.4, on its way to its
-handler. So the statement that moves a proposal to EXECUTING asks again, in the same statement: if a
-brake is on the agent now, nothing is written, neither the moves nor their records in the log, the
-proposal is DENIED, and the handler never runs. A prepared command's move to READY asks too.
-
-**Who may, decided before it is recorded.** Only a slip's signer may revoke it, and only a person may
-release a brake. Both are decided at §21.9, a stage that reads the validated arguments, before §21.11
-records the decision: a refusal is recorded as the DENY it is, never as an ALLOW followed by a
-refusal.
+When DSoR cannot convert, the strict answer wins: the limit counts as exceeded, and the refusal says
+why. It cannot convert when the service has no rate for the currency, when its newest rates are more
+than three days old, when it does not answer, or when the company has no service at all. Two amounts
+in one currency need no rate, so a bill in dollars is paid even while the service is down.
 
 ## Why it matters
 
-At 3 a.m. the agent starts paying invoices it should not. Until this step there was no switch:
-`user_123` could not tear up del_100, only someone editing the database could, and nothing stopped
-one agent or every agent at once. And asking the agent to stop is asking the thing that misbehaves to
-behave. The brake works because it is not the agent's: DSoR reads it on every command, from a table
-the agent cannot touch.
+Step 25 refused every bill in another currency than the limit's: "cannot be compared". That is
+safe, and it means the agent can never pay a foreign bill, not even one rupee. Someone will want a
+quick fix, and each quick fix is a hole. These were measured in Node:
 
-## What changed since step 24
+- **Compare the numbers, and forget the currency.** 45,000 is less than 50,000, so 45,000.00 GBP
+  goes through a limit of 50,000.00 USD. At 0.80 pounds to the dollar it is 56,250.00 USD.
+- **Check only the amounts in dollars.** Then 50,000,000.00 PKR, about 178,571 USD, goes through with
+  no check at all. The specification names this hole in
+  [§9](../../../specs/dsor/01-model.md#9-money-and-currency).
+- **Convert with JavaScript numbers.** They are not exact for decimals: `0.1 + 0.2` is
+  `0.30000000000000004`. At 281.15 rupees to the dollar, 14,057,500.00 PKR is exactly 50,000.00 USD,
+  and dividing gives `50000.00000000001`, so a payment exactly at the limit is refused.
+
+## What changed since step 25
 
 ```bash
 # in Git Bash on Windows
-diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_24_limits_with_reservations ../my_25_revocation_and_the_emergency_brake
+diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_25_revocation_and_the_emergency_brake ../my_26_money_done_right
 ```
 
 | File | What |
 | --- | --- |
-| `migrations/024_the_emergency_brake.sql` | new — the brake: one agent, or every agent in a company; who pulled it, when and why, who released it; one at a time per target, a lift final, nothing deleted |
-| `migrations/025_a_slip_can_be_revoked.sql` | new — a slip can be marked revoked with who, when and why, and nothing else; a second policy keeps it so |
-| `migrations/026_org_789_has_a_slip_too.sql` | new — org_789's own del_100, so the cross-tenant suite has a slip of the same number in both companies |
-| `src/controls.ts` | new — pull the brake, release it, and say what stops an agent now |
-| `src/delegation.ts` | read one slip by its id; revoke it and cancel what waited under it, in one statement, with the record of each cancellation, and only if what waits is still what was read; read again, five times at most; a slip that has ended is told so at once |
-| `src/operations.ts` | §21.4 asks the brake; §21.9 asks who may act on the target; the door's move to EXECUTING, and a prepared command's to READY, ask the brake again; the handlers of `control.suspend` and `delegation.revoke`, which answers `CONFLICT` when what waits kept changing |
-| `src/proposal.ts` | the path into EXECUTING must be told the agent, and asks the brake; nothing enters EXECUTING one move at a time; the records of the moves are written only if the moves are |
-| `src/audit.ts` | `recordInsertIf`: a record written only if a condition holds, in the statement that writes the moves |
-| `src/pipeline.ts` | twelve stages, the two new ones required by name |
-| `src/permissions.ts`, `src/classification.ts`, `src/registry.ts`, `src/contracts/*.json` | `control:suspend` and `delegation:revoke` for `user_123` and `cfo_100`; the two receipts' labels; the two contracts |
-| `src/reservation.ts` | a CANCELLED proposal's reservation is released, as every ending §13.4 lists |
-| `src/database.ts` | start-up knows eleven tenant tables, expects both new policies word for word, and refuses more rights on the slips' and the brakes' tables than revoking and braking need |
-| `src/main.ts` | the brake pulled at 3 a.m. and released, and a month-end freeze; the finished proposal is now asked to move into FAILED, a move only the database refuses (decision 156) |
-| `test/brake.test.ts`, `test/brake.db.test.ts`, `test/revoke.test.ts` | new — the brake, both locks, who may release it, and twenty pulls of one brake at once on a real server; revoking, what it cancels, who may revoke; a brake pulled after the decision leaves no record of the moves it stopped; each cancellation's record, a proposal that starts or stops waiting while the slip is revoked, a revocation that keeps finding new work, and a slip that has ended while new work arrives |
-| `test/pipeline.test.ts` | twelve stages, and the stage-order proof by its parts |
-| `test/database.test.ts` | the start-up refusals above, tested: a brake or a slip without its second policy, and rights on either beyond braking and revoking |
-| `test/the-lock-at-start-up.test.ts` | an account one `SET ROLE` from owning the brake's table is refused; and the lock's refusals are asked of that table too |
-| `test/delegations.test.ts` | the test that reads del_100 reads org_456's only, now that org_789 has one too; a revocation the application writes says who, when and why, or is refused |
-| `test/main.test.ts` | the demo's brake and freeze, the log's new totals, and a finished proposal asked to move into FAILED |
-| `test/modes.test.ts` | calling every command all three ways checks the brakes too, so a dry run of `control.suspend` that pulled one would fail |
-| `test/proposals.test.ts`, `test/proposals.db.test.ts`, `test/limits.test.ts` | into EXECUTING only through the path, told who the moves are for; a step-24 title the wider release made false, retitled |
-| `test/operations.test.ts`, `test/registry.test.ts`, `test/permissions.test.ts`, `test/payments.test.ts`, `test/versions.test.ts` | the two new operations, in each list of operations, contracts, permissions, semantics and concurrency |
-| `test/control-plane-store.test.ts`, `test/support/story.ts`, `test/support/cross-tenant-suite.ts` | the brake's table among DSoR's, no brake on when a test starts, org_789's slip, and the rows a careless brake or revocation could change |
+| `src/exchange.ts` | new — `compare`, `exceeds` and `covers`, exact in any two currencies because they multiply and never divide; `CannotConvert` for a missing, zero, negative or unreadable rate; `convertUp`, rounded up to the cent; `plus` |
+| `src/rates.ts` | new — the fake rate service, one per company, which a test or the demo can change, make old, or switch off; `ratesOf`, which asks it once, only when a rate is needed, copies the answer, and refuses rates more than three days old or dated in the future |
+| `migrations/027_bills_in_rupees_and_pounds.sql` | new — VENDOR-44's INV-1010, 2,800,000.00 PKR, and INV-1011, 45,000.00 GBP |
+| `src/operations.ts` | §21.10 compares the limit per payment through `exceeds`, books the day's amount converted and rounded up, and treats an amount it cannot convert as over, with the reason; it asks for the company first, because the rates are the company's |
+| `src/money.ts`, `src/authority.ts` | export the decimal pattern and step 19's two time checks, for the new files |
+| `src/payment.ts` | `centsOf` removed; a payment is still in its invoice's currency |
+| `src/main.ts` | the bill in rupees paid, the one in pounds refused, and rupees refused at rates four days old |
+| `src/database.ts` | two comments: the start-up gaps wait for step 26b |
+| `test/exchange.test.ts`, `test/rates.test.ts`, `test/money-limits.test.ts` | new — exactness at the boundary, every reason a rate cannot be used, both limits in other currencies, the dry run, rates planted in a request, and a failed payment giving back what it booked |
+| `test/main.test.ts` | the demo's money section, and the log's new totals |
+| `test/bounded-queries.test.ts`, `test/classified-reads.test.ts`, `test/versions.test.ts` | four invoices in the story, not two |
+| `test/delegations.test.ts`, `test/limits.test.ts`, `test/payments.test.ts` | titles and comments that said another currency cannot be compared |
+| `test/support/story.ts` | the story's tests put the two bills back |
 
 ## Run it
 
@@ -97,37 +81,32 @@ pnpm install
 pnpm start
 ```
 
-The part that is this step comes after the day's payments:
+The part that is this step comes after the brake:
 
 ```text
-3 a.m.: the agent is paying what it should not. user_123 pulls the brake on it:
+VENDOR-44 bills in rupees and in pounds. One US dollar buys 280 PKR, or 0.80 GBP:
 
-user_123              COMMITTED                dsor://org_456/control/ctl_1  brake on   atomic
-accounts-payable-fte  AGENT_SUSPENDED          retry: never                accounts-payable-fte is suspended in org_456, by user_123; a person must lift it
-accounts-payable-fte  (internal)               dsor://org_456/invoice/INV-1008  (amount withheld)  issued
+accounts-payable-fte  COMMITTED                dsor://org_456/payment/PAY-914  draft      compensatable
                         withheld: amount (clearance)
-                        current, read at 2026-10-11T19:44:24.135Z from postgres
+accounts-payable-fte  LIMIT_EXCEEDED           retry: after_delay          45000.00 GBP is above del_100's limit of 50000.00 USD a payment
+  the day had used 184600.00 USD, and has used 194600.00 USD of 200000.00
 
-user_123 lifts it, and the agent's payment goes through:
+The rate service has published nothing for four days. A bill in rupees, and one in dollars:
 
-user_123              COMMITTED                dsor://org_456/control/ctl_1  brake off  atomic
-accounts-payable-fte  COMMITTED                dsor://org_456/payment/PAY-913  draft      compensatable
+accounts-payable-fte  LIMIT_EXCEEDED           retry: after_delay          28000.00 PKR cannot be compared with del_100's limit of 50000.00 USD a payment, so it is refused: org_456's newest rates are more than three days old
+accounts-payable-fte  COMMITTED                dsor://org_456/payment/PAY-915  draft      compensatable
                         withheld: amount (clearance)
-
-Month-end: cfo_100 freezes every agent in org_456, and lifts the freeze after:
-
-cfo_100               COMMITTED                dsor://org_456/control/ctl_2  brake on   atomic
-accounts-payable-fte  AGENT_SUSPENDED          retry: never                every agent in org_456 is stopped, by cfo_100; a person must lift it
-cfo_100               COMMITTED                dsor://org_456/control/ctl_2  brake off  atomic
 ```
 
-The agent's payment is refused while the brake is on, and its read still answers: a brake stops state
-changes, and reading is not one. The refusal says who pulled the brake, and never why: the reason is a
-person's words about the agent, for the people who read the record. Nothing in the agent changed, at
-any point; that is the map's "done when".
+The rupees are paid, and the day rises by exactly 10,000.00 USD. The pounds are refused before
+anything is booked: 45,000.00 GBP is 56,250.00 USD, above the limit of one payment. Then the rate
+service is made four days old for a moment. A bill in rupees cannot be compared, and is refused with
+the reason. A bill in dollars needs no rate, and is paid. The agent's receipts withhold the amount,
+as they have since step 14: the agent is not cleared to read amounts.
 
-The demo does not revoke del_100. A slip once revoked stays revoked, and every later run of the demo
-needs del_100; revoking is shown in `test/revoke.test.ts` instead.
+Run it a second time, without deleting `.local-database`, and the bill in rupees is refused by the
+day instead: the first run's payments still count, and 10,000.00 USD would take the day past
+200,000.00.
 
 ### The database tier
 
@@ -135,185 +114,130 @@ needs del_100; revoking is shown in `test/revoke.test.ts` instead.
 database of this step's own:
 
 ```bash
-cp ../my_24_limits_with_reservations/.env .env     # then dsor_step24 -> dsor_step25 in both lines
+cp ../my_25_revocation_and_the_emergency_brake/.env .env     # then dsor_step25 -> dsor_step26 in both lines
 pnpm migrate && pnpm test:db
 ```
 
-The database has to exist first, made with one `CREATE DATABASE dsor_step25` through the owner
-login. `pnpm migrate` applies the twenty-six migrations; on a server that already had step 24's
-twenty-three, it applies 024, 025 and 026. This step adds one test of its own to the tier, in
-`test/brake.db.test.ts`: twenty people pull the same brake at once, over twenty connections, and
-one record is written. Its two commands also join the cross-tenant suite there, with six tests
-each. That is why the count rose from fifty-nine. No test races a brake against a move to
-EXECUTING on a real server; see what this step leaves, below.
+The database has to exist first, made with one `CREATE DATABASE dsor_step26` through the owner
+login. `pnpm migrate` applies the twenty-seven migrations; on a server that already had step 25's
+twenty-six, it applies 027. This step adds no test to the tier. Money is compared in the program,
+before the database is asked anything, and the statement that books a day is step 24's, unchanged:
+it is handed an amount already in dollars. Run on a throwaway PostgreSQL 17 on this machine on 2026-10-16, with an owner shaped like Neon's: 75 passed. It has not yet run on Neon: `dsor_step26` does not exist yet.
 
 ## Break it
 
-Three, each measured on the full suite with the files one at a time, twice, and the two runs agreed.
-The counts are from a copy outside the repository, where one test skips because the specification
-is not beside it, so the total reads `1021` with `1 skipped`; in the repository it is `1021 passed`.
+Three, each measured on the full suite in a copy outside the repository, where one test skips
+because the specification is not beside it, so the total reads `1079` with `1 skipped`; in the
+repository it is `1079 passed`.
 
-### Break 1 · §21.4 asks nothing
+### Break 1 · forget the currency
 
-The map's "break it" turned round: take the brake out of the checklist. In `src/operations.ts`, in
-`checkTheOperationalStatus`, change
-`if (principal.type !== "agent" || context.contract?.kind !== "command") {` to the same line with
-`|| true` before its `)`.
-
-```text
- Tests  11 failed | 1009 passed | 1 skipped (1021)
-```
-
-Fewer than you might think, and that is the second lock. A stopped agent's payment is still stopped,
-by the move to EXECUTING, but after an ALLOW is on the record and a proposal made, and in other words:
-the test that reads the log, the one that names who pulled the brake, the two that hold two brakes
-at once and read whose brake the refusal names, and the demo's lines. Four tests of the demo's log
-go with them: for each payment the brake stopped, the log now holds an ALLOW and the records of the
-proposal's moves. The test of a read that fails goes too: §21.4 no longer reads the brake at all, so
-nothing fails, and the payment is made. And a stopped agent's dry run, which reaches no move at all,
-is now answered "allowed".
-
-### Break 2 · the move to EXECUTING forgets the brake
-
-In `src/operations.ts`, in the door, after the comment
-`// STEP 25: and for an agent, not if a brake is on it now (DSOR-OPS-01c).`, change
-`principal.type === "agent" ? principal.id : null,` to `null,`.
+The first quick fix. In `src/exchange.ts`, in `compare`, change
+`if (a.currency === b.currency) {` to `if (a.currency === a.currency) {`, so every pair of amounts is
+compared as numbers.
 
 ```text
- Tests  3 failed | 1017 passed | 1 skipped (1021)
+      Tests  33 failed | 1045 passed | 1 skipped (1079)
 ```
 
-Three: a suspension and a freeze, each pulled between the decision and the handler, and the test
-that such a brake leaves no record of a move to READY or EXECUTING. Every other test pulls the brake
-before the request starts, where §21.4 catches it, or while a prepared command is on its way, where
-the move to READY catches it. The handler runs, and the payment a person stopped is made.
+Every comparison across two currencies goes wrong at once. The bill in rupees is refused, because
+2,800,000 is more than 50,000. The bill in pounds is paid, because 45,000 is less. An amount in a
+currency with no rate is compared without one. The demo prints the opposite of what it should, and
+the log's totals change with it.
 
-### Break 3 · tearing up a slip cancels nothing waiting under it
+### Break 2 · JavaScript numbers
 
-In `src/delegation.ts`, in `revokeSlip`, change `WHERE EXISTS (SELECT 1 FROM revoked)` to
-`WHERE false AND EXISTS (SELECT 1 FROM revoked)`.
+The third quick fix. In `src/exchange.ts`, in `compare`, replace the last line,
+`return order(times(exact(a.value), bRate), times(exact(b.value), aRate));`, with a division of
+`Number(a.value)` by its rate and of `Number(b.value)` by its rate, compared with `<` and `>`.
 
 ```text
- Tests  8 failed | 1012 passed | 1 skipped (1021)
+      Tests  2 failed | 1076 passed | 1 skipped (1079)
 ```
 
-The slip is revoked, and the payments that were waiting for approval under it, or approved, stay
-where they were, ready to run once released, with their amounts still held against the day. Eight
-tests in `test/revoke.test.ts` notice. Each expects a proposal under del_100 cancelled, the record
-of that move, or its amount given back, including the two where what waits changes while the slip
-is revoked, the one that checks that another slip's proposals are left alone, and the one whose reply is lost
-after the revocation committed.
+Only two, and that is the point: floats are wrong rarely, and exactly where it matters. 14,057,500.00
+PKR at 281.15 is exactly the limit and comes out above it, and the largest amount a payment may
+hold, converted to dollars, no longer comes out above an amount it is above by a fraction of a cent.
+
+### Break 3 · what cannot be compared carries on
+
+In `src/operations.ts`, in `checkTheSlipsLimit`, change
+`if (against.kind === "cannot_compare") {` to `if (against.kind === ("never" as string)) {`.
+
+```text
+      Tests  5 failed | 1073 passed | 1 skipped (1079)
+```
+
+The service down, rates four days old, no service, a currency with no rate: each bill goes through
+the limit per payment as if it were within it. The demo's rupees at old rates are paid.
 
 ## Build it yourself with Claude Code
 
-Copy `my_24_limits_with_reservations` to a new folder and ask:
+Copy `my_25_revocation_and_the_emergency_brake` to a new folder, without its `.env`, and ask:
 
-> Start step 25, revocation and the emergency brake. Before any code: show me the agent misbehaving
-> at 3 a.m. and everything I could do today to stop it. Then ask me the step's decisions one at a
-> time. Then build it a piece at a time, red first, and break each piece on purpose.
+> Start step 26, money done right. Before any code: show me a bill in rupees against del_100's limit
+> in dollars, what step 25 does with it, and every quick fix that would be a hole. Then ask me the
+> step's decisions one at a time. Then build it a piece at a time, red first, and break each piece
+> on purpose.
 
 ## Check yourself
 
-1. The agent is suspended. Can it still read an invoice? Why?
-2. A person pulls the brake after the agent's payment has passed §21.4. What stops the payment?
-3. Why may `user_123` pull or release the brake, but the agent never release it, even if its slip one
-   day granted `control:suspend`?
-4. `user_123` revokes del_100 while a payment under it waits for approval. What happens to that
-   payment, and to the amount it held against the day?
-5. Why is "only the signer may revoke" decided at §21.9 and not in the handler?
+1. Why is "45,000 is less than 50,000" the wrong question for a bill of 45,000.00 GBP and a limit of
+   50,000.00 USD?
+2. `exceeds` never divides. What would dividing get wrong, and how does it compare without it?
+3. The rate service is down. Can the agent pay a bill in dollars? A bill in rupees? Why the
+   difference?
+4. A payment of 1,000,000.00 PKR is booked against the day. Why 3,571.43 USD, and not 3,571.42?
+5. The agent sends `"rates": { "GBP": "100" }` with its payment. What does DSoR do with it?
 
 <details>
 <summary>Answers</summary>
 
-1. Yes. A brake stops state changes, and reading is not one: §21.4 lets a query through.
-2. The statement that moves the proposal to EXECUTING asks the brake again, in the same statement.
-   Nothing is written, the proposal is DENIED, the caller is told `AGENT_SUSPENDED`, and the handler
-   never runs.
-3. Releasing a brake is a person's decision (`DSOR-OPS-01d`): §21.9 refuses an agent whatever it holds.
-   Pulling a brake only stops things, so it needs nothing more than `control:suspend`.
-4. It is cancelled, in the same statement that revokes the slip. Then its reservation is released,
-   giving its amount back to the day.
-5. Because a refusal in the handler comes after §21.11 has recorded ALLOW: the log would say one thing
-   and the answer another. At §21.9 the refusal is recorded as the DENY it is.
+1. Because the two numbers are in different units. At 0.80 pounds to the dollar the bill is
+   56,250.00 USD, above the limit. Numbers can only be compared once both are in one currency.
+2. Dividing can leave a number with no end, like 1,000,000 / 280, and JavaScript rounds it:
+   14,057,500.00 PKR at 281.15 comes out a hair above 50,000.00 USD, though it is exactly that.
+   `exceeds` asks "is a × (b's rate) above b × (a's rate)?" instead, which multiplies exact decimals
+   and so stays exact.
+3. The bill in dollars, yes: two amounts in one currency need no rate. The bill in rupees, no: it
+   cannot be converted, so the limit counts as exceeded (`DSOR-MON-04`), and the refusal says the
+   service did not answer.
+4. 3,571.428571... is rounded up, so the day counts a fraction of a cent too much rather than too
+   little. Rounded down, a payment of 0.01 PKR would count as nothing and fit into a full day.
+5. Nothing. The rates come from `ratesOf(tenant)`, the company's own service, and the stage never
+   reads them from the request. A test sends exactly that and is still refused.
 
 </details>
 
 ## The rules this step meets
 
-- **[DSOR-DEL-04a · L2]** A delegation MUST be revocable by its delegator and by a tenant
-  administrator. ([§13.3](../../../specs/dsor/02-security.md#133-revocation-and-subdelegation))
-- **[DSOR-DEL-04c · L2]** On revocation or expiry, every proposal created under the delegation that
-  is `PENDING_APPROVAL` or `APPROVED` MUST move to `CANCELLED`.
-- **[DSOR-ERR-01b · L1]** An error MUST NOT reveal the existence or attributes of a resource the
-  caller is not authorized to read — claimed here for slips too. Nobody may read a slip, so a slip
-  that does not exist and one somebody else signed are refused in the same words.
-  ([§28](../../../specs/dsor/03-execution.md#28-result-and-error-envelopes))
-- **[DSOR-OPS-01a · L2]** DSoR MUST provide per-agent suspension and a tenant-wide agent freeze.
-  ([§18](../../../specs/dsor/02-security.md#18-operational-controls))
-- **[DSOR-OPS-01c · L2]** While a suspension or freeze is active, a proposal from an affected agent
-  MUST NOT enter `EXECUTING`.
-- **[DSOR-OPS-01d · L2]** A suspension or freeze MUST be lifted only by a human holding
-  `control:suspend`.
+- **[DSOR-MON-02 · L1]** Monetary arithmetic and comparison MUST use decimal arithmetic.
+  ([§9](../../../specs/dsor/01-model.md#9-money-and-currency))
+- **[DSOR-MON-03 · L2]** A monetary threshold in a control or delegation MUST be compared only
+  through the `dsor_*` money functions, which convert both operands to the threshold's currency
+  using the tenant's rate source — claimed here for a slip's two limits. Controls arrive in step 27.
+- **[DSOR-MON-04 · L2]** When an amount cannot be converted, the comparison MUST resolve
+  restrictively — the delegation limit's half: treated as exceeded.
+- **[DSOR-MON-06 · L2]** A cumulative limit MUST accumulate in the limit's own currency, converting
+  each reservation at the rate in force when the reservation is taken.
 
-**What this step leaves, said plainly.** Only a slip's signer may revoke it: a tenant administrator,
-who could revoke anyone's, is nobody in the story's cast, so `DSOR-DEL-04a` is met in part.
-`DSOR-DEL-04c` asks the same cancellation on a slip's expiry, and nothing watches the clock for it.
-DSoR reads a slip once, at §21.3. A revocation is seen by every command that reaches §21.3 after it,
-and by no command already past it: that command is decided under the slip as if nothing had happened.
-If it is allowed, the ALLOW is recorded under the slip, even when the record is written after the
-revocation; a payment's amount is booked against the slip's day; and the command runs. Unlike the
-brake, nothing asks the slip again. A revocation that finds what waits changed five times in a row
-revokes nothing and answers `CONFLICT`, whose retry class is `never`, though a later try would
-likely work; nothing can wait before step 29, so only a test reaches it. One moment is left for step
-29 as well: the revocation checks what waits as its own statement saw it when it began, so a
-proposal that starts waiting while that statement runs is not seen, and would wait under a revoked
-slip. Step 29's move into waiting must lock the slip's row first, so that it waits for a revocation
-that is running. A brake that commits while a move to EXECUTING is running is not seen by that
-move, which reads the brakes as they were when its statement began; no test races the two on a real
-server. "A person" is whoever logged in: logins are believed until steps 43 and 44. And a question for
-the specification: `DSOR-SRC-02b` refuses a principal or delegation identifier in the arguments that
-disagrees with the request's own. Read literally, that would stop a delegator from naming the slip
-they revoke, which `DSOR-DEL-04a` asks that they can. It would stop `control.suspend` too, whose
-target names the agent to stop, not the person asking. DSoR counts an argument as such an identifier
-only by its name: `principal` or `delegation`, alone or with `_id`. Both commands call theirs
-`target`. That is a reading of the rule and not a change to it, written down for the editor in
-decision 143, and the brake's half in decision 156.
-
-The agent's own traffic can delay the brake. Since decision 158 it cannot make the brake lose its
-place. Pulling a brake, or revoking a slip, is a decision in the company's log like any request, and
-its records need the log's next places as the agent's records do. Decision 156 wrote down that an
-agent taking ten places in a row from one of the person's records could make `control.suspend` come
-back `EVIDENCE_STORE_UNAVAILABLE`, with nothing done. Now every record waits for the company's turn
-at the log (step 22), so the person's records wait behind the agent's records already waiting,
-instead of losing their places. Before the turns, measured on a local PostgreSQL 17 with one and
-with five agents sending payments without a pause, the person's `control.suspend` landed on its
-first try in each of twenty runs.
-
-The wait is the price, and it grows with the agent's traffic. A `control.suspend` needs its turn at
-the log before its handler pulls the brake, and every record already waiting goes first; on Neon,
-127 ms away, each turn is a few round trips. `DSOR-OPS-01b` asks a suspension to take effect
-within 60 seconds at level 2 and 5 seconds at level 3 (§44), whatever the agent does, and
-`DSOR-DEL-04b` asks the same 60 seconds of a revocation at level 2, which waits for the same turns.
-A busy enough agent on a database far enough away can make either wait longer than that. Nothing limits how many requests an agent
-sends: `DSOR-OPS-02` asks for that, and no step on the map builds it yet. Open question 130 asks
-whether a person's control should go ahead of the agent's records. The brake can also still fail
-as any request can, when the database cannot be reached.
-
-Start-up leaves two gaps, written down in decision 156, and both wait for step 26. It asks whether
-the application may read a view or a table beside the tenant tables, because a view runs with its
-owner's rights: over the invoices, it shows every company's rows. But it asks only whether the
-application itself may read the whole of one. A grant that names its columns instead, even every one
-of them, passes start-up. So does a view the application can read only one `SET ROLE` away, or
-through a helper function whose owner can read it. The questions about writing already ask both of
-those ways (decisions 126 and 128). This one does not yet. And it refuses an application that may
-choose the next payment's number (step 17). But it asks nothing about the sequences, PostgreSQL's
-counters, that hand out the other numbers: a proposal's number, a move's place in its history, and a
-brake's number. Writing one of those numbers directly is refused. Setting a counter's next number
-with `setval` is not. So an owner's careless `GRANT ALL ON ALL SEQUENCES IN SCHEMA dsor` passes
-start-up, and lets the application choose the next of any of them.
+**What this step leaves, said plainly.** The rate service is a fake with fixed rates. A real one may
+not publish every currency, and a company whose service has no rupee rate has every rupee bill
+refused, as it should. How old a rate may be is one setting for every company, three days, where
+the specification gives each company its own `max_rate_age`. The day's booking compares in its own
+statement, not through `exceeds`, because that statement is what keeps requests at once from booking
+past the limit; it is handed an amount `convertUp` already converted. Every limit is counted in
+hundredths, so a limit in a currency with three decimals would be rounded up to two. A refusal that
+could not convert is `LIMIT_EXCEEDED`, whose retry class says to try again later, which is right for
+old rates and pointless for a currency with no rate. The decision's record does not say which rate
+was used: that is `DSOR-MON-05`, in the step that builds the decision bundle. A payment is still in
+its invoice's currency. A dry run reads the day's total without checking its currency, which an
+administrator who changes a slip's daily currency mid-day could make answer wrongly (decision 160).
+The map's step 26 speaks of "a table of exchange rates"; this build asks a service instead
+(decision 159). And the four start-up gaps that steps 18, 22 and 25 sent here wait for step 26b.
 
 Everything earlier steps claimed still holds.
 
-**Stage 3 of the learning path is complete.** **Next:** step 26, `money_done_right` — compare amounts
-exactly, in any currency, with a table of exchange rates; when an amount cannot be converted, the
-strict answer wins.
+**Next:** step 26b, the start-up gaps that decision 145 had sent to step 26 and decision 159 gave a
+step of their own. Then step 27, `controls_in_cel`: the policy "payments above 25,000 USD need the
+CFO", written as a rule that calls `dsor_exceeds`, this step's `exceeds`.
