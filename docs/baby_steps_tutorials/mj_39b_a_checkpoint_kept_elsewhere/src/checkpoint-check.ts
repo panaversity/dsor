@@ -111,12 +111,16 @@ export function checkAgainstCheckpoints(
     if (!covered.has(chain)) checked.notes.push(`${chain}: not yet in a checkpoint`);
   }
   let vouched = true;
-  const newest = used.map(({ checkpoint }) => checkpoint.taken_at).sort().at(-1);
+  const newest = used
+    .map(({ checkpoint }) => checkpoint.taken_at)
+    .sort()
+    .at(-1);
   if (publicKey === undefined) {
     checked.notes.push("not checked: there is no public key, checkpoint-public-key.pem");
     vouched = false;
   } else if (newest === undefined) {
-    checked.notes.push("not checked: there is no checkpoint");
+    const which = files.length === 0 ? "" : " whose signature holds";
+    checked.notes.push(`not checked: there is no checkpoint${which}`);
     vouched = false;
   } else if (Date.parse(now) - Date.parse(newest) > MAX_AGE_HOURS * 3_600_000) {
     checked.notes.push(
@@ -125,8 +129,7 @@ export function checkAgainstCheckpoints(
     vouched = false;
   }
   checked.notes.push(BLIND);
-  const broken =
-    reports.some((r) => r.broken !== undefined) || checked.files.some((f) => f.broken);
+  const broken = reports.some((r) => r.broken !== undefined) || checked.files.some((f) => f.broken);
   checked.exit = broken ? 1 : vouched ? 0 : 2;
   return checked;
 }

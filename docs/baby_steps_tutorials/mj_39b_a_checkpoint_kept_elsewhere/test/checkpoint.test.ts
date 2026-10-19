@@ -271,7 +271,8 @@ describe("C3 to C5: the log held against its checkpoints", () => {
   it("DSOR-AUD-04b: a forged file does not count as the newest: with no other checkpoint, the log is not vouched for", () => {
     const forged = fileOf(LOG(), AT_10, OTHER.privateKey);
     const result = check(LOG(), [forged]);
-    expect(result.notes).toContain("not checked: there is no checkpoint");
+    // Found live 2026-10-20: "there is no checkpoint" read as false beside the forged file's line.
+    expect(result.notes).toContain("not checked: there is no checkpoint whose signature holds");
   });
 
   it("DSOR-AUD-04b: a chain no checkpoint names yet is reported, not broken: org_789's first record came after it", () => {
