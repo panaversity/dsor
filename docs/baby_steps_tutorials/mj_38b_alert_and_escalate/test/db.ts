@@ -1,6 +1,7 @@
 // What the database tests share. Not a test file itself.
 // The tests look at the database with pg directly, never through src, so a broken log
 // cannot vouch for itself.
+import { readAlerts, type AlertsSource } from "../src/alerts.ts";
 import { readConnectors, type ConnectorsSource } from "../src/connectors.ts";
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -71,6 +72,9 @@ export function dbRegistry(
   // Step 35: and the banks, the shipped fake unless the test gives its own (step 35's README,
   // decision D1).
   banks?: Parameters<typeof buildRegistry>[18],
+  // NEW IN STEP 38b: and each company's alerts, the shipped file unless the test gives another,
+  //   such as an escalation after one second, to see one (step 38b's README, decision D7).
+  alerts: AlertsSource = readAlerts(),
 ): Registry {
   // The registry holds the store (step 10's README, decision 13).
   return buildRegistry(
@@ -101,6 +105,7 @@ export function dbRegistry(
     ksors,
     connectors,
     banks,
+    alerts,
   );
 }
 
@@ -189,6 +194,13 @@ function asOwner(program: string, args: string[] = []): unknown {
   const run = spawnSync(process.execPath, [file, ...args], { encoding: "utf8", timeout: 60_000 });
   if (run.status !== 0) throw new Error(`${program} failed: ${run.stderr}`);
   return JSON.parse(run.stdout);
+}
+
+// NEW IN STEP 38b: the owner tries to change or remove an alert, which the trigger refuses
+//   (test/owner-alerts.ts; step 38b's README, claim C7).
+/** What the owner's alerts program printed, for these words. */
+export function ownerAlerts(...args: string[]): unknown {
+  return asOwner("owner-alerts.ts", args);
 }
 
 // Step 32: the owner ends every proposal in flight, between two tests of one file that each
