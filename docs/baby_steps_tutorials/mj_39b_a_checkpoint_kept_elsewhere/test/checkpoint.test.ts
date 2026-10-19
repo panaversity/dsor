@@ -259,11 +259,13 @@ describe("C3 to C5: the log held against its checkpoints", () => {
     expect(check(rows, [fileOf(LOG(), AT_9)], "2026-10-25T09:00:00.000Z").exit).toBe(1);
   });
 
-  it("DSOR-AUD-04b: every checkpoint is checked: the newest deleted, an older one still names the rewrite", () => {
+  it("DSOR-AUD-04b: every checkpoint is checked: a newer one, taken after the rewrite, does not hide it from an older one", () => {
     const older = fileOf(LOG(), AT_9);
     // The newest, taken after the rewrite, vouches for it; the older one does not.
     const newer = fileOf(rewritten(), AT_10);
-    const result = check(rewritten(), [newer, older]);
+    // In the order the script reads them, by name, oldest first. Found by break B6: given newest
+    //   first, a checker that read only the last file read the older one, and passed.
+    const result = check(rewritten(), [older, newer]);
     expect(result.reports.find((r) => r.chain === "org_456")!.broken?.position).toBe(3);
     expect(result.exit).toBe(1);
   });
