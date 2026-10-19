@@ -59,7 +59,8 @@ describe("the program", () => {
       expect(output).toMatch(
         // Changed in step 35: and payment.execute (step 35's README, decision D7).
         // Changed in step 38: and payment.reconcile (step 38's README, decision D2).
-        /operations: \[\s+'control\.lift',\s+'control\.suspend',\s+'delegation\.revoke',\s+'invoice\.get',\s+'invoice\.issue',\s+'invoice\.list',\s+'payment\.cancel',\s+'payment\.create',\s+'payment\.execute',\s+'payment\.reconcile',\s+'proposal\.approve',\s+'proposal\.execute',\s+'proposal\.expire_due',\s+'rate\.load',\s+'rule\.activate',\s+'rule\.check_authority',\s+'rule\.draft',\s+'rule\.retire',\s+'rule\.suspend'\s+\]/,
+        // Changed in step 38b: and alert.escalate_due, first (step 38b's README, decision D3).
+        /operations: \[\s+'alert\.escalate_due',\s+'control\.lift',\s+'control\.suspend',\s+'delegation\.revoke',\s+'invoice\.get',\s+'invoice\.issue',\s+'invoice\.list',\s+'payment\.cancel',\s+'payment\.create',\s+'payment\.execute',\s+'payment\.reconcile',\s+'proposal\.approve',\s+'proposal\.execute',\s+'proposal\.expire_due',\s+'rate\.load',\s+'rule\.activate',\s+'rule\.check_authority',\s+'rule\.draft',\s+'rule\.retire',\s+'rule\.suspend'\s+\]/,
       );
       // Found by step 08's review: "id: 'INV-1008'" also matches the address read back, so
       // the success envelope could go unprinted. "data: {" is only in the success.

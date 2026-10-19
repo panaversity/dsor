@@ -36,6 +36,22 @@ export const CONTROL_TRIGGER =
   "CREATE TRIGGER controls_move BEFORE UPDATE ON dsor.controls FOR EACH ROW EXECUTE FUNCTION dsor.control_moves()";
 // Step 36: the guard on a note, which lets only its outcome be written, once (step 36's README,
 //   decision D1).
+// Step 38b: the guard on an alert's moves, as migration 034 makes it (step 38b's README, C7).
+export const ALERT_TRIGGER =
+  "CREATE TRIGGER alerts_move BEFORE INSERT OR DELETE OR UPDATE ON dsor.alerts FOR EACH ROW EXECUTE FUNCTION dsor.alert_moves()";
+// Step 38b: dsor.alerts, as migration 034 makes it. dsor_runtime reads every column, raises an
+//   alert through two, and moves it through three; raised_at has a default, and the trigger
+//   writes the state on the insert and the times (step 38b's README, decisions D1 and D6).
+const ALERT_COLUMNS = [
+  "tenant_id",
+  "proposal_id",
+  "raised_at",
+  "state",
+  "escalated_to",
+  "escalated_at",
+  "outcome",
+  "closed_at",
+];
 export const INTENT_TRIGGER =
   "CREATE TRIGGER intents_end BEFORE UPDATE ON dsor.intents FOR EACH ROW EXECUTE FUNCTION dsor.intent_ends()";
 // The log's columns. dsor_runtime may INSERT every one but sequence and at, which the
@@ -310,6 +326,23 @@ export function today(): Catalog {
         rowSecurity: { enabled: true, forced: true },
         rules: [],
         triggers: [VENDOR_TRIGGER],
+      },
+      // Step 38b: the alerts, raised with the move and moved only by the trigger's rule.
+      {
+        name: "dsor.alerts",
+        kind: "table",
+        held: ["SELECT"],
+        columns: ALERT_COLUMNS.map((name) => {
+          const filled = name === "raised_at";
+          if (["state", "escalated_to", "outcome"].includes(name)) {
+            return { name, held: ["SELECT", "UPDATE"], filled };
+          }
+          const added = name === "tenant_id" || name === "proposal_id";
+          return { name, held: added ? ["SELECT", "INSERT"] : ["SELECT"], filled };
+        }),
+        rowSecurity: { enabled: true, forced: true },
+        rules: [],
+        triggers: [ALERT_TRIGGER],
       },
       // The approvals, behind the company's lock, written once.
       {

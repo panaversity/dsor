@@ -84,6 +84,16 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
       // D1).
       { object: "app.vendors", held: "SELECT" },
       { object: "app.vendors SELECT", held: "tenant_id id status version" },
+      // Changed in step 38b: the alerts. Read every column, raise one through two, and move it
+      //   through three; the trigger writes the times, and nothing removes one (step 38b's README,
+      //   decisions D1 and D6).
+      { object: "dsor.alerts", held: "SELECT" },
+      { object: "dsor.alerts INSERT", held: "tenant_id proposal_id" },
+      {
+        object: "dsor.alerts SELECT",
+        held: "tenant_id proposal_id raised_at state escalated_to escalated_at outcome closed_at",
+      },
+      { object: "dsor.alerts UPDATE", held: "state escalated_to outcome" },
       { object: "dsor.approvals", held: "SELECT" },
       { object: "dsor.approvals INSERT", held: "tenant_id id proposal_id approver approval" },
       {

@@ -249,6 +249,20 @@
         "columns": { "INSERT": ["tenant_id", "resource", "proposal_id"] }
       }
     },
+    "dsor.alerts": {
+      "kind": "control-moved",
+      "tenant": "tenant_id",
+      "runtime": {
+        "table": ["SELECT"],
+        "columns": {
+          "INSERT": ["tenant_id", "proposal_id"],
+          "UPDATE": ["state", "escalated_to", "outcome"]
+        }
+      },
+      "triggers": [
+        "CREATE TRIGGER alerts_move BEFORE INSERT OR DELETE OR UPDATE ON dsor.alerts FOR EACH ROW EXECUTE FUNCTION dsor.alert_moves()"
+      ]
+    },
     "dsor.intents": {
       "kind": "control-moved",
       "tenant": "tenant_id",

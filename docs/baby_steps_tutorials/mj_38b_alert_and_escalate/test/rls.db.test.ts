@@ -111,13 +111,15 @@ describe("C1: every table with a company column has its lock", () => {
   // And dsor.notices, the notices to each rule's owner (step 28b's README, decision D5).
   // And dsor.approvals (step 29's README, decision D8).
   // And dsor.intents, the notes (step 36's README, decision D1).
-  it("DSOR-RP-01b: app.invoices, app.payments, app.vendors, dsor.approvals, dsor.audit, dsor.brakes, dsor.controls, dsor.decision_bundles, dsor.delegations, dsor.holds, dsor.idempotency, dsor.intents, dsor.limit_counters, dsor.notices, dsor.proposals, dsor.rates, and dsor.reservations have row-level security enabled, forced, and policies", async () => {
+  it("DSOR-RP-01b: app.invoices, app.payments, app.vendors, dsor.alerts, dsor.approvals, dsor.audit, dsor.brakes, dsor.controls, dsor.decision_bundles, dsor.delegations, dsor.holds, dsor.idempotency, dsor.intents, dsor.limit_counters, dsor.notices, dsor.proposals, dsor.rates, and dsor.reservations have row-level security enabled, forced, and policies", async () => {
     const { rows } = await observer.query(TENANT_TABLES);
     expect(rows).toStrictEqual([
       { table: "app.invoices", enabled: true, forced: true, policies: 1 },
       { table: "app.payments", enabled: true, forced: true, policies: 1 },
       // Step 32's vendors (step 32's README, decision D1).
       { table: "app.vendors", enabled: true, forced: true, policies: 1 },
+      // Changed in step 38b: the alerts, with the company's rule.
+      { table: "dsor.alerts", enabled: true, forced: true, policies: 1 },
       { table: "dsor.approvals", enabled: true, forced: true, policies: 1 },
       { table: "dsor.audit", enabled: true, forced: true, policies: 2 },
       // The brakes, with starts_on and lifts_once (step 25b's README, decision D9).
@@ -178,6 +180,16 @@ describe("C1: every table with a company column has its lock", () => {
       // Step 32's vendors: the same rule.
       {
         table: "app.vendors",
+        name: "tenant_isolation",
+        command: "ALL",
+        roles: ["public"],
+        using: `(tenant_id = ${company})`,
+        check: null,
+        kind: "PERMISSIVE",
+      },
+      // Changed in step 38b: the company's rule on the alerts (step 38b's README, claim C7).
+      {
+        table: "dsor.alerts",
         name: "tenant_isolation",
         command: "ALL",
         roles: ["public"],

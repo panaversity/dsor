@@ -9,7 +9,9 @@ CREATE TABLE dsor.alerts (
   proposal_id  text NOT NULL,
   -- The database's clock, the move's own time: now() is the transaction's.
   raised_at    timestamptz NOT NULL DEFAULT now(),
-  state        text NOT NULL DEFAULT 'open' CHECK (state IN ('open', 'escalated', 'closed')),
+  -- No default: dsor_runtime moves it, so the trigger writes 'open' on the insert instead, before
+  -- NOT NULL is checked.
+  state        text NOT NULL CHECK (state IN ('open', 'escalated', 'closed')),
   escalated_to text,
   escalated_at timestamptz,
   outcome      text CHECK (outcome IN ('COMMITTED', 'FAILED')),
