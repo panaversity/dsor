@@ -2299,7 +2299,9 @@ try {
 console.log("a fake bank, in memory, in a world of its own:");
 const fakeBank = createFakeBank();
 const bankDrafted: Payment[] = [];
-const bankKept = memoryProposals(() => Date.parse("2026-10-06T15:05:00Z"));
+// Changed in step 38b: a clock the scene moves on an hour, to see an alert escalated.
+let bankNow = Date.parse("2026-10-06T15:05:00Z");
+const bankKept = memoryProposals(() => bankNow);
 const bankNotes = memoryIntents();
 const bankWorld = await connectorWorld(
   readConnectors(),
@@ -2372,6 +2374,30 @@ console.log(
   heard(await bankCall(SUPERVISOR_123, "payment.create", ofInvoice("INV-1002"))),
 );
 console.log(`  transfers the bank made: ${fakeBank.transfers().length}`);
+// NEW IN STEP 38b: the move to OUTCOME_UNKNOWN raised PAY-902's alert, at once. dsor-scheduler's
+//   sweep escalates nothing before org_456's hour; an hour later, it hands the alert to cfo_100
+//   (DSOR-UNK-04b, DSOR-UNK-04c; step 38b's README, claims C1 and C4).
+const silentId = String("proposal" in silent ? silent.proposal : "")
+  .split("/")
+  .at(-1);
+const alertOf = async () =>
+  (await bankKept.alerts("org_456")).find((alert) => alert.proposal === silentId);
+const { receivers, escalate_after } = bankWorld.alerts.get("org_456")!;
+const raised = await alertOf();
+console.log(`  PAY-902's alert: ${raised?.state}, raised ${raised?.raised_at}, for ${receivers}`);
+const sweepAlerts = async (): Promise<string> => {
+  const swept = await bankCall(SCHEDULER, "alert.escalate_due", {
+    company: "dsor://org_456/tenant/org_456",
+  });
+  if (!("data" in swept)) return heard(swept);
+  const { escalated, to } = swept.data as { escalated: unknown[]; to: string };
+  return `${escalated.length} escalated to ${to}`;
+};
+console.log(`  dsor-scheduler's escalation sweep, at once: ${await sweepAlerts()}`);
+bankNow += 60 * 60 * 1000;
+console.log(`  ${escalate_after} later, the sweep again: ${await sweepAlerts()}`);
+const escalated = await alertOf();
+console.log(`  PAY-902's alert: ${escalated?.state}, to ${escalated?.escalated_to}`);
 // Dsor-scheduler reconciles PAY-902's attempt. The bank sent it, as TRF-2, so the
 //   proposal is COMMITTED and PAY-902 is paid, with the bank's answer as the evidence. Then
 //   user_123's first request, sent again with its own key, answers the settled outcome
@@ -2385,6 +2411,9 @@ console.log(
     ? `${String((reconciled.data as { state: string }).state)}, ${String((reconciled.data as { evidence: string }).evidence).replace(/, asked.*/, "")}`
     : heard(reconciled),
 );
+// NEW IN STEP 38b: the settlement closed the alert, in the same moment (step 38b's README, C3).
+const closed = await alertOf();
+console.log(`  PAY-902's alert: ${closed?.state}, ${closed?.outcome}`);
 const draft1009 = await bankCall(SUPERVISOR_123, "payment.create", ofInvoice("INV-1009"));
 console.log("  user_123 drafts INV-1009, 7,425.00 USD:", heard(draft1009));
 fakeBank.mode = "broken";
