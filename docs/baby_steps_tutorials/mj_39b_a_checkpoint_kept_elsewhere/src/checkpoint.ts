@@ -1,6 +1,12 @@
-// NEW IN STEP 39b: checkpoints (red: not built yet).
-import type { KeyObject } from "node:crypto";
-import type { ChainHead, ChainReport, ChainRow } from "./audit-chain.ts";
+// NEW IN STEP 39b: checkpoints of DSoR's log (DSOR-AUD-04b and DSOR-AUD-04d in
+// specs/dsor/03-execution.md, section 30). A checkpoint notes where every chain ended at one
+// moment, and is signed with an Ed25519 private key that lives outside the database. Kept in a file,
+// it lets the checker catch a chain the owner rewrote from an edit on, which step 39's chain alone
+// cannot (step 39b's README, decisions D1, D2, D10, and D11).
+import { sign, type KeyObject } from "node:crypto";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { verifyChains, type ChainHead, type ChainReport, type ChainRow } from "./audit-chain.ts";
 
 /** One chain as a checkpoint notes it: its last place and that record's fingerprint. */
 export type NotedChain = { chain: string; chain_position: string; record_hash: string };
@@ -11,26 +17,64 @@ export type Checkpoint = { taken_at: string; chains: NotedChain[] };
 /** A checkpoint and its signature, as the file holds them. */
 export type SignedCheckpoint = { checkpoint: Checkpoint; signature: string };
 
-export function checkpointText(_checkpoint: Checkpoint): string {
-  throw new Error("not built yet: step 39b");
+/**
+ * The text that is signed: the checkpoint as JSON, its fields in a fixed order and its chains
+ * sorted by name, so the checker makes exactly the same text from the file (decision D11).
+ */
+export function checkpointText(checkpoint: Checkpoint): string {
+  const chains = [...checkpoint.chains]
+    .sort((a, b) => (a.chain < b.chain ? -1 : a.chain > b.chain ? 1 : 0))
+    .map(({ chain, chain_position, record_hash }) => ({ chain, chain_position, record_hash }));
+  return JSON.stringify({ taken_at: checkpoint.taken_at, chains });
 }
 
-export function checkpointFileName(_checkpoint: Checkpoint): string {
-  throw new Error("not built yet: step 39b");
+/** The file a checkpoint is kept in: its time, with no colon, which some disks refuse. */
+export function checkpointFileName(checkpoint: Checkpoint): string {
+  return `${checkpoint.taken_at.replaceAll(":", "-")}.json`;
 }
 
+/**
+ * A checkpoint of the log, or the reason there is none. Every chain is checked first, as step 39's
+ * checker does, against its head: a checkpoint of a broken log would vouch for the break, so a
+ * broken log is never signed (decision D10). Every chain is noted, so each checkpoint covers every
+ * chain (DSOR-AUD-04d).
+ */
 export function takeCheckpoint(
-  _rows: readonly ChainRow[],
-  _heads: ReadonlyMap<string, ChainHead> | undefined,
-  _taken_at: string,
+  rows: readonly ChainRow[],
+  heads: ReadonlyMap<string, ChainHead> | undefined,
+  taken_at: string,
 ): { checkpoint: Checkpoint } | { refused: ChainReport[] } {
-  throw new Error("not built yet: step 39b");
+  const reports = verifyChains(rows, heads);
+  if (reports.some((report) => report.broken !== undefined)) return { refused: reports };
+  const last = new Map<string, ChainRow>();
+  for (const row of rows) {
+    const seen = last.get(row.chain);
+    if (seen === undefined || Number(row.chain_position) > Number(seen.chain_position)) {
+      last.set(row.chain, row);
+    }
+  }
+  const chains = reports.map(({ chain }) => ({
+    chain,
+    chain_position: last.get(chain)!.chain_position,
+    record_hash: last.get(chain)!.record_hash,
+  }));
+  return { checkpoint: { taken_at, chains } };
 }
 
-export function signCheckpoint(_checkpoint: Checkpoint, _key: KeyObject): SignedCheckpoint {
-  throw new Error("not built yet: step 39b");
+/** The checkpoint and its signature, made with the private key over the checkpoint's text. */
+export function signCheckpoint(checkpoint: Checkpoint, key: KeyObject): SignedCheckpoint {
+  // Ed25519 takes no separate hash, so the first argument is null.
+  const signature = sign(null, Buffer.from(checkpointText(checkpoint), "utf8"), key);
+  return { checkpoint, signature: signature.toString("base64") };
 }
 
-export function writeCheckpoint(_dir: string, _checkpoint: Checkpoint, _key: KeyObject): string {
-  throw new Error("not built yet: step 39b");
+/** Signs the checkpoint and writes it to its own new file in the folder; returns the file's name. */
+export function writeCheckpoint(dir: string, checkpoint: Checkpoint, key: KeyObject): string {
+  mkdirSync(dir, { recursive: true });
+  const name = checkpointFileName(checkpoint);
+  // "wx": a file already there is never overwritten, not even by a checkpoint of the same moment.
+  writeFileSync(join(dir, name), `${JSON.stringify(signCheckpoint(checkpoint, key), null, 2)}\n`, {
+    flag: "wx",
+  });
+  return name;
 }
