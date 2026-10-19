@@ -1,284 +1,109 @@
-# Step 38 · Reconciliation: find out, then settle
+# Step 38b · Alert at once, escalate after an hour
 
-**New in this step:** a command, `payment.reconcile`, that asks the bank what happened to a payment
-whose outcome is unknown, by its key, and settles it `COMMITTED` or `FAILED` with the bank's answer
-as evidence. An agent may never settle one (DSOR-UNK-04a, DSOR-UNK-04d).
+**New in this step:** a payment whose outcome is unknown raises an alert in the same moment, and an
+alert still open after an hour is escalated to a named person (DSOR-UNK-04b, DSOR-UNK-04c).
 
 ## In plain words
 
 DSoR is a careful clerk between a company's people and AI workers and its real systems, its books
 and its bank. When DSoR asks the bank to send a payment and the bank never answers, nobody knows
-whether the money left. Since step 35 DSoR says so, `OUTCOME_UNKNOWN`, and since step 37 it holds the
-payment and its bill so nobody pays twice.
+whether the money left. DSoR says so, `OUTCOME_UNKNOWN`. Since step 37 it holds the payment and its
+bill, and since step 38 `payment.reconcile` can ask the bank what happened and settle it.
 
-Until this step, that is where it stays, for ever. *Reconciliation* means finding out what really
-happened, and settling DSoR's records to match, with the evidence of how it found out. DSoR gave the
-bank a key made from the payment's own attempt, so it can ask: "what happened to the payment with
-this key?" The bank's answer decides:
+But only if someone calls it. Until this step, nobody is told that a payment went unknown. An
+*alert* is DSoR's note "this payment needs a person", raised the moment the payment goes unknown.
+To *escalate* is to hand the note to a named, more senior person when nobody has settled it in
+time. The specification gives the times in [§44](../../../specs/dsor/06-conformance.md#44-operational-bounds):
+an alert within one minute, and a person after one hour at most.
 
-- **"Sent, TRF-1"**: the payment is `COMMITTED`, the slip is marked paid, and the hold lifts.
-- **"Never received it"**: the payment is `FAILED`, the hold lifts, and a person may pay again.
-- **No answer**: it stays unknown and held, and DSoR asks again later.
-
-Accountants know this from month end: a *bank reconciliation* ticks the bank statement against the
-books. DSoR does the same for one payment, by its key, as soon as it goes unknown.
+Think of a parcel the courier's scanner shows as "in transit" and then loses. A good courier does
+not wait for you to phone. Its own desk sees the parcel flagged at once. If the desk has not sorted
+it out by the end of the day, a supervisor gets it, by name.
 
 ## Why it matters
 
 user_123 sends PAY-901, 8,900.50 USD to VENDOR-44 for INV-1002. The bank takes it and goes silent.
-A real run on step 37's code, three days later, on 2026-10-19:
+A real run on step 38's code, on 2026-10-19:
 
 ```text
-Tuesday 15:05  user_123 sends PAY-901 → DSoR answers OUTCOME_UNKNOWN
-Friday         the bank is back to normal
-               DSoR's record of PAY-901's attempt: OUTCOME_UNKNOWN
-               PAY-901 in the books: draft
-               user_123 tries to cancel PAY-901 → RESOURCE_HELD
-               what the bank would say if asked, by the key: TRF-1: 8900.50 USD sent to VENDOR-44
-               who has asked the bank: nobody
+14:30  user_123 sends PAY-901: OUTCOME_UNKNOWN
+       what DSoR keeps: 2 decision records; the last says payment.execute@1 ALLOW
+16:30  two hours later, the proposal is still OUTCOME_UNKNOWN; the bill stays held
 ```
 
-VENDOR-44 phones to ask where its money is. Nobody at org_456 can say. The bank has known since
-Tuesday.
+Step 38's code has no alert, no notice, and no list of unknown payments: a search of its `src/`
+finds none. `payment.reconcile` waits for a caller that nobody tells to call. INV-1002 stays held,
+the money may have left, and VENDOR-44 phones a company that does not know there is a question.
 
-**Common mistake:** settling by moving the proposal's state alone. A run on step 37's code, settled
-by hand: the proposal said `COMMITTED`, the slip still said "draft", the hold lifted, and a cancel of
-PAY-901 went through, cancelling a payment whose money had gone. Settling is several changes, made
-together, or none.
+**Common mistake:** raising the alert only where the bank goes silent. A payment can go unknown in
+three ways: the bank's silence, a failure after the bank was asked, and the start-up sweep after a
+crash (step 36). The crash is the case where no person was watching at all.
 
 ## The design, before any code
 
 ### How this step was made
 
-The learner studied reconciliation from zero on 2026-10-19, then decided six choices one at a time
-(D0 to D5, each the recommended option). In the lesson the learner proposed "look up first, re-send
-with the same key only if the bank never received it, never a new key". At the design, shown that a
-re-send needs a second "about to pay" note for one proposal and moves money days late on old checks,
-the learner chose to look up only (D1).
+On 2026-10-19 the learner asked to build the step after step 38. The problem was shown with the run
+above, and the learner decided seven choices, each the recommended option. Then one more came up:
+a list of open alerts needs DSoR's first query over its own store, which is a second idea. The
+learner split it into step 38c (D0).
 
 ### What the rules say
 
-- **DSOR-UNK-04a:** "A reconciliation process MUST resolve every `OUTCOME_UNKNOWN` proposal to
-  `COMMITTED` or `FAILED` and record the evidence used."
-- **DSOR-UNK-04d:** "An agent principal MUST NOT resolve an unknown outcome."
-  ([§25.3](../../../specs/dsor/03-execution.md#253-reconciliation))
+- **DSOR-UNK-04b:** "Each `OUTCOME_UNKNOWN` occurrence MUST raise an alert within the bound of §44."
+- **DSOR-UNK-04c:** "An occurrence unresolved after the bound of §44 MUST escalate to a human."
+  ([§25.3](../../../specs/dsor/03-execution.md#253-reconciliation); the bounds are one minute and
+  one hour)
 
-The alert within a minute and the human after an hour (DSOR-UNK-04b, DSOR-UNK-04c) are step 38b's.
+The specification does not say what an alert is, who receives it, or who the human is. Those are
+this tutorial's decisions, below.
 
 ### The claims
 
 | Claim | What it says |
 |---|---|
-| C1 | `payment.reconcile` asks the company's bank, by the key of the unknown proposal, what happened |
-| C2 | "Sent": in one transaction, the proposal moves to `COMMITTED`, the payment is marked paid, and its holds stop counting |
-| C3 | "Never received it": in one transaction, the proposal moves to `FAILED`, the payment stays a draft, and its holds stop counting |
-| C4 | No answer, or a bank that is down: nothing changes; the proposal stays `OUTCOME_UNKNOWN` and held, and the call says so. A receipt that is not this payment, or a payment cancelled meanwhile, is refused with `CONFLICT`: nothing changes, and a person must look |
-| C5 | The proposal's move names what the bank said, by which key, in the call of which time; a refused settlement's record keeps its reason |
-| C6 | An agent is refused, whatever its slip lists; a proposal that is not `OUTCOME_UNKNOWN` is refused, so nothing is settled twice |
-| C7 | Once settled, a same-key retry of the original send answers the settled outcome, not "unknown" |
+| C1 | A proposal's move to `OUTCOME_UNKNOWN` raises one open alert for it, in the same transaction, at the move's time. No other move raises one |
+| C2 | Every way into `OUTCOME_UNKNOWN` raises it: the bank's silence, a failure after the bank was asked, and the start-up sweep after a real `SIGKILL` |
+| C3 | A move out of `OUTCOME_UNKNOWN`, to `COMMITTED` or `FAILED`, closes the alert in the same transaction, naming the outcome, open or escalated |
+| C4 | `alert.escalate_due` escalates each of the company's open alerts older than its escalation bound to the company's named person, once. A younger alert, a closed one, and another company's are not touched |
+| C5 | Only DSoR's own scheduled login may call `alert.escalate_due`. An agent and a person are refused |
+| C6 | Start-up refuses an `alerts.json` that leaves out a company where a login works, names a role that is not in the role table or that no person of the company holds, names someone who is not a person of the company, or gives a bound that is not a duration or is over §44's ceiling |
+| C7 | On the database, an alert is never removed; the only changes are open to escalated and to closed; each company sees only its own |
 
 ### Decisions
 
-- **D0. Split from 38b** (the learner's choice). Step 38 finds out and settles; step 38b alerts
-  within a minute and hands over to a human after an hour. *Downside:* until 38b, a payment the bank
-  cannot answer for stays unknown with nobody told.
-- **D1. Look up only** (the learner's choice). "Never received it" settles `FAILED`; a person may
-  pay again with a fresh, fully checked payment. Finding out never moves money. *Downside:* a person
-  must act to pay again, and that payment has a new key, made on purpose after the bank said it
-  never got the first.
-- **D2. An operation, run by `dsor-scheduler`** (the learner's choice). `payment.reconcile` is
-  DSoR's own work, as the expiry sweep of step 25c is: its input names the unknown proposal, it goes
-  through the whole checklist, and it is claimed and recorded like any call. DSoR's scheduled login
-  calls it. *Downside:* one more contract, permission, input schema, and example to keep in step.
-- **D3. The job, and people with the AP supervisor role** (the learner's choice). user_123 may
-  press "check now". The bank's answer decides, so the caller cannot steer the outcome. An agent is
-  refused in the code of the operation, whatever its slip lists, never by an instruction to it.
-  *Downside:* one more role holds the permission.
-- **D4. The settled answer to a same-key retry** (the learner's choice). A claim's kept "unknown"
-  answer is looked up again against its proposal: once settled, the retry answers paid or failed.
-  The kept answer is never rewritten. *Downside:* a small exception in the replay.
-- **D5. The evidence in the records DSoR already keeps** (the learner's choice). The proposal's
-  move names what the bank said, by which key, and when the call asked; a refusal's reason is in the
-  call's record. *Downside:* listing every settlement means searching the records by operation.
+- **D0. Split: the list of alerts is step 38c's** (the learner's choice). This step raises,
+  escalates, and closes alerts. Step 38c adds `alert.list`, DSoR's first query over its own store.
+  *Downside:* until 38c, a person sees alerts only in the program's scene and in the tests, as step
+  28b's notices to a rule's owner.
+- **D1. An alert is a row, written with the move** (the learner's choice). `dsor.alerts`, written in
+  the transaction that moves the proposal to `OUTCOME_UNKNOWN`. It cannot be lost, and it is raised
+  in no time at all. *Downside:* delivering it by email or a pager is step 40's outbox.
+- **D2. The receivers are a role named for each company** (the learner's choice). `alerts.json`
+  names it: org_456's `ap_supervisor`, user_123. *Downside:* one more file to keep in step. The
+  row does not copy the role: step 38c's list reads it from the file (Claude Code's detail).
+- **D3. Escalation is a sweep run by `dsor-scheduler`** (the learner's choice). `alert.escalate_due`
+  is DSoR's own command, as step 25c's expiry sweep is: it escalates every open alert past the
+  bound, once, and leaves its decision record. *Downside:* nothing runs it on a timer in this
+  tutorial, the same as the expiry sweep.
+- **D4. The human is a named person, checked at start-up** (the learner's choice). org_456's is
+  cfo_100. Start-up refuses a name that is not a person of that company. *Downside:* one person; if
+  they leave, start-up stops until the file changes.
+- **D5. Every way in raises it, at the move** (the learner's choice). The alert is written by the
+  proposal store's move itself, which every path into `OUTCOME_UNKNOWN` uses. *Downside:* the move
+  gets one more job.
+- **D6. The alert closes with the settlement** (the learner's choice). The move out of
+  `OUTCOME_UNKNOWN` closes it, in the same transaction, so `payment.reconcile` needs no change of
+  its own. A closed alert is never escalated. *Downside:* the alert row changes, so it is not
+  append-only like the holds.
+- **D7. The two bounds are declared and checked at start-up** (the learner's choice). `alerts.json`
+  gives `alert_within` and `escalate_after` for each company, and start-up refuses either one over
+  §44's ceiling, one minute and one hour. *Downside:* one more check at start-up.
 
-### The tests, by claim (written first: all 12 red before payment.reconcile existed)
+### The tests, by claim
 
 | Claim | Tests |
 |---|---|
-| C1 to C4 | `test/reconcile.test.ts`, in memory; `test/reconcile.db.test.ts`, on the database, after a real silent bank and after a real `SIGKILL` |
-| C5 | `test/reconcile.test.ts`, `test/reconcile.db.test.ts`: the move's cause names the bank's answer and the key; a mismatch's record names its reason |
-| C6 | `test/reconcile.test.ts`: the agent refused with and without the permission; a settled proposal refused |
-| C7 | `test/reconcile.test.ts`, `test/reconcile.db.test.ts`: the retry after each settlement |
-
-### The breaks
-
-The learner chose not to predict. Each break ran on 2026-10-19 in a fresh copy of this folder, with
-a fresh database, against `test/reconcile.test.ts` and `test/reconcile.db.test.ts`.
-
-| Break | What it removes | Unit tests failed | Database tests failed |
-|---|---|---|---|
-| **B1** | Settling moves the proposal only: the payment is not marked paid | 3 | 2 |
-| **B2** | "Never received it" is read as sent | 2 | 2 |
-| **B3** | A bank that does not answer is read as "never received it" | 2 | 0 |
-| **B4** | The agent check is removed | 1 | 0: the database's agent holds no slip that lists the permission |
-| **B5** | A settled proposal is reconciled again | 1 | 0 |
-| **B6** | The replay ignores the settlement and still answers "unknown" | 2 | 1 |
-| **B7** | Any receipt the bank gives for the key settles, whatever it says | 1 | 0 |
-
-B3 is the dangerous one: a bank that is down would make DSoR settle a payment `FAILED` and free its
-bill, though the money may have left. B5 first passed every test: the move from `OUTCOME_UNKNOWN`
-refuses a settled proposal too, so the early check was a second guard. A dry run showed what it is
-for: without it, a dry run of a settled proposal said `VALIDATED`. That test came after the break.
-
-## What changed since step 37
-
-| File | What changed |
-| --- | --- |
-| `src/reconcile.ts` | **New.** `payment.reconcile`, DSoR's own work: the check, the lookup, and the settling (D1, D2, D5) |
-| `contracts/payment.reconcile.json`, `inputs/PaymentReconcileRequest.schema.json`, `examples/payment.reconcile.json` | **New.** The command, its input, and its example for the cross-company suite |
-| `src/bank.ts` | The fake's lookup obeys its switch; `lookupThrough` asks within DSoR's wait (C4) |
-| `src/permissions.ts` | A contract may say no agent may call it, whatever its slip lists (D3) |
-| `src/connectors.ts`, `src/revocation.ts` | An operation may ask the bank and send nothing; DSoR's own work is given the company's bank (D2) |
-| `src/pipeline.ts` | The company's bank for DSoR's own work; a replay of an unknown outcome answers the settled outcome (D4) |
-| `roles.json`, `classifications.json`, `src/main.ts` | `payment:reconcile` for the AP supervisor and the scheduler; the answer's labels; the scene |
-| `test/reconcile.test.ts`, `test/reconcile.db.test.ts` | **New.** The claims C1 to C7 |
-| The other tests | Nineteen contracts, 219 attacks, the roles, the labels; a bank that only refuses a repeat is no longer enough for the default bank. Each says "Changed in step 38" |
-
-```bash
-git diff --no-index ../mj_37_outcome_unknown/src src
-git diff --no-index ../mj_37_outcome_unknown/test test
-```
-
-## Run it
-
-As in step 37: a local PostgreSQL 17 and a database of its own. No new migration.
-
-```bash
-pnpm install
-pnpm migrate
-pnpm start
-```
-
-From a real run on 2026-10-19, the silent day in the bank's world, shortened:
-
-```text
-  a silent day; user_123 sends PAY-902: OUTCOME_UNKNOWN: payment "PAY-902": the bank did not answer within 200 ms, so it may or may not have been sent
-    the bank sent TRF-2: 8900.50 USD to VENDOR-44 for PAY-902, key dsor_90c5e1e1dcf…
-  user_123 tries to cancel PAY-902: RESOURCE_HELD: payment "PAY-902" is held while a payment's outcome is unknown; try again once it is reconciled
-  dsor-scheduler reconciles PAY-902: COMMITTED, the bank sent TRF-2: 8900.50 USD to VENDOR-44
-  ...
-  payments: PAY-901 paid, PAY-902 paid, PAY-903 paid
-```
-
-In step 37 the same run ended "PAY-902 draft", held for ever.
-
-## Build it yourself with Claude Code
-
-| # | Move | What was done |
-|---|---|---|
-| 1 | Understand | Reconciliation from zero, five parts, each settled by a real run |
-| 2 | Decide | Six choices, one at a time, by the learner; the learner's own rule weighed at D1 |
-| 3 | The copy | Step 37 copied, its markers removed |
-| 4 | Red | 12 unit tests, all red |
-| 5 | Memory | The contract, the lookup, the settling, the agent check, the settled replay |
-| 6 | Earlier tests | The lists and counts that name every operation |
-| 7 | Database | 5 tests: a silent bank, a lost order, a real `SIGKILL`, the agent, two reconciles at once |
-| 8 | Break it | B1 to B7, in copies of the folder |
-| 9 | Review | A reviewer who had not seen the conversation |
-
-To start it in a new session:
-
-```text
-Build step 38 in learner mode from the design in
-docs/baby_steps_tutorials/mj_38_reconciliation/README.md.
-```
-
-## Check yourself
-
-1. The bank says it sent TRF-1 for PAY-901's key. Name every record that changes, and say why
-   they change together.
-2. The bank is down when `dsor-scheduler` asks. What happens to PAY-901, and why is "never
-   received it" the wrong reading?
-3. Why does "never received it" not send the payment again with the same key?
-4. The AI worker holds a slip that lists `payment:reconcile`. Can it settle PAY-901?
-5. PAY-901 was settled `COMMITTED`. user_123 sends the first request again, with its own key. What
-   does it hear?
-
-<details>
-<summary>Answers</summary>
-
-1. The proposal (`COMMITTED`), PAY-901 in the books (`paid`), and the holds (they stop
-   counting), with the evidence in the move's cause. Together, or a paid payment
-   could be cancelled, as the hand settlement in "Why it matters" showed.
-2. Nothing changes: it stays `OUTCOME_UNKNOWN` and held, and the next call asks again. A bank that
-   does not answer has said nothing, and the money may have left (C4, break B3).
-3. Finding out never moves money (D1). A re-send would pay days later on old checks, and needs a
-   second "about to pay" note for one proposal. A person may pay again with a fresh payment.
-4. No. The contract says no agent may call it, and line ⑤ refuses it whatever its slip lists (D3).
-5. `COMMITTED`, with PAY-901 as it is now, paid. The kept "unknown" answer is looked up again
-   against the proposal, and never rewritten (D4).
-
-</details>
-
-## Think it through
-
-### Found while building
-
-- **A bank that only refuses a repeat no longer serves as the default bank.** `payment.reconcile`
-  looks a payment up, so the bank must answer lookups. A step 35 test said such a bank was enough;
-  it is not, for this step, and the test says so.
-- **Reconcile is DSoR's own work, not a command that binds the payment.** Bound to PAY-901 it would
-  meet PAY-901's own hold and be refused. It names the proposal, and its code reads the payment.
-- **Memory moves a proposal before a later failure** (it has no transaction), so a step 36 review
-  test's same-key retry now answers what memory's proposal says, `COMMITTED`. On the database the
-  proposal stays `EXECUTING`, and the retry still hears `OUTCOME_UNKNOWN`.
-- **Two tests came after breaks that passed:** a receipt that is not this payment (B7), and a dry run
-  of a settled proposal (B5).
-
-### What the review found
-
-A reviewer who had not seen the conversation read the rules, the code, and this README, attacked
-the step with inputs of its own, and broke the code in a copy. It found no way to settle through an
-agent, another company, or a race. Each fix below was undone in a copy, and its test failed.
-
-| # | What it found | What was done |
-|---|---|---|
-| F1 | A payment marked paid by another path made every reconcile fail, so the proposal stayed unknown for ever | A matching receipt settles `COMMITTED` when the payment is already paid. A payment cancelled meanwhile is refused with `CONFLICT` |
-| F2 | No test changed the receipt's payment id or vendor | Four tests: another payment, vendor, amount, and currency |
-| F3 | No test checks the day's booking: given back on `FAILED`, kept on `COMMITTED` | A test showed that the booking is the draft's: `payment.create` books the day, and the send books nothing. C2 and C3 claimed a booking moved, and no longer do. Two tests: the draft's booking stays as it is, sent or not |
-| F4 | This README said the bank's answer was in the record and the bundle. It is in the move's cause only, and a mismatched receipt reached no record at all | A mismatch is refused with `CONFLICT`, so the call's record keeps its reason. C5 and D5 say what is kept. A database test reads the cause |
-| F5 | No test reconciles a payment that was prepared, then released | A test: prepared, released on a silent day, reconciled, and the release's same-key retry answers paid |
-| F6 | A `FAILED` replay answered `CONNECTOR_UNAVAILABLE`, whose retry is "the same key", so a client could ask again for ever | `CONFLICT`, whose retry is "never" |
-| F7 | The agent check tested the type, not the shared `actsAsAgent` | Changed. No test can tell the two apart: with today's four principal types they mean the same |
-| F8 | The settled replay answered `COMMITTED` for a proposal moved there while its payment was still a draft | `COMMITTED` only when the payment is paid; otherwise the kept "unknown" answer |
-| F9 | The evidence did not name the key, and said "asked at" a time taken before the bank was asked | It names the key, and says "in the call at" |
-| F10 | The scene was not committed | It was committed before the review ended |
-
-### Left open on purpose
-
-- **The alert and the human** (step 38b). A payment the bank cannot answer for stays unknown and
-  held, and nobody is told.
-- **Nothing calls `payment.reconcile` on a timer.** `dsor-scheduler` may call it, as it may call
-  the expiry sweep; a deployment's timer would, and this tutorial builds none.
-- **"Never received it" is believed at once.** A real bank may still be processing an order it has
-  not recorded yet. This step trusts a bank whose lookup is final; a real one may need a wait first
-  (open question 153).
-- **A payment the bank never received still counts on the day** (F3). The agent's draft booked
-  8,900.50 USD on del_100's day, and a `FAILED` send leaves that booking as it is. Reconcile ends
-  the send's own booking, as the pipeline ends any command's, but a send holds none today.
-- **A `FAILED` replay's code** (F6). `CONFLICT` is the closest code in [§28](../../../specs/dsor/03-execution.md#28-result-and-error-envelopes) whose retry is "never". The specification
-  names no code for "settled as never received" (open question 152).
-- **Two database tests fail on a throwaway server**, as in steps 34 to 37: one that accepts any
-  password, and an owner that belongs to no other role.
-- **One step 36 database test depends on timing.** Its same-key retry runs inside the bank's call,
-  and the bank's wait is 50 ms. In the last full run on 2026-10-19 the retry took longer, and the
-  first send heard `OUTCOME_UNKNOWN`. Alone, it passed three times out of three.
-
-## The rules this step meets
-
-| Rule | What it says | Spec | Tests |
-| --- | --- | --- | --- |
-| DSOR-UNK-04a | Every unknown payment is settled `COMMITTED` or `FAILED`, with the evidence used | [§25.3](../../../specs/dsor/03-execution.md#253-reconciliation) | [`test/reconcile.test.ts`](test/reconcile.test.ts), [`test/reconcile.db.test.ts`](test/reconcile.db.test.ts) |
-| DSOR-UNK-04d | No agent settles an unknown outcome | [§25.3](../../../specs/dsor/03-execution.md#253-reconciliation) | [`test/reconcile.test.ts`](test/reconcile.test.ts), [`test/reconcile.db.test.ts`](test/reconcile.db.test.ts) |
-
-**Next:** step 38b, the alert within a minute and the human after an hour.
+| C1 to C5 | `test/alerts.test.ts`, in memory |
+| C2, C3, C4, C7 | `test/alerts.db.test.ts`, on the database, with a real `SIGKILL` |
+| C6 | `test/alerts-file.test.ts` |
