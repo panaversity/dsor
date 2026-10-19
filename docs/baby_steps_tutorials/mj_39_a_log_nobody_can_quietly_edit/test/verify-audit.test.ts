@@ -5,6 +5,7 @@
 // checkpoints (DSOR-AUD-04b, DSOR-AUD-04c; step 39's README, claims C4 to C6).
 import { describe, expect, it } from "vitest";
 import {
+  FIELD_NAMES,
   fingerprint,
   GENESIS,
   NO_CHAIN,
@@ -12,6 +13,7 @@ import {
   verifyChains,
   type ChainRow,
 } from "../src/audit-chain.ts";
+import { AUDIT_COLUMNS } from "./catalogs.ts";
 
 /** A chain of records, each field list as the database writes it as text, fingerprinted. */
 function chainOf(chain: string, records: (string | null)[][]): ChainRow[] {
@@ -24,6 +26,16 @@ function chainOf(chain: string, records: (string | null)[][]): ChainRow[] {
     previous = record_hash;
   });
   return rows;
+}
+
+/** The head the careful editor writes for these rows. */
+function headOf2(rows: ChainRow[]) {
+  return new Map([
+    [
+      rows[0]!.chain,
+      { chain_position: String(rows.length), record_hash: rows.at(-1)!.record_hash },
+    ],
+  ]);
 }
 
 /** Three records of org_456: a draft, a denied reconcile, a release. */
@@ -129,7 +141,8 @@ describe("C4 and C5: a whole chain passes, and each kind of break is named", () 
     expect(verifyChains(rows).find((r) => r.chain === NO_CHAIN)!.broken).toStrictEqual({
       position: 1,
       record_id: "aud_9",
-      why: "it belongs to no chain",
+      // Changed by step 39's review, L9: counted.
+      why: "1 record(s) belong to no chain",
     });
   });
 
@@ -138,11 +151,53 @@ describe("C4 and C5: a whole chain passes, and each kind of break is named", () 
   });
 });
 
+describe("the heads (step 39's README, decision D8)", () => {
+  /** The head a whole chain of these rows has. */
+  const headOf = (rows: ChainRow[]) =>
+    new Map([
+      [
+        rows[0]!.chain,
+        { chain_position: String(rows.length), record_hash: rows.at(-1)!.record_hash },
+      ],
+    ]);
+
+  it("DSOR-AUD-04b: a whole chain matches its head", () => {
+    const rows = chainOf("org_456", STORY());
+    expect(verifyChains(rows, headOf(rows))).toStrictEqual([{ chain: "org_456", records: 3 }]);
+  });
+
+  it("DSOR-AUD-04b: the newest record removed, and the head left as it was: the head names it", () => {
+    const rows = chainOf("org_456", STORY());
+    const heads = headOf(rows);
+    rows.pop();
+    expect(verifyChains(rows, heads)[0]!.broken).toStrictEqual({
+      position: 2,
+      record_id: "aud_2",
+      why: "its head says place 3, and its last record is place 2",
+    });
+  });
+
+  it("DSOR-AUD-04b: every record of a chain removed, its head left: the chain is named, with none", () => {
+    const heads = headOf(chainOf("org_456", STORY()));
+    expect(verifyChains([], heads)).toStrictEqual([
+      {
+        chain: "org_456",
+        records: 0,
+        broken: {
+          position: 0,
+          record_id: null,
+          why: "its head says place 3, and its last record is place 0",
+        },
+      },
+    ]);
+  });
+});
+
 describe("C6: what the chain cannot see, said plainly", () => {
-  it("DSOR-AUD-04b: the newest record removed passes: only a checkpoint kept elsewhere would see it (step 39b)", () => {
+  it("DSOR-AUD-04b: the newest record removed, and the head rewritten too, passes: only a checkpoint kept elsewhere would see it (step 39b)", () => {
     const rows = chainOf("org_456", STORY());
     rows.pop();
-    expect(verifyChains(rows)).toStrictEqual([{ chain: "org_456", records: 2 }]);
+    expect(verifyChains(rows, headOf2(rows))).toStrictEqual([{ chain: "org_456", records: 2 }]);
   });
 
   it("DSOR-AUD-04b: a field changed and every fingerprint after it written again passes: only a checkpoint would see it (step 39b)", () => {
@@ -155,6 +210,12 @@ describe("C6: what the chain cannot see, said plainly", () => {
 });
 
 describe("D5: the recipe", () => {
+  // Found by step 39's review, M3: a column left out of both recipes passed every test.
+  it("DSOR-AUD-04b: the recipe covers every column of dsor.audit but the four of the chain", () => {
+    const chain = ["chain", "chain_position", "previous_hash", "record_hash"];
+    expect([...FIELD_NAMES]).toStrictEqual(AUDIT_COLUMNS.filter((c) => !chain.includes(c)));
+  });
+
   it("DSOR-AUD-04b: a field that is null and a field that is empty make different texts", () => {
     expect(recipeText("org_456", "1", [null])).not.toBe(recipeText("org_456", "1", [""]));
   });

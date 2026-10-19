@@ -17,26 +17,31 @@ export const GENESIS: string = `sha256:${"0".repeat(64)}`;
 // Every column of dsor.audit the fingerprint covers, as text, in the recipe's order. The
 //   migration's dsor.audit_fingerprint lists the same expressions in the same order; a column added
 //   to dsor.audit later must join both (step 39's README, decision D5).
-export const FIELD_SQL: readonly string[] = Object.freeze([
-  "sequence::text",
-  "record_id",
-  `to_char(at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
-  "kind",
-  "operation",
-  `"authorization"`,
-  "result",
-  "reason",
-  "correlation::text",
-  "tenant",
-  "extensions::text",
-  "resources::text",
-  "row_count::text",
-  "connector",
-  "identity::text",
-  "delegation",
-  "controls::text",
-  "decision_bundle",
+//   The column each covers is named beside it, so a test can hold the list against the table's.
+const COVERED: readonly (readonly [string, string])[] = Object.freeze([
+  ["sequence", "sequence::text"],
+  ["record_id", "record_id"],
+  ["at", `to_char(at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`],
+  ["kind", "kind"],
+  ["operation", "operation"],
+  ["authorization", `"authorization"`],
+  ["result", "result"],
+  ["reason", "reason"],
+  ["correlation", "correlation::text"],
+  ["tenant", "tenant"],
+  ["extensions", "extensions::text"],
+  ["resources", "resources::text"],
+  ["row_count", "row_count::text"],
+  ["connector", "connector"],
+  ["identity", "identity::text"],
+  ["delegation", "delegation"],
+  ["controls", "controls::text"],
+  ["decision_bundle", "decision_bundle"],
 ]);
+/** The columns of dsor.audit the fingerprint covers, in the recipe's order. */
+export const FIELD_NAMES: readonly string[] = Object.freeze(COVERED.map(([name]) => name));
+/** The same, each as the text the recipe takes. */
+export const FIELD_SQL: readonly string[] = Object.freeze(COVERED.map(([, sql]) => sql));
 
 /** One record as the checker reads it: its chain columns, and its fields as text. */
 export type ChainRow = {
@@ -53,6 +58,9 @@ export type Broken = { position: number; record_id: string | null; why: string }
 
 /** One chain's report: how many records it holds, and its first break, if it has one. */
 export type ChainReport = { chain: string; records: number; broken?: Broken };
+
+/** A chain's head, as dsor.audit_heads keeps it: its last place and that record's fingerprint. */
+export type ChainHead = { chain_position: string; record_hash: string };
 
 /**
  * The text a fingerprint covers: the chain, the place, and every field, each with its length in
@@ -79,20 +87,27 @@ export function fingerprint(
 /**
  * Each chain's report, from its records in any order. Within a chain, the records are walked by
  * their places: place 1, 2, 3 and on, each following the fingerprint of the one before, each
- * matching its own contents. The first that does not is named.
+ * matching its own contents. The first that does not is named. Then, when the heads are given,
+ * the chain's last record must be its head: a head that says more names the records removed from
+ * the end, unless the editor rewrote the head too (found by step 39's review; decision D8).
  */
-export function verifyChains(rows: readonly ChainRow[]): ChainReport[] {
+export function verifyChains(
+  rows: readonly ChainRow[],
+  heads?: ReadonlyMap<string, ChainHead>,
+): ChainReport[] {
   const chains = new Map<string, ChainRow[]>();
   for (const row of rows) chains.set(row.chain, [...(chains.get(row.chain) ?? []), row]);
+  // A head whose chain holds no record at all: every record of it was removed.
+  for (const chain of heads?.keys() ?? []) if (!chains.has(chain)) chains.set(chain, []);
   const reports: ChainReport[] = [];
   for (const chain of [...chains.keys()].sort()) {
     const records = chains.get(chain)!;
     records.sort((a, b) => Number(a.chain_position) - Number(b.chain_position));
     const report: ChainReport = { chain, records: records.length };
-    // The commit's trigger chains every record it keeps, so a record with no chain was put there
-    //   by hand, or the trigger was off (step 39's README, decision D2).
+    // The commit's trigger chains every record DSoR's login keeps, so a record with no chain was
+    //   kept with the trigger off. Each is counted (step 39's README, decision D2; review, L9).
     if (chain === NO_CHAIN) {
-      const why = "it belongs to no chain";
+      const why = `${records.length} record(s) belong to no chain`;
       report.broken = { position: 1, record_id: records[0]!.fields[1] ?? null, why };
       reports.push(report);
       continue;
@@ -111,6 +126,15 @@ export function verifyChains(rows: readonly ChainRow[]): ChainReport[] {
       }
       if (report.broken !== undefined) break;
       previous = row.record_hash;
+    }
+    const head = heads?.get(chain);
+    if (report.broken === undefined && head !== undefined) {
+      const last = records.at(-1);
+      const place = String(records.length);
+      if (head.chain_position !== place || head.record_hash !== (last?.record_hash ?? GENESIS)) {
+        const why = `its head says place ${head.chain_position}, and its last record is place ${place}`;
+        report.broken = { position: records.length, record_id: last?.fields[1] ?? null, why };
+      }
     }
     reports.push(report);
   }
@@ -131,4 +155,16 @@ export async function readChains(client: pg.ClientBase): Promise<ChainRow[]> {
     record_hash: row["record_hash"] ?? "",
     fields: FIELD_SQL.map((_, i) => row[`f${i}`] ?? null),
   }));
+}
+
+/** Each chain's head, as the owner reads dsor.audit_heads. */
+export async function readHeads(client: pg.ClientBase): Promise<Map<string, ChainHead>> {
+  const { rows } = await client.query<{
+    chain: string;
+    chain_position: string;
+    record_hash: string;
+  }>("SELECT chain, chain_position::text AS chain_position, record_hash FROM dsor.audit_heads");
+  return new Map(
+    rows.map(({ chain, chain_position, record_hash }) => [chain, { chain_position, record_hash }]),
+  );
 }

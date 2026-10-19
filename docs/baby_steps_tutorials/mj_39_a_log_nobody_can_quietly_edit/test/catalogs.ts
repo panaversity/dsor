@@ -62,7 +62,7 @@ export const INTENT_TRIGGER =
   "CREATE TRIGGER intents_end BEFORE UPDATE ON dsor.intents FOR EACH ROW EXECUTE FUNCTION dsor.intent_ends()";
 // The log's columns. dsor_runtime may INSERT every one but sequence and at, which the
 // database fills in (step 09's README, decision 6).
-const AUDIT_COLUMNS = [
+export const AUDIT_COLUMNS: string[] = [
   "sequence",
   "record_id",
   "at",
@@ -498,6 +498,21 @@ export function today(): Catalog {
           filled: false,
         })),
         rowSecurity: { enabled: true, forced: true },
+        rules: [],
+        triggers: [],
+      },
+      // Changed in step 39: each chain's head, the owner's own: dsor_runtime holds nothing on it
+      //   (step 39's README, decision D8).
+      {
+        name: "dsor.audit_heads",
+        kind: "table",
+        held: [],
+        columns: ["chain", "chain_position", "record_hash"].map((name) => ({
+          name,
+          held: [],
+          filled: false,
+        })),
+        rowSecurity: { enabled: false, forced: false },
         rules: [],
         triggers: [],
       },

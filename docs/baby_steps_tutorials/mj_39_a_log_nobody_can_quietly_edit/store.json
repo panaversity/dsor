@@ -291,6 +291,13 @@
         "CREATE TRIGGER intents_end BEFORE UPDATE ON dsor.intents FOR EACH ROW EXECUTE FUNCTION dsor.intent_ends()"
       ]
     },
+    "dsor.audit_heads": {
+      "kind": "bookkeeping",
+      "tenant": null,
+      "runtime": {
+        "table": []
+      }
+    },
     "dsor.migrations": {
       "kind": "bookkeeping",
       "tenant": null,

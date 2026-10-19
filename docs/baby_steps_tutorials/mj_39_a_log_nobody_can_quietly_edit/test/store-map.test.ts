@@ -45,7 +45,7 @@ describe("the shipped map", () => {
   // Changed in step 36: and dsor.intents, a seventeenth (step 36's README, decision D1).
   // Changed in step 37: and dsor.holds, an eighteenth (step 37's README, decision D1).
   // Changed in step 38b: and dsor.alerts, a nineteenth (step 38b's README, decision D1).
-  it("step 16's decision 1: it names three schemas and nineteen tables", () => {
+  it("step 16's decision 1: it names three schemas and twenty tables", () => {
     const { map } = checkStore(SHIPPED);
     expect([...map.schemas.keys()]).toStrictEqual(["app", "dsor", "public"]);
     expect([...map.tables.keys()]).toStrictEqual([
@@ -67,6 +67,8 @@ describe("the shipped map", () => {
       "dsor.holds",
       "dsor.alerts",
       "dsor.intents",
+      // Changed in step 39: and dsor.audit_heads, a twentieth (step 39's README, decision D8).
+      "dsor.audit_heads",
       "dsor.migrations",
     ]);
   });
