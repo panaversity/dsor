@@ -56,7 +56,7 @@
       ]
     },
     "dsor.audit": {
-      "kind": "append-only",
+      "kind": "append-only-chained",
       "tenant": "tenant",
       "runtime": {
         "table": ["SELECT"],
@@ -80,7 +80,10 @@
             "decision_bundle"
           ]
         }
-      }
+      },
+      "triggers": [
+        "CREATE CONSTRAINT TRIGGER audit_chain AFTER INSERT ON dsor.audit DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION dsor.audit_chains()"
+      ]
     },
     "dsor.delegations": {
       "kind": "control-written",

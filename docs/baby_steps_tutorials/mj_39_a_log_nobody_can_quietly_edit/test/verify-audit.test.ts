@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   fingerprint,
   GENESIS,
+  NO_CHAIN,
   recipeText,
   verifyChains,
   type ChainRow,
@@ -111,6 +112,24 @@ describe("C4 and C5: a whole chain passes, and each kind of break is named", () 
       position: 1,
       record_id: "aud_3",
       why: "the record at place 1 is missing",
+    });
+  });
+
+  it("DSOR-AUD-04c: a record that belongs to no chain is named", () => {
+    const rows = [
+      ...chainOf("org_456", STORY()),
+      {
+        chain: NO_CHAIN,
+        chain_position: "0",
+        previous_hash: "",
+        record_hash: "",
+        fields: ["9", "aud_9"],
+      },
+    ];
+    expect(verifyChains(rows).find((r) => r.chain === NO_CHAIN)!.broken).toStrictEqual({
+      position: 1,
+      record_id: "aud_9",
+      why: "it belongs to no chain",
     });
   });
 

@@ -1,8 +1,9 @@
 -- The chain of DSoR's log (DSOR-AUD-04b and DSOR-AUD-04c in specs/dsor/03-execution.md, section
 -- 30). Each record of dsor.audit holds its chain, its company's or no_company; its place in the
 -- chain; the fingerprint of the record before it; and its own fingerprint, SHA-256 over that one
--- and every column of the record. The trigger writes all four as the row goes in, holding the
--- chain's lock, so no path can add a record without them, and dsor_runtime can write none of them.
+-- and every column of the record. A trigger writes all four when the record's transaction
+-- commits, holding the chain's lock only for that moment, so no path can keep a record without
+-- them, and dsor_runtime can write none of them.
 -- The records already here are chained first, in the order they were written. src/audit-chain.ts
 -- is the same recipe in TypeScript, and pnpm verify-audit checks every chain with it (step 39's
 -- README, decisions D1 to D3 and D5 to D7). A chain rewritten from an edit on, or its newest
@@ -73,37 +74,46 @@ BEGIN
 END
 $$;
 
+-- The four stay empty from the insert to the commit, inside the record's own transaction, which
+-- no other transaction sees; the commit's trigger fills them, so every record that is kept has all
+-- four. The checker names any record that has none as broken (decision D2).
 ALTER TABLE dsor.audit
-  ALTER COLUMN chain SET NOT NULL,
-  ALTER COLUMN chain_position SET NOT NULL,
-  ALTER COLUMN previous_hash SET NOT NULL,
-  ALTER COLUMN record_hash SET NOT NULL,
   -- A record's chain is its company's, or no_company's (decision D7).
-  ADD CONSTRAINT audit_chain_is_company CHECK (chain = coalesce(tenant, 'no_company')),
+  ADD CONSTRAINT audit_chain_is_company
+    CHECK (chain IS NULL OR chain = coalesce(tenant, 'no_company')),
   -- Two records never share a place, or a predecessor, in one chain (decision D6).
   ADD CONSTRAINT audit_one_place UNIQUE (chain, chain_position),
   ADD CONSTRAINT audit_one_successor UNIQUE (chain, previous_hash);
 
--- As each row goes in: its chain, its place after the chain's last, that one's fingerprint, and
--- its own. The chain's lock is held until the transaction ends, so of two records written at once,
--- the second waits, then follows the first. With the rights of the function's owner, the
--- migration's login, so the chain's last record is found in every company's rows (decision D2).
+-- At the commit of the record's transaction: its chain, its place after the chain's last, that
+-- one's fingerprint, and its own. Deferred to the commit, so the chain's lock is held only while
+-- the transaction ends, never while it does its work: taken at the insert, the lock was held to the
+-- end of every call, made a company's calls wait for each other, and locked two rule drafts
+-- against each other (found while building; step 39's README, decision D2). Of two records
+-- committed at once, the second waits, then follows the first. With the rights of the function's
+-- owner, the migration's login, so the chain's last record is found in every company's rows.
 CREATE FUNCTION dsor.audit_chains() RETURNS trigger LANGUAGE plpgsql
   SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
+  named text := coalesce(NEW.tenant, 'no_company');
   last_place bigint;
   last_hash text;
 BEGIN
-  NEW.chain := coalesce(NEW.tenant, 'no_company');
-  PERFORM pg_advisory_xact_lock(hashtextextended('dsor.audit/' || NEW.chain, 0));
+  PERFORM pg_advisory_xact_lock(hashtextextended('dsor.audit/' || named, 0));
   SELECT a.chain_position, a.record_hash INTO last_place, last_hash
-    FROM dsor.audit a WHERE a.chain = NEW.chain ORDER BY a.chain_position DESC LIMIT 1;
-  NEW.chain_position := coalesce(last_place, 0) + 1;
-  NEW.previous_hash := coalesce(last_hash, 'sha256:' || repeat('0', 64));
-  NEW.record_hash := dsor.audit_fingerprint(NEW);
-  RETURN NEW;
+    FROM dsor.audit a
+   WHERE a.chain = named AND a.chain_position IS NOT NULL
+   ORDER BY a.chain_position DESC LIMIT 1;
+  UPDATE dsor.audit
+     SET chain = named,
+         chain_position = coalesce(last_place, 0) + 1,
+         previous_hash = coalesce(last_hash, 'sha256:' || repeat('0', 64))
+   WHERE sequence = NEW.sequence;
+  UPDATE dsor.audit a SET record_hash = dsor.audit_fingerprint(a) WHERE sequence = NEW.sequence;
+  RETURN NULL;
 END
 $$;
 REVOKE ALL ON FUNCTION dsor.audit_chains() FROM PUBLIC;
-CREATE TRIGGER audit_chain BEFORE INSERT ON dsor.audit
+CREATE CONSTRAINT TRIGGER audit_chain AFTER INSERT ON dsor.audit
+  DEFERRABLE INITIALLY DEFERRED
   FOR EACH ROW EXECUTE FUNCTION dsor.audit_chains();

@@ -112,7 +112,9 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
       },
       {
         object: "dsor.audit SELECT",
-        held: "sequence record_id at kind operation authorization result reason correlation tenant extensions resources row_count connector identity delegation controls decision_bundle",
+        // Changed in step 39: and the chain, which the commit's trigger writes (step 39's README,
+        //   decision D2).
+        held: "sequence record_id at kind operation authorization result reason correlation tenant extensions resources row_count connector identity delegation controls decision_bundle chain chain_position previous_hash record_hash",
       },
       // The brakes. Read every column, add a brake through five named columns,
       // and write its lift through three. Nothing on pulled_at, which the database fills, and no

@@ -85,8 +85,19 @@ const AUDIT_COLUMNS = [
   "controls",
   // Changed in step 33: migration 030 adds the bundle a record names (step 33's README, D2).
   "decision_bundle",
+  // Changed in step 39: migration 035 adds the chain, which the commit's trigger writes and
+  //   dsor_runtime only reads (step 39's README, decisions D2 and D6).
+  "chain",
+  "chain_position",
+  "previous_hash",
+  "record_hash",
 ];
 const FILLED_BY_THE_DATABASE = ["sequence", "at"];
+// Changed in step 39: the chain's columns, read only, with no default.
+const CHAINED_BY_THE_DATABASE = ["chain", "chain_position", "previous_hash", "record_hash"];
+// Changed in step 39: the trigger that chains each record at its commit (step 39's README, D2).
+export const AUDIT_CHAIN_TRIGGER =
+  "CREATE CONSTRAINT TRIGGER audit_chain AFTER INSERT ON dsor.audit DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION dsor.audit_chains()";
 
 // Changed in step 33: dsor.decision_bundles, as migration 030 makes it. dsor_runtime reads every
 //   column and adds a bundle through three. sealed_at is the database's to fill, and nothing
@@ -366,11 +377,12 @@ export function today(): Catalog {
         held: ["SELECT"],
         columns: AUDIT_COLUMNS.map((name) => {
           const filled = FILLED_BY_THE_DATABASE.includes(name);
-          return { name, held: filled ? ["SELECT"] : ["SELECT", "INSERT"], filled };
+          const readOnly = filled || CHAINED_BY_THE_DATABASE.includes(name);
+          return { name, held: readOnly ? ["SELECT"] : ["SELECT", "INSERT"], filled };
         }),
         rowSecurity: { enabled: true, forced: true },
         rules: [],
-        triggers: [],
+        triggers: [AUDIT_CHAIN_TRIGGER],
       },
       // The brakes, behind the company's lock.
       {

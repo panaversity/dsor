@@ -288,7 +288,8 @@ describe("C11: the map names each trigger", () => {
   });
 
   it.each([
-    ["dsor.audit", "an append-only"],
+    // Changed in step 39: the log is append-only-chained, so another append-only table stands in.
+    ["dsor.holds", "an append-only"],
     ["dsor.delegations", "a control-written"],
     ["dsor.idempotency", "a control-claimed"],
     ["dsor.migrations", "a bookkeeping"],
@@ -336,7 +337,7 @@ describe("C4: each kind allows only its own privileges, on its own side", () => 
     (privilege) => {
       const source = mapWith((m) => m.tables["dsor.audit"].runtime.table.push(privilege));
       expect(problemsOf(source)).toStrictEqual([
-        `store.json: dsor.audit lists ${privilege}, which an append-only table does not allow`,
+        `store.json: dsor.audit lists ${privilege}, which an append-only-chained table does not allow`,
       ]);
     },
   );
@@ -344,7 +345,7 @@ describe("C4: each kind allows only its own privileges, on its own side", () => 
   it("DSOR-AUD-04a: UPDATE on one column of the log is refused too", () => {
     const source = mapWith((m) => (m.tables["dsor.audit"].runtime.columns.UPDATE = ["result"]));
     expect(problemsOf(source)).toStrictEqual([
-      "store.json: dsor.audit lists UPDATE on columns, which an append-only table does not allow",
+      "store.json: dsor.audit lists UPDATE on columns, which an append-only-chained table does not allow",
     ]);
   });
 
@@ -353,7 +354,7 @@ describe("C4: each kind allows only its own privileges, on its own side", () => 
   it("step 16's decision 3: an append-only table adds rows column by column, never by the whole table", () => {
     const source = mapWith((m) => m.tables["dsor.audit"].runtime.table.push("INSERT"));
     expect(problemsOf(source)).toStrictEqual([
-      "store.json: dsor.audit lists INSERT, which an append-only table does not allow",
+      "store.json: dsor.audit lists INSERT, which an append-only-chained table does not allow",
     ]);
   });
 
@@ -410,7 +411,8 @@ describe("C4: each kind allows only its own privileges, on its own side", () => 
 describe("C4: a business or append-only table names its company key", () => {
   it.each([
     ["app.invoices", "business"],
-    ["dsor.audit", "append-only"],
+    // Changed in step 39: the log is append-only-chained (step 39's README, decision D2).
+    ["dsor.audit", "append-only-chained"],
   ])("DSOR-RP-01b: %s (%s) with no company key is refused", (name, kind) => {
     const source = mapWith((m) => (m.tables[name].tenant = null));
     expect(problemsOf(source)).toStrictEqual([
@@ -462,7 +464,7 @@ describe("C7: the map itself is checked", () => {
       // Step 17's business-written is a fourth kind, step 18's control-read a fifth, and step
       // 19b's control-written a sixth.
       // And step 22's control-moved.
-      'store.json: dsor.migrations has the kind "ledger", which is not business, business-written, append-only, control-read, control-written, control-claimed, control-moved, or bookkeeping',
+      'store.json: dsor.migrations has the kind "ledger", which is not business, business-written, append-only, append-only-chained, control-read, control-written, control-claimed, control-moved, or bookkeeping',
     ]);
   });
 

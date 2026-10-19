@@ -8,6 +8,9 @@
 import { createHash } from "node:crypto";
 import type pg from "pg";
 
+/** Where the checker puts a record that has no chain: never a company's name. */
+export const NO_CHAIN = "(no chain)";
+
 /** The fingerprint the first record of a chain follows. */
 export const GENESIS: string = `sha256:${"0".repeat(64)}`;
 
@@ -86,6 +89,14 @@ export function verifyChains(rows: readonly ChainRow[]): ChainReport[] {
     const records = chains.get(chain)!;
     records.sort((a, b) => Number(a.chain_position) - Number(b.chain_position));
     const report: ChainReport = { chain, records: records.length };
+    // The commit's trigger chains every record it keeps, so a record with no chain was put there
+    //   by hand, or the trigger was off (step 39's README, decision D2).
+    if (chain === NO_CHAIN) {
+      const why = "it belongs to no chain";
+      report.broken = { position: 1, record_id: records[0]!.fields[1] ?? null, why };
+      reports.push(report);
+      continue;
+    }
     let previous = GENESIS;
     for (const [i, row] of records.entries()) {
       const place = i + 1;
@@ -114,10 +125,10 @@ export async function readChains(client: pg.ClientBase): Promise<ChainRow[]> {
        FROM dsor.audit ORDER BY chain, chain_position`,
   );
   return rows.map((row) => ({
-    chain: String(row["chain"]),
-    chain_position: String(row["chain_position"]),
-    previous_hash: String(row["previous_hash"]),
-    record_hash: String(row["record_hash"]),
+    chain: row["chain"] ?? NO_CHAIN,
+    chain_position: row["chain_position"] ?? "0",
+    previous_hash: row["previous_hash"] ?? "",
+    record_hash: row["record_hash"] ?? "",
     fields: FIELD_SQL.map((_, i) => row[`f${i}`] ?? null),
   }));
 }

@@ -13,6 +13,7 @@ import {
   CONTROL_TRIGGER,
   ALERT_TRIGGER,
   ALERTS_STAY,
+  AUDIT_CHAIN_TRIGGER,
   INTENT_TRIGGER,
   INVOICE_TRIGGER,
   PAYMENT_TRIGGER,
@@ -332,6 +333,8 @@ describe("C8 and C11: the version in a read, and the triggers in the catalog", (
     const { rows } = await tryThenRollBack(observer, sql);
     // And, since step 28, the guard on a version's moves (step 28's review, finding L14).
     expect(rows.map((row) => row["def"])).toStrictEqual([
+      // Changed in step 39: and the chain of the log, first in the order of their text.
+      AUDIT_CHAIN_TRIGGER,
       // Changed in step 38b: and the guard on an alert's moves (step 38b's README, claim C7).
       ALERT_TRIGGER,
       ALERTS_STAY,

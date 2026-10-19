@@ -236,7 +236,7 @@ describe("the program", () => {
         );
         expect(run.status).toBe(1);
         expect(run.stderr).toMatch(
-          "store.json: dsor.audit lists UPDATE, which an append-only table does not allow",
+          "store.json: dsor.audit lists UPDATE, which an append-only-chained table does not allow",
         );
         expect(run.stderr).toMatch(
           "store.json: the schema dsor lists CREATE, and a schema allows only USAGE",
