@@ -40,7 +40,7 @@ async function check(): Promise<0 | 1 | 2> {
     if (reports.length === 0) console.log("the log holds no record");
     // What a chain cannot see, said every time (step 39's README, claim C6).
     console.log(
-      "not checked: a chain and its head rewritten from an edit on, or a new record the owner adds (step 39b)",
+      "not checked: a chain and its head rewritten from an edit on (step 39b), or a new record the owner adds",
     );
     return broken ? 1 : 0;
   } finally {
