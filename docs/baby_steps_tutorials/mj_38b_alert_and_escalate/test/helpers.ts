@@ -150,6 +150,9 @@ export const STARTING_ROLES: Record<string, string[]> = {
     "rule:manage",
     "proposal:approve",
     "payment:approve",
+    // Changed in step 38b: so the person an unknown payment escalates to can settle it (step
+    //   38b's README, decision D11).
+    "payment:reconcile",
   ],
   ap_clerk: ["invoice:read", "payment:create.propose", "delegation:revoke"],
   tenant_admin: [

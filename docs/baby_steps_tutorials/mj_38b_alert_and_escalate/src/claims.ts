@@ -12,8 +12,11 @@ import type { InvoiceStore } from "./invoice.ts";
 import { isLabel } from "./labels.ts";
 import type { PaymentStore } from "./payment.ts";
 import { memoryReservations, type MemoryReservations, type ReservationStore } from "./limits.ts";
+import { randomUUID } from "node:crypto";
 import {
+  dsorMover,
   memoryProposals,
+  proposalIdOf,
   proposalUri,
   type Opened,
   type Pending,
@@ -308,6 +311,24 @@ export function memoryClaims(
   //   transaction ends. Memory's calls interleave at each await, so seven drafts at once looked
   //   together without it. Found while building (step 32's README, decision D7).
   const locks = new Map<string, Promise<void>>();
+  // NEW IN STEP 38b: the end of one claim's open note after an accident past the checkpoint, as
+  //   the database's claim does it: the proposal, still EXECUTING, moves to OUTCOME_UNKNOWN, which
+  //   raises its alert, and the note ends outcome_unknown (found by step 38b's review, H1).
+  const endOwnNote = async (tenant: string, uri: string): Promise<void> => {
+    const id = proposalIdOf(tenant, uri);
+    const note = await intents.get(tenant, id);
+    if (note === undefined || note.outcome !== undefined) return;
+    const kept = await proposals.get(tenant, id);
+    if (kept?.state === "EXECUTING") {
+      const by = {
+        mover: dsorMover(kept.requester),
+        cause: `the outcome is unknown: ${unknownFromNote().message}`,
+        correlation: { request_id: `req_${randomUUID()}` },
+      };
+      await proposals.move(tenant, id, "EXECUTING", "OUTCOME_UNKNOWN", by);
+    }
+    await intents.end(tenant, id, "outcome_unknown");
+  };
   const run = async (
     scope: ClaimScope,
     payloadHash: string,
@@ -428,6 +449,7 @@ export function memoryClaims(
           //   OUTCOME_UNKNOWN. Found by step 36's review, H1.
           if (!noted || proposal === undefined) throw thrown;
           broke = true;
+          await endOwnNote(scope.tenant, proposal);
           return { refused: unknownFromNote(), proposal };
         }
       };
@@ -444,6 +466,7 @@ export function memoryClaims(
           await seal(stores, fresh(kept));
         } catch (thrown) {
           if (!noted || made === undefined) throw thrown;
+          await endOwnNote(scope.tenant, made);
           return { refused: unknownFromNote(), proposal: made };
         }
         return { ...kept, sealed: true };

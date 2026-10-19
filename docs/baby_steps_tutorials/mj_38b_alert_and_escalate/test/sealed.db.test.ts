@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createFakeBank } from "../src/bank.ts";
 import type { Answer } from "../src/envelope.ts";
 import { call } from "../src/pipeline.ts";
-import { createDbIntents, createDbLog, inCompany, sweepIntents } from "../src/postgres.ts";
+import { createDbIntents, createDbLog, inCompany } from "../src/postgres.ts";
 import {
   dbRegistry,
   newPool,
@@ -154,7 +154,10 @@ describe("C2: a database that refuses the record keeps nothing of the work", () 
 });
 
 describe("C3: after the bank was asked, a refused record cannot undo the money", () => {
-  it("DSOR-EXE-04b: the record of a send is refused, once: OUTCOME_UNKNOWN, the bank sent once, the proposal still EXECUTING with its note open, and the record that follows says OUTCOME_UNKNOWN", async () => {
+  // Changed in step 38b: the claim then ends its own note, as the start-up sweep would, so the
+  //   proposal is OUTCOME_UNKNOWN and its alert is raised while the program runs (found by step
+  //   38b's review, H1; step 38b's README, decision D8).
+  it("DSOR-UNK-04b: the record of a send is refused, once: OUTCOME_UNKNOWN, the bank sent once, the proposal OUTCOME_UNKNOWN with its note ended and its alert open, and the record that follows says OUTCOME_UNKNOWN", async () => {
     ownerInvoices("add");
     const drafted = await draft(keyed(SUPERVISOR));
     const id = (drafted as { data: { id: string } }).data.id;
@@ -171,11 +174,17 @@ describe("C3: after the bank was asked, a refused record cannot undo the money",
     const proposal = String("proposal" in unknown ? unknown.proposal : "")
       .split("/")
       .at(-1)!;
-    expect(await intents.get("org_456", proposal)).not.toHaveProperty("outcome");
+    expect(await intents.get("org_456", proposal)).toMatchObject({ outcome: "outcome_unknown" });
+    expect((await registry.claims.proposals.get("org_456", proposal))?.state).toBe(
+      "OUTCOME_UNKNOWN",
+    );
+    const alerts = await registry.claims.proposals.alerts("org_456");
+    expect(alerts.filter((alert) => alert.proposal === proposal)).toMatchObject([
+      { state: "open" },
+    ]);
     expect(ownerRowsFor(request)).toEqual(
       expect.arrayContaining([expect.objectContaining({ result: "OUTCOME_UNKNOWN" })]),
     );
-    expect(await sweepIntents(pool, ["org_456"])).toBe(1);
     settle.push(proposal);
   });
 });

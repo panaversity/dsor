@@ -12,9 +12,11 @@ import { createDbLog } from "../src/postgres.ts";
 import {
   CONTROL_TRIGGER,
   ALERT_TRIGGER,
+  ALERTS_STAY,
   INTENT_TRIGGER,
   INVOICE_TRIGGER,
   PAYMENT_TRIGGER,
+  PROPOSAL_ALERT,
   PROPOSAL_TRIGGER,
   VENDOR_TRIGGER,
 } from "./catalogs.ts";
@@ -332,11 +334,14 @@ describe("C8 and C11: the version in a read, and the triggers in the catalog", (
     expect(rows.map((row) => row["def"])).toStrictEqual([
       // Changed in step 38b: and the guard on an alert's moves (step 38b's README, claim C7).
       ALERT_TRIGGER,
+      ALERTS_STAY,
       CONTROL_TRIGGER,
       // And, since step 36, the guard on a note's end (step 36's README, decision D1).
       INTENT_TRIGGER,
       INVOICE_TRIGGER,
       PAYMENT_TRIGGER,
+      // Changed in step 38b: and the proposals' trigger that raises and closes an alert.
+      PROPOSAL_ALERT,
       PROPOSAL_TRIGGER,
       // And a vendor's (step 32's README, decision D1).
       VENDOR_TRIGGER,

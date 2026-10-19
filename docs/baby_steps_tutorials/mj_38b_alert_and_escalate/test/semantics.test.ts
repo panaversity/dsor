@@ -298,7 +298,8 @@ describe("the review: an undo must be one that some role may run", () => {
   it("DSOR-EXE-05c: an undo whose permission no role grants stops start-up, named", () => {
     const noCancel = rolesFile({
       ...STARTING_ROLES,
-      ap_supervisor: ["invoice:read", "invoice:issue", "payment:create"],
+      // Changed in step 38b: user_700, org_789's person for alerts, keeps payment:reconcile.
+      ap_supervisor: ["invoice:read", "invoice:issue", "payment:create", "payment:reconcile"],
     });
     expect(refusal(() => buildRegistry(shipped, handlers, noCancel))).toBe(
       refusedWith('payment.create: compensated_by names "payment.cancel", which no role may run'),
@@ -309,8 +310,9 @@ describe("the review: an undo must be one that some role may run", () => {
   it("DSOR-EXE-05c: one role that grants the undo's permission is enough", () => {
     const cfoCancels = rolesFile({
       ...STARTING_ROLES,
-      ap_supervisor: ["invoice:read", "invoice:issue", "payment:create"],
-      CFO: ["invoice:read", "payment:cancel"],
+      // Changed in step 38b: user_700, org_789's person for alerts, keeps payment:reconcile.
+      ap_supervisor: ["invoice:read", "invoice:issue", "payment:create", "payment:reconcile"],
+      CFO: ["payment:reconcile", "invoice:read", "payment:cancel"],
     });
     expect(refusal(() => buildRegistry(shipped, handlers, cfoCancels))).toBe("");
   });

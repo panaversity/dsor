@@ -87,13 +87,15 @@ describe("C3: after the bank was asked, a refused record cannot undo the money",
     });
     expect(unknown).toMatchObject({ code: "OUTCOME_UNKNOWN", retry: "after_reconciliation" });
     expect(w.bank.transfers()).toHaveLength(1);
-    // As on the database: the proposal still EXECUTING, and its note open. Found by step 36b's
-    //   review, F3: memory had moved it COMMITTED and ended the note.
+    // As on the database. Found by step 36b's review, F3: memory had moved it COMMITTED and ended
+    //   the note. Changed in step 38b: the claim ends its own note at once, as the start-up sweep
+    //   would, so the proposal is OUTCOME_UNKNOWN and its alert is raised (step 38b's README,
+    //   decision D8).
     const proposal = String("proposal" in unknown ? unknown.proposal : "")
       .split("/")
       .at(-1)!;
-    expect((await w.proposals.get("org_456", proposal))?.state).toBe("EXECUTING");
-    expect(await w.intents.get("org_456", proposal)).not.toHaveProperty("outcome");
+    expect((await w.proposals.get("org_456", proposal))?.state).toBe("OUTCOME_UNKNOWN");
+    expect(await w.intents.get("org_456", proposal)).toMatchObject({ outcome: "outcome_unknown" });
     expect((await w.log.records()).at(-1)).toMatchObject({
       operation: "payment.execute@1",
       result: "OUTCOME_UNKNOWN",

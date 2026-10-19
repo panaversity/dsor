@@ -2,7 +2,7 @@
 // README, C4 and C7). No database: these read store.json, and copies of it with one change.
 import { describe, expect, it } from "vitest";
 import { checkStore, readStore, type StoreSource } from "../src/store.ts";
-import { INVOICE_TRIGGER, PAYMENT_TRIGGER, PROPOSAL_TRIGGER } from "./catalogs.ts";
+import { INVOICE_TRIGGER, PAYMENT_TRIGGER, PROPOSAL_ALERT, PROPOSAL_TRIGGER } from "./catalogs.ts";
 
 const SHIPPED: StoreSource = readStore();
 
@@ -233,7 +233,9 @@ describe("the shipped map", () => {
           UPDATE: ["state", "requires"],
         },
       },
-      triggers: [PROPOSAL_TRIGGER],
+      // Changed in step 38b: and the trigger that raises and closes its alert (step 38b's README,
+      //   decision D9).
+      triggers: [PROPOSAL_ALERT, PROPOSAL_TRIGGER],
     });
   });
 

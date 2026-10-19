@@ -29,6 +29,8 @@ export type Alerting = {
   escalate_to: string;
   alert_within: string;
   escalate_after: string;
+  // How often the sweep runs: a declaration, for start-up's check of the hour (decision D10).
+  sweep_every: string;
   escalate_ms: number;
 };
 
@@ -45,12 +47,13 @@ export function readAlerts(path: string = SHIPPED): AlertsSource {
 // The specification's own pattern for a duration, as for the READY lifetimes.
 // copied from packages/spec/schemas/common.schema.json#/$defs/duration/pattern
 const DURATION = /^P(?!$)([0-9]+D)?(T([0-9]+H)?([0-9]+M)?([0-9]+S)?)?$/;
-const FIELDS = ["receivers", "escalate_to", "alert_within", "escalate_after"];
+const FIELDS = ["receivers", "escalate_to", "alert_within", "escalate_after", "sweep_every"];
 // §44's ceilings: an alert within one minute, a person within one hour.
-const BOUNDS = {
-  alert_within: { ms: 60 * 1000, words: "one minute", rule: "DSOR-UNK-04b" },
-  escalate_after: { ms: 60 * 60 * 1000, words: "one hour", rule: "DSOR-UNK-04c" },
-} as const;
+const MINUTE = 60 * 1000;
+const HOUR = 60 * MINUTE;
+// The permission that settles an unknown payment: the person an alert goes to must hold it, or
+//   the escalation reaches someone who cannot act (found by step 38b's review, M3).
+const SETTLES = "payment:reconcile";
 
 /** The problems of one company's line, or its checked alerts. */
 function checkOne(
@@ -60,14 +63,17 @@ function checkOne(
   principals: readonly Principal[],
   roles: Roles,
 ): Alerting | string[] {
-  const shape = `${file}: ${tenant} must be an object with receivers, escalate_to, alert_within, and escalate_after`;
+  const shape = `${file}: ${tenant} must be an object with receivers, escalate_to, alert_within, escalate_after, and sweep_every`;
   if (typeof line !== "object" || line === null || Array.isArray(line)) return [shape];
   const keys = Object.keys(line);
   const given = line as Record<string, unknown>;
   const words = FIELDS.every((field) => typeof given[field] === "string");
   if (keys.length !== FIELDS.length || !words) return [shape];
-  type Line = Record<"receivers" | "escalate_to" | "alert_within" | "escalate_after", string>;
-  const { receivers, escalate_to, alert_within, escalate_after } = given as Line;
+  type Line = Record<
+    "receivers" | "escalate_to" | "alert_within" | "escalate_after" | "sweep_every",
+    string
+  >;
+  const { receivers, escalate_to, alert_within, escalate_after, sweep_every } = given as Line;
   const problems: string[] = [];
   const named = (field: string, value: string): string =>
     `${file}: ${tenant}'s ${field} ${JSON.stringify(value)}`;
@@ -75,26 +81,40 @@ function checkOne(
   const people = principals.filter(
     (p) => p.type === "human" && p.memberships.some((m) => m.tenant_id === tenant),
   );
-  if (!people.some((p) => p.id === escalate_to)) {
+  // The roles one person holds in this company.
+  const rolesOf = (p: Principal): string[] =>
+    p.memberships.filter((m) => m.tenant_id === tenant).flatMap((m) => m.roles);
+  const person = people.find((p) => p.id === escalate_to);
+  if (person === undefined) {
     problems.push(`${named("escalate_to", escalate_to)} is not a person of ${tenant}`);
+  } else if (!rolesOf(person).some((role) => roles.get(role)?.has(SETTLES) === true)) {
+    problems.push(`${named("escalate_to", escalate_to)} holds no ${SETTLES} in ${tenant}`);
   }
-  const holds = (p: Principal): boolean =>
-    p.memberships.some((m) => m.tenant_id === tenant && m.roles.includes(receivers));
   if (!roles.has(receivers)) {
     problems.push(`${named("receivers", receivers)} is not a role in roles.json`);
-  } else if (!people.some(holds)) {
+  } else if (!people.some((p) => rolesOf(p).includes(receivers))) {
     problems.push(`${named("receivers", receivers)} is a role no person of ${tenant} holds`);
   }
-  const values = { alert_within, escalate_after };
-  for (const [field, bound] of Object.entries(BOUNDS)) {
-    const value = values[field as keyof typeof values];
-    if (!DURATION.test(value)) {
-      problems.push(`${named(field, value)} is not a duration such as PT1H`);
-    } else if (millisecondsOf(value) > bound.ms) {
-      problems.push(
-        `${named(field, value)} is over ${bound.words}, §44's ceiling for ${bound.rule}`,
-      );
-    }
+  const ms: Record<string, number> = {};
+  for (const field of ["alert_within", "escalate_after", "sweep_every"] as const) {
+    const value = given[field] as string;
+    if (DURATION.test(value)) ms[field] = millisecondsOf(value);
+    else problems.push(`${named(field, value)} is not a duration such as PT1H`);
+  }
+  const [within, after, every] = [ms["alert_within"], ms["escalate_after"], ms["sweep_every"]];
+  if (within !== undefined && within > MINUTE) {
+    problems.push(
+      `${named("alert_within", alert_within)} is over one minute, §44's ceiling for DSOR-UNK-04b`,
+    );
+  }
+  if (every === 0) {
+    problems.push(`${named("sweep_every", sweep_every)} is zero, so the sweep would never wait`);
+  }
+  // An alert is escalated at the first sweep after its bound, so the bound and one sweep's wait
+  //   together must fit in the hour (found by step 38b's review, M2).
+  if (after !== undefined && every !== undefined && after + every > HOUR) {
+    const why = `with sweep_every ${JSON.stringify(sweep_every)} can be over one hour, §44's ceiling for DSOR-UNK-04c`;
+    problems.push(`${named("escalate_after", escalate_after)} ${why}`);
   }
   if (problems.length > 0) return problems;
   return {
@@ -102,7 +122,8 @@ function checkOne(
     escalate_to,
     alert_within,
     escalate_after,
-    escalate_ms: millisecondsOf(escalate_after),
+    sweep_every,
+    escalate_ms: after!,
   };
 }
 

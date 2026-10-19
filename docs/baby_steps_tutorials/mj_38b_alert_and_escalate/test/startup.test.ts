@@ -172,7 +172,10 @@ describe("the program", () => {
       const dir = mkdtempSync(join(tmpdir(), "dsor-roles-"));
       try {
         const roles = join(dir, "roles.json");
-        writeFileSync(roles, JSON.stringify({ ...STARTING_ROLES, CFO: ["invoice:*"] }));
+        writeFileSync(
+          roles,
+          JSON.stringify({ ...STARTING_ROLES, CFO: ["payment:reconcile", "invoice:*"] }),
+        );
         const main = fileURLToPath(new URL("../src/main.ts", import.meta.url));
         const contracts = fileURLToPath(new URL("../contracts", import.meta.url));
         const run = spawnSync(process.execPath, [main, contracts, roles], { encoding: "utf8" });

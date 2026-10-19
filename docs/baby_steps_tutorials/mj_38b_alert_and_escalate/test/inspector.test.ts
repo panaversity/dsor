@@ -8,6 +8,7 @@ import { checkStore, readStore, type StoreMap } from "../src/store.ts";
 import {
   INVOICE_TRIGGER,
   PAYMENT_TRIGGER,
+  PROPOSAL_ALERT,
   PROPOSAL_TRIGGER,
   columnIn,
   relationIn,
@@ -364,12 +365,14 @@ describe("C11: each trigger is the one the map names", () => {
       `store.json names the trigger ${PAYMENT_TRIGGER}, which the database does not have`,
     ]);
   });
+  // Changed in step 38b: each keeps the proposals' alert trigger, so it changes one thing (step
+  //   38b's README, decision D9).
   // The guard on proposals is checked the same way. Without it, a bug could move a
   // COMMITTED proposal, and only DSoR's own check would stand (step 22's README, decision 3).
   it("DSOR-APR-01c: the guard on dsor.proposals switched off is two differences, so start-up refuses", () => {
     const off = `${PROPOSAL_TRIGGER} (disabled)`;
     const found = differencesWith((c) => {
-      relationIn(c, "dsor.proposals").triggers = [off];
+      relationIn(c, "dsor.proposals").triggers = [PROPOSAL_ALERT, off];
     });
     expect(found).toStrictEqual([
       `dsor.proposals has the trigger ${off}, which store.json does not name`,
@@ -379,7 +382,7 @@ describe("C11: each trigger is the one the map names", () => {
 
   it("DSOR-APR-01a: the guard on dsor.proposals missing is a difference", () => {
     const found = differencesWith((c) => {
-      relationIn(c, "dsor.proposals").triggers = [];
+      relationIn(c, "dsor.proposals").triggers = [PROPOSAL_ALERT];
     });
     expect(found).toStrictEqual([
       `store.json names the trigger ${PROPOSAL_TRIGGER}, which the database does not have`,
@@ -389,7 +392,7 @@ describe("C11: each trigger is the one the map names", () => {
   it("DSOR-APR-01a: a guard that runs after the write is another trigger, and two differences", () => {
     const after = PROPOSAL_TRIGGER.replace("BEFORE INSERT OR UPDATE", "AFTER INSERT OR UPDATE");
     const found = differencesWith((c) => {
-      relationIn(c, "dsor.proposals").triggers = [after];
+      relationIn(c, "dsor.proposals").triggers = [PROPOSAL_ALERT, after];
     });
     expect(found).toStrictEqual([
       `dsor.proposals has the trigger ${after}, which store.json does not name`,

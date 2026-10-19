@@ -2375,14 +2375,14 @@ console.log(
 );
 console.log(`  transfers the bank made: ${fakeBank.transfers().length}`);
 // NEW IN STEP 38b: the move to OUTCOME_UNKNOWN raised PAY-902's alert, at once. dsor-scheduler's
-//   sweep escalates nothing before org_456's hour; an hour later, it hands the alert to cfo_100
+//   sweep escalates nothing before org_456's bound; once it has passed, it hands the alert to cfo_100
 //   (DSOR-UNK-04b, DSOR-UNK-04c; step 38b's README, claims C1 and C4).
 const silentId = String("proposal" in silent ? silent.proposal : "")
   .split("/")
   .at(-1);
 const alertOf = async () =>
   (await bankKept.alerts("org_456")).find((alert) => alert.proposal === silentId);
-const { receivers, escalate_after } = bankWorld.alerts.get("org_456")!;
+const { receivers, escalate_after, escalate_ms } = bankWorld.alerts.get("org_456")!;
 const raised = await alertOf();
 console.log(`  PAY-902's alert: ${raised?.state}, raised ${raised?.raised_at}, for ${receivers}`);
 const sweepAlerts = async (): Promise<string> => {
@@ -2394,11 +2394,11 @@ const sweepAlerts = async (): Promise<string> => {
   return `${escalated.length} escalated to ${to}`;
 };
 console.log(`  dsor-scheduler's escalation sweep, at once: ${await sweepAlerts()}`);
-bankNow += 60 * 60 * 1000;
+bankNow += escalate_ms;
 console.log(`  ${escalate_after} later, the sweep again: ${await sweepAlerts()}`);
 const escalated = await alertOf();
 console.log(`  PAY-902's alert: ${escalated?.state}, to ${escalated?.escalated_to}`);
-// Dsor-scheduler reconciles PAY-902's attempt. The bank sent it, as TRF-2, so the
+// dsor-scheduler reconciles PAY-902's attempt. The bank sent it, as TRF-2, so the
 //   proposal is COMMITTED and PAY-902 is paid, with the bank's answer as the evidence. Then
 //   user_123's first request, sent again with its own key, answers the settled outcome
 //   (DSOR-UNK-04a; step 38's README, claims C2 and C7).

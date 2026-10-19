@@ -63,6 +63,7 @@ import {
   checkRequires,
   dsorMover,
   isProposalOf,
+  proposalIdOf,
   proposalUri,
   transitionFrom,
   type Due,
@@ -1218,6 +1219,20 @@ export function createDbClaims(
         //   a COMMIT that rolled back is OUTCOME_UNKNOWN, the answer a replay of this claim gives,
         //   never INTERNAL_ERROR. Found by step 36's review, H1.
         if (!noted.yes || made === undefined) throw thrown;
+        // NEW IN STEP 38b: and its note is ended now, in a transaction of its own, as the start-up
+        //   sweep would end it, so the proposal is OUTCOME_UNKNOWN and its alert is raised while
+        //   this server runs. A note that the failed COMMIT did end, or a proposal that moved on,
+        //   is left as it is. If this fails too, the start-up sweep still ends the note (found by
+        //   step 38b's review, H1; step 38b's README, decision D8).
+        try {
+          const id = proposalIdOf(scope.tenant, made);
+          const note = await createDbIntents(pool).get(scope.tenant, id);
+          if (note !== undefined && note.outcome === undefined) {
+            await endUnknown(pool, scope.tenant, note);
+          }
+        } catch {
+          // The start-up sweep ends it.
+        }
         return { refused: unknownFromNote(), proposal: made };
       }
       // The conflict is refused after the transaction ends, which only read, and committed. So
@@ -1471,36 +1486,44 @@ export async function sweepIntents(pool: pg.Pool, tenants: Iterable<string>): Pr
   let ended = 0;
   for (const tenant of tenants) {
     for (const note of await createDbIntents(pool).open(tenant)) {
-      await inCompany(pool, tenant, async (client) => {
-        const run = inClaim(client, tenant);
-        const proposals = proposalsThrough(run);
-        const id = note.proposal_id;
-        const proposal = await proposals.get(tenant, id);
-        if (proposal === undefined)
-          throw new Error(`a note names proposal ${id}, which is not kept`);
-        const unknown = unknownFromNote();
-        if (proposal.state === "EXECUTING") {
-          const by: MoveBy = {
-            mover: dsorMover(proposal.requester),
-            cause: `the outcome is unknown: ${unknown.message}`,
-            correlation: { request_id: `req_${randomUUID()}` },
-          };
-          if (!(await proposals.move(tenant, id, "EXECUTING", "OUTCOME_UNKNOWN", by))) {
-            throw new Error(`proposal ${id} moved while the sweep moved it`);
-          }
-        }
-        const answer = `{"refused":${keptText(keptOf(unknown))},"proposal":${keptText(proposalUri(tenant, id))}}`;
-        await client.query(
-          `UPDATE dsor.idempotency SET answer = $5::json
-            WHERE ${IN_SCOPE} AND answer IS NULL`,
-          [tenant, note.principal, note.claim_operation, note.idempotency_key, answer],
-        );
-        await intentsThrough(run).end(tenant, id, "outcome_unknown");
-      });
+      await endUnknown(pool, tenant, note);
       ended += 1;
     }
   }
   return ended;
+}
+
+// Changed in step 38b: one open note's ending, in a transaction of its own: its proposal, still
+//   EXECUTING, moves to OUTCOME_UNKNOWN, which raises its alert; its claim keeps that answer; the
+//   note ends outcome_unknown. The start-up sweep calls it for every open note, and a claim whose
+//   transaction failed after the bank was asked calls it for its own (found by step 38b's
+//   review, H1).
+async function endUnknown(pool: pg.Pool, tenant: string, note: KeptIntent): Promise<void> {
+  await inCompany(pool, tenant, async (client) => {
+    const run = inClaim(client, tenant);
+    const proposals = proposalsThrough(run);
+    const id = note.proposal_id;
+    const proposal = await proposals.get(tenant, id);
+    if (proposal === undefined) throw new Error(`a note names proposal ${id}, which is not kept`);
+    const unknown = unknownFromNote();
+    if (proposal.state === "EXECUTING") {
+      const by: MoveBy = {
+        mover: dsorMover(proposal.requester),
+        cause: `the outcome is unknown: ${unknown.message}`,
+        correlation: { request_id: `req_${randomUUID()}` },
+      };
+      if (!(await proposals.move(tenant, id, "EXECUTING", "OUTCOME_UNKNOWN", by))) {
+        throw new Error(`proposal ${id} moved while the sweep moved it`);
+      }
+    }
+    const answer = `{"refused":${keptText(keptOf(unknown))},"proposal":${keptText(proposalUri(tenant, id))}}`;
+    await client.query(
+      `UPDATE dsor.idempotency SET answer = $5::json
+        WHERE ${IN_SCOPE} AND answer IS NULL`,
+      [tenant, note.principal, note.claim_operation, note.idempotency_key, answer],
+    );
+    await intentsThrough(run).end(tenant, id, "outcome_unknown");
+  });
 }
 
 // Each company's sheets of rates, in dsor.rates (step 26's README, decisions L1,
@@ -2415,24 +2438,9 @@ async function moveWith(
     client,
     transitionOf(tenant, uri, rows[0]!.operation, from, to, by.mover, by.cause, by.correlation),
   );
-  // NEW IN STEP 38b: the move to OUTCOME_UNKNOWN raises its alert, and the move out of it closes
-  //   it, in this transaction, so every path raises one and no settlement leaves one open
-  //   (DSOR-UNK-04b; step 38b's README, decisions D1, D5, and D6). The trigger sets the times.
-  if (to === "OUTCOME_UNKNOWN") {
-    const { rowCount } = await client.query(
-      "INSERT INTO dsor.alerts (tenant_id, proposal_id) VALUES ($1, $2)",
-      [tenant, id],
-    );
-    if (rowCount !== 1) throw new Error(`the alerts kept ${rowCount ?? 0} rows, not 1`);
-  }
-  if (from === "OUTCOME_UNKNOWN") {
-    // A proposal that went unknown before migration 034 has no alert to close.
-    await client.query(
-      `UPDATE dsor.alerts SET state = 'closed', outcome = $3
-        WHERE tenant_id = $1 AND proposal_id = $2 AND state IN ('open', 'escalated')`,
-      [tenant, id, to],
-    );
-  }
+  // NEW IN STEP 38b: the database's own trigger, proposals_alert, raises this proposal's alert on
+  //   the move to OUTCOME_UNKNOWN and closes it on the move out, in this transaction (DSOR-UNK-04b;
+  //   step 38b's README, decisions D5, D6, and D9).
   return true;
 }
 

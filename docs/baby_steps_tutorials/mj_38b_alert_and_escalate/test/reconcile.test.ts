@@ -7,7 +7,7 @@ import { bankKeyOf } from "../src/bank.ts";
 import type { Answer } from "../src/envelope.ts";
 import { dsorMover } from "../src/proposals.ts";
 import type { RequestEnvelope } from "../src/request.ts";
-import { AGENT, CFO, DEL_100, keyed, SUPERVISOR } from "./helpers.ts";
+import { ADMIN, AGENT, CFO, DEL_100, keyed, SUPERVISOR } from "./helpers.ts";
 import { heard, ruleWorldOnTuesday, type RuleWorld } from "./rule-world.ts";
 
 const INV_1002 = "dsor://org_456/invoice/INV-1002";
@@ -234,13 +234,14 @@ describe("C6: who may settle, and what", () => {
     expect(await stateOf(w, proposal)).toBe("OUTCOME_UNKNOWN");
   });
 
-  it("DSOR-UNK-04d: user_123, an AP supervisor, may press check now; cfo_100, who does not hold the permission, may not", async () => {
+  // Changed in step 38b: cfo_100's role holds payment:reconcile, so the person an unknown payment
+  //   escalates to can settle it (step 38b's README, decision D11). admin_100 holds none.
+  it("DSOR-UNK-04d: user_123, an AP supervisor, and cfo_100 may press check now; admin_100, who does not hold the permission, may not", async () => {
     const w = await ruleWorldOnTuesday();
     const { proposal } = await unknownPayment(w);
-    expect(await reconcile(w, proposal, CFO)).toMatchObject({ code: "AUTHORIZATION_DENIED" });
-    expect(await reconcile(w, proposal, SUPERVISOR)).toMatchObject({
-      data: { state: "COMMITTED" },
-    });
+    expect(await reconcile(w, proposal, ADMIN)).toMatchObject({ code: "AUTHORIZATION_DENIED" });
+    expect(await reconcile(w, proposal, CFO)).toMatchObject({ data: { state: "COMMITTED" } });
+    expect(await reconcile(w, proposal, SUPERVISOR)).toMatchObject({ code: "CONFLICT" });
   });
 
   it("DSOR-UNK-04a: a proposal that is not OUTCOME_UNKNOWN is refused with CONFLICT: a settled one, and a draft's", async () => {

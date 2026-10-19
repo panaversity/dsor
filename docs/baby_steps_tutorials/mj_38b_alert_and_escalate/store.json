@@ -135,6 +135,7 @@
         }
       },
       "triggers": [
+        "CREATE TRIGGER proposals_alert AFTER UPDATE OF state ON dsor.proposals FOR EACH ROW EXECUTE FUNCTION dsor.proposal_alerts()",
         "CREATE TRIGGER proposals_move BEFORE INSERT OR UPDATE ON dsor.proposals FOR EACH ROW EXECUTE FUNCTION dsor.proposal_moves()"
       ]
     },
@@ -255,12 +256,12 @@
       "runtime": {
         "table": ["SELECT"],
         "columns": {
-          "INSERT": ["tenant_id", "proposal_id"],
-          "UPDATE": ["state", "escalated_to", "outcome"]
+          "UPDATE": ["state", "escalated_to"]
         }
       },
       "triggers": [
-        "CREATE TRIGGER alerts_move BEFORE INSERT OR DELETE OR UPDATE ON dsor.alerts FOR EACH ROW EXECUTE FUNCTION dsor.alert_moves()"
+        "CREATE TRIGGER alerts_move BEFORE INSERT OR DELETE OR UPDATE ON dsor.alerts FOR EACH ROW EXECUTE FUNCTION dsor.alert_moves()",
+        "CREATE TRIGGER alerts_stay BEFORE TRUNCATE ON dsor.alerts FOR EACH STATEMENT EXECUTE FUNCTION dsor.alerts_stay()"
       ]
     },
     "dsor.intents": {

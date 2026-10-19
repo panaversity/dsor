@@ -337,7 +337,7 @@ describe("C7: the .propose form of a permission", () => {
   // cfo_100 is a person, so what cfo_100 may do comes from the role table alone.
   const proposingCfo = rolesFile({
     ...STARTING_ROLES,
-    CFO: ["invoice:read", "payment:create.propose"],
+    CFO: ["payment:reconcile", "invoice:read", "payment:create.propose"],
   });
 
   it("Step 23: a holder of payment:create.propose may prepare a payment in propose_only mode (§7.3)", async () => {
@@ -393,14 +393,20 @@ describe("C7: the .propose form of a permission", () => {
   });
 
   it("DSOR-AUT-01b: the .propose form of one permission never stands in for another", async () => {
-    const roles = rolesFile({ ...STARTING_ROLES, CFO: ["invoice:read", "payment:cancel.propose"] });
+    const roles = rolesFile({
+      ...STARTING_ROLES,
+      CFO: ["payment:reconcile", "invoice:read", "payment:cancel.propose"],
+    });
     const world = story({ roles });
     const { answer } = await draft(world, inMode(keyed(CFO), "propose_only"));
     expect("code" in answer && answer.code).toBe("AUTHORIZATION_DENIED");
   });
 
   it("DSOR-AUT-01b: invoice:read.propose does not allow a read: a query has one way to run", async () => {
-    const roles = rolesFile({ ...STARTING_ROLES, CFO: ["invoice:read.propose"] });
+    const roles = rolesFile({
+      ...STARTING_ROLES,
+      CFO: ["payment:reconcile", "invoice:read.propose"],
+    });
     const world = story({ roles });
     const answer = await call(world.registry, world.log, CFO, "invoice.get", {
       invoice: INV_1008.invoice,
@@ -802,7 +808,7 @@ describe("from the review: every command, in each mode", () => {
       // ③ lets through, 7 in org_456 and 5 in org_789 (step 31's README, decision D12).
       // Changed in step 35: and 12 for payment.execute, user_123 and user_700, 6 swaps each of its
       // two URIs (step 35's README, decision D7).
-      expect(report.attacks).toHaveLength(225);
+      expect(report.attacks).toHaveLength(228);
     },
   );
 

@@ -39,9 +39,9 @@ export const CONTROL_TRIGGER =
 // Step 38b: the guard on an alert's moves, as migration 034 makes it (step 38b's README, C7).
 export const ALERT_TRIGGER =
   "CREATE TRIGGER alerts_move BEFORE INSERT OR DELETE OR UPDATE ON dsor.alerts FOR EACH ROW EXECUTE FUNCTION dsor.alert_moves()";
-// Step 38b: dsor.alerts, as migration 034 makes it. dsor_runtime reads every column, raises an
-//   alert through two, and moves it through three; raised_at has a default, and the trigger
-//   writes the state on the insert and the times (step 38b's README, decisions D1 and D6).
+// Step 38b: dsor.alerts, as migration 034 makes it. dsor_runtime reads every column and escalates
+//   an alert through two; the database's own triggers raise and close it. raised_at has a
+//   default, and the trigger writes the state on the insert and the times (step 38b's README, decisions D1 and D6).
 const ALERT_COLUMNS = [
   "tenant_id",
   "proposal_id",
@@ -52,6 +52,12 @@ const ALERT_COLUMNS = [
   "outcome",
   "closed_at",
 ];
+// Step 38b: no TRUNCATE of the alerts, and the proposals' trigger that raises and closes an alert
+//   (step 38b's README, claim C7 and decision D9).
+export const ALERTS_STAY =
+  "CREATE TRIGGER alerts_stay BEFORE TRUNCATE ON dsor.alerts FOR EACH STATEMENT EXECUTE FUNCTION dsor.alerts_stay()";
+export const PROPOSAL_ALERT =
+  "CREATE TRIGGER proposals_alert AFTER UPDATE OF state ON dsor.proposals FOR EACH ROW EXECUTE FUNCTION dsor.proposal_alerts()";
 export const INTENT_TRIGGER =
   "CREATE TRIGGER intents_end BEFORE UPDATE ON dsor.intents FOR EACH ROW EXECUTE FUNCTION dsor.intent_ends()";
 // The log's columns. dsor_runtime may INSERT every one but sequence and at, which the
@@ -334,15 +340,12 @@ export function today(): Catalog {
         held: ["SELECT"],
         columns: ALERT_COLUMNS.map((name) => {
           const filled = name === "raised_at";
-          if (["state", "escalated_to", "outcome"].includes(name)) {
-            return { name, held: ["SELECT", "UPDATE"], filled };
-          }
-          const added = name === "tenant_id" || name === "proposal_id";
-          return { name, held: added ? ["SELECT", "INSERT"] : ["SELECT"], filled };
+          const moved = name === "state" || name === "escalated_to";
+          return { name, held: moved ? ["SELECT", "UPDATE"] : ["SELECT"], filled };
         }),
         rowSecurity: { enabled: true, forced: true },
         rules: [],
-        triggers: [ALERT_TRIGGER],
+        triggers: [ALERT_TRIGGER, ALERTS_STAY],
       },
       // The approvals, behind the company's lock, written once.
       {
@@ -525,7 +528,7 @@ export function today(): Catalog {
         }),
         rowSecurity: { enabled: true, forced: true },
         rules: [],
-        triggers: [PROPOSAL_TRIGGER],
+        triggers: [PROPOSAL_ALERT, PROPOSAL_TRIGGER],
       },
       // The sheets of rates, behind the company's lock, written once.
       {

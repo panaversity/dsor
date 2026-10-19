@@ -27,12 +27,14 @@ const SECOND = {
     escalate_to: "cfo_100",
     alert_within: "PT0S",
     escalate_after: "PT1S",
+    sweep_every: "PT1M",
   },
   org_789: {
     receivers: "ap_supervisor",
-    escalate_to: "admin_700",
+    escalate_to: "user_700",
     alert_within: "PT0S",
     escalate_after: "PT1S",
+    sweep_every: "PT1M",
   },
 };
 const registry = dbRegistry(
@@ -133,6 +135,34 @@ describe("C1 and C3: on the database, raised with the move, closed with the sett
   });
 });
 
+describe("C2: on the database, every way in", () => {
+  // Found by step 38b's review: only the silent bank and the SIGKILL were tested on the database.
+  it("DSOR-UNK-04b: the bank was asked, and its line broke before the answer: OUTCOME_UNKNOWN, and an open alert", async () => {
+    const id = await draft();
+    const pay = bank.pay;
+    bank.pay = async () => {
+      throw new Error("the connection was reset");
+    };
+    const unknown = await call(registry, log, keyed(SUPERVISOR), "payment.execute", {
+      invoice: INV_9001,
+      payment: `dsor://org_456/payment/${id}`,
+      expected_version: 1,
+    });
+    bank.pay = pay;
+    expect(unknown).toMatchObject({ code: "OUTCOME_UNKNOWN" });
+    expect(await alertOf(idOf(unknown))).toMatchObject({ state: "open" });
+    settle.push(idOf(unknown));
+  });
+
+  // Found by step 38b's review, M1: the owner's settle, a direct UPDATE of the proposal's state,
+  //   left the alert open, and later sweeps escalated it. The database's own trigger closes it.
+  it("DSOR-UNK-04b: the owner moves the proposal to FAILED with a direct UPDATE: the database closes its alert, naming FAILED", async () => {
+    const proposal = await unknownPayment();
+    expect(ownerProposals("settle", proposal)).toStrictEqual({ changed: 1 });
+    expect(await alertOf(proposal)).toMatchObject({ state: "closed", outcome: "FAILED" });
+  });
+});
+
 describe("C2: on the database, after a real SIGKILL", () => {
   it(
     "DSOR-UNK-04b: the program is killed while the bank holds the payment; the start-up sweep moves the proposal to OUTCOME_UNKNOWN and raises its alert",
@@ -189,17 +219,45 @@ describe("C7: the database keeps its alerts", () => {
     await wait(1100);
     await escalate();
     expect(ownerAlerts("redirect", proposal)).toStrictEqual({
-      refused: "an alert moves only from open to escalated, or to closed, once each",
+      refused:
+        "an alert moves only from open to escalated, or to closed, once each, with its proposal",
     });
     await call(registry, log, keyed(SCHEDULER), "payment.reconcile", {
       proposal: `dsor://org_456/proposal/${proposal}`,
     });
     expect(ownerAlerts("reopen", proposal)).toStrictEqual({
-      refused: "an alert moves only from open to escalated, or to closed, once each",
+      refused:
+        "an alert moves only from open to escalated, or to closed, once each, with its proposal",
     });
     expect(await alertOf(proposal, "org_789")).toBeUndefined();
     await expect(
       pool.query("DELETE FROM dsor.alerts WHERE proposal_id = $1", [proposal]),
     ).rejects.toThrow("permission denied");
+    expect(ownerAlerts("truncate")).toStrictEqual({ refused: "an alert is never removed" });
+  });
+
+  // Found by step 38b's review, M1: dsor_runtime could close an alert of a payment still unknown.
+  //   It holds no right to the outcome now, and the owner cannot close one against its proposal,
+  //   or name another person while closing it.
+  it("DSOR-UNK-04b: dsor_runtime cannot close an alert, and the owner cannot close one against its proposal's state or change its person while closing", async () => {
+    const proposal = await unknownPayment();
+    settle.push(proposal);
+    await expect(
+      inCompany(pool, "org_456", (client) =>
+        client.query(
+          "UPDATE dsor.alerts SET state = 'closed', outcome = 'COMMITTED' WHERE proposal_id = $1",
+          [proposal],
+        ),
+      ),
+    ).rejects.toThrow("permission denied");
+    expect(ownerAlerts("close", proposal)).toStrictEqual({
+      refused:
+        "an alert moves only from open to escalated, or to closed, once each, with its proposal",
+    });
+    expect(ownerAlerts("close-redirect", proposal)).toStrictEqual({
+      refused:
+        "an alert moves only from open to escalated, or to closed, once each, with its proposal",
+    });
+    expect(await alertOf(proposal)).toMatchObject({ state: "open" });
   });
 });

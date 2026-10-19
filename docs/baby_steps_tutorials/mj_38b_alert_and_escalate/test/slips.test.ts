@@ -293,7 +293,8 @@ describe("C3: the agent may use only what its slip lists and its signer holds no
     ).toMatchObject({ data: { id: "PAY-901" } });
     const cut = rolesFile({
       ...STARTING_ROLES,
-      ap_supervisor: ["invoice:read", "invoice:issue", "payment:cancel"],
+      // Changed in step 38b: user_700, org_789's person for alerts, keeps payment:reconcile.
+      ap_supervisor: ["invoice:read", "invoice:issue", "payment:cancel", "payment:reconcile"],
     });
     const after: Payment[] = [];
     const log = createLog();

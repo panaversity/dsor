@@ -17,7 +17,8 @@
     "rule:draft",
     "rule:manage",
     "proposal:approve",
-    "payment:approve"
+    "payment:approve",
+    "payment:reconcile"
   ],
   "ap_clerk": ["invoice:read", "payment:create.propose", "delegation:revoke"],
   "tenant_admin": [

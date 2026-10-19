@@ -4,6 +4,8 @@
 // 38b's README, claims C1 to C5).
 import { describe, expect, it } from "vitest";
 import type { Answer } from "../src/envelope.ts";
+import type { DecisionLog } from "../src/log.ts";
+import { call } from "../src/pipeline.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import { AGENT, CFO, DEL_100, keyed, shippedRoles, SUPERVISOR } from "./helpers.ts";
 import { heard, ruleWorldOnTuesday, type RuleWorld } from "./rule-world.ts";
@@ -12,6 +14,8 @@ const INV_1002 = "dsor://org_456/invoice/INV-1002";
 // dsor-scheduler, DSoR's own login for scheduled work (step 25c's README, decision D1).
 const SCHEDULER: RequestEnvelope = { token: "tok_5c4e", tenant: "org_456" };
 const MINUTE = 60 * 1000;
+/** What the escalation sweep answers. */
+type Escalation = { data: { escalated: { proposal: string }[] } };
 const HOUR = 60 * MINUTE;
 
 /** The proposal's id an answer names. */
@@ -99,6 +103,37 @@ describe("C2: every way into OUTCOME_UNKNOWN raises it", () => {
     expect(sent).toMatchObject({ code: "OUTCOME_UNKNOWN" });
     expect(await w.proposals.alerts("org_456")).toMatchObject([{ proposal: id, state: "open" }]);
   });
+
+  // Found by step 38b's review, H1: the bank sent, then DSoR's record of the send could not be
+  //   written. The caller heard OUTCOME_UNKNOWN, and the proposal stayed EXECUTING with no alert
+  //   until the program restarted (step 38b's README, decision D8).
+  it("DSOR-UNK-04b: the bank sent PAY-902, then the log refused the record of the send: OUTCOME_UNKNOWN, the proposal OUTCOME_UNKNOWN, and an open alert", async () => {
+    const w = await ruleWorldOnTuesday();
+    const drafted = await w.ask(keyed(SUPERVISOR), "payment.create", {
+      invoice: INV_1002,
+      expected_version: 1,
+    });
+    let refused = false;
+    const log: DecisionLog = {
+      add: async (decision, bundle) => {
+        if (!refused && decision.operation === "payment.execute@1") {
+          refused = true;
+          throw new Error("the log's disk is full");
+        }
+        return w.log.add(decision, bundle);
+      },
+    };
+    const sent = await call(w.registry, log, keyed(SUPERVISOR), "payment.execute", {
+      invoice: INV_1002,
+      payment: `dsor://org_456/payment/${(drafted as { data: { id: string } }).data.id}`,
+      expected_version: 1,
+    });
+    expect(sent).toMatchObject({ code: "OUTCOME_UNKNOWN" });
+    expect(w.bank.transfers()).toHaveLength(1);
+    const id = idOf(sent);
+    expect((await w.proposals.get("org_456", id))?.state).toBe("OUTCOME_UNKNOWN");
+    expect(await w.proposals.alerts("org_456")).toMatchObject([{ proposal: id, state: "open" }]);
+  });
 });
 
 describe("C3: the settlement closes the alert, in the same moment", () => {
@@ -111,9 +146,12 @@ describe("C3: the settlement closes the alert, in the same moment", () => {
       const w = await ruleWorldOnTuesday();
       const id = await unknownPayment(w, day);
       expect(await reconcile(w, id)).toMatchObject({ data: { state: outcome } });
-      expect(await w.proposals.alerts("org_456")).toMatchObject([
-        { proposal: id, state: "closed", outcome },
-      ]);
+      const [alert] = await w.proposals.alerts("org_456");
+      expect(alert).toMatchObject({ proposal: id, state: "closed", outcome });
+      // The time it was raised stays the move to OUTCOME_UNKNOWN's, after the close. Found by
+      //   step 38b's review: a raised_at read from the last move passed every test.
+      const moves = (await w.proposals.get("org_456", id))!.transitions;
+      expect(alert!.raised_at).toBe(moves.find((t) => t.to === "OUTCOME_UNKNOWN")!.at);
     },
   );
 
@@ -154,10 +192,23 @@ describe("C4: an alert still open after the bound goes to the named person, once
     expect(await escalate(w)).toMatchObject({ data: { escalated: [] } });
   });
 
-  it("DSOR-UNK-04c: 59 minutes after, nothing is escalated, and the alert stays open", async () => {
+  // Found by step 38b's review, M4: each of three sweeps at once read the alert open, and each
+  //   said it escalated it.
+  it("DSOR-UNK-04c: three sweeps at once, an hour after: one escalates PAY-901's alert, and the others escalate nothing", async () => {
+    const w = await ruleWorldOnTuesday();
+    await unknownPayment(w);
+    w.clock.now += HOUR;
+    const swept = await Promise.all([escalate(w), escalate(w), escalate(w)]);
+    const counts = swept.map((answer) => (answer as Escalation).data.escalated.length);
+    expect(counts.sort()).toStrictEqual([0, 0, 1]);
+  });
+
+  // Changed in step 38b's review: org_456's bound is PT59M, so the hour is met with a sweep every
+  //   minute (step 38b's README, decision D10).
+  it("DSOR-UNK-04c: 58 minutes after, nothing is escalated, and the alert stays open", async () => {
     const w = await ruleWorldOnTuesday();
     const id = await unknownPayment(w);
-    w.clock.now += 59 * MINUTE;
+    w.clock.now += 58 * MINUTE;
     expect(await escalate(w)).toMatchObject({ data: { escalated: [] } });
     expect(await w.proposals.alerts("org_456")).toMatchObject([{ proposal: id, state: "open" }]);
   });
@@ -176,7 +227,7 @@ describe("C4: an alert still open after the bound goes to the named person, once
     const id = await unknownPayment(w);
     w.clock.now += 2 * HOUR;
     const other = await escalate(w, { token: "tok_5c4e", tenant: "org_789" }, "org_789");
-    expect(other).toMatchObject({ data: { escalated: [], to: "admin_700" } });
+    expect(other).toMatchObject({ data: { escalated: [], to: "user_700" } });
     expect(await w.proposals.alerts("org_456")).toMatchObject([{ proposal: id, state: "open" }]);
   });
 });
@@ -224,7 +275,7 @@ describe("C5: only DSoR's own scheduled login may escalate", () => {
     const w = await ruleWorldOnTuesday();
     await unknownPayment(w);
     w.clock.now += 2 * HOUR;
-    expect(await escalate(w, SCHEDULER, "org_789")).toHaveProperty("code");
+    expect(await escalate(w, SCHEDULER, "org_789")).toMatchObject({ code: "RESOURCE_NOT_FOUND" });
     expect(await w.proposals.alerts("org_456")).toMatchObject([{ state: "open" }]);
   });
 });

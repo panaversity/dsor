@@ -372,6 +372,34 @@ export function memoryProposals(now: () => number = Date.now): MemoryProposals {
   const keyOf = (tenant: string, id: string): string => JSON.stringify([tenant, id]);
   // NEW IN STEP 38b: who each escalated alert went to, and when, by company and proposal.
   const escalations = new Map<string, { to: string; at: string }>();
+  // The company's alerts now, read from the moves' records, so an undone move undoes its alert
+  //   too, as the database's rollback does. Only the escalation is kept apart.
+  const alertsNow = (tenant: string): Alert[] => {
+    const found: Alert[] = [];
+    for (const row of rows.values()) {
+      if (row.tenant !== tenant) continue;
+      const { transitions } = shown(row);
+      const raised = transitions.find((t) => t.to === "OUTCOME_UNKNOWN");
+      if (raised === undefined) continue;
+      const closed = transitions.find((t) => t.from === "OUTCOME_UNKNOWN");
+      const escalated = escalations.get(keyOf(tenant, row.id));
+      const state = closed !== undefined ? "closed" : escalated ? "escalated" : "open";
+      found.push({
+        proposal: row.id,
+        state,
+        raised_at: raised.at,
+        ...(escalated === undefined
+          ? {}
+          : { escalated_to: escalated.to, escalated_at: escalated.at }),
+        ...(closed === undefined
+          ? {}
+          : { outcome: closed.to as "COMMITTED" | "FAILED", closed_at: closed.at }),
+      });
+    }
+    return found.sort(
+      (a, b) => a.raised_at.localeCompare(b.raised_at) || a.proposal.localeCompare(b.proposal),
+    );
+  };
   const record = (made: ProposalTransition): void => {
     records.push({
       ...made,
@@ -568,37 +596,14 @@ export function memoryProposals(now: () => number = Date.now): MemoryProposals {
     },
     // NEW IN STEP 38b: the alerts, read from the moves' records, so an undone move undoes its
     //   alert too, as the database's rollback does. Only the escalation is kept apart.
-    alerts: async (tenant: string): Promise<Alert[]> => {
-      const found: Alert[] = [];
-      for (const row of rows.values()) {
-        if (row.tenant !== tenant) continue;
-        const { transitions } = shown(row);
-        const raised = transitions.find((t) => t.to === "OUTCOME_UNKNOWN");
-        if (raised === undefined) continue;
-        const closed = transitions.find((t) => t.from === "OUTCOME_UNKNOWN");
-        const escalated = escalations.get(keyOf(tenant, row.id));
-        const state = closed !== undefined ? "closed" : escalated ? "escalated" : "open";
-        found.push({
-          proposal: row.id,
-          state,
-          raised_at: raised.at,
-          ...(escalated === undefined
-            ? {}
-            : { escalated_to: escalated.to, escalated_at: escalated.at }),
-          ...(closed === undefined
-            ? {}
-            : { outcome: closed.to as "COMMITTED" | "FAILED", closed_at: closed.at }),
-        });
-      }
-      return found.sort(
-        (a, b) => a.raised_at.localeCompare(b.raised_at) || a.proposal.localeCompare(b.proposal),
-      );
-    },
-    // By the store's clock, as due reads it. Only an open alert, once each.
+    alerts: async (tenant: string): Promise<Alert[]> => alertsNow(tenant),
+    // By the store's clock, as due reads it. Only an open alert, once each: read and changed with
+    //   no wait between, so of three sweeps at once, one escalates it (found by step 38b's review,
+    //   M4: each read first, then each escalated it).
     escalateDue: async (tenant: string, afterMs: number, to: string): Promise<Alert[]> => {
       const at = new Date(now()).toISOString();
       const escalated: Alert[] = [];
-      for (const alert of await store.alerts(tenant)) {
+      for (const alert of alertsNow(tenant)) {
         if (alert.state !== "open" || Date.parse(alert.raised_at) + afterMs > now()) continue;
         escalations.set(keyOf(tenant, alert.proposal), { to, at });
         escalated.push({ ...alert, state: "escalated", escalated_to: to, escalated_at: at });
