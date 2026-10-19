@@ -5,13 +5,17 @@
 // claims C1 to C7).
 import { describe, expect, it } from "vitest";
 import type { Answer } from "../src/envelope.ts";
+import { handlersFor } from "../src/operations.ts";
+import { buildRegistry } from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
+import { ownWorkFor } from "../src/revocation.ts";
 import {
   ADMIN,
   AGENT,
   CFO,
   DEL_100,
   keyed,
+  shipped,
   shippedRoles,
   SUPERVISOR,
   USER_700,
@@ -220,6 +224,39 @@ describe("C7: the answer's labels", () => {
     expect(record).toMatchObject({ operation: "alert.list@1", authorization: "ALLOW" });
     expect([...(record.resources ?? [])].sort()).toStrictEqual(
       [`dsor://org_456/alert/${first.id}`, `dsor://org_456/alert/${second.id}`].sort(),
+    );
+  });
+});
+
+describe("C9: start-up checks DSoR's own reads", () => {
+  // Found while building: the check had no test. A read changes nothing, so it must be a query,
+  //   must have a contract, and must not share a name with other code.
+  const read = { read: async () => ({ items: [] }) };
+  it("DSOR-OPR-01: a read with no contract, a read of DSoR's own command, and a read of the company's own query each stop start-up, named", () => {
+    const refused = (reads: Record<string, typeof read>): string => {
+      try {
+        // buildRegistry's places: 0 the contracts, 1 the code, 2 the roles, 11 DSoR's own work, and
+        //   20 its own reads; every other place takes its default.
+        const args = Array.from({ length: 21 }) as unknown as Parameters<typeof buildRegistry>;
+        args[0] = shipped;
+        args[1] = handlersFor();
+        args[2] = shippedRoles;
+        args[11] = ownWorkFor();
+        args[20] = reads;
+        buildRegistry(...args);
+        return "";
+      } catch (error) {
+        return (error as Error).message;
+      }
+    };
+    expect(refused({ "alert.show": read })).toContain(
+      "alert.show has DSoR's own read but no contract",
+    );
+    expect(refused({ "payment.reconcile": read })).toContain(
+      "payment.reconcile has DSoR's own read and other code",
+    );
+    expect(refused({ "invoice.get": read })).toContain(
+      "invoice.get has DSoR's own read and other code",
     );
   });
 });

@@ -2398,6 +2398,19 @@ bankNow += escalate_ms;
 console.log(`  ${escalate_after} later, the sweep again: ${await sweepAlerts()}`);
 const escalated = await alertOf();
 console.log(`  PAY-902's alert: ${escalated?.state}, to ${escalated?.escalated_to}`);
+// NEW IN STEP 38c: each person lists the alerts meant for them: user_123, of the receivers role,
+//   every unsettled one; cfo_100, the named person, the ones escalated to them; the agent is
+//   refused. A query carries no key (step 38c's README, decisions D1 to D4).
+const alertsFor = async (who: RequestEnvelope): Promise<string> => {
+  const listed = await call(bankWorld, bankLog, who, "alert.list", {});
+  if (!("data" in listed)) return heard(listed);
+  const { items } = listed.data as { items: { state: string; payment: string }[] };
+  const each = items.map((item) => `${item.payment.split("/").at(-1)} ${item.state}`);
+  return `${items.length}: ${each.join(", ") || "none"}`;
+};
+console.log(`  user_123 lists its alerts: ${await alertsFor(SUPERVISOR_123)}`);
+console.log(`  cfo_100 lists its alerts: ${await alertsFor(CFO_100)}`);
+console.log(`  the agent lists alerts: ${await alertsFor(AGENT)}`);
 // dsor-scheduler reconciles PAY-902's attempt. The bank sent it, as TRF-2, so the
 //   proposal is COMMITTED and PAY-902 is paid, with the bank's answer as the evidence. Then
 //   user_123's first request, sent again with its own key, answers the settled outcome
@@ -2414,6 +2427,8 @@ console.log(
 // The settlement closed the alert, in the same moment (step 38b's README, C3).
 const closed = await alertOf();
 console.log(`  PAY-902's alert: ${closed?.state}, ${closed?.outcome}`);
+// NEW IN STEP 38c: settled, it drops off the list (step 38c's README, decision D3).
+console.log(`  user_123 lists its alerts again: ${await alertsFor(SUPERVISOR_123)}`);
 const draft1009 = await bankCall(SUPERVISOR_123, "payment.create", ofInvoice("INV-1009"));
 console.log("  user_123 drafts INV-1009, 7,425.00 USD:", heard(draft1009));
 fakeBank.mode = "broken";

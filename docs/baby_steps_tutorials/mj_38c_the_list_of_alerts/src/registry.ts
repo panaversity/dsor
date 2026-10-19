@@ -300,8 +300,7 @@ export function buildRegistry(
   // NEW IN STEP 38c: and DSoR's own reads, which must have a contract, no other code, and be
   //   queries.
   const reads =
-    given ??
-    Object.fromEntries(Object.entries(ownReadsFor()).filter(([name]) => fileOf.has(name)));
+    given ?? Object.fromEntries(Object.entries(ownReadsFor()).filter(([name]) => fileOf.has(name)));
   problems.push(...ownReadProblems(reads, new Set(fileOf.keys()), contracts, code, own));
   const ownReads = new Map<string, OwnRead>(Object.entries(reads));
 
