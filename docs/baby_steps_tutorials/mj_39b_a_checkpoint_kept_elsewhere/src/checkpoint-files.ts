@@ -1,37 +1,63 @@
-// NEW IN STEP 39b: what the checkpoint scripts read, from the database and from the disk. The
-// public key is the committed file beside this folder's package.json; the checkpoints are in
-// checkpoints/, or in the folder DSOR_CHECKPOINT_DIR names; the private key is the file
-// DSOR_CHECKPOINT_KEY names, which only pnpm checkpoint-audit reads (step 39b's README, decisions
-// D8, D11, and D12).
+// NEW IN STEP 39b: what the checkpoint scripts read and write on the disk. The public key is the
+// committed file beside this folder's package.json; the checkpoints are in checkpoints/, or in the
+// folder DSOR_CHECKPOINT_DIR names; the private key is the file DSOR_CHECKPOINT_KEY names, outside
+// the repository, which only pnpm checkpoint-audit reads (step 39b's README, claim C1, decisions D8
+// and D11).
+import { spawnSync } from "node:child_process";
 import {
   createPrivateKey,
   createPublicKey,
   generateKeyPairSync,
   type KeyObject,
 } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { existsSync, lstatSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import type pg from "pg";
-import { readChains, readHeads, type ChainHead, type ChainRow } from "./audit-chain.ts";
+import type { CheckpointFile } from "./checkpoint-check.ts";
 
 /** The committed public key: a change to it shows in git, out of the database owner's reach. */
 export const PUBLIC_KEY_FILE: string = fileURLToPath(
   new URL("../checkpoint-public-key.pem", import.meta.url),
 );
 
-/** This folder: a private key is never written inside it, where git could pick it up. */
+/** The largest checkpoint file read: a real one is a few kilobytes (found by the review, M1). */
+export const MAX_FILE_BYTES = 1_048_576;
+
+/** This folder. */
 const FOLDER = fileURLToPath(new URL("../", import.meta.url));
 
+/** The repository this folder is in, or this folder when it is in none. */
+function repositoryRoot(): string {
+  const git = spawnSync("git", ["-C", FOLDER, "rev-parse", "--show-toplevel"], {
+    encoding: "utf8",
+  });
+  return git.status === 0 ? git.stdout.trim() : FOLDER;
+}
+
+/** Whether the file is the folder or under it. "..secret.pem" is under it (the review, M3). */
+function within(folder: string, file: string): boolean {
+  const path = relative(folder, resolve(file));
+  return path === "" || !(path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path));
+}
+
 /**
- * A new Ed25519 key pair: the private key to its own new file, outside this folder, readable by its
- * owner only; the public key to the file given (claim C1). A private key file already there is
- * never overwritten.
+ * A new Ed25519 key pair: the private key to its own new file, outside the repository, readable by
+ * its owner only; the public key to the file given (claim C1). A private key file already there is
+ * never overwritten, and a public key already there only when replacing it is asked for, because
+ * every checkpoint signed with the old pair then fails its signature (the review, L4).
  */
-export function makeKeyPair(privateFile: string, publicFile: string = PUBLIC_KEY_FILE): void {
-  const inside = relative(FOLDER, resolve(privateFile));
-  if (!inside.startsWith("..")) {
-    throw new Error("the private key must be written outside this folder, where git never sees it");
+export function makeKeyPair(
+  privateFile: string,
+  publicFile: string = PUBLIC_KEY_FILE,
+  options: { replace?: boolean; root?: string } = {},
+): void {
+  if (within(options.root ?? repositoryRoot(), privateFile) || within(FOLDER, privateFile)) {
+    throw new Error(
+      "the private key must be written outside the repository, where git never sees it",
+    );
+  }
+  if (existsSync(publicFile) && options.replace !== true) {
+    throw new Error("a public key is already there; to replace it, run again with --replace");
   }
   const { privateKey, publicKey } = generateKeyPairSync("ed25519");
   writeFileSync(privateFile, privateKey.export({ type: "pkcs8", format: "pem" }), {
@@ -49,36 +75,26 @@ export function checkpointDir(env: NodeJS.ProcessEnv = process.env): string {
     : fileURLToPath(new URL("../checkpoints/", import.meta.url));
 }
 
-/** Whether this login sees every record: the log forces row-level security (step 39's review, H1). */
-export async function seesEveryRecord(client: pg.ClientBase): Promise<boolean> {
-  const { rows } = await client.query<{ sees: boolean }>(
-    "SELECT rolsuper OR rolbypassrls AS sees FROM pg_roles WHERE rolname = current_user",
-  );
-  return rows[0]?.sees === true;
-}
-
 /**
- * Every record, every head, and the database's clock, read in the caller's transaction. In a
- * REPEATABLE READ transaction the three are of one moment, so the heads and the records agree.
+ * Every .json entry in the folder, by name, oldest first; none when the folder is not there. An
+ * entry that is not a regular file of at most 1 MB is named, never read: a folder, a link, a pipe
+ * that never ends, or a file too large (the review, M1).
  */
-export async function readLog(
-  client: pg.ClientBase,
-): Promise<{ rows: ChainRow[]; heads: Map<string, ChainHead>; now: string }> {
-  const rows = await readChains(client);
-  const heads = await readHeads(client);
-  const { rows: clock } = await client.query<{ now: string }>(
-    `SELECT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS now`,
-  );
-  return { rows, heads, now: clock[0]!.now };
-}
-
-/** Every checkpoint file in the folder, by name; none when the folder is not there. */
-export function readCheckpointFiles(dir: string): { name: string; text: string }[] {
+export function readCheckpointFiles(dir: string): CheckpointFile[] {
   if (!existsSync(dir)) return [];
+  const odd = "it is not a file of at most 1 MB";
   return readdirSync(dir)
     .filter((name) => name.endsWith(".json"))
     .sort()
-    .map((name) => ({ name, text: readFileSync(join(dir, name), "utf8") }));
+    .map((name) => {
+      try {
+        const entry = lstatSync(join(dir, name));
+        if (!entry.isFile() || entry.size > MAX_FILE_BYTES) return { name, broken: odd };
+        return { name, text: readFileSync(join(dir, name), "utf8") };
+      } catch {
+        return { name, broken: "it could not be read" };
+      }
+    });
 }
 
 /** An Ed25519 key, or an error that says the file holds another kind. */
