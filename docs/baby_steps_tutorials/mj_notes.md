@@ -2079,6 +2079,23 @@ note and count while EXECUTING too, so a lost connection leaves no gap.
 - **Left open:** reconciliation (38); the payment read is not in the bundle; hold rows never
   removed; open question 151.
 
+### Understanding step 38, reconciliation, from zero (2026-10-19)
+
+The same style as step 37, and no gut calls (the learner declined them). Five parts, each with a
+real run on step 37's code: a stuck payment the bank knows about and nobody asks; look up or
+re-send with the same key (the bank's three cases); settling as several changes in one
+transaction (settled by hand, the books stayed "draft" and a cancel of a paid payment went through);
+the two clocks; never an agent.
+
+- **The learner proposed a rule** in part 2: look up first; re-send with the same key only if the
+  bank says "never received it", and not if the payment was cancelled; never a new key.
+- **Found while teaching:** nothing in DSoR can settle an unknown payment today; the bank's lookup
+  is built and never called; a decision record is the only trace of an unknown, and nobody is told.
+- **Design questions for step 38:** how DSoR asks the bank (the learner's rule); re-check before a
+  late re-send; what an alert is and who receives it; who the human is, and whether the sender may
+  settle alone; what runs the clocks; what a same-key retry says after settlement; whether a
+  human's settlement may overrule the bank's lookup.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.
