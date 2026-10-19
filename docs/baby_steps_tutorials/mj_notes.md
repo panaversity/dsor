@@ -2173,6 +2173,27 @@ fingerprints; the migration chains the old records; a script run as the owner.
 - **Left open:** checkpoints (39b); a new record the owner adds; the checker's read not recorded
   (DSOR-AUD-05b); the owner's own login for the checker; open question 155.
 
+### Step 39b, a checkpoint kept elsewhere, decided by the learner (2026-10-20)
+
+Copied from step 39. The problem was shown with a real run (the careful editor rewrote org_456 from
+place 4 on, head and all, and step 39's checker said whole). The learner decided nine choices, all
+recommended: a signed file; an Ed25519 key pair; a script run by hand; a mismatch is broken, exit 1;
+a chain newer than every checkpoint is reported; no fresh checkpoint is exit 2; every checkpoint is
+checked; the public key committed; a bad signature is broken, exit 1. The learner predicted four
+stories before any code, and all four were right.
+
+- **Red first:** 23 unit tests against stubs, and the database tests.
+- **Found while building:** two breaks first passed every test (the order of the files; no
+  `no_company` record on a fresh database); a note that read as false beside a forged file.
+- **The review:** got the checker to exit 0 three ways: a routine checkpoint signed a rewrite, then
+  the older checkpoint was deleted (H1); the database's clock was the owner's (H2); a view showed
+  the checker old rows (H3). Also planted files, another database's checkpoint, the key inside the
+  repository, and sixteen surviving changes. The learner chose: each checkpoint follows the one
+  before, and the signer keeps a note of its last; the checker's own clock; say plainly that one
+  person signs here; and name the database in each checkpoint. Fixed, and every fix broken once.
+- **Left open:** the database server itself can lie; one person holds the login and the key; a new
+  record the owner adds; the checkers' reads not recorded (DSOR-AUD-05b); open question 156.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.

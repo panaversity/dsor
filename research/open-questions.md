@@ -1046,6 +1046,13 @@ for a human. An agent may gather evidence; it does not settle these alone.
     its chain. Step 39's learner build keeps `sequence` as the log's own counter across every
     chain, from step 09, and puts the place in a column of its own, `chain_position`. Should §30 or
     the schema say which `sequence` is: the place in the chain, or a counter of the whole log?
+156. **What must a checkpoint hold, beyond the chains?** DSOR-AUD-04d asks that every chain be
+    covered by each checkpoint, and §30 that checkpoints be anchored outside the store. Step 39b's
+    learner build found that this is not enough: the owner rewrote a chain, the next routine
+    checkpoint vouched for the rewrite, and the older checkpoint was deleted. Its checkpoints also
+    name the checkpoint before them and their database, and the signer refuses to sign over a log
+    that does not hold against the checkpoints already kept. Should §30 require a checkpoint to
+    name its predecessor and its store, and the signer to verify before it signs?
 154. **When does an unknown outcome's hour start?** DSOR-UNK-04c escalates "an occurrence
     unresolved after the bound". Step 38b's learner build counts from the alert, raised with the
     move to `OUTCOME_UNKNOWN`. After a crash, that move is the start-up sweep's, so three hours down
