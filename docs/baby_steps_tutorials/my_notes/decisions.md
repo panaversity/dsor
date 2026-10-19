@@ -6033,3 +6033,46 @@ found one high gap, four medium, and nine changes the tests did not catch:
   own store, by operation; a contract is the same for every company. What the contract's list is for
   is a question for the specification.
 - **True parallel `switchOn`** is not tested; PGlite has one connection.
+
+## 165 · Step 28's decisions: a control points at its policy, goes stale when it changes, and only its owner switches it on (2026-10-20)
+
+**Decided by:** Claude, on the learner's standing instruction of 2026-10-19, "select the recommended
+setting when you have to ask the human", given before they slept. The problem is stated first, as it
+would have been shown; each choice is the recommendation, and each is open to reversal.
+
+**The problem.** Step 27's CFO control says it came from `ksor://org_456/finance/payment-approval-policy`,
+version 4, and nothing ever checks. When finance publishes version 5, "payments above 20,000 USD
+require CFO approval", the control keeps enforcing 25,000, and nobody is told: a payment of 22,000.00
+USD goes through with no CFO, and the control still looks current. And anyone can switch a control
+on: the demo calls `switchOn` itself, and step 27 says who may is step 28's. A supervisor could
+switch on a control the CFO owns, or a careless handler could switch on one nobody reviewed.
+
+1. **A fake KSoR, one per company**, built like step 19's directory and step 26's rate service: for a
+   policy's address it answers its current version, its content hash and its text, and a test or the
+   demo can publish a new version or switch it off. **Rejected:** a table of policies in DSoR's store;
+   KSoR is the record of what the company knows, and DSoR only points at it.
+2. **DSoR notices with a sweep the program runs**, `noticeStalePolicies`, which asks KSoR about every
+   control in force; §44 bounds it at 24 hours at L2. There is no timer in this tutorial, so the demo
+   runs it. **Rejected:** asking KSoR at every decision, one more call per payment, and a KSoR outage
+   then becomes every payment's problem, though a stale control applies anyway.
+3. **Superseded means**: KSoR has a later version, the same version with another content hash, or no
+   longer has the policy at all. KSoR down marks nothing, and the sweep says it could not ask.
+4. **A stale control keeps being enforced exactly as before** (`DSOR-CTL-03b`), whatever its
+   `on_stale` says. `on_stale` and `stale_grace` (`DSOR-CTL-03c`) wait for a later step.
+   **Rejected:** applying `on_stale` now: the CFO control's `require_approval` would make every
+   payment wait, a second behaviour that also needs the grace period built.
+5. **The owner is told** by a notice in their inbox, a fake like the directory, and the company's log
+   gets a `control_change` record naming the control, both versions and who must review it.
+   **Rejected:** the log alone, which nobody reads to learn their work; email, which needs a server.
+6. **Switching on is a command, `control.activate`, which only the control's owner may run, a person
+   logged in as themselves** (`DSOR-CTL-02a`, `DSOR-CTL-02b`). The supervisor and the CFO both hold
+   `control:activate`, so the owner check at §21.9 is what decides, as the signer check does for
+   `delegation.revoke`. **Rejected:** the permission alone, which lets anyone holding it switch on
+   anyone's control.
+
+**Told, not asked.**
+
+- **Changing, suspending and retiring a control are not built.** No command does them, so nobody can;
+  the second lock lets the application switch a waiting control on and mark one stale, nothing else.
+- **A control marked stale is never switched off quietly**: still in force, its decisions recorded
+  with it as before.
