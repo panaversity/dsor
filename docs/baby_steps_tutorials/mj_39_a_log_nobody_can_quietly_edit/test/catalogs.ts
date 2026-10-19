@@ -384,6 +384,21 @@ export function today(): Catalog {
         rules: [],
         triggers: [AUDIT_CHAIN_TRIGGER],
       },
+      // Changed in step 39: each chain's head, the owner's own: dsor_runtime holds nothing on it
+      //   (step 39's README, decision D8).
+      {
+        name: "dsor.audit_heads",
+        kind: "table",
+        held: [],
+        columns: ["chain", "chain_position", "record_hash"].map((name) => ({
+          name,
+          held: [],
+          filled: false,
+        })),
+        rowSecurity: { enabled: false, forced: false },
+        rules: [],
+        triggers: [],
+      },
       // The brakes, behind the company's lock.
       {
         name: "dsor.brakes",
@@ -498,21 +513,6 @@ export function today(): Catalog {
           filled: false,
         })),
         rowSecurity: { enabled: true, forced: true },
-        rules: [],
-        triggers: [],
-      },
-      // Changed in step 39: each chain's head, the owner's own: dsor_runtime holds nothing on it
-      //   (step 39's README, decision D8).
-      {
-        name: "dsor.audit_heads",
-        kind: "table",
-        held: [],
-        columns: ["chain", "chain_position", "record_hash"].map((name) => ({
-          name,
-          held: [],
-          filled: false,
-        })),
-        rowSecurity: { enabled: false, forced: false },
         rules: [],
         triggers: [],
       },
