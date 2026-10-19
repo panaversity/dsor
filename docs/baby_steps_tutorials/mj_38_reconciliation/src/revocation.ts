@@ -8,7 +8,9 @@
 // under the slip that waits for an approval moves to CANCELLED, and its reservation is released,
 // in the same transaction (DSOR-DEL-04a, DSOR-DEL-04c, and DSOR-DEL-06d in
 // specs/dsor/02-security.md, section 13).
+import type { BankLine } from "./bank.ts";
 import { approveWorkFor } from "./approve.ts";
+import { reconcileWorkFor } from "./reconcile.ts";
 import { brakeWorkFor, type BrakeStore } from "./brakes.ts";
 import { driftWorkFor, type PolicyLook } from "./drift.ts";
 import { expiryWorkFor } from "./expiry.ts";
@@ -70,6 +72,9 @@ export type OwnStores = {
   // And every contract, which an approval reads its target's risk and binds from
   // (step 29's README, decision D7).
   contracts: ReadonlyMap<string, Contract>;
+  // NEW IN STEP 38: and the company's bank, for an operation that asks it, when it is in service
+  //   (step 38's README, decision D2).
+  bank?: BankLine;
 };
 
 /** DSoR's own work for a command that changes DSoR's own store, never the company's. */
@@ -97,6 +102,8 @@ export function ownWorkFor(): Record<string, OwnWork> {
     ...ruleWorkFor(),
     ...driftWorkFor(),
     ...approveWorkFor(),
+    // NEW IN STEP 38: and reconciliation (step 38's README, decision D2).
+    ...reconcileWorkFor(),
   };
 }
 

@@ -44,8 +44,12 @@ describe("R1: an accident after the checkpoint is OUTCOME_UNKNOWN, never INTERNA
     const bundle = (await w.log.bundles()).find((b) => b.decision_id === record.decision_bundle);
     expect(bundle?.execution.result).toBe("outcome_unknown");
     w.intents.end = end;
+    // Changed in step 38: memory has no transaction, so its proposal moved to COMMITTED before the
+    //   note failed, and a same-key retry now answers what the proposal says (step 38's README,
+    //   decision D4). On the database the proposal stays EXECUTING, and the retry hears
+    //   OUTCOME_UNKNOWN (test/intents.db.test.ts).
     expect(await execute(w, payment, envelope)).toMatchObject({
-      code: "OUTCOME_UNKNOWN",
+      outcome: "COMMITTED",
       proposal: `dsor://org_456/proposal/${idOf(unknown)}`,
     });
     expect(await execute(w, payment)).toMatchObject({ code: "CONFLICT" });

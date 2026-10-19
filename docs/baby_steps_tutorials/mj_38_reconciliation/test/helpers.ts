@@ -131,6 +131,8 @@ export const STARTING_ROLES: Record<string, string[]> = {
     // Changed in step 35: and send a drafted payment through the company's bank (step 35's
     // README, decision D6).
     "payment:execute",
+    // Changed in step 38: and reconcile an unknown payment (step 38's README, decision D3).
+    "payment:reconcile",
     "delegation:revoke",
     "control:suspend",
     "proposal:approve",
@@ -159,7 +161,7 @@ export const STARTING_ROLES: Record<string, string[]> = {
     "payment:approve",
   ],
   // And, since step 28b, sweeps the policies the rules cite (step 28b's README, decision D4).
-  scheduler: ["proposal:expire", "rule:check"],
+  scheduler: ["proposal:expire", "rule:check", "payment:reconcile"],
   rate_loader: ["rate:load"],
 };
 

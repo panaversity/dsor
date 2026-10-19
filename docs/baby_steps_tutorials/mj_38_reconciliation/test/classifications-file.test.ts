@@ -59,6 +59,8 @@ const LABELS = {
   Brake: { tenant_id: "internal", id: "internal", target: "internal", status: "internal" },
   // The company that a sweep worked on, and how many proposals it expired
   // (step 25c's README, decision D9).
+  // Step 38: what a reconcile answers. The evidence names the bank's reference and the amount.
+  PaymentReconciliation: { proposal: "internal", state: "internal", evidence: "confidential" },
   ProposalExpiry: { tenant_id: "internal", expired: "internal" },
   // The sheet that rate.load wrote, and how many currencies it holds (step 26's
   // README, decision L2).

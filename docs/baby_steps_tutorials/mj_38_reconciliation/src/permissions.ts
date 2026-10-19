@@ -201,6 +201,13 @@ export function checkPermission(
   // as the sweep does. An agent is refused here, whatever its slip lists and its signer holds, and
   // so is a person. Found by step 25c's review (finding M2): with a role that granted
   // proposal:expire and a slip that listed it, an agent swept (step 25c's README, decision D14).
+  // NEW IN STEP 38: and a contract may say that no agent may call it, as payment.reconcile does:
+  //   an agent never settles an unknown outcome, whatever its slip lists (DSOR-UNK-04d; step 38's
+  //   README, decision D3).
+  if (noAgents(contract) && caller.type === "agent") {
+    const why = `${name} is never for an agent, and ${caller.id} is one`;
+    throw new Refusal("AUTHORIZATION_DENIED", why);
+  }
   if (systemOnly(contract) && caller.type !== "system") {
     const why = `${name} is for DSoR's own system logins only, and ${caller.id} is not one`;
     throw new Refusal("AUTHORIZATION_DENIED", why);
@@ -248,6 +255,13 @@ export function systemOnly(contract: Contract): boolean {
   const extensions = contract["extensions"] as Record<string, unknown> | undefined;
   const ours = extensions?.["org.panaversity.steps"] as { system_only?: unknown } | undefined;
   return ours?.system_only === true;
+}
+
+// NEW IN STEP 38: whether a contract says that no agent may call it.
+function noAgents(contract: Contract): boolean {
+  const extensions = contract["extensions"] as Record<string, unknown> | undefined;
+  const ours = extensions?.["org.panaversity.steps"] as { no_agents?: unknown } | undefined;
+  return ours?.no_agents === true;
 }
 
 // A contract names the permission its operation needs, never its .propose form. In

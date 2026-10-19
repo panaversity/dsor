@@ -64,12 +64,21 @@ const SHIPPED = fileURLToPath(new URL("../connectors.json", import.meta.url));
 // DSoR's own commands that read the company's records: an approval binds the state it was given
 //   on, and reads it through the connector (src/approve.ts). Found by step 34's review, F2: it was
 //   left out, and cfo_100 approved through a connector that was out of service (decision D3).
-export const READS_COMPANY_RECORDS: ReadonlySet<string> = new Set(["proposal.approve"]);
+// NEW IN STEP 38: and payment.reconcile, which marks a payment paid once the bank says it was sent
+//   (step 38's README, decision D2).
+export const READS_COMPANY_RECORDS: ReadonlySet<string> = new Set([
+  "proposal.approve",
+  "payment.reconcile",
+]);
 
 // The operations that send money through the company's bank. A list, as the one
 //   above: no field of a contract says which system an operation's side effect reaches (step 35's
 //   README, decision D4).
 export const SENDS_MONEY: ReadonlySet<string> = new Set(["payment.execute"]);
+
+// NEW IN STEP 38: the operations that ask the company's bank and send nothing: what it needs of the
+//   bank is its contract's connector_requirements, outcome_lookup (step 38's README, decision D1).
+export const ASKS_BANK: ReadonlySet<string> = new Set(["payment.reconcile"]);
 
 /** Reads the connectors file: this step's own, unless another is named. */
 export function readConnectors(path: string = SHIPPED): ConnectorsSource {
@@ -119,7 +128,8 @@ export function needsOf(
   const needs: Need[] = [];
   const problems: string[] = [];
   const execution = contract["execution"] as { semantics?: unknown } | undefined;
-  const money = SENDS_MONEY.has(contract.id);
+  // Changed in step 38: or asks the bank, which a reconcile does.
+  const money = SENDS_MONEY.has(contract.id) || ASKS_BANK.has(contract.id);
   if (role === "bank") {
     if (!money) return { needs, problems };
   } else if (money) {
@@ -254,7 +264,9 @@ export function checkConnectors(
     needs.set(contract.id, found.needs);
     const forBank = needsOf(contract, "bank");
     problems.push(...forBank.problems);
-    if (SENDS_MONEY.has(contract.id)) bankNeeds.set(contract.id, forBank.needs);
+    if (SENDS_MONEY.has(contract.id) || ASKS_BANK.has(contract.id)) {
+      bankNeeds.set(contract.id, forBank.needs);
+    }
     // A command that cannot be undone must say where its side effect goes: on the list, to the
     //   bank. Otherwise DSOR-UNK-03a would ask nothing of any connector. Found by step 35's review,
     //   F4: a non_compensatable payment.create went to the records, which refuse no repeat.
@@ -266,7 +278,8 @@ export function checkConnectors(
     }
   }
   // A release may run any of them, so it needs what every one of them needs of the bank.
-  const allMoney = [...bankNeeds.values()].flat();
+  // Changed in step 38: of the ones that send money, not the ones that only ask.
+  const allMoney = [...bankNeeds].flatMap(([id, wanted]) => (SENDS_MONEY.has(id) ? wanted : []));
   for (const contract of list) {
     if (routed(contract) && releases(contract) && allMoney.length > 0) {
       bankNeeds.set(contract.id, allMoney);

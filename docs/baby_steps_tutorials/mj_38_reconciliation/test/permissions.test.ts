@@ -317,6 +317,8 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
         "payment:create",
         // Changed in step 35: and send a draft through the bank (step 35's README, decision D6).
         "payment:execute",
+        // Changed in step 38: and reconcile an unknown payment (step 38's README, decision D3).
+        "payment:reconcile",
         "proposal:approve",
       ],
     ],
@@ -352,7 +354,8 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
     // The timer's login may sweep, and do nothing else (step 25c's README,
     // decision D10).
     // And, since step 28b, sweep the rules' policies too (step 28b's README, decision D4).
-    ["dsor-scheduler", "tok_5c4e", ["proposal:expire", "rule:check"]],
+    // Changed in step 38: and payment:reconcile (step 38's README, decision D2).
+    ["dsor-scheduler", "tok_5c4e", ["payment:reconcile", "proposal:expire", "rule:check"]],
     // The rates' login may load rates, and do nothing else (step 26's README,
     // decision D1).
     ["dsor-rates", "tok_3b8f", ["rate:load"]],
@@ -431,6 +434,8 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
       "payment:create",
       // Changed in step 35: and payment:execute (step 35's README, decision D6).
       "payment:execute",
+      // Changed in step 38: and payment:reconcile (step 38's README, decision D3).
+      "payment:reconcile",
       "proposal:approve",
       "rule:draft",
     ]);

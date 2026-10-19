@@ -5,7 +5,7 @@ import { NO_INTENTS } from "./intents.ts";
 import { randomUUID } from "node:crypto";
 import { pinned, readBound, type Bound, type BoundRead } from "./bound.ts";
 import { checkBrake, holdBrake, NO_BRAKES, type BrakeStore } from "./brakes.ts";
-import { checkConnector, SENDS_MONEY } from "./connectors.ts";
+import { ASKS_BANK, checkConnector, SENDS_MONEY } from "./connectors.ts";
 import { bankKeyOf, sendThrough, type BankOrder } from "./bank.ts";
 import { checkedAssertion } from "./asserted.ts";
 import {
@@ -114,7 +114,7 @@ import { lookFor, type OwnWork } from "./revocation.ts";
 import { NO_SLIPS, type Slip, type SlipStore } from "./slips.ts";
 import { suspendThenRefuse } from "./suspensions.ts";
 import { activeTenant, checkNamedTenants, checkUrisInTenant } from "./tenants.ts";
-import { isTenantId } from "./uri.ts";
+import { isTenantId, parseUri } from "./uri.ts";
 
 // The observer is told each line's number as it runs, and only a test
 // listens (step 07's README, decision 6).
@@ -986,7 +986,9 @@ export async function call(
             const ksor = policyLook(registry.ksors, tenant);
             // And every contract, for an approval (step 29's README, decision D7).
             const contracts = registry.contracts;
-            const work = { tenant, caller, stores, correlation, now, ksor, contracts };
+            // NEW IN STEP 38: and the company's bank, for an operation that asks it.
+            const bank = ASKS_BANK.has(contract.id) ? registry.plugs.bankOf(tenant) : undefined;
+            const work = { tenant, caller, stores, correlation, now, ksor, contracts, bank };
             returned = await job.own.change(job.input, work);
           } else if (job.handler !== undefined) {
             // And the company's bank, for an operation that sends money, with a
@@ -1152,11 +1154,36 @@ export async function call(
     // And the proposals it reads: the claim's own, inside its transaction, so a
     //   read waits for no other connection. Found while building: through the pool, two releases
     //   at once each held a connection and waited for the other's.
+    // NEW IN STEP 38: what a replay of an unknown outcome answers, once its proposal is settled.
+    const settledSince = async (claimed: Claimed, proposals: ProposalStore): Promise<Claimed> => {
+      const unknown = "refused" in claimed && claimed.refused.code === "OUTCOME_UNKNOWN";
+      if (claimed.replay_of === undefined || !unknown || claimed.proposal === undefined) {
+        return claimed;
+      }
+      const now = await proposals.get(tenant, proposalIdOf(tenant, claimed.proposal));
+      const payment = (now?.payload as { payment?: unknown } | undefined)?.payment;
+      if (now?.state === "COMMITTED" && typeof payment === "string") {
+        // The payment as it is now, paid, read without its lock, as a replay waits for no send.
+        const value = await unlocked(registry.payments).get(tenant, parseUri(payment).id);
+        return { value, proposal: claimed.proposal, replay_of: claimed.replay_of };
+      }
+      if (now?.state === "FAILED") {
+        const why =
+          "reconciliation found that the bank never received this payment; send it again with a new key";
+        const refused = new Refusal("CONNECTOR_UNAVAILABLE", why, "internal");
+        return { refused, proposal: claimed.proposal, replay_of: claimed.replay_of };
+      }
+      return claimed;
+    };
     const afterClaim = async (
       scope: ClaimScope,
-      claimed: Claimed,
+      kept: Claimed,
       proposals: ProposalStore = registry.claims.proposals,
     ): Promise<Answer | undefined> => {
+      // NEW IN STEP 38: a replay whose kept answer is OUTCOME_UNKNOWN is looked up again against its
+      //   proposal: once reconciliation has settled it, the retry answers the settled outcome. The
+      //   kept answer is never rewritten (step 38's README, decision D4).
+      const claimed = await settledSince(kept, proposals);
       // How the work ended, for the bundle: committed, failed, or not executed. A
       //   replay ran nothing (step 33's README, D9).
       evidence.executed = executedOf(claimed);

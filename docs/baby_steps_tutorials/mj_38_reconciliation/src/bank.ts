@@ -60,7 +60,11 @@ export function createFakeBank(): FakeBank {
       if (bank.mode === "slow") await new Promise((done) => setTimeout(done, bank.slowMs));
       return structuredClone(receipt);
     },
+    // NEW IN STEP 38: the lookup obeys the switch too: a silent bank never answers it, a broken one
+    //   says it is down (step 38's README, claim C4).
     lookup: async (key) => {
+      if (bank.mode === "broken") throw new BankDown("the bank is down");
+      if (bank.mode === "silent") return new Promise<never>(() => {});
       const receipt = byKey.get(key);
       return receipt === undefined ? undefined : structuredClone(receipt);
     },
@@ -115,4 +119,27 @@ export async function sendThrough(
   }
   if (answer === "silent") throw unknown(`the bank did not answer within ${line.waitMs} ms`);
   return answer;
+}
+
+// NEW IN STEP 38: what DSoR learns when it asks a bank by a key: sent, with its receipt; not sent,
+//   the bank has no payment with that key; or nothing, the bank was silent or down within DSoR's
+//   wait. Only the first two settle anything (DSOR-UNK-04a; step 38's README, decision D1).
+/** The bank's answer to a lookup, as DSoR reads it. */
+export type Looked = { sent: BankReceipt } | { sent: undefined } | { silent: string };
+
+/** Asks the bank what it did under this key, and waits as long as DSoR waits for a send. */
+export async function lookupThrough(line: BankLine, key: string): Promise<Looked> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<"late">((done) => {
+    timer = setTimeout(() => done("late"), line.waitMs);
+  });
+  try {
+    const found = await Promise.race([line.bank.lookup(key), late]);
+    if (found === "late") return { silent: `the bank did not answer within ${line.waitMs} ms` };
+    return { sent: found };
+  } catch {
+    return { silent: "the bank could not be asked" };
+  } finally {
+    clearTimeout(timer);
+  }
 }

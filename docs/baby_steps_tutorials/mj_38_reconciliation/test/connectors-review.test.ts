@@ -98,7 +98,7 @@ describe("F3: the caller hears fixed words, and the reason goes to start-up", ()
     const w = await worldWith("org_789", cannotUndo("accounting-789"));
     expect(w.registry.plugs.warnings).toStrictEqual([
       // Changed in step 35: the connector's role is named.
-      'connectors.json: connector "accounting-789", org_789\'s records, is out of service: connector "accounting-789" cannot serve as the records: payment.cancel needs transactions; proposal.approve needs transactions; proposal.execute needs transactions',
+      'connectors.json: connector "accounting-789", org_789\'s records, is out of service: connector "accounting-789" cannot serve as the records: payment.cancel needs transactions; payment.reconcile needs transactions; proposal.approve needs transactions; proposal.execute needs transactions',
     ]);
   });
 });

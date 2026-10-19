@@ -94,11 +94,17 @@ describe("C1: what cannot be undone goes only to a bank that refuses a repeat or
     );
   });
 
-  it.each([
-    ["only refuses a repeat", { outcome_lookup: false }],
-    ["only answers a lookup", { downstream_idempotency: false }],
-  ])("DSOR-UNK-03a: a bank that %s is enough", async (_how, changes) => {
-    expect(await startUp(bankSays(changes))).toBe("");
+  // Changed in step 38: a bank that only refuses a repeat is enough for payment.execute, and no
+  //   longer for the default bank: payment.reconcile looks a payment up, so it needs outcome_lookup
+  //   (step 38's README, decision D1).
+  it("DSOR-UNK-03a: a default bank that only refuses a repeat stops start-up, naming payment.reconcile, which must look a payment up", async () => {
+    expect(await startUp(bankSays({ outcome_lookup: false }))).toContain(
+      'connector "fake-bank" cannot serve as the bank: payment.reconcile needs outcome_lookup',
+    );
+  });
+
+  it("DSOR-UNK-03a: a bank that only answers a lookup is enough", async () => {
+    expect(await startUp(bankSays({ downstream_idempotency: false }))).toBe("");
   });
 
   it("DSOR-CNR-01b: each connector is asked only for its own part: the bank cannot undo a job, and the records cannot refuse a repeat, and both serve", async () => {

@@ -152,6 +152,8 @@ describe("C2: an operation goes only to a connector that has what it needs", () 
         ["freshness:current"],
         ["shares_dsor_transaction"],
       ],
+      // Step 38: and payment.reconcile, which marks a payment paid (step 38's README, D2).
+      "payment.reconcile": [["transactions"], ["freshness:current"], ["shares_dsor_transaction"]],
       "proposal.approve": [["transactions"], ["freshness:current"], ["shares_dsor_transaction"]],
       "proposal.execute": [["transactions"], ["freshness:current"], ["shares_dsor_transaction"]],
     });

@@ -43,6 +43,11 @@
     "target": "internal",
     "status": "internal"
   },
+  "PaymentReconciliation": {
+    "proposal": "internal",
+    "state": "internal",
+    "evidence": "confidential"
+  },
   "ProposalExpiry": {
     "tenant_id": "internal",
     "expired": "internal"

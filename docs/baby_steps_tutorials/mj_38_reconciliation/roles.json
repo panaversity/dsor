@@ -5,6 +5,7 @@
     "payment:create",
     "payment:cancel",
     "payment:execute",
+    "payment:reconcile",
     "delegation:revoke",
     "control:suspend",
     "proposal:approve",
@@ -27,6 +28,6 @@
     "proposal:approve",
     "payment:approve"
   ],
-  "scheduler": ["proposal:expire", "rule:check"],
+  "scheduler": ["proposal:expire", "rule:check", "payment:reconcile"],
   "rate_loader": ["rate:load"]
 }
