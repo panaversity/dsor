@@ -12,6 +12,7 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { overPGlite, refuseIfItCanRewriteHistory } from "../src/database.ts";
+import { audit } from "../src/audit.ts";
 import { aDatabase, asTheOwner } from "./support/database.ts";
 
 let db: PGlite;
@@ -93,4 +94,121 @@ describe("a rule on a tenant table", () => {
       await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/a rule on it/);
     });
   }
+});
+
+describe("a view the application may write through", () => {
+  /** An owner's view over the slips, the kind an administrator makes for a reporting tool. */
+  const aSlipDesk = (): Promise<unknown> =>
+    asTheOwner(() => db.exec("CREATE VIEW public.slip_desk AS SELECT * FROM dsor.delegations"));
+
+  /** The application signs a slip through the desk, naming only columns, reading nothing back. */
+  async function signThroughTheDesk(id: string): Promise<void> {
+    await db.transaction(async (tx) => {
+      await tx.query("SELECT set_config('dsor.tenant_id', 'org_456', true)");
+      await tx.query(
+        `INSERT INTO public.slip_desk (tenant, id, delegator, delegate, permissions, status,
+                                       expires_at)
+         VALUES ('org_456', $1, 'user_123', 'a-new-fte', ARRAY['payment:create'], 'active',
+                 '2099-12-31T23:59:59Z')`,
+        [id],
+      );
+    });
+  }
+
+  it("DSOR-DEL-01a: a view over the slips that the application may write through, and not read, is refused", async () => {
+    // A view runs with its owner's rights. Start-up asked whether the application may READ a view
+    // beside the tenant tables, and this one it may not; it may only INSERT. Decision 149 measured
+    // del_100's limit lifted through such a view in step 18. Here the application signs itself a
+    // slip with no limit at all, which start-up exists to stop (decision 127).
+    await aSlipDesk();
+    await asTheOwner(() => db.exec("GRANT INSERT ON public.slip_desk TO dsor_runtime"));
+
+    await signThroughTheDesk("del_667");
+    expect(await slipsCalled("del_667")).toBe(1);
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
+      /may write to `public\.slip_desk`/,
+    );
+  });
+
+  it("DSOR-AUD-04a: a view over the log that the application may update, and not read, is refused", async () => {
+    // The log is append-only because the application holds no UPDATE on it (step 09). Through an
+    // owner's view, an UPDATE with no WHERE needs no SELECT, and rewrites every company's records.
+    await asTheOwner(async () => {
+      await db.exec("CREATE VIEW public.log_desk AS SELECT * FROM dsor.audit");
+      await db.exec("GRANT UPDATE ON public.log_desk TO dsor_runtime");
+    });
+
+    await audit({
+      kind: "decision",
+      subject: "user_123",
+      tenant: "org_456",
+      requestId: "req_1",
+      operation: "invoice.get@1",
+      authorization: "ALLOW",
+      result: "OK",
+    });
+
+    // Not testing nothing: one statement, no company said, and the record says what it never said.
+    await db.query("UPDATE public.log_desk SET reason = 'nothing happened'");
+    const reasons = await asTheOwner(async () => {
+      const { rows } = await db.query<{ reason: string | null }>("SELECT reason FROM dsor.audit");
+
+      return rows.map((r) => r.reason);
+    });
+    expect(reasons).toStrictEqual(["nothing happened"]);
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
+      /may write to `public\.log_desk`/,
+    );
+  });
+
+  for (const [how, grant] of [
+    [
+      "one SET ROLE away",
+      "CREATE ROLE desk; GRANT INSERT ON public.slip_desk TO desk; GRANT desk TO dsor_runtime WITH INHERIT FALSE",
+    ],
+    [
+      "through a helper function's owner",
+      `CREATE ROLE clerk; GRANT INSERT ON public.slip_desk TO clerk;
+       CREATE FUNCTION public.a_helper() RETURNS integer LANGUAGE sql SECURITY DEFINER AS 'SELECT 1';
+       ALTER FUNCTION public.a_helper() OWNER TO clerk`,
+    ],
+    [
+      "by naming columns",
+      "GRANT INSERT (tenant, id, delegator, delegate, permissions, status, expires_at) ON public.slip_desk TO dsor_runtime",
+    ],
+  ] as const) {
+    it(`DSOR-DEL-01a: the same view, written ${how}, is refused`, async () => {
+      // The write questions about the tenant tables have been asked this way since step 17
+      // (decisions 126 and 148); the question about everything beside them is asked the same way.
+      await aSlipDesk();
+      await asTheOwner(() => db.exec(grant));
+
+      await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
+        /may write to `public\.slip_desk`/,
+      );
+    });
+  }
+
+  it("DSOR-DEL-01a: a plain table beside the tenant tables that the application may write is refused too", async () => {
+    // The application writes the tenant tables and nothing else. A table beside them has no lock,
+    // and is no place for a company's records.
+    await asTheOwner(async () => {
+      await db.exec("CREATE TABLE public.scratch (note TEXT)");
+      await db.exec("GRANT INSERT ON public.scratch TO dsor_runtime");
+    });
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(
+      /may write to `public\.scratch`/,
+    );
+  });
+
+  it("a view the application may not write through, or read, does not refuse start-up", async () => {
+    // Views are not refused for existing: a report people read harms nothing the application can
+    // reach. Not testing nothing: the same desk refuses the moment the application may write to it.
+    await aSlipDesk();
+
+    await expect(refuseIfItCanRewriteHistory(overPGlite(db))).resolves.toBeUndefined();
+  });
 });

@@ -963,6 +963,50 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
         `and its moves, and nothing else. See migrations/020_proposals.sql.`,
     );
   }
+
+  // NEW IN STEP 26b: everything beside the tenant tables, asked last, so that a right on one of
+  // the business's own tables is refused above in words that name the reason. A view runs with its
+  // owner's rights, and start-up asked only whether the application may READ one: an owner's view
+  // over the slips with INSERT and no SELECT passed, and through it the application signed itself a
+  // slip (decision 149, measured). An UPDATE with no WHERE needs no SELECT either, so the same view
+  // over the log rewrote every company's records. The application writes the tenant tables and
+  // nothing else: no table, view or foreign table beside them, by any column, itself, one SET ROLE
+  // away, or through a helper's owner (decision 161).
+  const { rows: beyond } = await db.query<{ writes_beyond: string | null }>(
+    `WITH tenant_table (rel) AS (VALUES ${TENANT_TABLES.map(([table]) => `(to_regclass('${table}'))`).join(", ")})
+     SELECT string_agg(ns.nspname || '.' || c.relname, ', ' ORDER BY 1) AS writes_beyond
+       FROM pg_class c JOIN pg_namespace ns ON ns.oid = c.relnamespace
+      WHERE c.relkind IN ('r', 'v', 'm', 'p', 'f')
+        AND ns.nspname NOT IN ('pg_catalog', 'information_schema')
+        AND ns.nspname NOT LIKE 'pg_toast%'
+        -- A session's own temporary tables are its own, as for the read question above.
+        AND ns.nspname NOT LIKE 'pg_temp%'
+        AND NOT EXISTS (SELECT 1 FROM tenant_table t WHERE t.rel = c.oid)
+        AND ${forAnyRoleItCanActAs(
+          (role) => `has_any_column_privilege(${role}, c.oid, 'INSERT')
+             OR has_any_column_privilege(${role}, c.oid, 'UPDATE')
+             OR has_table_privilege(${role}, c.oid, 'DELETE')
+             OR has_table_privilege(${role}, c.oid, 'TRUNCATE')`,
+        )}`,
+  );
+
+  // No row at all is a question not answered; an aggregate always answers with one.
+  if (beyond[0] === undefined) {
+    throw new Error(
+      "the database did not say what this connection may write beside the tenant tables; " +
+        "refusing to start",
+    );
+  }
+
+  if (beyond[0].writes_beyond !== null) {
+    throw new Error(
+      `this connection is \`${answer.who}\`, and it may write to \`${beyond[0].writes_beyond}\`, ` +
+        `which is not one of the tenant tables, itself, one SET ROLE away, or through a helper ` +
+        `function. A view runs with its owner's rights, so a view the application may write ` +
+        `through is a way past every question above, even one it may not read. The application ` +
+        `writes ${TENANT_TABLE_NAMES}, and nothing else.`,
+    );
+  }
 }
 
 /**
