@@ -6171,3 +6171,36 @@ approve one spelling while the program holds another.
   steps 43 and 44, so no `acr` is claimed.
 - **Who may not approve, beyond an agent, is step 30's**: the person who signed the agent's slip, and
   one person counted twice towards a quorum.
+
+## 169 · Step 30's decisions: who may not approve (2026-10-20)
+
+**Decided by:** Claude, on the learner's standing instruction of 2026-10-19, "select the recommended
+setting when you have to ask the human", given before they slept. The problem is stated first, as it
+would have been shown; each choice is the recommendation, and each is open to reversal.
+
+**The problem.** Step 29 lets the CFO approve a waiting payment. It asks whether she holds
+`payment:approve` and is the CFO; it never asks whether she is the one who asked. An approval exists
+so that a second person looks. A CFO who signs the agent's permission slip and then approves what the
+agent asks under it has looked at her own request twice, and a CFO who makes a payment and approves
+it has not been checked at all. Nothing stops either today, only because the CFO cannot make a
+payment and signs no slip in this story; the rule must hold the day she can. And a control that asks
+for two approvals must get two people, not one person twice.
+
+1. **The CFO may make a payment** (`payment:create`, added to the approver role), so the rule has a
+   case to refuse: her own payment above the line waits for the CFO, and she may not approve it.
+   **Rejected:** a person who exists only in the tests, which the program's list of people does not
+   allow; and leaving the rule with no case, which tests nothing.
+2. **The approver must be outside the requesting chain** (`DSOR-SOD-02`): not the subject the
+   proposal was asked for, not the signer of the slip an agent asked under, not any actor in it. Read
+   from what the proposal recorded when it was made, never from the approval's request. Refused
+   `SOD_VIOLATION`, at §21.9, before anything is written.
+3. **An agent never approves** (`DSOR-SOD-01a`), as step 29 already refuses: a test titled by this
+   rule, and the refusal reached even when the agent's slip names `proposal:approve`.
+4. **A quorum counts distinct people** (`DSOR-SOD-04c`): one approval per person and proposal, which
+   step 29's table already keeps; a control that asks for two CFOs waits after the first.
+5. **Owner-approval mode, where a one-person business may approve its own agent with safety nets
+   (§16.2), is not built.** Without it, such a business cannot approve its own agent's requests at all:
+   the strict answer. **Rejected:** building it now, eight rules of its own.
+
+**Told, not asked.** `SOD_VIOLATION` is §28's code for this, retry `never`. The demo shows the CFO's
+own payment refused for her approval.
