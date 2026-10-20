@@ -1,4 +1,4 @@
-// NEW IN STEP 29: approvals, kept whole (decision 167).
+// STEP 29: approvals, kept whole (decision 167).
 //
 // An approval binds the person who gave it to the exact request, by its fingerprint, and to what it
 // satisfies: one approval by the CFO, for the CFO's control. It is kept as approval.schema.json says

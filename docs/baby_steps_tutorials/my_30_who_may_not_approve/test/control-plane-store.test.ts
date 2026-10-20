@@ -54,7 +54,7 @@ describe("DSoR's own store", () => {
     expect(await tablesIn("dsor")).toStrictEqual([
       // STEP 25: the emergency brake (decision 142).
       "agent_controls",
-      // NEW IN STEP 29: the approvals (decision 167).
+      // STEP 29: the approvals (decision 167).
       "approvals",
       "audit",
       // STEP 27: the company's controls, its policy in CEL (decision 162).
@@ -66,7 +66,7 @@ describe("DSoR's own store", () => {
       "proposal_map",
       "proposal_moves",
       "proposals",
-      // NEW IN STEP 29: what a waiting proposal waits for (decision 167).
+      // STEP 29: what a waiting proposal waits for (decision 167).
       "requirements",
       "reservations",
     ]);

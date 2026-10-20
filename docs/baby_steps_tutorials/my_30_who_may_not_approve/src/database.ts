@@ -269,9 +269,9 @@ const TENANT_TABLES: ReadonlyArray<readonly [table: string, column: string]> = O
   ["dsor.agent_controls", "tenant"],
   // STEP 27: the company's controls, its policy in CEL (decision 162).
   ["dsor.controls", "tenant"],
-  // NEW IN STEP 29: what a waiting proposal waits for (decision 167).
+  // STEP 29: what a waiting proposal waits for (decision 167).
   ["dsor.requirements", "tenant"],
-  // NEW IN STEP 29: and the approvals given to it.
+  // STEP 29: and the approvals given to it.
   ["dsor.approvals", "tenant"],
 ]);
 
@@ -991,7 +991,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     );
   }
 
-  // NEW IN STEP 29: what a waiting proposal waits for. The application adds it and nothing else:
+  // STEP 29: what a waiting proposal waits for. The application adds it and nothing else:
   // a requirement it could change is an approval asked of somebody else, or of nobody, and one it
   // could delete is a proposal that waits for nothing (decision 167).
   const { rows: requirements } = await db.query<{ may: boolean }>(
@@ -1012,7 +1012,7 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
     );
   }
 
-  // NEW IN STEP 29: the approvals. The application adds one, and nothing else: an approval it could
+  // STEP 29: the approvals. The application adds one, and nothing else: an approval it could
   // change is one given for another request or by another person, one it could delete is a sign-off
   // gone from the record, and one whose number or time it could choose is one it could reorder
   // (decision 167).

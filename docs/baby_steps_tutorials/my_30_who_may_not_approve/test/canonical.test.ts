@@ -1,4 +1,4 @@
-// NEW IN STEP 29: one way to write a request, so one request has one fingerprint (decision 167).
+// STEP 29: one way to write a request, so one request has one fingerprint (decision 167).
 //
 // An approval is tied to the fingerprint of the exact request. JSON can write the same request many
 // ways: its fields in another order, a number as 4.50 or 4.5. RFC 8785, the JSON Canonicalization

@@ -1,4 +1,4 @@
-// NEW IN STEP 29: a person approves a waiting proposal with proposal.approve (decision 167).
+// STEP 29: a person approves a waiting proposal with proposal.approve (decision 167).
 //
 // The CFO logs in to DSoR herself and approves user_123's 31,400.00 USD payment, which the CFO's
 // control holds at PENDING_APPROVAL. Her approval names the exact request by its fingerprint, the

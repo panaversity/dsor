@@ -1,8 +1,8 @@
 {
-  "name": "@dsor-steps/29-approvals",
+  "name": "@dsor-steps/30-who-may-not-approve",
   "version": "0.0.0",
   "private": true,
-  "description": "Step 29 of the DSoR baby steps: a person approves a waiting proposal with proposal.approve, logged in as themselves, on a fingerprint of the exact request, and the approval expires",
+  "description": "Step 30 of the DSoR baby steps: the agent never approves, the person who asked or signed the agent's slip may not approve what it asked, and a quorum counts distinct people",
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {

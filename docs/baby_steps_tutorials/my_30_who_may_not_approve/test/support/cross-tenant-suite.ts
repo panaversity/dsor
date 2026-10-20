@@ -369,7 +369,7 @@ export function crossTenantSuite(hooks: SuiteHooks): void {
         await questions.sameWhole(deps, c);
       });
 
-      // NEW IN STEP 29: an example that names a proposal names one waiting for approval, which the
+      // STEP 29: an example that names a proposal names one waiting for approval, which the
       // story does not start with, in either company, and nobody can make in org_789. Its own
       // example, and another company's proposal refused, are asked in test/approvals.test.ts; the
       // refusals above hold for it as for every operation. Only proposal.approve may come this way,

@@ -1,4 +1,4 @@
-// NEW IN STEP 29: one way to write a request, so one request has one fingerprint (decision 167).
+// STEP 29: one way to write a request, so one request has one fingerprint (decision 167).
 //
 // JSON can write the same request many ways: its fields in another order, a number as 4.50 or 4.5,
 // a character as itself or as B. An approval is tied to a fingerprint of the exact request, and

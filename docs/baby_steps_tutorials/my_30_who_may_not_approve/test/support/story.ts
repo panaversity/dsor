@@ -30,7 +30,7 @@ export function storyStatements(): readonly string[] {
     // STEP 27: and the controls, which a test may switch on.
     "DELETE FROM dsor.controls WHERE tenant IN ('org_456', 'org_789')",
     "DELETE FROM dsor.proposal_moves WHERE tenant IN ('org_456', 'org_789')",
-    // NEW IN STEP 29: and what the proposals waited for, and their approvals, which point at them.
+    // STEP 29: and what the proposals waited for, and their approvals, which point at them.
     "DELETE FROM dsor.requirements WHERE tenant IN ('org_456', 'org_789')",
     "DELETE FROM dsor.approvals WHERE tenant IN ('org_456', 'org_789')",
     // STEP 24: and the reservations and the day totals, which point at proposals and slips.

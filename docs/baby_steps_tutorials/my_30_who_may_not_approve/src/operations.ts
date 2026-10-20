@@ -86,9 +86,9 @@ import { money, type Money } from "./money.ts";
 // STEP 26: two amounts compared in any two currencies, at the company's rates (decision 159).
 import { CannotConvert, convertUp, exceeds, plus, type RateOf } from "./exchange.ts";
 import { ratesOf } from "./rates.ts";
-// NEW IN STEP 29: RFC 8785, one spelling for every request (decision 167).
+// STEP 29: RFC 8785, one spelling for every request (decision 167).
 import { canonicalJson, NotCanonical } from "./canonical.ts";
-// NEW IN STEP 29: what a waiting proposal waits for, and the approvals given to it (decision 167).
+// STEP 29: what a waiting proposal waits for, and the approvals given to it (decision 167).
 import { keepRequirements, requirementsOf } from "./requirements.ts";
 import {
   approvalsOf,
@@ -383,7 +383,7 @@ function brakeTargetFrom(
 }
 
 /**
- * NEW IN STEP 29: the addresses a proposal's arguments name, in this company, for an approval's
+ * STEP 29: the addresses a proposal's arguments name, in this company, for an approval's
  * `resources`; the proposal itself when they name none (decision 167).
  */
 function addressesNamedIn(payload: string, tenant: string, proposal: string): string[] {
@@ -703,7 +703,7 @@ const handlers: Readonly<Record<string, Handler>> = {
     };
   },
 
-  // NEW IN STEP 29: approving a waiting proposal (decision 167). Who may, and on what fingerprint,
+  // STEP 29: approving a waiting proposal (decision 167). Who may, and on what fingerprint,
   // was decided at §21.9 and recorded. Here the approval is kept, whole, and once every requirement
   // has its quorum the proposal moves to APPROVED (DSOR-AUT-02c). Nothing carries it out before
   // step 31.
@@ -1580,7 +1580,7 @@ const validateTheInput: Stage["run"] = (context) => {
     // from the text, the handler would read null too. A number JSON cannot write is refused here, by
     // name, which is what step 13 asked of a refusal (decision 126).
     //
-    // NEW IN STEP 29: and written in RFC 8785's one spelling, its keys in one order, so the same
+    // STEP 29: and written in RFC 8785's one spelling, its keys in one order, so the same
     // request sent with its fields in another order is the same request, with one fingerprint for an
     // approver to approve and one claim on its key (DSOR-APR-02b, decision 167). A number JSON
     // cannot write is still refused, and now so is text that is not valid Unicode.
@@ -1725,7 +1725,7 @@ const validateTheInput: Stage["run"] = (context) => {
       }
     }
 
-    // NEW IN STEP 29: and which proposal, by its address, and the fingerprint the approver approves,
+    // STEP 29: and which proposal, by its address, and the fingerprint the approver approves,
     // for proposal.approve: facts about the arguments, refused before anything is decided (decision
     // 167), as step 28's review asked of control.activate's.
     if (context.contract?.id === "proposal.approve") {
@@ -2129,7 +2129,7 @@ const createTheProposal: Stage["run"] = async (context) => {
 };
 
 /**
- * NEW IN STEP 29: part of §21.9 — who may approve a waiting proposal (decision 167).
+ * STEP 29: part of §21.9 — who may approve a waiting proposal (decision 167).
  *
  * In this order, each refusal recorded before anything is written: a person, logged in as
  * themselves, never an agent and never under a slip (DSOR-APR-05a); a proposal of this company; the
@@ -2276,7 +2276,7 @@ const checkTheTarget: Stage["run"] = async (context) => {
       : carryOn(context);
   }
 
-  // NEW IN STEP 29: proposal.approve — who may approve this proposal, and on what fingerprint,
+  // STEP 29: proposal.approve — who may approve this proposal, and on what fingerprint,
   // decided before the decision is recorded (decision 167).
   if (contract.id === "proposal.approve") {
     return whoMayApprove(context, principal, tenant, given);
@@ -3272,7 +3272,7 @@ async function waitAt(
     });
   }
 
-  // NEW IN STEP 29: what it will wait for, written before it starts waiting, so an approval always
+  // STEP 29: what it will wait for, written before it starts waiting, so an approval always
   // has requirements to be checked against. Written and then not moved, it is requirements of a
   // proposal that never waited, which no approval can reach (decision 167).
   if (to === "PENDING_APPROVAL") {

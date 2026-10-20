@@ -58,7 +58,7 @@ export interface Principal {
    */
   readonly clearance?: Classification;
   /**
-   * NEW IN STEP 29: the job a person holds, which a control's requirement names: one approval by
+   * STEP 29: the job a person holds, which a control's requirement names: one approval by
    * the CFO is one by the person whose title is CFO (decision 167). An agent holds none.
    */
   readonly title?: string;

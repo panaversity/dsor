@@ -1,4 +1,4 @@
-// NEW IN STEP 29: what a waiting proposal waits for, kept (decision 167).
+// STEP 29: what a waiting proposal waits for, kept (decision 167).
 //
 // A control that requires approval says by whom and how many: one approval by the CFO. When the
 // door holds a proposal at PENDING_APPROVAL, it writes each requirement here, before the move, and

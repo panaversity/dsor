@@ -1,4 +1,4 @@
-// NEW IN STEP 29: what a waiting proposal waits for, kept (decision 167).
+// STEP 29: what a waiting proposal waits for, kept (decision 167).
 //
 // When a control holds a payment at PENDING_APPROVAL, the proposal waits for approvals: one by the
 // CFO, for the CFO's control. That is written down when it starts waiting, and never changed, so an

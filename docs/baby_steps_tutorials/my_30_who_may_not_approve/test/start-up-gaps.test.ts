@@ -85,9 +85,9 @@ describe("a rule on a tenant table", () => {
     "dsor.agent_controls",
     // STEP 27: and the controls.
     "dsor.controls",
-    // NEW IN STEP 29: and what a proposal waits for.
+    // STEP 29: and what a proposal waits for.
     "dsor.requirements",
-    // NEW IN STEP 29: and the approvals.
+    // STEP 29: and the approvals.
     "dsor.approvals",
   ]) {
     // The log's case is DSOR-EXE-02's: a decision the program believes recorded, swallowed. Every other

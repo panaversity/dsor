@@ -821,7 +821,7 @@ describe("the program a learner runs", () => {
     expect(out).toMatch(/\d+ +stale +\(the sweep\) +dsor +STALE_AUTHORITY /);
   });
 
-  // NEW IN STEP 29: the CFO approves user_123's payment, after the wrong fingerprint is refused.
+  // STEP 29: the CFO approves user_123's payment, after the wrong fingerprint is refused.
   it("DSOR-APR-09: the demo's CFO approves the payment by its fingerprint, after the wrong one is refused", () => {
     const out = demo().report;
     const section =

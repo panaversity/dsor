@@ -1004,7 +1004,7 @@ console.log(
 );
 usePolicySource("org_456", undefined);
 
-// NEW IN STEP 29: the CFO approves user_123's payment (decision 167). She logs in as herself, and
+// STEP 29: the CFO approves user_123's payment (decision 167). She logs in as herself, and
 // names the request by its address and its fingerprint, the payload hash every receipt for it
 // carries. A fingerprint that is not that request's approves nothing. The right one is kept as an
 // approval, and the proposal, which waited for one approval by the CFO, is APPROVED. Nothing carries
