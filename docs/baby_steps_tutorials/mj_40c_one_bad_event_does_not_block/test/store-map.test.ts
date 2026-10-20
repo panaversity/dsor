@@ -435,6 +435,27 @@ describe("C4: each kind allows only its own privileges, on its own side", () => 
     ]);
   });
 
+  // Found by step 40c's review, K1: no test needed the kind of the log of tries to refuse a change
+  //   or a removal. One wrong line in the map cannot open that log either.
+  it.each(["UPDATE", "DELETE", "TRUNCATE"])(
+    "DSOR-EVT-01a: K1: %s on the log of tries is refused, because an append-only-watched table allows it never",
+    (privilege) => {
+      const source = mapWith((m) => m.tables["dsor.outbox_tries"].runtime.table.push(privilege));
+      expect(problemsOf(source)).toStrictEqual([
+        `store.json: dsor.outbox_tries lists ${privilege}, which an append-only-watched table does not allow`,
+      ]);
+    },
+  );
+
+  it("DSOR-EVT-01a: K1: UPDATE on one column of the log of tries is refused too", () => {
+    const source = mapWith(
+      (m) => (m.tables["dsor.outbox_tries"].runtime.columns.UPDATE = ["reason"]),
+    );
+    expect(problemsOf(source)).toStrictEqual([
+      "store.json: dsor.outbox_tries lists UPDATE on columns, which an append-only-watched table does not allow",
+    ]);
+  });
+
   // INSERT on the whole table would include sequence and at, which the database fills in
   // (step 09's README, decision 6). So append-only adds rows column by column only.
   it("step 16's decision 3: an append-only table adds rows column by column, never by the whole table", () => {

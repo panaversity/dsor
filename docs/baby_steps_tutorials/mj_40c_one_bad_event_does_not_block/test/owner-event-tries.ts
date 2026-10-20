@@ -10,6 +10,8 @@
 // - alert-change <event_id>: the alert's payment changed (found by step 40c's review, G6).
 // - try-stamp <event_id>: a try written with a time of 2000-01-01; prints the year the database
 //   stored (found by step 40c's review, G1).
+// - try-elsewhere <event_id>: a try of this event written for org_789, another company (found by
+//   step 40c's review, G3).
 // - empty: both tables truncated.
 // Run by the tests as:  node test/owner-event-tries.ts <command> [event_id]
 import pg from "pg";
@@ -44,6 +46,10 @@ const STATEMENTS: Record<string, string[]> = {
      SELECT tenant_id, event_id, '2000-01-01T00:00:00Z', 'stamped by the owner'
        FROM dsor.outbox WHERE event_id = $1
      RETURNING extract(year FROM tried_at)::int AS year`,
+  ],
+  "try-elsewhere": [
+    `INSERT INTO dsor.outbox_tries (tenant_id, event_id, reason)
+     SELECT 'org_789', event_id, 'written for another company' FROM dsor.outbox WHERE event_id = $1`,
   ],
   empty: ["TRUNCATE dsor.outbox_tries", "TRUNCATE dsor.event_alerts"],
 };

@@ -143,10 +143,10 @@ the review, the learner made D9 and D10.
 |---|---|
 | C1 | In memory: PAY-901's events are refused, and PAY-902's are delivered in the same run. On the database: one payment's events refused, another's delivered and marked; a paid payment refused ahead of a draft; oldest first across payments; two paid payments refused, and a run that may try 3 still reaches a third payment |
 | C2 | A paid payment's `payment.created` is refused: its `payment.executed` is not tried and has no try, and the run that delivers the first delivers the second after it. The database refuses a try for the held-back event, and a payment's first event numbered 2 |
-| C3 | Each failed run writes one try for the payment's first event, with the reason. Two payments refused in one run get a try each. A refusal with no words, a NUL byte, or 150 two-byte characters is kept, cleaned. A sender killed after a refused try leaves none. A try's time is the database's. The owner cannot change or remove a try |
+| C3 | Each failed run writes one try for the payment's first event, with the reason. Two payments refused in one run get a try each. A refusal with no words, a NUL byte, or 150 two-byte characters is kept, cleaned, and a long reason is cut to 200 bytes. A sender killed after a refused try leaves none. A try's time is the database's. A try for an event already sent is refused, and so is the owner's try written for another company. The owner cannot change or remove a try |
 | C4 | After the third failed run, one open alert; after the fourth, still one. Tries written two or three at once still raise one. The owner cannot raise one for an event with one try |
 | C5 | The run that delivers the event closes its alert, later than it was raised; with two open alerts, delivering one payment closes only its alert. A try and the mark of its event cannot pass each other. The owner cannot close an alert whose event is unsent, change it, or remove it |
-| C6 | `dsor_runtime` cannot insert, update, or delete an alert, or update or delete a try |
+| C6 | `dsor_runtime` cannot insert, update, or delete an alert, or update or delete a try. The map refuses a line that would let it change or remove a try |
 | C7 | In memory, through `pnpm send-events`' own code: a refused payment is named with its reason and the run ends 1; two refused payments are named on two lines; a reason with a newline cannot forge a line |
 
 ### The learner's predictions

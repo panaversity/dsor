@@ -521,3 +521,30 @@ describe("step 40c's review, M2 to M4: each clause has a test that needs it", ()
     expect(stamped.said).toStrictEqual([`done, stored in ${new Date().getUTCFullYear()}`]);
   });
 });
+
+// Found by step 40c's review, G2 and G3: no test needed a try to be refused for an event already
+//   sent, or for another company. dsor_runtime meets the second rule through its company's lock
+//   too; the owner, who passes that lock, meets only the database's own check.
+describe("step 40c's review, G2 and G3: a try is only for an unsent event of its own company", () => {
+  it("DSOR-EVT-01a: G2: a try for an event already sent is refused", async () => {
+    await flush();
+    const good = await drafted();
+    await flush();
+    const [event] = await eventsOf(good);
+    expect(event!.sent).toBe(true);
+    await expect(writeTries(event!.event_id, 1)).rejects.toThrow(
+      /a try is written only for an unsent event of its own company/,
+    );
+  });
+
+  it("DSOR-EVT-01a: G3: the owner's try of org_456's event, written for org_789, is refused", async () => {
+    await flush();
+    const bad = await drafted();
+    const elsewhere = ownerEventTries("try-elsewhere", (await eventsOf(bad))[0]!.event_id) as {
+      said: string[];
+    };
+    expect(elsewhere.said).toStrictEqual([
+      expect.stringMatching(/a try is written only for an unsent event of its own company/),
+    ]);
+  });
+});

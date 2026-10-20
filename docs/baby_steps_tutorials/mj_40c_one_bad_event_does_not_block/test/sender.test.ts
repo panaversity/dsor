@@ -397,6 +397,12 @@ describe("step 40c's review, H1 and L5: a receiver's reason, cleaned", () => {
     expect(Buffer.byteLength(cut, "utf8")).toBe(200);
   });
 
+  // Found by step 40c's review, S6: no test needed the cut to be at 200 bytes exactly, and the
+  //   database refuses a reason of 201.
+  it("DSOR-EVT-01a: S6: a reason of 250 one-byte characters is cut to 200, not one more", () => {
+    expect(reasonOf(new Error("a".repeat(250)))).toBe("a".repeat(200));
+  });
+
   it("DSOR-EVT-01a: L5: a reason with newlines cannot forge a line of pnpm send-events", async () => {
     const outbox = await filled();
     const lying: Outbox = {
