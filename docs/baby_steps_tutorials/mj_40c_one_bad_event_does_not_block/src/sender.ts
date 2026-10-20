@@ -37,38 +37,51 @@ export function createDbOutbox(pool: pg.Pool): Outbox {
           [`dsor.outbox ${tenant}`],
         );
         if (lock[0]?.got !== true) return { sent: [], busy: true };
-        const { rows } = await client.query<{
-          event_id: string;
-          resource: string;
-          event: DomainEvent;
-        }>(
-          `SELECT event_id, resource, event FROM dsor.outbox
-            WHERE tenant_id = $1 AND sent_at IS NULL ORDER BY written LIMIT $2`,
-          [tenant, limit],
-        );
         const sent: string[] = [];
         const failed: Failed[] = [];
         // NEW IN STEP 40c: a failure holds back the rest of its payment's events in this run, so a
         //   payment's later event never passes its earlier one, and every other payment goes on
         //   (step 40c's README, decision D1).
         const held = new Set<string>();
-        for (const { event_id, resource, event } of rows) {
-          if (held.has(resource)) continue;
-          try {
-            await deliver(event);
-          } catch (error) {
-            held.add(resource);
-            const why = reasonOf(error);
-            failed.push({ event_id, resource, why });
-            // The failed try is kept, in this run's transaction; the database raises the event's
-            //   alert on its third (step 40c's README, decisions D3, D5, and D8).
-            await client.query(
-              "INSERT INTO dsor.outbox_tries (tenant_id, event_id, reason) VALUES ($1, $2, $3)",
-              [tenant, event_id, why],
-            );
-            continue;
+        // And a run counts only the events it tries. It reads the unsent events a page at a time,
+        //   oldest first, and skips those held back without counting them, so held payments never
+        //   use up a run. Found by step 40c's review, M1: held events filled the run's one page.
+        let tried = 0;
+        let after = "0";
+        reading: while (tried < limit) {
+          const { rows } = await client.query<{
+            event_id: string;
+            resource: string;
+            event: DomainEvent;
+            written: string;
+          }>(
+            `SELECT event_id, resource, event, written FROM dsor.outbox
+              WHERE tenant_id = $1 AND sent_at IS NULL AND written > $2::bigint
+              ORDER BY written LIMIT $3`,
+            [tenant, after, limit],
+          );
+          if (rows.length === 0) break;
+          for (const { event_id, resource, event, written } of rows) {
+            after = written;
+            if (held.has(resource)) continue;
+            if (tried === limit) break reading;
+            tried += 1;
+            try {
+              await deliver(event);
+            } catch (error) {
+              held.add(resource);
+              const why = reasonOf(error);
+              failed.push({ event_id, resource, why });
+              // The failed try is kept, in this run's transaction; the database raises the event's
+              //   alert on its third (step 40c's README, decisions D3, D5, and D8).
+              await client.query(
+                "INSERT INTO dsor.outbox_tries (tenant_id, event_id, reason) VALUES ($1, $2, $3)",
+                [tenant, event_id, why],
+              );
+              continue;
+            }
+            sent.push(event_id);
           }
-          sent.push(event_id);
         }
         // The mark, in the transaction that read them: it commits after every delivery of the run,
         //   so a run that dies before the commit delivers again next time (C7).

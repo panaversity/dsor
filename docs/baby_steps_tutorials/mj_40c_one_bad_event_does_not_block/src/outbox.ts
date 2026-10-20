@@ -33,7 +33,8 @@ export type Outbox = OutboxWriter & {
   /**
    * Delivers the company's unsent events, oldest first, at most `limit`, and marks the delivered
    * ones sent. A delivery that fails holds back the rest of its payment's events in this run, and
-   * the run goes on with the other payments (step 40c's README, decision D1).
+   * the run goes on with the other payments; `limit` counts the events tried, not the events held
+   * back (step 40c's README, decision D1, and its review, M1).
    */
   send: (
     tenant: string,
@@ -127,15 +128,20 @@ export function memoryOutbox(): MemoryOutbox {
       if (sending.has(tenant)) return { sent: [], busy: true };
       sending.add(tenant);
       try {
-        const due = rows.filter((row) => row.event.tenant === tenant && !row.sent).slice(0, limit);
+        const due = rows.filter((row) => row.event.tenant === tenant && !row.sent);
         const sent: string[] = [];
         const failed: Failed[] = [];
         // NEW IN STEP 40c: the payments held back in this run. A failure holds back the rest of its
         //   payment's events, so a payment's later event never passes its earlier one, and every
         //   other payment goes on (step 40c's README, decisions D1 and D6).
         const held = new Set<string>();
+        // Changed after step 40c's review, M1: a run counts only the events it tries, so events held
+        //   back behind a failure never use up a run (the learner's choice, step 40c's README).
+        let tried = 0;
         for (const row of due) {
           if (held.has(row.event.resource)) continue;
+          if (tried === limit) break;
+          tried += 1;
           try {
             await deliver(structuredClone(row.event));
           } catch (error) {
