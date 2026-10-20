@@ -63,6 +63,8 @@ describe("the suite, on the database", () => {
       "payment.execute",
       // Changed in step 38: payment.reconcile (step 38's README, decision D2).
       "payment.reconcile",
+      // Step 41: and the run (step 41's README, claim C1).
+      "payment.run",
       // And step 29's proposal.approve.
       "proposal.approve",
       // And step 31's release (step 31's README, decision D12).
@@ -92,7 +94,10 @@ describe("the suite, on the database", () => {
     // Changed in step 38: and payment.reconcile's 12 (step 38's README, decision D3).
     // Changed in step 38b: and alert.escalate_due's 6 (step 38b's README, decision D3), and
     //   payment.reconcile's 3 more, cfo_100 (decision D11).
-    expect(report.attacks).toHaveLength(228);
+    // Changed in step 41: and payment.run's 30, the 5 callers of payment.create, 6 swaps each of its
+    //   two URIs, and proposal.approve's 15 more, 3 swaps of a run's vendor for each of its 5
+    //   callers (step 41's README, claims C1 and C5).
+    expect(report.attacks).toHaveLength(273);
     // And the in-company pair, from org_456's four readers and org_789's two, through the
     // database's store. Found by the Stage 2 review, and fixed from step 12 on.
     expect(report.pairs).toHaveLength(6);
@@ -150,7 +155,9 @@ describe("the suite, on the database", () => {
       // (step 31's README, decision D12).
       // Changed in step 38b: and alert.escalate_due, dsor-scheduler in each company, 1 × 3, and
       //   payment.reconcile by cfo_100 in org_456, 1 × 3.
-      expect(made).toHaveLength(home === "org_456" ? 129 : 99);
+      // Changed in step 41: and payment.run, 3 callers in org_456 and 2 in org_789, × 6 each, and
+      //   proposal.approve's vendor, 3 callers in org_456 and 2 in org_789, × 3 each.
+      expect(made).toHaveLength(home === "org_456" ? 156 : 117);
       const ids = made.map((attack) => attack.request_id);
       expect(await recordsIn(home, ids)).toStrictEqual(
         made.map(({ operation, request_id }) => ({
