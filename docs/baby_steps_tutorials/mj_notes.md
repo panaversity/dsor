@@ -2298,6 +2298,9 @@ database's (D6).
   for a try (L2), and takes a try only for its payment's oldest unsent event (L3). From step 40, an
   event's number did not have to follow the order it was written; the learner chose to fix it now
   (L4, D10).
+- **The breaks, after the fixes:** 33 were run for real. All are caught but two: S3, which the
+  learner's D9 made harmless, and G10, which no writer can reach. Four of the review's breaks were
+  still green after the fixes, so each got a test of its own, and is caught now.
 - **Found along the way:** with D1 a thrown error no longer stops a run, so step 40's memory test
   of a killed sender, and the story's scene of a sender that loses its answers, were rewritten.
   Emptying `dsor.outbox` now meets the foreign keys of the tries first, so step 40b's owner program
