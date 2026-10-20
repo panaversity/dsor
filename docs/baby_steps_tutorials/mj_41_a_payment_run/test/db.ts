@@ -287,6 +287,13 @@ export function ownerInvoices(...args: string[]): unknown {
   return asOwner("owner-invoices.ts", args);
 }
 
+// NEW IN STEP 41: the owner as org_456's accounts system, which adds and removes the bills of the
+//   tests' payment runs (test/owner-run-bills.ts; step 41's README, claims C2 to C8).
+/** What the owner's program for the runs' bills printed, for these words. */
+export function ownerRunBills(...args: string[]): unknown {
+  return asOwner("owner-run-bills.ts", args);
+}
+
 // The owner tries to change a proposal's request, or to skip a move, and the
 // database's trigger refuses both (test/owner-proposals.ts; step 22's README, decision 3).
 /** What the owner's proposals program printed, for these words. */
