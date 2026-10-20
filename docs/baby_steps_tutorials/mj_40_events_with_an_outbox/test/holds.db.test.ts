@@ -217,7 +217,26 @@ describe("the review, on the database", () => {
       during = await send(second);
       return pay(key, order);
     };
-    const sent = await send(first);
+    // The first send waits for the bank as long as the second call takes. Found live 2026-10-20:
+    //   line ⑨ reads every hold INV-9001 has ever had, about 5 ms each, so after the suite's
+    //   earlier sends the second call took longer than the bank's 50 ms, the first send ended
+    //   OUTCOME_UNKNOWN, and its locked payment row stalled the next two tests (step 40's README).
+    const waiting = dbRegistry(
+      pool,
+      none,
+      none,
+      none,
+      none,
+      none,
+      none,
+      none,
+      new Map([["fake-bank", { bank, waitMs: 5000 }]]),
+    );
+    const sent = await call(waiting, log, keyed(SUPERVISOR), "payment.execute", {
+      invoice: INV_9001,
+      payment: `dsor://org_456/payment/${first}`,
+      expected_version: 1,
+    });
     expect(sent).toMatchObject({ outcome: "COMMITTED" });
     expect(during).toMatchObject({ code: "CONFLICT" });
     expect(JSON.stringify(during)).toContain(idOf(sent));

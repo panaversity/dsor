@@ -1065,3 +1065,9 @@ for a human. An agent may gather evidence; it does not settle these alone.
     build carries `request_id`, `agent_id` or `principal_id`, and `tenant_id` in every event, and
     none of the three. Should the envelope name them, and should §32 say which may come from an agent
     and which DSoR must set itself?
+158. **Is a released hold removed, or kept?** §25 says a proposal's holds are released when it
+    leaves `OUTCOME_UNKNOWN`, and DSOR-UNK-03b holds a resource only while its proposal is unknown.
+    Neither says what a released hold becomes. Step 37's learner build keeps every hold row and
+    reads the proposal behind each one before a send, so the check slows with an invoice's history:
+    in step 40's database tests, about 56 old holds of INV-9001 took longer than a 50 ms bank. Should
+    a released hold be removed, or marked released, so that the check reads only live holds?

@@ -487,6 +487,14 @@ the fixes needed are Claude Code's, each with its downside: D1, D4, D7, D11, and
 - **The database does not refuse a change without its event.** A new path that drafts or pays must
   remember its event (D1). The tests check every path this step knows; a trigger could check every
   path, but it cannot see the call's correlation ids.
+- **Old holds slow every send.** A released hold stays in `dsor.holds` (step 37), and line ⑨ reads
+  the proposal behind every hold an invoice has ever had, about 5 ms each. The database suite pays
+  INV-9001 about 56 times, so the check grew past test F1's 50 ms bank. F1 then failed, and its
+  send, still at work, locked a payment row that stalled L2 and F4. Step 39b's code fails the same
+  way on the same database. F1's bank now waits 5 seconds, so the test no longer races the check;
+  it proves the same refusal. Reading only live holds, or removing a hold when it is released,
+  changes a step-37 decision, so it is left for a later step. Open question 158 asks the
+  specification. Found 2026-10-20, after the review.
 
 ## The rules this step meets
 
