@@ -260,3 +260,32 @@ describe("C6: what dsor_runtime may do", () => {
     }
   });
 });
+
+// Found by step 40c's review, H1: a refusal whose reason the database could not keep aborted the
+//   run, so every other payment's delivery was undone, and no try or alert was ever written.
+describe("step 40c's review, H1: any refusal is kept, and the run goes on", () => {
+  for (const [what, thrown, kept] of [
+    ["with no words", new Error(""), "the receiver gave no reason"],
+    [
+      "with a NUL byte and a newline",
+      new Error("no\u0000vendor\nVENDOR-31"),
+      "no vendor VENDOR-31",
+    ],
+    ["of 150 two-byte characters", new Error("é".repeat(150)), "é".repeat(100)],
+  ] as const) {
+    it(`DSOR-EVT-01a: H1: a refusal ${what}: the other payment is delivered, and the try is kept, cleaned`, async () => {
+      await flush();
+      const [bad, good] = [await drafted(), await drafted()];
+      const run = await outbox.send(
+        "org_456",
+        async (event) => {
+          if (event.resource.endsWith(`/${bad}`)) throw thrown;
+        },
+        1000,
+      );
+      expect(run.sent).toContain((await eventsOf(good))[0]!.event_id);
+      expect((await eventsOf(good))[0]!.sent).toBe(true);
+      expect(await triesOf((await eventsOf(bad))[0]!.event_id)).toStrictEqual([kept]);
+    });
+  }
+});

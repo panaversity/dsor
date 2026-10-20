@@ -10,7 +10,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { checkChannels, fileChannel, readChannels } from "../src/channels.ts";
 import { buildEvent, type DomainEvent } from "../src/events.ts";
 import { checkClassifications } from "../src/labels.ts";
-import { memoryOutbox, type MemoryOutbox, type Outbox } from "../src/outbox.ts";
+import { memoryOutbox, reasonOf, type MemoryOutbox, type Outbox } from "../src/outbox.ts";
 import { firstOfEach, readChannel } from "../src/receiver.ts";
 import { sendEach } from "../src/sender.ts";
 import { shippedLabels } from "./helpers.ts";
@@ -374,5 +374,52 @@ describe("D9: channels.json, one channel per company", () => {
     expect(lines).toHaveLength(2);
     expect(readChannel(join(dir, "org_456.jsonl"))).toStrictEqual([a, a]);
     expect(readChannel(join(dir, "none.jsonl"))).toStrictEqual([]);
+  });
+});
+
+// Found by step 40c's review, H1 and L5: a receiver's reason with no words, a NUL byte, or more
+//   than 200 bytes could not be kept, and aborted the whole run; one with a newline could forge a
+//   line of pnpm send-events. The reason is now cleaned before it is kept or shown.
+describe("step 40c's review, H1 and L5: a receiver's reason, cleaned", () => {
+  it("DSOR-EVT-01a: H1: a refusal with no words is kept as the receiver gave no reason", () => {
+    expect(reasonOf(new Error(""))).toBe("the receiver gave no reason");
+    expect(reasonOf("")).toBe("the receiver gave no reason");
+    expect(reasonOf(new Error(" \n\t "))).toBe("the receiver gave no reason");
+  });
+
+  it("DSOR-EVT-01a: H1: control characters, a NUL byte and newlines included, become single spaces", () => {
+    expect(reasonOf(new Error("no\u0000vendor\nVENDOR-31\r\n"))).toBe("no vendor VENDOR-31");
+  });
+
+  it("DSOR-EVT-01a: H1: a long reason is cut to 200 bytes, never inside a character", () => {
+    const cut = reasonOf(new Error("é".repeat(150)));
+    expect(cut).toBe("é".repeat(100));
+    expect(Buffer.byteLength(cut, "utf8")).toBe(200);
+  });
+
+  it("DSOR-EVT-01a: L5: a reason with newlines cannot forge a line of pnpm send-events", async () => {
+    const outbox = await filled();
+    const lying: Outbox = {
+      ...outbox,
+      send: (tenant, deliver, limit) =>
+        outbox.send(
+          tenant,
+          async (event) => {
+            if (event.resource.endsWith("/PAY-901")) throw new Error("no\norg_456: sent 9 events");
+            await deliver(event);
+          },
+          limit,
+        ),
+    };
+    const out = mkdtempSync(join(tmpdir(), "dsor-40c-lying-"));
+    try {
+      const lines: string[] = [];
+      await sendEach(lying, new Map([["org_456", "org_456.jsonl"]]), out, (l) => lines.push(l));
+      expect(lines).toHaveLength(2);
+      expect(lines.every((line) => !line.includes("\n"))).toBe(true);
+      expect(lines[1]).toMatch(/: no org_456: sent 9 events$/);
+    } finally {
+      rmSync(out, { recursive: true, force: true });
+    }
   });
 });
