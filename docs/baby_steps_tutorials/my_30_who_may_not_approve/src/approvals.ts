@@ -48,6 +48,15 @@ export interface ProposalToApprove {
   readonly state: ProposalState;
   /** When it started waiting for approval, or undefined for one that never did. */
   readonly waitingSince: string | undefined;
+  /**
+   * NEW IN STEP 30: who asked for it, as it recorded when it was made: the subject, which is the
+   * slip's signer for an agent's command, the actors, and the slip (decision 169).
+   */
+  readonly requester: {
+    readonly subject: string;
+    readonly actorChain: readonly string[];
+    readonly delegation?: string;
+  };
 }
 
 /** One proposal of one company, or undefined for none of that name. */
@@ -61,8 +70,9 @@ export async function proposalToApprove(
     payload: string;
     state: ProposalState;
     waiting_since: string | null;
+    requester: string;
   }>(
-    `SELECT p.operation, p.payload_hash, p.payload,
+    `SELECT p.operation, p.payload_hash, p.payload, p.requester,
             (SELECT m.to_state FROM dsor.proposal_moves m
               WHERE m.tenant = p.tenant AND m.proposal = p.id
                 AND NOT EXISTS (SELECT 1 FROM dsor.proposal_moves n
@@ -87,7 +97,34 @@ export async function proposalToApprove(
         payload: row.payload,
         state: row.state,
         waitingSince: row.waiting_since ?? undefined,
+        requester: requesterFrom(row.requester),
       });
+}
+
+/**
+ * NEW IN STEP 30: the requester a proposal recorded, read as it was written (§21.8). Anything else
+ * is a requester nobody can be told apart from, and is refused as one: everyone is in its chain.
+ */
+function requesterFrom(text: string): ProposalToApprove["requester"] {
+  const parsed = JSON.parse(text) as {
+    subject?: unknown;
+    actor_chain?: unknown;
+    delegation?: unknown;
+  };
+
+  if (
+    typeof parsed.subject !== "string" ||
+    !Array.isArray(parsed.actor_chain) ||
+    !parsed.actor_chain.every((a) => typeof a === "string")
+  ) {
+    throw new TypeError("a proposal recorded a requester this program cannot read");
+  }
+
+  return Object.freeze({
+    subject: parsed.subject,
+    actorChain: Object.freeze([...(parsed.actor_chain as string[])]),
+    ...(typeof parsed.delegation === "string" ? { delegation: parsed.delegation } : {}),
+  });
 }
 
 /** When an approval of a proposal that started waiting at this moment expires: 72 hours on. */

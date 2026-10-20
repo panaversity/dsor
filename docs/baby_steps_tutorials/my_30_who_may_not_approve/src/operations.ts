@@ -2210,6 +2210,20 @@ async function whoMayApprove(
     );
   }
 
+  // NEW IN STEP 30: and never someone in its requesting chain: the subject it was asked for, which
+  // is the signer of the slip an agent asked under, or any actor in it (DSOR-SOD-02, decision 169).
+  // Read from what the proposal recorded when it was made, never from this request.
+  const { subject, actorChain, delegation } = target.requester;
+
+  if (subject === principal.id || actorChain.includes(principal.id)) {
+    return no(
+      "SOD_VIOLATION",
+      delegation !== undefined && subject === principal.id
+        ? `${principal.id} signed ${delegation}, under which ${actorChain.join(", ")} asked for ${id}, and may not approve it`
+        : `${principal.id} asked for ${id}, and may not approve it`,
+    );
+  }
+
   if (
     given_.some((a) =>
       (a.approvers as readonly { principal: string }[]).some((b) => b.principal === principal.id),

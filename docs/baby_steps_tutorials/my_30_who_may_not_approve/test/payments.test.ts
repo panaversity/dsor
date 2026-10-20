@@ -278,9 +278,14 @@ describe("payment.create", () => {
     });
   });
 
-  it("DSOR-AUT-01b: the CFO may not make a payment", async () => {
+  it("DSOR-AUT-01b: the CFO may not cancel a payment", async () => {
+    // STEP 30: she may make one now (decision 169), so that a payment she asked for is one she
+    // may not approve. Cancelling stays the payment clerks' job.
     const refusal = refusalOf(
-      await callOperation(CFO, "payment.create", { invoice: INV_1008, amount: AMOUNT }),
+      await callOperation(CFO, "payment.cancel", {
+        payment: "dsor://org_456/payment/PAY-901",
+        expected_version: 1,
+      }),
     );
 
     expect(refusal.code).toBe("AUTHORIZATION_DENIED");

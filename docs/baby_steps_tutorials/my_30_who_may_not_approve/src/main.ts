@@ -1039,6 +1039,37 @@ console.log(
   ),
 );
 
+// NEW IN STEP 30: who may not approve (decision 169). The CFO pays a bill herself; it is above her
+// own control's line, so it waits for the CFO, and the CFO may not approve what she asked for. An
+// approval is a second person looking (DSOR-SOD-02).
+console.log();
+console.log(
+  "The CFO pays 31,400.00 USD herself. It waits for the CFO, and she may not approve it:",
+);
+console.log();
+
+const theCfosOwn = await callOperation(
+  CFO,
+  "payment.create",
+  { invoice: INV_1008, amount: { value: "31400.00", currency: "USD" } },
+  keyFor("the-cfo-pays"),
+);
+
+console.log(show(theCfosOwn));
+console.log(
+  show(
+    await callOperation(
+      CFO,
+      "proposal.approve",
+      {
+        proposal: theCfosOwn.kind === "result" ? theCfosOwn.envelope.proposal : undefined,
+        payload_hash: theCfosOwn.kind === "result" ? theCfosOwn.envelope.payload_hash : undefined,
+      },
+      keyFor("the-cfo-approves-her-own"),
+    ),
+  ),
+);
+
 // STEP 08: everything above already happened; this is what was written down while it did. Read the
 // `authorization` column: the DENY lines are the ones a program that logged only its successes would
 // have lost, and they are the most interesting lines here.

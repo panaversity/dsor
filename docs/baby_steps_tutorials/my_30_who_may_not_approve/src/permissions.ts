@@ -68,6 +68,8 @@ export const ROLES: Readonly<Record<string, readonly string[]>> = Object.freeze(
     "control:activate",
     // STEP 29: and approve, holding payment:approve above (decision 167).
     "proposal:approve",
+    // NEW IN STEP 30: and make a payment, which she may then not approve herself (decision 169).
+    "payment:create",
   ]),
   // STEP 18: the agent's own role reads. Every command it sends runs under a permission
   // slip a person signed, and its power there is computed from the slip (decision 127).
