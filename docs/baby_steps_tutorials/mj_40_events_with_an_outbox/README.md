@@ -151,8 +151,8 @@ commit atomically."
   company alone. *Downside:* the transaction stays open while the sender delivers; a slow receiver
   holds it.
 - **D9. One channel per company, in `channels.json`** (Claude Code's). Each company's events go to
-  its own channel, and the file is refused at start if two companies share one (DSOR-EVT-01d). A
-  company with no channel keeps its events until it gets one. In this tutorial a channel is a file
+  its own channel, and the file is refused at start if two companies could share one
+  (DSOR-EVT-01d; D12 says how). A company with no channel keeps its events until it gets one. In this tutorial a channel is a file
   of JSON lines; how events travel is outside the specification. *Downside:* a file is not a queue;
   the receiver reads the whole file.
 - **D10. The receiver drops an event id it has seen** (Claude Code's). `src/receiver.ts` is the
@@ -165,6 +165,13 @@ commit atomically."
   payment paid, the payment stays paid with no event. So `payment.reconcile` writes
   `payment.executed` for a paid payment that has none, and never a second. *Downside:* the atomic
   commit is proved on the database only. Changed by the review, M1 and L1.
+- **D12. A channel is named after its company** (Claude Code's, from the review, M4). org_456's
+  channel must be `org_456.jsonl`, and any other name is refused. The first rule took any `.jsonl`
+  name and refused two equal names. But `a.jsonl` and `A.jsonl` are two names and, on a disk that
+  does not tell capitals apart, as macOS and Windows do by default, one file: two companies' events
+  in one channel. A tenant id has no capitals, so names made from tenant ids never meet that way.
+  *Downside:* a company cannot choose its channel's name, and a deployment that sends events to a
+  queue needs a rule of its own.
 
 ### The tests, by claim
 
@@ -321,12 +328,13 @@ org_456: sent 3 events
 org_789: sent 1 event
 org_456.jsonl: 3 events, 0 of another company
 org_789.jsonl: 1 events, 0 of another company
-channels.json with one channel for both: channels.json: org_456 and org_789 share the channel all.jsonl; each company needs its own
+channels.json with one channel for both: channels.json: org_456's channel must be org_456.jsonl; channels.json: org_789's channel must be org_789.jsonl
 ```
 
 The sender works inside one company at a time, and the database's row-level security shows it
 that company's events only. A file that would give two companies one channel is refused (C6,
-DSOR-EVT-01d).
+DSOR-EVT-01d). The last line was run again after the review's M4 changed the rule: the first run
+said the two companies share `all.jsonl`. Now each channel must be named after its company (D12).
 
 </details>
 

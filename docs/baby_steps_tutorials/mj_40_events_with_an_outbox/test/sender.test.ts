@@ -148,17 +148,37 @@ describe("D9: channels.json, one channel per company", () => {
     });
   });
 
+  // Changed by step 40's review, M4: a channel is named after its company, so two can never share
+  //   one, on a disk that tells a.jsonl from A.jsonl or on one that does not (decision D12).
   it("DSOR-EVT-01d: two companies that share a channel are refused", () => {
-    const { problems } = checkChannels(source({ org_456: "all.jsonl", org_789: "all.jsonl" }));
+    const { channels, problems } = checkChannels(
+      source({ org_456: "all.jsonl", org_789: "all.jsonl" }),
+    );
     expect(problems).toStrictEqual([
-      "channels.json: org_456 and org_789 share the channel all.jsonl; each company needs its own",
+      "channels.json: org_456's channel must be org_456.jsonl",
+      "channels.json: org_789's channel must be org_789.jsonl",
     ]);
+    expect(channels.size).toBe(0);
+  });
+
+  it("DSOR-EVT-01d: M4: a.jsonl and A.jsonl are refused, since a disk that does not tell them apart would give two companies one file", () => {
+    const { problems } = checkChannels(source({ org_456: "a.jsonl", org_789: "A.jsonl" }));
+    expect(problems).toStrictEqual([
+      "channels.json: org_456's channel must be org_456.jsonl",
+      "channels.json: org_789's channel must be org_789.jsonl",
+    ]);
+  });
+
+  it("DSOR-EVT-01d: M4: org_456 given org_789's channel is refused, even when org_789 has none", () => {
+    const { problems } = checkChannels(source({ org_456: "org_789.jsonl" }));
+    expect(problems).toStrictEqual(["channels.json: org_456's channel must be org_456.jsonl"]);
   });
 
   it.each([
     ["a company that is no tenant id", { acme: "acme.jsonl" }, "acme is not a tenant id"],
     ["a channel outside the events folder", { org_456: "../org_456.jsonl" }, "org_456's channel"],
     ["a channel that is not a .jsonl file", { org_456: "org_456.txt" }, "org_456's channel"],
+    ["a channel in capitals", { org_456: "ORG_456.jsonl" }, "org_456's channel"],
     ["a file that is not an object", ["org_456.jsonl"], "must be an object"],
   ])("DSOR-EVT-01d: %s is refused", (_, data, said) => {
     const { problems } = checkChannels(source(data));
