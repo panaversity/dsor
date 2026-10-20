@@ -13,6 +13,8 @@ import type { Alert } from "./alerts.ts";
 import type { Correlation, Refusal, Requirement } from "./envelope.ts";
 import { transitionOf, type Authority, type Mover, type ProposalTransition } from "./log.ts";
 import type { Principal } from "./principals.ts";
+import type { Money } from "./money.ts";
+import type { RunTotals, VendorTotal } from "./run.ts";
 
 /** One of the 17 states of §26.2. */
 export type State =
@@ -115,6 +117,11 @@ export type ProposalDraft = {
   //   proposal never shows it: two proposals in flight for one operation over one record cannot
   //   both be kept (DSOR-EXC-01; step 32's README, decision D7).
   exclusive_over?: string;
+  // NEW IN STEP 41: for a line of a run, the run's address, and for a run, the fingerprint of its
+  //   lines in their order: proposal.schema.json's manifest_hash (DSOR-BAT-01b, DSOR-BAT-02a; step
+  //   41's README, decisions D4 and D5). Written once, with the proposal.
+  run?: string;
+  manifest_hash?: string;
 };
 
 /** One move, as a proposal's history shows it: proposal.schema.json's transitions. */
@@ -131,6 +138,11 @@ export type Proposal = ProposalDraft & {
   // And the ids of its approvals, once it has one: the schema's own approvals
   // (decision D8).
   approvals?: string[];
+  // NEW IN STEP 41: for a run, its totals per currency, proposal.schema.json's totals, and per
+  //   vendor, which the schema has no field for, so the name is this tutorial's. Written once, when
+  //   the run leaves PROPOSED (DSOR-BAT-02a; step 41's README, decision D4).
+  totals?: Money[];
+  vendor_totals?: VendorTotal[];
   created_at: string;
   // When a READY proposal stops waiting: created_at plus its company's lifetime,
   // by the store's clock (step 25c's README, decisions L2 and D6).
@@ -166,6 +178,8 @@ export type ProposalStore = {
     to: State,
     by: MoveBy,
     requires?: Requirement[],
+    // NEW IN STEP 41: and a run's totals, written once, on its move out of PROPOSED to wait.
+    totals?: RunTotals,
   ) => Promise<boolean>;
   // One proposal, with its history, or none.
   get: (tenant: string, id: string) => Promise<Proposal | undefined>;
@@ -284,6 +298,25 @@ export function checkRequires(from: State, to: State, requires: Requirement[] | 
   }
 }
 
+/**
+ * NEW IN STEP 41: the check both stores make of a run's totals: written once, on a run's move out of
+ * PROPOSED to wait, PENDING_APPROVAL or READY, and never on anything else (step 41's README, C5).
+ */
+export function checkTotals(
+  from: State,
+  to: State,
+  isRun: boolean,
+  totals: RunTotals | undefined,
+): void {
+  const waits = from === "PROPOSED" && (to === "PENDING_APPROVAL" || to === "READY");
+  if (isRun && waits && totals === undefined) {
+    throw new Error("a run that waits keeps its totals");
+  }
+  if ((!isRun || !waits) && totals !== undefined) {
+    throw new Error("a run's totals are written once, when it starts to wait");
+  }
+}
+
 /** The actor's name in a proposal's history: the agent that acted, or the person, or DSoR. */
 export function actorOf(mover: Mover): string {
   return mover.actor_chain.at(-1) ?? mover.subject;
@@ -368,6 +401,9 @@ type Row = ProposalDraft & {
   expires_at: string;
   // And what it waits for, once it waits.
   requires?: Requirement[];
+  // And a run's totals, once it waits.
+  totals?: Money[];
+  vendor_totals?: VendorTotal[];
 };
 
 /** Proposals in memory, for the unit tests. Like the database, a move and its record are made together. */
@@ -482,12 +518,14 @@ export function memoryProposals(now: () => number = Date.now): MemoryProposals {
       to: State,
       by: MoveBy,
       requires?: Requirement[],
+      totals?: RunTotals,
     ): Promise<boolean> => {
       checkMove(from, to, by);
       checkRequires(from, to, requires);
       const row = rows.get(keyOf(tenant, id));
       // Only while it is still in `from`, as the database's UPDATE … WHERE state checks.
       if (row === undefined || row.state !== from) return false;
+      checkTotals(from, to, row.manifest_hash !== undefined, totals);
       // The database's key proposals_one_attempt, in memory: no second proposal in
       //   flight for one operation over one record (DSOR-EXC-01; step 32's README, decision D7).
       if (row.exclusive_over !== undefined && IN_FLIGHT.includes(to)) {
@@ -508,6 +546,10 @@ export function memoryProposals(now: () => number = Date.now): MemoryProposals {
       row.state = to;
       // A copy, so a caller that changes its list afterwards cannot change the proposal.
       if (requires !== undefined) row.requires = structuredClone(requires);
+      if (totals !== undefined) {
+        row.totals = structuredClone(totals.totals);
+        row.vendor_totals = structuredClone(totals.vendor_totals);
+      }
       const uri = proposalUri(tenant, id);
       record(
         transitionOf(tenant, uri, row.operation, from, to, by.mover, by.cause, by.correlation),
@@ -740,6 +782,11 @@ export type Pending = { requires: Requirement[]; expires_at: string };
 
 // What opening a proposal gave: its URI, and the refusal that ended it DENIED,
 // when lines ⑨ and ⑩ refused it (step 24's README, decision 6). Since step 27, or what it waits for.
+// NEW IN STEP 41: what lines ⑨ and ⑩ decided of a request that may go on: what it waits for, when a
+//   control asks for an approval, and, for a run, its totals (step 41's README, claim C5).
+/** What lines ⑨ and ⑩ let through: the approvals asked for, if any, and a run's totals. */
+export type Decided = { requires?: Requirement[]; totals?: RunTotals };
+
 /** What line ⑧ opened: the proposal's URI, and the refusal that ended it DENIED, or what it waits for. */
 export type Opened = { proposal: string; refused?: Refusal; pending?: Pending };
 
@@ -757,7 +804,8 @@ export async function openProposal(
   opening: Opening,
   // And the approvals a control asks for, which stop the proposal at
   // PENDING_APPROVAL (step 27's README, decision D10).
-  decide: (proposal: string) => Promise<Refusal | { requires: Requirement[] } | undefined>,
+  // NEW IN STEP 41: and, for a run, its totals, which it keeps once it waits.
+  decide: (proposal: string) => Promise<Refusal | Decided | undefined>,
 ): Promise<Opened> {
   const { tenant, draft, correlation } = opening;
   const id = `prop_${randomUUID()}`;
@@ -771,7 +819,7 @@ export async function openProposal(
     opening.lifetime,
   );
   const decided = await decide(proposalUri(tenant, id));
-  if (decided !== undefined && !("requires" in decided)) {
+  if (decided !== undefined && "code" in decided) {
     await moveOrFail(store, tenant, id, "PROPOSED", "DENIED", {
       mover: dsor,
       cause: `the checks refused it: ${decided.code}`,
@@ -781,11 +829,21 @@ export async function openProposal(
   }
   // A control asks for an approval, so the proposal waits for it, in every mode, and
   // the work does not run. Nothing approves until step 29 (step 27's README, decision D10).
-  if (decided !== undefined) {
+  const totals = decided?.totals;
+  if (decided?.requires !== undefined) {
     const controls = decided.requires.map((r) => r.control).join(", ");
     // And the proposal keeps what it waits for (step 29's README, decision D4).
     const by = { mover: dsor, cause: `the control ${controls} asks for an approval`, correlation };
-    if (!(await store.move(tenant, id, "PROPOSED", "PENDING_APPROVAL", by, decided.requires))) {
+    const moved = await store.move(
+      tenant,
+      id,
+      "PROPOSED",
+      "PENDING_APPROVAL",
+      by,
+      decided.requires,
+      totals,
+    );
+    if (!moved) {
       throw new Error(`the proposal ${id} was no longer PROPOSED`);
     }
     const waiting = await store.get(tenant, id);
@@ -793,11 +851,10 @@ export async function openProposal(
     const pending = { requires: decided.requires, expires_at: waiting.expires_at };
     return { proposal: proposalUri(tenant, id), pending };
   }
-  await moveOrFail(store, tenant, id, "PROPOSED", "READY", {
-    mover: dsor,
-    cause: "no control asks for an approval",
-    correlation,
-  });
+  const ready = { mover: dsor, cause: "no control asks for an approval", correlation };
+  if (!(await store.move(tenant, id, "PROPOSED", "READY", ready, undefined, totals))) {
+    throw new Error(`the proposal ${id} was no longer PROPOSED`);
+  }
   // A proposal made in propose_only mode waits here. Nothing moves it on until
   // proposal.execute, which step 31 builds (§26.2, READY; step 23's README, decision 1).
   if (draft.mode === "propose_only") return { proposal: proposalUri(tenant, id) };

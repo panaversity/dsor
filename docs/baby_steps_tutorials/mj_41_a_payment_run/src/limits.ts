@@ -79,6 +79,30 @@ export function millionths(value: string): bigint | undefined {
   return BigInt(match[1]! + fraction.padEnd(SCALE, "0"));
 }
 
+// NEW IN STEP 41: amounts are added in millionths, so no float touches money (DSOR-MON-02), and written back with
+//   as many decimal places as the most precise amount added, so 8,900.50 and 640.00 add to
+//   9,540.50, never 9540.5.
+/** The sum of amounts in one currency, written with the most decimal places any of them has. */
+export function sumOf(amounts: Money[]): Money {
+  const [first] = amounts;
+  if (first === undefined) throw new Error("a sum of no amounts");
+  let total = 0n;
+  let places = 0;
+  for (const amount of amounts) {
+    const exact = millionths(amount.value);
+    if (exact === undefined || amount.currency !== first.currency) {
+      throw new Error(`an amount that cannot be added: ${JSON.stringify(amount)}`);
+    }
+    total += exact;
+    places = Math.max(places, amount.value.split(".")[1]?.length ?? 0);
+  }
+  // Millionths read no minus sign, so a total is never below zero.
+  const digits = total.toString().padStart(7, "0");
+  const whole = digits.slice(0, -6);
+  const value = places === 0 ? whole : `${whole}.${digits.slice(-6, -6 + places)}`;
+  return { value, currency: first.currency };
+}
+
 /** True when the amount is at most the limit, in the same currency. Another currency is compared by checkLimits, with rates. */
 export function within(amount: Money, limit: Money): boolean {
   const spent = millionths(amount.value);
@@ -407,5 +431,61 @@ export async function checkLimits(check: LimitCheck): Promise<void> {
       : reserveFor === undefined
         ? await store.fits(tenant, slip, booking, daily)
         : await store.reserve(tenant, reserveFor, slip, booking, daily);
+  if (!fits) throw new Refusal("LIMIT_EXCEEDED", forOneDay, "public");
+}
+
+/**
+ * NEW IN STEP 41: line ⑩'s limit for one day, for a run: every line's amount, each converted into
+ * the limit's currency as one draft's booking is, added up, and booked once, in one step, keyed by
+ * the run. So the day's room is checked against the whole run at once (DSOR-BAT-02b; step 41's
+ * README, claim C4). The limit for one payment is each line's own, checked at its own line ⑩.
+ */
+export async function checkRunDay(
+  check: Omit<LimitCheck, "spends"> & { amounts: Money[] },
+): Promise<void> {
+  const { operation, tenant, slip, limits, amounts, reserveFor, store } = check;
+  const daily = limits.daily;
+  if (slip === undefined || daily === undefined || amounts.length === 0) return;
+  const forOneDay = `${JSON.stringify(operation)} would pass slip ${slip}'s limit for one day`;
+  if (amounts.some((amount) => millionths(amount.value) === undefined)) {
+    throw new Refusal("LIMIT_EXCEEDED", forOneDay, "public");
+  }
+  const others = [...new Set(amounts.map((a) => a.currency))].filter((c) => c !== daily.currency);
+  // The sheet is read as one draft's is: the newest of the company's source, once.
+  const asOne = { ...check, spends: amounts[0]! };
+  const usable =
+    others.length === 0 ? undefined : await usableSheet(asOne, [...others, daily.currency]);
+  const sheet = usable !== undefined && "sheet" in usable ? usable.sheet : undefined;
+  if (others.length > 0 && sheet === undefined) {
+    if (usable !== undefined && "why" in usable) check.unconvertible?.(usable);
+    throw new Refusal("LIMIT_EXCEEDED", `${forOneDay}: no usable rate`, "public");
+  }
+  if (sheet !== undefined) {
+    const used = [...others, daily.currency];
+    const rates = Object.fromEntries(used.map((currency) => [currency, sheet.rates[currency]!]));
+    const { source, published_at, base } = sheet;
+    check.converted?.({ source, published_at, base, rates });
+  }
+  const bookings: Money[] = [];
+  for (const amount of amounts) {
+    if (amount.currency === daily.currency) {
+      bookings.push(amount);
+      continue;
+    }
+    const converted = convertUp(amount, daily.currency, sheet!);
+    if (converted === undefined) throw new Refusal("LIMIT_EXCEEDED", forOneDay, "public");
+    check.noted?.({ from: { ...amount }, to: daily.currency });
+    bookings.push(converted);
+  }
+  const total = sumOf(bookings);
+  // A run of nothing to pay takes nothing from the day, as one draft of nothing does.
+  if (millionths(total.value) === 0n) return;
+  const held = reserveFor === undefined ? undefined : await store.get(tenant, reserveFor);
+  const fits =
+    held?.state === "held"
+      ? true
+      : reserveFor === undefined
+        ? await store.fits(tenant, slip, total, daily)
+        : await store.reserve(tenant, reserveFor, slip, total, daily);
   if (!fits) throw new Refusal("LIMIT_EXCEEDED", forOneDay, "public");
 }

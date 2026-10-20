@@ -361,6 +361,9 @@ export function memoryClaims(
       //   A proposal it loaded, for a release, goes back to the state it was in (step 32's README,
       //   decision D14; step 32's review, finding M1). Stores of another kind are left as they are.
       let made: string | undefined;
+      // NEW IN STEP 41: and every other proposal it made, such as a run's lines, which an accident
+      //   undoes too (step 41's README, claim C3).
+      const others: string[] = [];
       // The locks this claim holds, each given back when the claim ends.
       const held: (() => void)[] = [];
       // Whether the checkpoint passed, so the claim and its note count as kept.
@@ -388,7 +391,8 @@ export function memoryClaims(
           holdOver,
           create: async (tenant, id, draft, by, lifetime) => {
             await proposals.create(tenant, id, draft, by, lifetime);
-            made ??= proposalUri(tenant, id);
+            if (made === undefined) made = proposalUri(tenant, id);
+            else others.push(proposalUri(tenant, id));
           },
         },
         reservations,
@@ -491,10 +495,11 @@ export function memoryClaims(
       } catch (error) {
         // An accident keeps no claim, as the database rolls the claim back with the work.
         claims.delete(id);
-        if (made !== undefined && "undo" in proposals) {
-          const undone = await (proposals as MemoryProposals).undo(made, requestId);
+        for (const uri of made === undefined ? [] : [made, ...others]) {
+          if (!("undo" in proposals)) break;
+          const undone = await (proposals as MemoryProposals).undo(uri, requestId);
           if (undone === "gone" && "forget" in reservations) {
-            const proposal = made.split("/").at(-1) ?? "";
+            const proposal = uri.split("/").at(-1) ?? "";
             await (reservations as MemoryReservations).forget(scope.tenant, proposal);
           }
         }

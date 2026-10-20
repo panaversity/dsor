@@ -61,13 +61,21 @@ import { newReads, stalest, type Freshness } from "./freshness.ts";
 import type { InvoiceStore } from "./invoice.ts";
 import {
   checkLimits,
+  checkRunDay,
   limitsOf,
   NO_RESERVATIONS,
   type Conversion,
   type Unconvertible,
   type ReservationStore,
 } from "./limits.ts";
-import { decisionOf, type Authority, type Decision, type DecisionLog, type Read } from "./log.ts";
+import {
+  decisionOf,
+  type Authority,
+  type Decision,
+  type DecisionLog,
+  type Mover,
+  type Read,
+} from "./log.ts";
 import { NO_PAYMENTS, unlocked, type PaymentStore } from "./payment.ts";
 import { checkResultSize } from "./pages.ts";
 import { checkPermission, effectivePermissions, permissionsOf } from "./permissions.ts";
@@ -83,7 +91,9 @@ import {
   proposalIdOf,
   requesterOf,
   urisIn,
+  type Decided,
   type Opening,
+  type ProposalDraft,
   type Proposal,
   type ProposalStore,
   type Requester,
@@ -111,14 +121,22 @@ import {
   type RequestEnvelope,
 } from "./request.ts";
 import { semanticsOf } from "./semantics.ts";
-import { checkRunShape } from "./run.ts";
+import {
+  batchOf,
+  checkRunShape,
+  lineKeyOf,
+  lineOperationOf,
+  totalsOf,
+  type LineRead,
+  type RunLine,
+} from "./run.ts";
 import { checkExclusive, countInFlight, exclusiveOf } from "./inflight.ts";
 import { checkFreshness, checkPreconditions } from "./preconditions.ts";
 import { lookFor, type OwnWork } from "./revocation.ts";
 import { NO_SLIPS, type Slip, type SlipStore } from "./slips.ts";
 import { suspendThenRefuse } from "./suspensions.ts";
 import { activeTenant, checkNamedTenants, checkUrisInTenant } from "./tenants.ts";
-import { isTenantId, parseUri } from "./uri.ts";
+import { formatUri, isTenantId, parseUri } from "./uri.ts";
 
 // The observer is told each line's number as it runs, and only a test
 // listens (step 07's README, decision 6).
@@ -456,8 +474,16 @@ export async function call(
     const own = registry.own.get(name);
     // Or DSoR's own read, for a query over DSoR's own store.
     const ownRead = registry.reads.get(name);
+    // NEW IN STEP 41: or a run, whose lines are the operation its contract names, each checked by
+    //   that operation's contract and drafted by its code (step 41's README, decision D5).
+    const lineContract =
+      batchOf(contract) === undefined
+        ? undefined
+        : registry.contracts.get(lineOperationOf(contract) ?? "");
+    const lineCode =
+      lineContract === undefined ? undefined : registry.handlers.get(lineContract.id);
     // And a release, which runs the code of the proposal it loads.
-    if (!handler && !own && !ownRead && !releases(contract)) {
+    if (!handler && !own && !ownRead && !releases(contract) && lineCode === undefined) {
       throw new Refusal("UNSUPPORTED_CAPABILITY", `${preview(name)} is not built yet`);
     }
     // A command's code runs. Step 04's decision 1 refused every command
@@ -542,16 +568,18 @@ export async function call(
       // And the request asked about, the call's own unless a release names the
       //   stored one (DSOR-APR-03a).
       asked: Asked = asCalled(),
+      // NEW IN STEP 41: and, for a line of a run, no booking of its own for the day, which its run
+      //   books once for all its lines, and who to tell what line ⑨ read (DSOR-BAT-02b; step 41's
+      //   README, claim C4).
+      ofLine: { seen: (bound: Bound) => void } | undefined = undefined,
       // It answers the approvals a control asks for, when one does.
     ): Promise<Requirement[] | undefined> => {
       const { contract, copy, own } = asked;
-      const limits = limitsOf(asked.slip);
-      const {
-        state,
-        invoices: read,
-        spends,
-        resources,
-      } = await line(9, async () => {
+      const all = limitsOf(asked.slip);
+      // A line's day is its run's, so only the limit for one payment is the line's own.
+      const perPayment = all.per_payment === undefined ? {} : { per_payment: all.per_payment };
+      const limits = ofLine === undefined ? all : perPayment;
+      const bound = await line(9, async () => {
         // Each record line ⑨ reads goes into the notebook of evidence as it is read, one that
         //   is not there too, before any refusal. One call reads at line ⑨ once (step 33's README,
         //   D5).
@@ -644,6 +672,8 @@ export async function call(
         //   was paid without the CFO (step 32's README, decision D9).
         return bound;
       });
+      const { state, invoices: read, spends, resources } = bound;
+      ofLine?.seen(bound);
       boundInvoices = read;
       boundResources = resources;
       return await line(10, async () => {
@@ -963,7 +993,185 @@ export async function call(
     //   place, after the intent record (step 24's README, decision 6).
     // And the job it runs: the call's own code and input, or, for a release, the
     //   code of the operation the proposal holds and the request it stored (DSOR-APR-10).
-    type Job = { handler: Handler | undefined; own: OwnWork | undefined; input: unknown };
+    // NEW IN STEP 41: a run, at lines ⑧ to ⑩. Each line becomes a proposal of its own, of the
+    //   operation the run's contract names, tied to the run, with a key DSoR derives from the run's
+    //   key and the line's invoice. Each line passes lines ⑨ and ⑩ as one draft would, in the order
+    //   of the lines, with no booking of its own. Then the day's limit is checked once, against the
+    //   run's total, by one booking keyed by the run. The first line refused, or a total that does
+    //   not fit, refuses the whole run before anything is drafted: the run and every line end DENIED.
+    //   Otherwise each line waits as its own checks say, and the run waits for every approval its
+    //   lines ask for (DSOR-BAT-01b, DSOR-BAT-02b; step 41's README, decisions D2, D5, D6, and D7).
+    type LinePlan = {
+      index: number;
+      id: string;
+      line: RunLine;
+      requires?: Requirement[];
+      bound?: Bound;
+    };
+    // The run's lines, once line ⑧ has opened them, which its work and its last move read.
+    let runPlans: LinePlan[] = [];
+    const decideRun = async (
+      stores: WorkStores,
+      runUri: string,
+      runKey: string,
+    ): Promise<Refusal | Decided> => {
+      if (lineContract === undefined) throw new Error("a run with no contract for its lines");
+      const runId = proposalIdOf(tenant, runUri);
+      const asked = asCalled();
+      const { requester } = asked;
+      const dsor = dsorMover(requester);
+      const operation = `${lineContract.id}@${String(lineContract["version"])}`;
+      const { lines } = copy as { lines: RunLine[] };
+      // Every line's proposal first, so each line has a record of its own, one the checks never
+      //   reached too.
+      runPlans = [];
+      for (const [index, line] of lines.entries()) {
+        const id = `prop_${randomUUID()}`;
+        const exclusive = exclusiveOf(lineContract, line);
+        const draft: ProposalDraft = {
+          operation,
+          mode,
+          payload: line,
+          payload_hash: payloadHash(line),
+          resources: urisIn(line),
+          requester,
+          idempotency_key: lineKeyOf(runKey, line.invoice),
+          ...(exclusive === undefined ? {} : { exclusive_over: exclusive }),
+          run: runUri,
+        };
+        const cause = `${lineContract.id} called as line ${index + 1} of run ${runId}`;
+        const by = { mover: callerMover(requester), cause, correlation };
+        await stores.proposals.create(tenant, id, draft, by, lifetimeOf(registry, tenant));
+        runPlans.push({ index, id, line });
+      }
+      // The run is refused, so every line ends DENIED with it, each with the reason.
+      const denyAll = async (cause: string): Promise<void> => {
+        for (const plan of runPlans) {
+          const by = { mover: dsor, cause, correlation };
+          if (!(await stores.proposals.move(tenant, plan.id, "PROPOSED", "DENIED", by))) {
+            throw new Error(`the line ${plan.id} was no longer PROPOSED`);
+          }
+        }
+      };
+      // Each line's controls, in the order of the lines, for the run's record.
+      const evaluated: ControlOutcome[] = [];
+      for (const plan of runPlans) {
+        try {
+          plan.requires = await decideBeforeWork(
+            stores.invoices,
+            stores.reservations,
+            stores.slips,
+            stores.brakes,
+            stores.rates,
+            stores.controls,
+            stores.proposals,
+            { payments: stores.payments, holds: stores.holds },
+            plan.id,
+            { ...asked, contract: lineContract, copy: plan.line },
+            { seen: (bound) => (plan.bound = bound) },
+          );
+          evaluated.push(...(controlsOfRecord ?? []));
+          controlsOfRecord = undefined;
+        } catch (thrown) {
+          if (!isOutcome(thrown)) throw thrown;
+          await denyAll(`line ${plan.index + 1} of its run was refused: ${thrown.code}`);
+          const words = `line ${plan.index + 1} of ${JSON.stringify(contract.id)}: ${thrown.message}`;
+          return new Refusal(thrown.code, words, thrown.label);
+        }
+      }
+      if (evaluated.length > 0) controlsOfRecord = evaluated;
+      // What each line spends, and its vendor, as line ⑨ read them: the vendor of the invoice it
+      //   read, by its address. A line that passed its preconditions has both.
+      const reads: LineRead[] = runPlans.map((plan) => {
+        const spends = plan.bound?.spends;
+        const vendorId = Object.values(plan.bound?.invoices ?? {})[0]?.vendor_id;
+        if (spends === undefined || vendorId === undefined) {
+          throw new Error(`line ${plan.index + 1} of a run has no amount or no vendor`);
+        }
+        return { spends, vendor: formatUri({ tenant_id: tenant, entity: "vendor", id: vendorId }) };
+      });
+      // The day's limit, once, against the whole run.
+      try {
+        await checkRunDay({
+          operation: contract.id,
+          tenant,
+          slip: asked.slip?.id,
+          limits: limitsOf(asked.slip),
+          amounts: reads.map((read) => read.spends),
+          store: stores.reservations,
+          reserveFor: runId,
+          rates: readOnce(stores.rates),
+          policy: registry.moneyPolicies.get(tenant),
+          converted: (conversion) => {
+            const before = conversionOfRecord?.rates ?? {};
+            conversionOfRecord = { ...conversion, rates: { ...before, ...conversion.rates } };
+          },
+          unconvertible: (cause) => {
+            unconvertibleOfRecord = cause;
+          },
+          noted: (one) => {
+            evidence.converted.push(one);
+          },
+        });
+      } catch (thrown) {
+        if (!isOutcome(thrown)) throw thrown;
+        await denyAll(`its run was refused: ${thrown.code}`);
+        return thrown;
+      }
+      // Each line waits as its own checks say: for its approvals, or READY for its run.
+      for (const plan of runPlans) {
+        const asks = plan.requires;
+        const to = asks === undefined ? "READY" : "PENDING_APPROVAL";
+        const cause =
+          asks === undefined
+            ? "no control asks for an approval"
+            : `the control ${asks.map((r) => r.control).join(", ")} asks for an approval`;
+        const by = { mover: dsor, cause, correlation };
+        if (!(await stores.proposals.move(tenant, plan.id, "PROPOSED", to, by, asks))) {
+          throw new Error(`the line ${plan.id} was no longer PROPOSED`);
+        }
+      }
+      // The run waits for every approval its lines ask for, each once.
+      const waitsFor = new Map<string, Requirement>();
+      for (const plan of runPlans) {
+        for (const r of plan.requires ?? []) {
+          waitsFor.set(JSON.stringify([r.control, r.control_version]), r);
+        }
+      }
+      const totals = totalsOf(reads);
+      if (waitsFor.size > 0) return { requires: [...waitsFor.values()], totals };
+      // In execute mode the work starts now, for every line with its run.
+      if (mode === "execute") {
+        for (const plan of runPlans) {
+          const by = { mover: dsor, cause: "execute mode: the work starts", correlation };
+          if (!(await stores.proposals.move(tenant, plan.id, "READY", "EXECUTING", by))) {
+            throw new Error(`the line ${plan.id} was no longer READY`);
+          }
+        }
+      }
+      return { totals };
+    };
+    // A run's lines end as their run ends: COMMITTED, FAILED, or OUTCOME_UNKNOWN, each move with
+    //   its record (step 41's README, claim C3).
+    const closeLines = async (stores: WorkStores, outcome: Ended, by: Mover): Promise<void> => {
+      const ended = "value" in outcome;
+      const unknown = !ended && outcome.refused.code === "OUTCOME_UNKNOWN";
+      const to = ended ? "COMMITTED" : unknown ? "OUTCOME_UNKNOWN" : "FAILED";
+      for (const plan of runPlans) {
+        const move = { mover: by, cause: `its run ended ${to}`, correlation };
+        if (!(await stores.proposals.move(tenant, plan.id, "EXECUTING", to, move))) {
+          throw new Error(`the line ${plan.id} was no longer EXECUTING`);
+        }
+      }
+    };
+
+    // NEW IN STEP 41: and, for a run, its lines, each drafted by the code with its own read.
+    type Job = {
+      handler: Handler | undefined;
+      own: OwnWork | undefined;
+      input: unknown;
+      lines?: readonly LinePlan[];
+    };
     // The proposal the work runs for, once line ⑧ has opened or loaded it. The bank's
     //   key is derived from it, so every attempt at one payment carries one key (DSOR-IDM-03,
     //   DSOR-IDM-04; step 35's README, decision D3).
@@ -1045,6 +1253,28 @@ export async function call(
               events,
             };
             returned = await job.own.change(job.input, work);
+          } else if (job.lines !== undefined && job.handler !== undefined) {
+            // NEW IN STEP 41: a run's work: each line's code, in the order of the lines, each
+            //   pinned to what its own line ⑨ read, each with the event of what it changed, in the
+            //   claim's one transaction. So every line's draft commits with the run, or none does:
+            //   a refusal of any line undoes them all (step 41's README, claim C3). A line drafts,
+            //   and sends no money, so it has no bank (decision D1).
+            const events = eventWriter(
+              stores.outbox,
+              tenant,
+              correlation,
+              registry.classifications,
+            );
+            const drafts: unknown[] = [];
+            for (const plan of job.lines) {
+              const changes: PaymentChange[] = [];
+              const own = pinned(noting(stores.payments, changes), plan.bound?.invoices ?? {});
+              const company = companyOf(stores.invoices, tenant, reads, own, NO_BANK);
+              drafts.push(checkAnswerInTenant(await job.handler(plan.line, company), tenant));
+              const operation = lineContract?.id ?? "";
+              await eventsOfCode(operation, plan.line, changes, tenant, stores.payments, events);
+            }
+            returned = { payments: drafts };
           } else if (job.handler !== undefined) {
             // And the company's bank, for an operation that sends money, with a
             //   proposal. The code sends an order; DSoR adds the key and waits, and the code never
@@ -1607,6 +1837,11 @@ export async function call(
                 resources: urisIn(copy),
                 requester: requesterOf(caller, under, tenant, new Date().toISOString()),
                 idempotency_key: scope.key,
+                // NEW IN STEP 41: and a run's fingerprint, over its lines in their order
+                //   (DSOR-BAT-02a; step 41's README, decision D4).
+                ...(lineContract === undefined
+                  ? {}
+                  : { manifest_hash: payloadHash((copy as { lines: RunLine[] }).lines) }),
                 // And the record its operation is exclusive over, for the database's
                 //   key (DSOR-EXC-01; step 32's README, decision D7).
                 ...(exclusiveOf(contract, copy) === undefined
@@ -1648,6 +1883,14 @@ export async function call(
                       //   So the tear-up cancels a prepared draft, never leaves it READY (step 25c's
                       //   README, decision D12).
                       await holdSlip(caller, contract, under?.delegation, slips, tenant);
+                      // NEW IN STEP 41: a run decides each of its lines, and its total.
+                      if (lineContract !== undefined) {
+                        const decided = await decideRun(stores, proposal, scope.key);
+                        if (!("code" in decided) && decided.requires === undefined) {
+                          if (mode === "execute") presealed(proposal);
+                        }
+                        return decided;
+                      }
                       const requires = await decideBeforeWork(
                         invoices,
                         reservations,
@@ -1675,6 +1918,10 @@ export async function call(
               //   (DSOR-DEL-06c, DSOR-DEL-06d; step 24's README, decision 7).
               close: async (stores, proposal, outcome) => {
                 await closeProposal(stores.proposals, opening, proposal, outcome);
+                // NEW IN STEP 41: and a run's lines, with it.
+                if (lineContract !== undefined) {
+                  await closeLines(stores, outcome, dsorMover(opening.draft.requester));
+                }
                 const id = proposalIdOf(tenant, proposal);
                 // And its note, if the work wrote one.
                 await endNote(stores, tenant, id, outcome);
@@ -1682,6 +1929,17 @@ export async function call(
                 else if (!isUnknown(outcome)) await stores.reservations.release(tenant, id);
               },
             };
+            // NEW IN STEP 41: a run's work drafts its lines, read once line ⑧ has opened them.
+            const work =
+              lineContract === undefined
+                ? runCode
+                : (stores: WorkStores) =>
+                    runCode(stores, {
+                      handler: lineCode,
+                      own: undefined,
+                      input: copy,
+                      lines: runPlans,
+                    });
             return {
               scope,
               claimed: await registry.claims.run(
@@ -1689,7 +1947,7 @@ export async function call(
                 hash,
                 mode,
                 correlation.request_id,
-                runCode,
+                work,
                 steps,
                 (stores, claimed) => sealWith(scope, stores, claimed),
               ),

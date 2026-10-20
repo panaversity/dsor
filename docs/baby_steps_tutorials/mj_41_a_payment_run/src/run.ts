@@ -2,7 +2,10 @@
 // specs/dsor/01-model.md, section 8; step 41's README, decisions D1 to D7). A run's contract
 // declares a batch, how the run ends and how many lines it may hold, and names, under this
 // tutorial's own name, the operation each line is: payment.run's lines are payment.create.
+import { createHash } from "node:crypto";
 import { Refusal } from "./envelope.ts";
+import { sumOf } from "./limits.ts";
+import type { Money } from "./money.ts";
 import type { Contract } from "./registry.ts";
 
 const OURS = "org.panaversity.steps";
@@ -95,4 +98,47 @@ export function checkRunShape(contract: Contract, input: unknown): void {
     }
     first.set(line.invoice, index);
   }
+}
+
+/**
+ * A line's own idempotency key, derived by DSoR from the run's key and the line's invoice, never
+ * given by the caller: the same run sent again with the same key gives every line the same key
+ * (DSOR-BAT-01b; step 41's README, decision D6). The two are hashed as one JSON list, so no run
+ * key and invoice can be written to look like another pair.
+ */
+export function lineKeyOf(runKey: string, invoice: string): string {
+  const digest = createHash("sha256")
+    .update(JSON.stringify([runKey, invoice]))
+    .digest("hex");
+  return `line_${digest}`;
+}
+
+/** One vendor's total in one currency: the counterparty of DSOR-BAT-02a, by its address. */
+export type VendorTotal = { vendor: string; amount: Money };
+
+/** What a run's approval binds to beside its fingerprint: its totals per currency and per vendor. */
+export type RunTotals = { totals: Money[]; vendor_totals: VendorTotal[] };
+
+/** What line ⑨ read of one line: the amount it spends, and the address of its vendor. */
+export type LineRead = { spends: Money; vendor: string };
+
+/**
+ * A run's totals, added up from what line ⑨ read of each line: one per currency, in the order of
+ * the currencies' codes, and one per vendor and currency, in the order of the vendors' addresses
+ * (DSOR-BAT-02a; step 41's README, decision D4).
+ */
+export function totalsOf(lines: readonly LineRead[]): RunTotals {
+  const byCurrency = new Map<string, Money[]>();
+  const byVendor = new Map<string, Money[]>();
+  for (const { spends, vendor } of lines) {
+    byCurrency.set(spends.currency, [...(byCurrency.get(spends.currency) ?? []), spends]);
+    const key = JSON.stringify([vendor, spends.currency]);
+    byVendor.set(key, [...(byVendor.get(key) ?? []), spends]);
+  }
+  const totals = [...byCurrency.keys()].sort().map((currency) => sumOf(byCurrency.get(currency)!));
+  const vendor_totals = [...byVendor.keys()].sort().map((key) => {
+    const [vendor] = JSON.parse(key) as [string, string];
+    return { vendor, amount: sumOf(byVendor.get(key)!) };
+  });
+  return { totals, vendor_totals };
 }

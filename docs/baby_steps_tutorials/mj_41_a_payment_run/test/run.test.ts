@@ -7,6 +7,7 @@ import { payloadHash } from "../src/canonical.ts";
 import type { Answer } from "../src/envelope.ts";
 import type { Invoice } from "../src/invoice.ts";
 import { money } from "../src/money.ts";
+import { handlersFor } from "../src/operations.ts";
 import { lineKeyOf, runProblems } from "../src/run.ts";
 import { AGENT, contract, keyed, SUPERVISOR, without } from "./helpers.ts";
 import { ruleWorld, type RuleWorld } from "./rule-world.ts";
@@ -272,5 +273,24 @@ describe("C6 and C7: a run that waits", () => {
     const alone = await w.draft("INV-1008", SUPERVISOR);
     expect(alone).toMatchObject({ code: "CONFLICT" });
     expect(w.drafted).toStrictEqual([]);
+  });
+});
+
+describe("C3: an accident keeps nothing of a run", () => {
+  // Memory has no transaction, so its claim undoes what an accident left, as the database's
+  //   rollback does: every proposal the call made, the run and each line, and the run's booking.
+  it("step 41's decision D2: C3: an accident in a run's work leaves no proposal, line or run, and no booking", async () => {
+    const broken = {
+      ...handlersFor(),
+      "payment.create": async (): Promise<never> => {
+        throw new Error("a bug in the company's code");
+      },
+    };
+    const u = undefined;
+    const w = ruleWorld(u, u, u, u, u, u, u, u, u, broken);
+    const answer = await w.ask(keyed(AGENT), "payment.run", RUN_B);
+    expect(answer).toMatchObject({ code: "INTERNAL_ERROR" });
+    expect(await w.proposals.all()).toStrictEqual([]);
+    expect(await w.reservations.all()).toStrictEqual([]);
   });
 });
