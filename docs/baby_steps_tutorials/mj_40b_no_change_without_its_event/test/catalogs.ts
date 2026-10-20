@@ -29,6 +29,10 @@ export const PAYMENT_TRIGGER =
   "CREATE TRIGGER payments_version BEFORE UPDATE ON app.payments FOR EACH ROW EXECUTE FUNCTION app.next_version()";
 // NEW IN STEP 40b: a payment drafted or marked paid needs its event, checked at COMMIT (step 40b's
 //   README, decisions D1 and D7).
+// NEW IN STEP 40b: paid is final, and a payment keeps its number and its company (step 40b's
+//   README, decision D8; found by its review, H1).
+export const PAYMENT_STAYS_TRIGGER =
+  "CREATE TRIGGER payments_stay BEFORE UPDATE ON app.payments FOR EACH ROW EXECUTE FUNCTION dsor.payment_stays()";
 export const PAYMENT_EVENT_TRIGGER =
   "CREATE CONSTRAINT TRIGGER payment_has_its_event AFTER INSERT OR UPDATE OF status ON app.payments DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION dsor.payment_has_its_event()";
 // The guard on proposals, the one trigger on DSoR's own side (step 22's README,
@@ -358,7 +362,7 @@ export function today(): Catalog {
         }),
         rowSecurity: { enabled: true, forced: true },
         rules: [],
-        triggers: [PAYMENT_EVENT_TRIGGER, PAYMENT_TRIGGER],
+        triggers: [PAYMENT_EVENT_TRIGGER, PAYMENT_STAYS_TRIGGER, PAYMENT_TRIGGER],
       },
       // Step 32's vendors, read and never written, as invoices are (step 32's README, decision D1).
       {

@@ -19,6 +19,7 @@ import {
   EVENT_CHANGE_TRIGGER,
   INVOICE_TRIGGER,
   PAYMENT_EVENT_TRIGGER,
+  PAYMENT_STAYS_TRIGGER,
   PAYMENT_TRIGGER,
   PROPOSAL_ALERT,
   PROPOSAL_TRIGGER,
@@ -353,6 +354,8 @@ describe("C8 and C11: the version in a read, and the triggers in the catalog", (
       INVOICE_TRIGGER,
       // Changed in step 40: and the guard on an event's mark (step 40's README, decision D2).
       OUTBOX_TRIGGER,
+      // Changed in step 40b: and the guard that keeps paid final (step 40b's README, decision D8).
+      PAYMENT_STAYS_TRIGGER,
       PAYMENT_TRIGGER,
       // Changed in step 38b: and the proposals' trigger that raises and closes an alert.
       PROPOSAL_ALERT,

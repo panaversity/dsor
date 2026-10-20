@@ -53,6 +53,7 @@
       },
       "triggers": [
         "CREATE CONSTRAINT TRIGGER payment_has_its_event AFTER INSERT OR UPDATE OF status ON app.payments DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION dsor.payment_has_its_event()",
+        "CREATE TRIGGER payments_stay BEFORE UPDATE ON app.payments FOR EACH ROW EXECUTE FUNCTION dsor.payment_stays()",
         "CREATE TRIGGER payments_version BEFORE UPDATE ON app.payments FOR EACH ROW EXECUTE FUNCTION app.next_version()"
       ]
     },

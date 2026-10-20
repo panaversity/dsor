@@ -10,6 +10,7 @@ import {
   INVOICE_TRIGGER,
   OUTBOX_TRIGGER,
   PAYMENT_EVENT_TRIGGER,
+  PAYMENT_STAYS_TRIGGER,
   PAYMENT_TRIGGER,
   PROPOSAL_ALERT,
   PROPOSAL_TRIGGER,
@@ -363,7 +364,7 @@ describe("C11: each trigger is the one the map names", () => {
   // Changed in step 40b: app.payments keeps its event check, so the test changes one thing.
   it("step 21's decision 11: the version trigger missing from app.payments is a difference", () => {
     const found = differencesWith((c) => {
-      relationIn(c, "app.payments").triggers = [PAYMENT_EVENT_TRIGGER];
+      relationIn(c, "app.payments").triggers = [PAYMENT_EVENT_TRIGGER, PAYMENT_STAYS_TRIGGER];
     });
     expect(found).toStrictEqual([
       `store.json names the trigger ${PAYMENT_TRIGGER}, which the database does not have`,
@@ -374,10 +375,19 @@ describe("C11: each trigger is the one the map names", () => {
   //   change, does not start (step 40b's README, claim C5).
   it("DSOR-EVT-01a: C5: the check that a payment's change has its event, missing, is a difference, so start-up refuses", () => {
     const found = differencesWith((c) => {
-      relationIn(c, "app.payments").triggers = [PAYMENT_TRIGGER];
+      relationIn(c, "app.payments").triggers = [PAYMENT_STAYS_TRIGGER, PAYMENT_TRIGGER];
     });
     expect(found).toStrictEqual([
       `store.json names the trigger ${PAYMENT_EVENT_TRIGGER}, which the database does not have`,
+    ]);
+  });
+
+  it("DSOR-EVT-01a: H1: the guard that keeps paid final, missing, is a difference, so start-up refuses", () => {
+    const found = differencesWith((c) => {
+      relationIn(c, "app.payments").triggers = [PAYMENT_EVENT_TRIGGER, PAYMENT_TRIGGER];
+    });
+    expect(found).toStrictEqual([
+      `store.json names the trigger ${PAYMENT_STAYS_TRIGGER}, which the database does not have`,
     ]);
   });
 

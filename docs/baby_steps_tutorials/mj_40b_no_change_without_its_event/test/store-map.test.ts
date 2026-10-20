@@ -7,6 +7,7 @@ import {
   INVOICE_TRIGGER,
   OUTBOX_TRIGGER,
   PAYMENT_EVENT_TRIGGER,
+  PAYMENT_STAYS_TRIGGER,
   PAYMENT_TRIGGER,
   PROPOSAL_ALERT,
   PROPOSAL_TRIGGER,
@@ -318,8 +319,10 @@ describe("C11: the map names each trigger", () => {
     expect(map.tables.get("app.invoices")!.triggers).toStrictEqual([INVOICE_TRIGGER]);
     // Changed in step 40b: and the check that a payment's change has its event, first in the
     //   order of their text (step 40b's README, decision D1).
+    // And, since its review, H1, the guard that keeps paid final (decision D8).
     expect(map.tables.get("app.payments")!.triggers).toStrictEqual([
       PAYMENT_EVENT_TRIGGER,
+      PAYMENT_STAYS_TRIGGER,
       PAYMENT_TRIGGER,
     ]);
   });
@@ -602,7 +605,7 @@ describe("step 17's C7: the kind business-written", () => {
         },
       },
       // Changed in step 40b: and the check that a payment's change has its event.
-      triggers: [PAYMENT_EVENT_TRIGGER, PAYMENT_TRIGGER],
+      triggers: [PAYMENT_EVENT_TRIGGER, PAYMENT_STAYS_TRIGGER, PAYMENT_TRIGGER],
     });
   });
 
