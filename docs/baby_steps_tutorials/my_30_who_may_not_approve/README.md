@@ -1,76 +1,63 @@
-# Step 27 · Controls in CEL
+# Step 30 · Who may not approve
 
-**New in this step:** the company's policy becomes a *control*, a rule written in CEL with its owner,
-the policy it came from, and test cases that must pass before it is switched on; DSoR evaluates it at
-every payment.
+**New in this step:** an approval is a second person looking. The person who asked for a proposal,
+or who signed the slip an agent asked under, may not approve it; an agent never approves; and a
+control that asks for two approvals gets two people, not one person twice.
 
 ## In plain words
 
-org_456's finance policy says: "Payments above 25,000 USD or equivalent require CFO approval." It
-lives in KSoR, the company's record of what it knows, as version 4 of
-`finance/payment-approval-policy`. Until this step, nothing in DSoR knew it. `del_100` lets the agent
-pay up to 50,000.00 USD a payment, so the agent's 31,400.00 USD payment for INV-1008 was made, and no
-CFO ever saw it.
+In step 29 the CFO approves user_123's payment. That works because two people are involved: user_123
+asked, and the CFO looked.
 
-A policy is English, and a program cannot run English. Someone translates the sentence into a
-condition a program can evaluate. That translation is a **control**:
+Now the CFO may make a payment herself. Her 31,400.00 USD payment is above her own control's line,
+so it waits for the CFO. Without this step, she approves it: one person asks, and the same person
+says yes. The control is satisfied on paper, and nobody else ever looked.
+
+So §21.9 asks one more question before an approval is kept. Is the approver in the proposal's
+**requesting chain**?
 
 ```text
-policy (KSoR, v4)   "Payments above 25,000 USD or equivalent require CFO approval."
-control (DSoR, v8)  dsor_exceeds(input.amount, dsor_money("25000", "USD"))  →  REQUIRE_APPROVAL by the CFO
+cfo_100 asks for prop_N               →  cfo_100 may not approve prop_N
+the agent asks under del_300,
+  which cfo_100 signed                →  cfo_100 may not approve it either
+user_123 asks                         →  cfo_100 approves
 ```
 
-The condition is written in **CEL**, the Common Expression Language. CEL works like the condition of
-an `if` statement. It cannot loop forever, call the network, or read anything it was not handed. What
-it is handed is listed in the specification's
-[Appendix B](../../../specs/dsor/appendix-b-cel.md): eight variables, such as `input`, the payment's
-arguments, and `principal`, who is asking, and the money functions. `dsor_exceeds` is step 26's
-`exceeds`, so 50,000,000.00 PKR is compared exactly, at the company's own rates.
+The chain is read from what the proposal **recorded when it was made**, never from the approval
+request, so nobody can name somebody else as the requester; and the slip's signer is read from the
+slip itself. A requester the program cannot read is refused to everyone. The refusal is
+`SOD_VIOLATION`, short for separation of duties, and a retry cannot help.
 
-A control is kept in DSoR's own store, `dsor.controls`, with its owner (`cfo_100`), the policy
-sentence and version it came from, and five **test cases**. It arrives *in review*. Switching it on
-runs every case, with the exchange rates the case pins, and refuses if one gives the wrong answer.
-
-Once it is on, every payment is checked, a person's as well as the agent's. Above the line, the
-payment does not run: its proposal waits at **PENDING_APPROVAL**, its amount still booked against the
-day, and the caller is told who must approve, how many, and until when. Nobody can approve it until
-step 29. If the condition cannot be evaluated, a currency with no rate, say, the control applies:
-a rule that crashes is never "no rule today".
+Two more rules close the same gap from other sides. An agent never approves, even when its slip
+names `proposal:approve`. And a control that asks for two CFO approvals counts **people**: the CFO
+approving twice is still one, even when her two requests arrive at the same moment.
 
 ## Why it matters
 
-Each quick fix for the CFO's policy is a hole:
+- **One person asks and approves.** The control exists so that a payment above 25,000 USD has a
+  second pair of eyes. When the asker can also approve, it has one, and the evidence says it had
+  two.
+- **Asking through the agent.** The CFO signs a slip for the agent, and the agent asks. The CFO is
+  still the one asking, through the agent, so she still may not approve it.
+- **A quorum of one.** "Two approvals" kept as two rows by the same person is a single opinion
+  counted twice.
 
-- **Write it in TypeScript**, `if (amount > 25000)`. The CFO cannot read it or test it, nobody can
-  walk from a payment back to the sentence that allowed it, and changing the policy needs a
-  programmer.
-- **Write it as numbers and a currency name**, `amount > 25000 && currency == "USD"`. 50,000,000.00
-  PKR, about 178,571 USD, goes straight through, because it is not in dollars. Measured below.
-- **Skip a rule that crashes.** On the day the rate service is down, a rule that cannot convert would
-  mean no rule at all.
-
-## What changed since step 26b
+## What changed since step 29
 
 ```bash
 # in Git Bash on Windows
-diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_26b_the_start_up_gaps ../my_27_controls_in_cel
+diff -r --exclude=node_modules --exclude=.env --exclude=.local-database ../my_29_approvals ../my_30_who_may_not_approve
 ```
 
 | File | What |
 | --- | --- |
-| `src/cel.ts` | new — Appendix B's environment: eight variables, `dsor_money`, `dsor_exceeds` and `dsor_covers` over step 26's exact comparisons; `checkCondition` refuses a name outside it, `matches`, and anything that is not true or false |
-| `src/policy-controls.ts` | new — the controls in the store; `evaluateControl`, which applies a control whose condition cannot be evaluated and denies one that cannot be read; `mostRestrictive`; `switchOn`, which runs the cases |
-| `migrations/028_controls.sql` | new — `dsor.controls`, under the second lock; the application reads them and changes a status |
-| `migrations/029_the_cfo_control.sql` | new — org_456's `high-value-payment` v8 on `payment.create`, in review, with its five cases |
-| `migrations/030_the_record_names_its_controls.sql` | new — the log's `controls` column |
-| `migrations/031_a_control_is_only_switched_on.sql` | new — the application may move a waiting control to active, and nothing else |
-| `src/operations.ts` | a new stage, *evaluate the controls*, at §21.10 before the slip's limits; DENY refuses `POLICY_DENIED`; REQUIRE_APPROVAL waits at PENDING_APPROVAL (`waitAt`, from step 23's `prepare`); §21.6 refuses a malformed amount |
-| `src/pipeline.ts`, `src/envelopes.ts`, `src/audit.ts` | the context's controls; the PENDING_APPROVAL receipt; the record's controls, inside the hash |
-| `src/database.ts` | start-up's questions about `dsor.controls` and its second policy; step 26b's review fixes, carried |
-| `src/main.ts` | the control switched on, and a payment above the line waiting for the CFO |
-| `test/cel.test.ts`, `test/controls-store.test.ts`, `test/switching-on.test.ts`, `test/controls-at-the-door.test.ts`, `test/controls-review.test.ts` | new |
-| `test/pipeline.test.ts`, `test/main.test.ts` and four others | the new stage, the demo's counts, the new table |
-| `package.json` | `@marcbachmann/cel-js` 8.0.0, exactly, the CEL library the repository's own specification tests use |
+| `src/approvals.ts` | a proposal to approve carries its requester, as it recorded when it was made, or none when that cannot be read; the quorum counts approvers, not rows |
+| `src/operations.ts` | §21.9's `whoMayApprove` refuses an approver in the requesting chain, `SOD_VIOLATION`: the subject, the slip's signer read from the slip, or an actor |
+| `src/permissions.ts` | the CFO may make a payment, and so there is something she may not approve |
+| `src/main.ts` | the CFO pays 31,400.00 USD herself; it waits for the CFO, and her approval is refused |
+| `test/who-may-not-approve.test.ts` | new |
+| `test/payments.test.ts`, `test/permissions.test.ts`, `test/main.test.ts` | the CFO's new permission, and the demo's new lines |
+| every other file step 29 marked | its `NEW IN STEP 29` markers made plain `STEP 29` |
 
 ## Run it
 
@@ -79,143 +66,132 @@ pnpm install
 pnpm start
 ```
 
-After the money section:
+After the CFO approves user_123's payment:
 
 ```text
-org_456's policy: payments above 25,000 USD or equivalent need the CFO. Its control:
+The CFO pays 31,400.00 USD herself. It waits for the CFO, and she may not approve it:
 
-  case 1  expects ALLOW             gives ALLOW
-  case 2  expects REQUIRE_APPROVAL  gives REQUIRE_APPROVAL
-  case 3  expects REQUIRE_APPROVAL  gives REQUIRE_APPROVAL
-  case 4  expects ALLOW             gives ALLOW
-  case 5  expects REQUIRE_APPROVAL  gives REQUIRE_APPROVAL
-  high-value-payment v8: switched on
-
-user_123              VALIDATED                the decision would be REQUIRE_APPROVAL; nothing was done
-user_123              PENDING_APPROVAL         dsor://org_456/proposal/prop_32  waits for 1 by CFO (high-value-payment v8)
-                                              until 2026-10-22T19:22:52.249Z
-accounts-payable-fte  COMMITTED                dsor://org_456/payment/PAY-916  draft      compensatable
-                        withheld: amount (clearance)
+cfo_100               PENDING_APPROVAL         dsor://org_456/proposal/prop_39  waits for 1 by CFO (high-value-payment v8)
+                                              until 2026-10-23T14:41:46.822Z
+cfo_100               SOD_VIOLATION            retry: never                cfo_100 asked for prop_39, and may not approve it
 ```
 
-The five cases run before the control is switched on. Then user_123 asks first, with a dry run, and
-is told the decision would be REQUIRE_APPROVAL. The real payment waits for one approval by the CFO,
-for 72 hours, and nothing is paid. The agent's 2,500.00 USD is below the line, and is made. Run it a
-second time, without deleting `.local-database`, and the control says it is on already; the agent's
-2,500.00 is then past the day's limit.
+The CFO's payment, `prop_39`, waits for the CFO: her own control holds it, as it holds anyone's. Her
+approval is refused `SOD_VIOLATION`, retry `never`, and nothing is kept. The end of org_456's log:
+
+```text
+210  move   payment.create@1     cfo_100                PROPOSED prop_39        sha256:3725ea1...
+211  ALLOW  payment.create@1     cfo_100                PENDING_APPROVAL        sha256:abccf4f...
+212  move   payment.create@1     cfo_100                PENDING_APPROVAL prop_39  sha256:db29cd5...
+213  move   proposal.approve@1   cfo_100                PROPOSED prop_40        sha256:b07c159...
+214  DENY   proposal.approve@1   cfo_100                SOD_VIOLATION           sha256:b7f4b90...
+215  move   proposal.approve@1   cfo_100                DENIED prop_40          sha256:0b4a51e...
+org_456: 216 records, chain verifies against the head: true
+```
+
+Record 214 is the refusal, a DENY, written before the answer left; her approval request's own
+proposal, `prop_40`, ends DENIED. `prop_39` keeps waiting for a CFO who did not ask for it. This
+story has only one, so it waits until its 72 hours end.
 
 ### The database tier
 
-`pnpm check` needs no server. The seventy-five tests in `pnpm test:db` need two real logins and a
-database of this step's own:
-
 ```bash
-cp ../my_26b_the_start_up_gaps/.env .env     # then dsor_step26b -> dsor_step27 in both lines
+cp ../my_29_approvals/.env .env     # then dsor_step29 -> dsor_step30 in both lines
 pnpm migrate && pnpm test:db
 ```
 
-`pnpm migrate` applies 028 to 031 on a server that has step 26b's twenty-seven. This step adds no
-test to the tier: a control is read through the same store as everything else, and the start-up
-questions about `dsor.controls` are asked of the real server by `test/audit.db.test.ts`. Run on Neon on 2026-10-19, on `dsor_step27`: 75 passed; and 75 again after the review's migration 031.
+This step adds no migration. Run on Neon on 2026-10-20, on `dsor_step30`: 86 passed and 2 skipped,
+as step 29's, because this step adds no table and no command; 86 again after the review's fixes.
 
 ## Break it
 
-Three, each measured on the full suite in a copy outside the repository, where one test skips
-because the specification is not beside it.
+Three, each measured on the full suite in a copy outside the repository. The two questions the
+cross-tenant suite cannot ask `proposal.approve` skip there as they do here, and one more test
+skips, because the specification is not beside the copy.
 
-### Break 1 · the rule written in numbers
+### Break 1 · the person who asked may approve
 
-The map's break. In `migrations/029_the_cfo_control.sql`, change the condition to
-`double(input.amount.value) > 25000.0 && input.amount.currency == "USD"`.
-
-```text
-      Tests  43 failed | 1151 passed | 1 skipped (1195)
-```
-
-The control is never switched on: cases 3 and 5 fail, 50,000,000.00 PKR and a currency with no rate,
-which the rule calls ALLOW. Every test that needs the control on fails with it, and so does the demo,
-which prints `not switched on: high-value-payment v8 failed its own test cases`. Written in numbers,
-the rule is caught before it governs anything.
-
-### Break 2 · a condition that cannot be evaluated allows
-
-In `src/policy-controls.ts`, in `evaluateControl`'s `catch`, answer `outcome: "ALLOW"` instead of the
-control's effect.
+In `src/operations.ts`, in `whoMayApprove`, make the question `subject === principal.id` never true.
 
 ```text
-      Tests  43 failed | 1151 passed | 1 skipped (1195)
+      Tests  6 failed | 1288 passed | 3 skipped (1297)
 ```
 
-The same 43, for a different reason: case 5, 100.00 in XXX, has no rate, and now gives ALLOW, so the
-control again fails its own cases and is never switched on. The case in XXX is there for exactly this.
+The CFO approves her own payment. The step's own test fails, and so do five of the demo's, because
+the demo's `SOD_VIOLATION` line becomes `COMMITTED` and the log has an approval where it had a
+refusal.
 
-### Break 3 · a payment that needs the CFO runs anyway
+### Break 2 · the slip's signer may approve
 
-In `src/operations.ts`, make `needsApproval` answer `false`.
+Make the question `signer === principal.id` never true.
 
 ```text
-      Tests  18 failed | 1176 passed | 1 skipped (1195)
+      Tests  2 failed | 1292 passed | 3 skipped (1297)
 ```
 
-The control is evaluated and recorded, and nobody waits: every payment above the line is made. The
-receipts, the dry run, the replay, the stale control and the demo all say so.
+Two tests fail, and they fail differently. In the first, the agent asked under a slip the CFO
+signed, and she is still refused, as the one who asked: the subject the proposal recorded is the
+slip's signer, so only the words show the check is gone. In the second, the recorded subject is not
+the slip's signer, and she approves. The rule names the signer of the slip, so the slip is what is
+read.
+
+### Break 3 · one person counts as two
+
+In `src/approvals.ts`, in `keepApproval`'s statement, count rows: write `count(*)` where it says
+`count(DISTINCT given.approver)`.
+
+```text
+      Tests  1 failed | 1293 passed | 3 skipped (1297)
+```
+
+One test fails, the one that first drops the table's rule of one approval per person and proposal.
+While that rule stands, one person cannot have two rows, so counting rows and counting people give
+the same answer. The rule is the first lock and the count the second, and each must hold on its own:
+a lock that only ever works behind another is never tested.
 
 ## Build it yourself with Claude Code
 
-Copy `my_26b_the_start_up_gaps` to a new folder, without its `.env`, and ask:
+Copy `my_29_approvals` to a new folder, without its `.env`, and ask:
 
-> Start step 27, controls in CEL. Before any code: show me the agent's 31,400.00 USD payment made
-> with no CFO, and the rule `amount > 25000 && currency == "USD"` letting 50,000,000 PKR through.
-> Then ask me the step's decisions one at a time. Then build it a piece at a time, red first, and
-> break each piece on purpose.
+> Start step 30, who may not approve. Before any code: give the CFO the right to pay, and show me
+> her approving her own 31,400.00 USD payment. Then ask me the step's decisions one at a time. Then
+> build it a piece at a time, red first, and break each piece on purpose.
 
 ## Check yourself
 
-1. Why is the CFO's condition `dsor_exceeds(input.amount, dsor_money("25000", "USD"))` and not
-   `amount > 25000`?
-2. The rate service is down, and user_123 pays 2,800,000.00 PKR. What does the control say, and why?
-3. What happens to a control whose test cases fail?
-4. A payment above the line waits at PENDING_APPROVAL. Is its amount booked against the day?
-5. Why is the brake, `control.suspend`, governed by no control?
+1. Where does DSoR read who asked for a proposal: from the approval request, or from the proposal?
+   Why?
+2. The agent asks under a slip the CFO signed. May the CFO approve it?
+3. A control asks for two CFO approvals. The CFO approves twice. What happens?
+4. Why is `SOD_VIOLATION` never worth retrying?
 
 <details>
 <summary>Answers</summary>
 
-1. `dsor_exceeds` converts to dollars at the company's rates and compares exactly, so 50,000,000.00
-   PKR is above 25,000 USD. A number compared with 25000 knows nothing about currency.
-2. It requires approval. Its condition cannot be evaluated, because the rupees cannot be converted,
-   and a control whose condition cannot be evaluated applies (`DSOR-CTL-07`).
-3. It is not switched on, and governs nothing. The rule written in numbers fails cases 3 and 5.
-4. Yes. It stays booked while it waits, so the day errs toward refusing, never toward paying more.
-5. A brake only ever makes things safer, and must work when the controls cannot be read.
+1. From the proposal, as it recorded when it was made. A request could name anyone as the asker
+   (`DSOR-SOD-02`).
+2. No. She signed the slip the agent asked under, and the rule names a slip's signer, which DSoR
+   reads from the slip itself (`DSOR-SOD-02`).
+3. The second is refused `CONFLICT`, and the proposal keeps waiting for a second person, even when
+   both arrive at once: the approvals are counted as people (`DSOR-SOD-04c`).
+4. Who asked does not change. Only a different person can approve.
 
 </details>
 
 ## The rules this step meets
 
-- **[DSOR-CTL-01a · L1]** A control MUST validate against `control.schema.json` — checked when it is
-  switched on, and a control in force that does not is denied.
-- **[DSOR-CTL-02c · L2]** Activation MUST run the control's test vectors and fail if any vector fails.
-- **[DSOR-CTL-02e · L2]** A test vector that depends on a currency conversion MUST pin the rates it
-  assumes — and those rates, never the live service's, are used.
-- **[DSOR-CTL-05 · L1]** Control conditions MUST be CEL expressions evaluated in the environment of
-  Appendix B — three of its six functions in this step.
-- **[DSOR-CTL-06 · L1]** An expression MUST NOT have access to anything outside that environment.
-- **[DSOR-CTL-07 · L2]** When a control condition fails to evaluate, the control's effect MUST apply.
-- **[DSOR-AUT-02a · L1]** ALLOW, DENY and REQUIRE_APPROVAL. **[DSOR-AUT-02b · L1]** The most
-  restrictive outcome wins.
-- **[DSOR-EXE-02 · L1]** The decision is recorded with the controls evaluated, before the response.
+- **[DSOR-SOD-01a · L2]** A principal of type `agent` MUST NOT act as an approver.
+- **[DSOR-SOD-02 · L2]** Outside owner-approval mode, an approver MUST NOT appear in the requesting
+  chain of the proposal: not the subject, not the delegator of any acting agent, not any actor.
+- **[DSOR-SOD-04c · L2]** Where a control requires a quorum, the approvals MUST come from distinct
+  principals.
 
-**What this step leaves, said plainly.** Nobody can approve a waiting payment until step 29, and
-nothing carries one out until step 31; nothing moves one to EXPIRED when its 72 hours end. Who may
-switch a control on, and what happens when the policy it came from changes, are step 28's: here no
-operation reaches `switchOn`, and the demo calls it in the administrator's place. `dsor_sum`,
-`dsor_in_flight` and `dsor_is_new_counterparty` wait for the steps that need them, and `state` is
-empty until step 32 binds resources. A condition about who is asking cannot be switched on, because
-the schema's test cases have no place for the principal; `payment.create`'s contract still lists no
-controls, since a company's controls are in its own store. Both are questions for the specification
-(decision 164). Everything earlier steps claimed still holds.
+**What this step leaves, said plainly.** Owner-approval mode, where a small company lets the owner
+approve their own request, is not built, so it is never allowed (§16.2). A payment that waits for
+the one person who may not approve it waits until it expires; nothing tells anyone. The CFO's new
+`payment:create` has a cost: she can pay up to her control's 25,000 USD line with nobody else
+looking, because a slip's limits bind an agent and a person logged in has none, and a slip she signs
+can hand that permission to the agent (decision 170). Nothing carries out an APPROVED proposal yet:
+step 31.
 
-**Next:** step 28, `where_a_rule_came_from`: each control points at the policy sentence it was built
-from, a changed policy marks it stale without switching it off, and only the control's human owner
-may switch one on.
+**Next:** step 31, carrying out an approved proposal, checking the world again first.
