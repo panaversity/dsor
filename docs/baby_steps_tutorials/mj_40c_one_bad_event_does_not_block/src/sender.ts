@@ -7,13 +7,8 @@
 import type pg from "pg";
 import { fileChannel } from "./channels.ts";
 import type { DomainEvent } from "./events.ts";
-import { outboxIn, SEND_LIMIT, type Failed, type Outbox, type Sent } from "./outbox.ts";
+import { outboxIn, reasonOf, SEND_LIMIT, type Failed, type Outbox, type Sent } from "./outbox.ts";
 import { inCompany } from "./postgres.ts";
-
-/** The words of a failed delivery, never more than a line. */
-function whyOf(error: unknown): string {
-  return (error instanceof Error ? error.message : String(error)).slice(0, 200);
-}
 
 /** dsor.outbox, one company at a time, as dsor_runtime sees it. */
 export function createDbOutbox(pool: pg.Pool): Outbox {
@@ -63,7 +58,7 @@ export function createDbOutbox(pool: pg.Pool): Outbox {
             await deliver(event);
           } catch (error) {
             held.add(resource);
-            const why = whyOf(error);
+            const why = reasonOf(error);
             failed.push({ event_id, resource, why });
             // The failed try is kept, in this run's transaction; the database raises the event's
             //   alert on its third (step 40c's README, decisions D3, D5, and D8).

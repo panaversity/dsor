@@ -10,7 +10,6 @@ import { eventProblems, type DomainEvent, type EventDraft, type EventType } from
 /** One event in the outbox, and whether it was sent. */
 export type OutboxRow = { event: DomainEvent; sent: boolean };
 
-/** What one run of the sender did for one company. */
 // Changed in step 40c: a run's failures are a list, one for each payment it held back, with the
 //   payment's address, so a person can be told which payment waits (step 40c's README, decision D1).
 /** One event a run could not deliver: its id, its payment's address, and the receiver's reason. */
@@ -77,8 +76,25 @@ export function numbered(tenant: string, draft: EventDraft, ordering_key: number
 }
 
 /** The words of a failed delivery, never more than a line. */
-function whyOf(error: unknown): string {
-  return (error instanceof Error ? error.message : String(error)).slice(0, 200);
+// Changed in step 40c: the reason is kept in dsor.outbox_tries and shown by pnpm send-events, so it
+//   is cleaned first. Found by step 40c's review, H1 and L5: a reason with no words, a NUL byte, or
+//   more than 200 bytes could not be kept and aborted the whole run, and one with a newline forged
+//   a line of the script's output.
+/**
+ * A receiver's reason, as DSoR keeps and shows it: control characters become single spaces, no
+ * reason becomes "the receiver gave no reason", and it is cut to 200 bytes, never inside a character.
+ */
+export function reasonOf(error: unknown): string {
+  const said = (error instanceof Error ? error.message : String(error))
+    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .trim();
+  if (said === "") return "the receiver gave no reason";
+  let cut = "";
+  for (const character of said) {
+    if (Buffer.byteLength(cut + character, "utf8") > 200) break;
+    cut += character;
+  }
+  return cut;
 }
 
 /**
@@ -127,7 +143,7 @@ export function memoryOutbox(): MemoryOutbox {
             failed.push({
               event_id: row.event.event_id,
               resource: row.event.resource,
-              why: whyOf(error),
+              why: reasonOf(error),
             });
             continue;
           }
