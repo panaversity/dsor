@@ -5709,3 +5709,599 @@ failed two, because the tests of the wait notice a look at the claim by its INSE
 break a look begins with a SELECT; its third and fourth fail forty and thirty-three where they failed
 eighteen and thirteen, because every repeat the demo sends now waits thirty seconds, and all
 twenty-three of the demo's tests run out of time.
+
+## 159 · Step 26's decisions: money in any currency, compared exactly (2026-10-15)
+
+**Decided by:** the learner, on four questions put before any code, each answered with the
+recommendation. What was told and not asked is said as such below.
+
+**The problem.** Step 25 can compare two amounts only when they are in one currency. del_100 lets
+the agent pay up to 50,000.00 USD a payment and 200,000.00 USD a day. A bill from VENDOR-44 for
+2,800,000.00 PKR, which is 10,000.00 USD at 280 rupees to the dollar, is refused: "cannot be
+compared". A comparison that cannot convert resolves restrictively (`DSOR-MON-04`, decisions 127
+and 140), so this is safe, and no foreign bill can ever be paid, not even one rupee. Each quick fix
+is a hole, measured in Node on 2026-10-15:
+
+- **Compare the numbers and forget the currency:** 45,000.00 GBP goes through a limit of 50,000.00
+  USD, though at 0.80 pounds to the dollar it is 56,250.00 USD.
+- **Check only amounts in dollars:** 50,000,000.00 PKR, about 178,571 USD, goes through unchecked.
+  This is the hole §9 names.
+- **Convert with JavaScript numbers:** at 281.15 rupees to the dollar, 14,057,500.00 PKR is exactly
+  50,000.00 USD, and the division gives `50000.00000000001`, so a payment exactly at the limit is
+  refused.
+
+`DSOR-MON-02` asks for decimal arithmetic, `DSOR-MON-03` that a limit is compared only through the
+money functions, which convert with the company's rate source, and `DSOR-MON-04` that an amount
+that cannot be converted counts as over the limit.
+
+1. **Step 26 is money only. The four start-up gaps get a step of their own, 26b, built right after
+   it** (the first question). Decision 145 had sent them to step 26: a view the application may
+   write through, a rule on a tenant table, the read question asked of the application alone, and
+   the sequences behind proposals, moves and brakes (decisions 149, 153 and 156). They are a second
+   idea, and a step teaches one. Our step 27 stays the map's 27. **Rejected:** both in step 26, two
+   unrelated lessons in one README; and the gaps first, as 25b, which makes money wait and moves
+   them from where decision 145 put them.
+2. **The rates come from a fake rate service, built like step 19's company directory** (the
+   second). DSoR asks it, never the request, how many of each currency one US dollar buys, and when
+   that was published. A test or the demo can change a rate, make the rates old, or switch the
+   service off. The specification names the rate source as a part of its own, outside DSoR and
+   trusted (`DSOR-MOD-02`), as it names the role source; the reference profile's is the European
+   Central Bank's daily reference rates. **Rejected:** a table in DSoR's own store, which needs a
+   migration, a new start-up question, one more read for every check, and fresh rates loaded every
+   day, or the demo breaks three days after it is set up; and a fixed list in the code, which has no
+   dates, so the third case of `DSOR-MON-04`, a rate too old, could never happen or be tested.
+3. **The daily limit counts a payment in another currency, converted and rounded up** (the third).
+   When a payment is booked against the day, it is converted into the limit's currency at the rate
+   of that moment and rounded up to the cent: 1,000,000.00 PKR is 3,571.4285... USD, and it books
+   3,571.43. The day can count a fraction of a cent too much, never too little. A payment that fails
+   gives back exactly what it booked, whatever the rate does afterwards. This is `DSOR-MON-06`,
+   which the map gives to no step. **Rejected:** converting for the limit per payment only, which
+   leaves del_100, with its daily limit, refusing the rupee bill all the same.
+4. **A rate more than three days old is not used** (the fourth). This is the specification's own
+   example, `max_rate_age: P3D`, and in this step it holds for every company. Friday's rate still
+   serves on Monday. After a long holiday weekend, foreign bills are refused until the next rate
+   comes. **Rejected:** one day, which refuses every foreign bill every weekend; and seven, which
+   could compare with a rate a bad week has left far behind.
+
+**Told, not asked.**
+
+- **The comparison never divides.** "Is a above b?" is asked as a × (b's rate) against b × (a's
+  rate). Multiplying never needs rounding, so the answer is exact. Only the day's booking rounds,
+  and it rounds up.
+- **Two amounts in one currency need no rate.** A dollar payment against a dollar limit is compared
+  as before, even while the rate service is down.
+- **A rate of zero, below zero, or not a decimal is no rate.** A dollar rate of zero would make
+  every amount compare as nothing.
+- **A payment is still in its invoice's currency** (decision 126). Step 17 wrote "converting between
+  currencies is step 26's", meaning these comparisons. Paying a dollar invoice in pounds would need
+  an amount to pay, rounded, which is another idea.
+- **The refusal is still `LIMIT_EXCEEDED`** (decision 128), and it says why the amount could not be
+  converted: no rate for the currency, a rate too old, or no service to ask.
+- **The functions are `exceeds` and `covers`**, in TypeScript for now. Step 27 gives them to CEL as
+  `dsor_exceeds` and `dsor_covers`. `centsOf`, which compared cents within one currency, is removed,
+  so a limit has no other way to be compared (`DSOR-MON-03`).
+- **The rate a decision used is not yet recorded.** That is `DSOR-MON-05`, in the step that builds
+  the decision bundle.
+
+## 160 · What the review of step 26 found, and what was chosen (2026-10-19)
+
+**Decided by:** Claude, on the standing rule that a review's findings are fixed or written down;
+open to reversal by the learner.
+
+The requirement-reviewer found no defect that breaks a guarantee. It checked the arithmetic against
+an independent reference on 200,000 random cases, signed amounts up to twenty digits and rates up to
+fifteen decimals: none wrong, and `convertUp` never below the exact value nor more than one cent above
+it. No request argument reaches a rate, and every path refuses an amount that cannot be converted.
+What it found:
+
+1. **A dry run of an amount that cannot be converted was untested.** The code refused it, and a dry
+   run that let it through passed every test. A test now asks it; broken on purpose, it fails.
+2. **"Rates in the request change nothing" was tested on the stage alone**, with empty arguments. A
+   test now plants `rates` in the arguments of a real request through the door; a stage that read
+   them fails it.
+3. **"A release gives back what it booked" was tested with an amount that converts exactly.** The
+   test now books 1,000,000.00 PKR, 3,571.43 USD after rounding up, so a release that converted again
+   would leave the day wrong; broken on purpose, it fails.
+4. **Two sentences said every limit goes through `exceeds`.** The day's booking compares in its own
+   statement, as it must to stay safe under requests at once (`DSOR-DEL-06a`), on an amount
+   `convertUp` already converted. `payment.ts` now says so, and this corrects decision 159's "a limit
+   has no other way to be compared".
+5. **The day's refusal named what the day counted the amount as**, "280.01 PKR, 1.01 USD, would
+   take...". Sending large dry runs, the agent could read the company's rate to fourteen digits.
+   Decision 148's rule is that a refusal names only what the caller sent, so the converted amount is
+   gone from the message. **Rejected:** recording rates as public, which holds for the reference
+   profile's central-bank rates and not for a rate a company negotiated with its bank.
+6. **The README was still step 25's**, and the map and `docs/status.md` did not know step 26.
+   Written with the step. The map's entry says "a table of exchange rates", and decision 159 chose a
+   service; the map is the official steps', so the README says where this build differs.
+7. **Written down, not fixed: a dry run reads the day's total without its currency.** If an
+   administrator changes a slip's daily currency in the middle of a day, the dry run can answer
+   "within" for a payment the booking then refuses. It needs the administrator, not the agent, it is
+   older than this step, and the real booking stays safe.
+
+Earlier folders were not edited: the READMEs of steps 18, 22 and 25 still say their start-up gaps
+close "in step 26". They close in 26b (decision 159).
+
+## 161 · Step 26b's decisions: start-up asks about every way in, not only the front door (2026-10-19)
+
+**Decided by:** Claude, on the learner's standing instruction of this date, given before they slept:
+"select the recommended setting when you have to ask the human". The problem is stated first, as it
+would have been shown; each choice is the recommendation, and each is open to reversal.
+
+**The problem.** Every time the program starts, it asks the database what its own login may do, and
+refuses to start if the answer is too much (steps 09 to 25). Four questions were never asked, and
+decision 145 wrote them down for later. Each needs a careless database administrator, not a clever
+agent (decision 119), and each lets the program do what start-up exists to stop:
+
+- **A view it may write through, but not read.** A view runs with its owner's rights. An owner's
+  view over the slips, with INSERT granted to the application and no SELECT, passes start-up, and
+  through it the application writes itself a slip nobody signed (decision 149, measured in step 18
+  as del_100's limit lifted). The log, the invoices and the payments have the same gap.
+- **A rule on a tenant table.** `CREATE RULE ... DO ALSO INSERT INTO dsor.delegations` on the
+  invoices runs with the table owner's rights inside the application's own `invoice.issue`. Start-up
+  asks about triggers and not rules (decision 149).
+- **The read question, asked of the application alone.** A view over the invoices passes start-up
+  when it is readable one `SET ROLE` away, or through a helper function whose owner may read it, or
+  granted on some of its columns only; each shows every company's rows (decision 156).
+- **One sequence of four.** Start-up asks whether the application may move `public.payment_numbers`.
+  The sequences behind a proposal's number, a brake's number and a move's place are not asked;
+  `setval` on them is the application choosing numbers it should be given (decisions 153 and 156).
+
+1. **A rule on a tenant table is refused, whatever it does**, as a trigger is. **Rejected:** reading
+   what a rule does, which needs PostgreSQL's rule language understood; and refusing only rules that
+   write elsewhere, which lets `DO INSTEAD NOTHING` swallow the program's writes in silence.
+2. **The application may write to nothing beside the tenant tables**: no table, view or foreign
+   table, by any column, itself, one `SET ROLE` away, or through a helper function's owner. A view
+   nobody can write through harms nothing, so views are not refused for existing. **Rejected:**
+   refusing every view, which forbids an owner the reports people read; and naming the views to
+   look for, which misses the next one.
+3. **The read question is asked the way the write questions are**: of every role the application
+   can act as, and of any column. **Rejected:** writing down that it is asked of the application
+   alone.
+4. **Every sequence is asked, not a list of four**: the application may hold UPDATE on none, which
+   `setval` needs, and own none, which `ALTER SEQUENCE` needs, itself, one `SET ROLE` away, or
+   through a helper's owner. A later step's new sequence is then asked without anyone remembering
+   to add it, the lesson decision 143 learned for columns. **Rejected:** naming the four.
+
+**Told, not asked.**
+
+- **Start-up still repairs nothing.** It refuses to start and says which grant to take back.
+- **The questions about the business's tables keep their own words.** A right on
+  `public.payment_numbers` is still refused as "a payment's number", asked before the general
+  questions, so the refusal names the reason and not only the object.
+- **The READMEs of steps 18, 22 and 25 still say "step 26"** for these gaps. They are finished
+  steps and are not edited (decision 160); this step's README says where the gaps closed.
+- **One idea**: what start-up asks. No new table, no new command, and the demo does not change.
+
+## 162 · Step 27's decisions: the CFO's policy, as a control written in CEL (2026-10-19)
+
+**Decided by:** Claude, on the learner's standing instruction of this date, "select the recommended
+setting when you have to ask the human", given before they slept. The problem is stated first, as
+it would have been shown; each choice is the recommendation, and each is open to reversal.
+
+**The problem.** org_456's policy says "Payments above 25,000 USD or equivalent require CFO
+approval" (KSoR, `finance/payment-approval-policy`, version 4). Nothing in DSoR knows it. del_100
+lets the agent pay up to 50,000.00 USD a payment, so the agent's 31,400.00 USD payment to VENDOR-44
+for INV-1008 is made, and no CFO ever sees it. Each quick fix is a hole:
+
+- **Write it in TypeScript**, `if (amount > 25000)`. The policy's owner cannot read it or test it,
+  nobody can walk from a payment back to the sentence that allowed it, and changing the policy
+  needs a programmer.
+- **Write it as `amount > 25000 && currency == "USD"`.** 50,000,000.00 PKR, about 178,571 USD, goes
+  straight through, because it is not in dollars (§9; the map's break for this step).
+- **Skip a rule that crashes.** On the day the rate service is down, a rule that cannot convert
+  would mean no rule at all.
+
+A *control* is the policy translated into a condition a program can evaluate, kept with its owner,
+the policy sentence and version it came from, and test cases that must pass before it is switched
+on (§17). The condition is CEL, a small expression language that cannot loop forever, call the
+network, or see anything it was not handed (Appendix B).
+
+1. **Controls live in DSoR's own store**, a table `dsor.controls`, one row per company, control
+   and version, under the same two locks as every record there. The application reads them, and
+   may change a control's status and nothing else. **Rejected:** a JSON file in the folder, which
+   has no company lock and cannot remember that a control went stale (step 28); a list in the code,
+   which is the first quick fix again.
+2. **The CFO's control governs `payment.create`**, the command where the agent commits to an
+   amount; there is no `payment.execute` until the fake bank (step 35). Its condition is
+   `dsor_exceeds(input.amount, dsor_money("25000", "USD"))`, and it carries the specification's
+   five test cases, read from `input` instead of `state`. **Rejected:** building `payment.execute`
+   now, a second idea.
+3. **`REQUIRE_APPROVAL` stops the proposal at `PENDING_APPROVAL`**, as §21 says: the decision is
+   recorded, the proposal waits, the payment's amount stays booked against the day, and the agent
+   is told what it waits for (the CFO, one approval) and until when. Nothing approves it until step
+   29, and nothing carries it out until step 31. **Rejected:** refusing it, which §26 does not say
+   and step 29 would undo; letting it through with a note, which enforces nothing.
+4. **A waiting proposal says it waits 72 hours**, §44's strictest bound on an approval for a
+   `HIGH` operation. **Rejected:** 30 days, §44's ceiling at L2, too long for a payment.
+5. **A control's condition sees Appendix B's eight variables and three of its six functions**:
+   `dsor_money`, `dsor_exceeds` and `dsor_covers`, which compare through step 26's `exceeds` and
+   `covers` at the company's own rates. A condition that names anything else is refused when the
+   control is switched on. `dsor_sum`, `dsor_in_flight` and `dsor_is_new_counterparty` arrive with
+   the steps that need them. **Rejected:** all six now, three of them with nothing true to say.
+6. **Switching a control on runs its test cases, and refuses if any fails** (`DSOR-CTL-02c`). In
+   this step it is a function of the program, called by the demo in the administrator's place; no
+   operation reaches it, so the agent cannot. Step 28 makes it a command only the control's owner
+   may run. **Rejected:** controls arriving active from a migration, whose test cases nobody ran.
+7. **Controls are evaluated for every caller**, a person or the agent, at §21.10, before the
+   slip's limits. A control is the company's policy, not the agent's leash. **Rejected:** agents
+   only, which leaves user_123 paying 31,400.00 USD with no CFO.
+
+**Told, not asked.**
+
+- **A condition that cannot be evaluated applies the control** (`DSOR-CTL-07`): a missing field,
+  a type error, a currency with no rate. **The most restrictive answer wins** (`DSOR-AUT-02b`).
+- **A control's `deny` is refused `POLICY_DENIED`** before anything is booked.
+- **A test case's rates are its own** (`DSOR-CTL-02e`): the PKR cases say 280 to the dollar, and
+  the live rate service is never asked while a control is being switched on. The dollar is 1 by
+  definition, since every rate is per dollar.
+- **The decision's record names each control evaluated**: its id, version, outcome, the policy it
+  came from, and why it could not be evaluated, if it could not, in the log's new `controls`
+  column, inside the hash (`DSOR-EXE-02`'s "controls evaluated").
+- **`state` is empty in this step.** A contract binds no resources until step 32's preconditions.
+- **The demo's story runs with the control switched on**; the tests that do not ask about controls
+  run with it waiting for review, as migration 029 leaves it.
+
+## 163 · What the review of step 26b found, and what was chosen (2026-10-19)
+
+**Decided by:** Claude, on the standing rule that a review's findings are fixed or written down, and
+on the learner's instruction of this date to take the recommendation; open to reversal.
+
+A hostile reviewer read step 26b's commits, measured in a copy, and found no way round the four new
+questions that a plausible administrator's mistake opens. It found two gaps in how they were asked
+and tested, and five smaller things:
+
+1. **The questions skipped schemas by name** (measured). A view over every company's invoices in
+   `information_schema`, or in a schema named `pgxtemp`, passed start-up: `LIKE 'pg_temp%'` read
+   `pgxtemp` as a temporary schema, because `_` matches any character. The read, write and number
+   questions now choose relations by what they are: nothing in `pg_catalog`, where nobody may create,
+   nothing PostgreSQL made when the database was created (numbers below 16384), and not this
+   session's own temporary relations. A test for each placement; with the old filter, both fail.
+   The older question about helper functions keeps its name test, unchanged by this step.
+2. **The write question's DELETE and TRUNCATE had no test** (measured: removed, the whole suite
+   passed). Every other DELETE in the suite is on a tenant table, which an earlier question refuses
+   first. A test now deletes every record of the log through a view the application may only delete
+   from; another truncates a side table. With the two clauses removed, both fail.
+3. **A comment still said the three sequences in `dsor` wait for step 26b.** Rewritten.
+4. **"Choose the next number" was the wrong verb.** USAGE, which the application keeps, already
+   moves a sequence forward one number at a time. UPDATE and ownership let it *set* one, backward
+   too. The refusal and the tests say "set".
+5. **Three test titles named rules they do not prove.** The read tests and the rule tests on the
+   business's tables are `DSOR-TEN-01b`'s, the second lock; the rule test on the log stays
+   `DSOR-EXE-02`'s; the sequence tests carry no rule id, since no rule's guarantee rests on a number
+   (decision 153).
+6. **The README was step 26's, and `docs/status.md` did not know step 26b.** Written with the step.
+
+**Written down, not fixed:** a row trigger on a table that *inherits* from a tenant table fires
+under the application's UPDATE of the parent, and the trigger question looks at the tenant tables
+themselves only. Not measured, older than this step, and it needs the owner's hand.
+
+Step 27 was copied from step 26b before the review arrived; each fix is carried into it.
+
+## 164 · What the review of step 27 found, and what was chosen (2026-10-20)
+
+**Decided by:** Claude, on the standing rule that a review's findings are fixed or written down, and
+on the learner's instruction of 2026-10-19 to take the recommendation; open to reversal.
+
+A hostile reviewer read step 27's commits and measured in a copy. The agent cannot make the CFO's
+control say ALLOW above 25,000 USD: the control and the handler read the same frozen copy of the
+arguments, numbers and nested maps throw and so apply the control, conditions see the eight
+variables and nothing else, and records with controls verify after the database hands them back. It
+found one high gap, four medium, and nine changes the tests did not catch:
+
+1. **High: a malformed amount waited for the CFO** (measured). The slip's limits skip an amount they
+   cannot read, which was safe while the handler always ran next and refused it. With a control in
+   force, `60000.001` USD, a bare number, or no amount at all could not be evaluated, the control
+   applied, and the request waited at PENDING_APPROVAL, recorded ALLOW, with nothing booked and the
+   per-payment limit never asked. Now §21.6 refuses a malformed `payment.create` amount,
+   VALIDATION_FAILED, in all three modes, before anything is claimed. **Rejected:** refusing in the
+   controls' stage, which would leave the limits' skip in place for the next stage that runs early.
+2. **`matches` had no bound on its time** (measured: 26 characters, a quarter of a second, and four
+   times as long for every two more). This library runs CEL's `matches` as a JavaScript regular
+   expression, and §17.3 says a condition cannot loop forever. A condition that names `matches` is
+   refused, when switched on and when found in force.
+3. **One UPDATE switched the CFO's policy off** (measured). The application could set any status, and
+   a stale control was not read as in force. Migration 031 adds a second lock on `dsor.controls`: the
+   application may move a waiting control to active, with its moment, and nothing else. A control
+   marked `stale_authority` is in force (`DSOR-CTL-03b`). Marking one stale is step 28's, and will
+   widen the policy in the open.
+4. **A control in force with an authority the record cannot name** left the decision unrecorded.
+   Such an authority is named as no governed source, `local`, beside the error that says why.
+5. **The brake depended on the controls** (measured: `control.suspend` refused with the controls
+   unreadable). DSoR's own commands, `control.*`, `delegation.*` and `proposal.*`, are governed by no
+   control: their controls are not read, and none is switched on for one. A `proposal.*` command may
+   never itself require approval (`DSOR-APR-08`).
+6. **Changes no test caught**, each now a test that fails with the change: the schema check of a
+   control in force, an effect that cannot be carried out, a condition that is not true or false,
+   the controls inside the record's hash, the brake on the move to PENDING_APPROVAL, both lost-reply
+   paths of that move, the case's own pinned rate, and the eight variables the door hands a condition.
+7. **A case could pass only because its condition crashed** (low, measured): `input.amout`,
+   misspelled, passed every case that expected approval, and then every payment waited for the CFO.
+   A case now passes on its answer; only a case in XXX, ISO 4217's code for no currency, may pass by
+   an evaluation error, since it is there to show that an amount with no rate applies the control.
+8. **Two versions switched on at once** threw PostgreSQL's own error; it is a refusal now.
+9. **Words:** the README was step 26b's, `docs/status.md` had no row; `cel.ts` called `input`
+   validated without saying how.
+
+**Written down, not fixed.**
+
+- **A condition about who is asking cannot be switched on.** The schema's test cases carry `input`,
+  `state` and `rates`, and nothing for the principal, the slip or the actor chain, so a case runs with
+  none; such a condition applies by an evaluation error, and fails its cases. A question for the
+  specification: should a test vector name the other variables?
+- **`payment.create`'s contract still lists `"controls": []`.** A company's controls are found in its
+  own store, by operation; a contract is the same for every company. What the contract's list is for
+  is a question for the specification.
+- **True parallel `switchOn`** is not tested; PGlite has one connection.
+
+## 165 · Step 28's decisions: a control points at its policy, goes stale when it changes, and only its owner switches it on (2026-10-20)
+
+**Decided by:** Claude, on the learner's standing instruction of 2026-10-19, "select the recommended
+setting when you have to ask the human", given before they slept. The problem is stated first, as it
+would have been shown; each choice is the recommendation, and each is open to reversal.
+
+**The problem.** Step 27's CFO control says it came from `ksor://org_456/finance/payment-approval-policy`,
+version 4, and nothing ever checks. When finance publishes version 5, "payments above 20,000 USD
+require CFO approval", the control keeps enforcing 25,000, and nobody is told: a payment of 22,000.00
+USD goes through with no CFO, and the control still looks current. And anyone can switch a control
+on: the demo calls `switchOn` itself, and step 27 says who may is step 28's. A supervisor could
+switch on a control the CFO owns, or a careless handler could switch on one nobody reviewed.
+
+1. **A fake KSoR, one per company**, built like step 19's directory and step 26's rate service: for a
+   policy's address it answers its current version, its content hash and its text, and a test or the
+   demo can publish a new version or switch it off. **Rejected:** a table of policies in DSoR's store;
+   KSoR is the record of what the company knows, and DSoR only points at it.
+2. **DSoR notices with a sweep the program runs**, `noticeStalePolicies`, which asks KSoR about every
+   control in force; §44 bounds it at 24 hours at L2. There is no timer in this tutorial, so the demo
+   runs it. **Rejected:** asking KSoR at every decision, one more call per payment, and a KSoR outage
+   then becomes every payment's problem, though a stale control applies anyway.
+3. **Superseded means**: KSoR has a later version, the same version with another content hash, or no
+   longer has the policy at all. KSoR down marks nothing, and the sweep says it could not ask.
+4. **A stale control keeps being enforced exactly as before** (`DSOR-CTL-03b`), whatever its
+   `on_stale` says. `on_stale` and `stale_grace` (`DSOR-CTL-03c`) wait for a later step.
+   **Rejected:** applying `on_stale` now: the CFO control's `require_approval` would make every
+   payment wait, a second behaviour that also needs the grace period built.
+5. **The owner is told** by a notice in their inbox, a fake like the directory, and the company's log
+   gets a `control_change` record naming the control, both versions and who must review it.
+   **Rejected:** the log alone, which nobody reads to learn their work; email, which needs a server.
+6. **Switching on is a command, `control.activate`, which only the control's owner may run, a person
+   logged in as themselves** (`DSOR-CTL-02a`, `DSOR-CTL-02b`). The supervisor and the CFO both hold
+   `control:activate`, so the owner check at §21.9 is what decides, as the signer check does for
+   `delegation.revoke`. **Rejected:** the permission alone, which lets anyone holding it switch on
+   anyone's control.
+
+**Told, not asked.**
+
+- **Changing, suspending and retiring a control are not built.** No command does them, so nobody can;
+  the second lock lets the application switch a waiting control on and mark one stale, nothing else.
+- **A control marked stale is never switched off quietly**: still in force, its decisions recorded
+  with it as before.
+
+## 166 · What the review of step 28 found, and what was chosen (2026-10-20)
+
+**Decided by:** Claude, on the standing rule that a review's findings are fixed or written down, and
+on the learner's instruction of 2026-10-19 to take the recommendation; open to reversal.
+
+A hostile reviewer read step 28's commits and measured in a copy. The agent cannot switch a control
+on, even under a slip that names the permission; another company's address is refused; a missing
+control is refused in the words used for someone else's; a stale control stays in force; two sweeps
+at once give one mark and one notice. It found one high gap and five medium:
+
+1. **High: a stale mark could lose its record and its notice for good** (measured). The sweep marked
+   the control in one statement and wrote its record in another. With the log refusing the record,
+   the control was stale with no record and nobody told, and the next sweep skipped it as stale
+   already. The mark and its record are now one statement, decision 157's shape, as a revocation's
+   are; the owner is told only after it commits. A log that refuses leaves the control active, for
+   the next sweep.
+2. **§21.9 was the only lock on who switches a control on** (measured: a door with that stage made a
+   no-op let user_123 switch on the CFO's control, as decision 156 found for slips). `switchOn` now
+   takes the caller, refuses one who is not the owner, and its statement asks for the owner too.
+3. **A non-owner was recorded ALLOW** (measured): a version of `"8"`, `-1` or `1e21`, or no control
+   address, passed §21.9, which could not look the control up, and the handler refused only after
+   the log said ALLOW. §21.6 now refuses a malformed address or version, before anything is decided.
+4. **One policy KSoR would not answer for stopped the sweep** (measured): a control after it stayed
+   active through two sweeps. Each control is asked on its own; the sweep lists what it could not ask.
+5. **A stale control cannot be replaced, and two sentences said it could** (measured): the CFO's new
+   version is refused CONFLICT while the stale one is in force, because no command retires a control.
+   The notice and the demo now say only "review it"; replacing a stale control waits for the command
+   that retires one. Decision 165's own problem therefore stands in part: the line stays at 25,000 USD
+   until then, and the owner knows.
+6. **Migration 032's comment says the gap it names errs toward stopping payments. It does not**
+   (measured). The second lock sees the new row only, so the program could move a waiting control that
+   fails its own cases straight to stale, in force with no case run; the owner's tested version is then
+   refused CONFLICT for good, and a payment the untested one misses goes through. The lock also lets
+   the program rewrite an active control's `switched_on_at`. Each needs the program's own code to do
+   it, never the agent; a trigger owned by the database's owner, which start-up would have to allow by
+   name, is what would close it. **Written down, not fixed**, and the comment stays as it is, because a
+   migration that has been applied is never edited: this decision corrects it.
+
+**Smaller, fixed:** org_789's KSoR knew no policy of its own, so its control would have gone stale at
+the first sweep; and the demo said the sweep runs every 24 hours, where this tutorial has no timer.
+
+**Written down, not fixed:** a decision under a stale control records the authority version it cites,
+not the one in force, though the audit schema has a place (`superseded_version`); `switchOn` does not
+ask whether its operation is one this program has, so a control on `payment.execute` is switched on and
+governs nothing; a control whose authority is not KSoR is not asked about; the inbox lives in memory,
+so a restart loses a notice nobody read, while the record stays. And this step holds two ideas the map
+puts together: a policy that changes, and who may switch a control on.
+
+## 167 · Step 29's decisions: an approval, by the approver's own login, on the exact request (2026-10-20)
+
+**Decided by:** Claude, on the learner's standing instruction of 2026-10-19, "select the recommended
+setting when you have to ask the human", given before they slept. The problem is stated first, as it
+would have been shown; each choice is the recommendation, and each is open to reversal.
+
+**The problem.** Since step 27, user_123's 31,400.00 USD payment waits at PENDING_APPROVAL for the
+CFO, and nobody can approve it: it waits until its 72 hours end. An approval has to be built, and
+each easy way to build it is a hole. An approval the agent relays, "the CFO said yes", is one the
+agent can invent. An approval of "the payment for INV-1008" can be stretched over a payment the CFO
+never saw, if the request changed after she looked. And a fingerprint of the request taken over its
+text as sent differs when the same request arrives with its fields in another order, so the CFO could
+approve one spelling while the program holds another.
+
+1. **The fingerprint is the RFC 8785 canonical JSON of the request** (`DSOR-APR-02b`): keys in one
+   order, one way to write each number and string, then SHA-256. It is every command's payload hash,
+   not only an approval's, so the same request with its fields in another order is the same request,
+   to its idempotency key as well. **Rejected:** the hash over the text as sent.
+2. **`proposal.approve`, with `{ proposal, payload_hash }`**, accepted only from a person logged in as
+   themselves, never an agent and never under a slip (`DSOR-APR-05a`), who holds the target
+   contract's `approve_permission`, `payment:approve` for `payment.create`, added to its contract
+   (`DSOR-APR-07`); for a proposal still waiting, its 72 hours not passed; with the stored payload
+   hash, or `APPROVAL_MISMATCH` (`DSOR-APR-09`); once per person.
+3. **A requirement's role is a job title**, and the program's list of people gives each person one:
+   `cfo_100` is the CFO. An approval satisfies each requirement whose role is its approver's title,
+   with the basis `role:CFO`. **Rejected:** anyone holding `payment:approve` filling any role, which
+   lets two controls that ask for two different people be satisfied by one.
+4. **What a waiting proposal waits for is kept**, in `dsor.requirements`, written when it starts
+   waiting, and never changed. **Rejected:** working it out again from the log, which is evidence and
+   not state.
+5. **An approval is kept whole, in `dsor.approvals`, as `approval.schema.json` says it** (`DSOR-APR-02a`),
+   added and never changed; one for each person and proposal.
+6. **When every requirement has its quorum, the proposal moves to APPROVED** in the same request
+   (`DSOR-AUT-02c`: when two rules each ask, both must be given). Nothing carries an approved proposal
+   out until step 31.
+7. **An approval expires when its proposal's 72 hours end**, and a proposal past its time cannot be
+   approved, `APPROVAL_EXPIRED`. Nothing moves a proposal to EXPIRED yet.
+
+**Told, not asked.**
+
+- **The bound state is `predicate`, with no versions bound**: re-checking the world at execution is
+  step 31's (`DSOR-APR-03a`).
+- **When the approver logged in is the decision's own time**: this program has no real login until
+  steps 43 and 44, so no `acr` is claimed.
+- **Who may not approve, beyond an agent, is step 30's**: the person who signed the agent's slip, and
+  one person counted twice towards a quorum.
+
+## 168 · What the review of step 29 found, and what was chosen (2026-10-20)
+
+**Decided by:** Claude, on the standing rule that a review's findings are fixed or written down, and
+on the learner's instruction of 2026-10-19 to take the recommendation; open to reversal.
+
+A hostile reviewer read step 29's commits. The agent is refused; a wrong fingerprint keeps nothing;
+the approval validates against its schema; two controls asking for the CFO are both satisfied by her
+one approval. It found one high gap and four medium:
+
+1. **High: an approval and the move it completes were two statements** (measured, red first).
+   `proposal.approve` says it is atomic, and §24 says what that means: it "commits or does not, in
+   one transaction". The approval was one statement and the move to APPROVED another. With the log
+   refusing the move's record, the caller got the database's own error, raw, and the approval stayed
+   kept with the proposal still waiting: every requirement met, and the CFO asking again refused
+   CONFLICT, "approved already", for good. They are one statement now, decision 157's shape: the
+   approval; the move, when it is the last approval the proposal waits for; and the move's record,
+   written only beside the move. All of it or none of it. The quorum is counted in that statement,
+   with the approval it keeps, and the statement runs in the company's turn at the log, a lock in
+   PostgreSQL, so two approvals sent at once are counted one after the other. A first version of
+   this fix, the same day, let the approver ask again to finish a move a crash had left unmade. It
+   was replaced once §24's definition was read: it kept the gap and repaired it afterwards, and the
+   receipt would still have said atomic.
+2. **The handler kept an approval for a proposal that had stopped waiting** (measured, red first).
+   §21.9 looks, then the handler writes; a proposal cancelled in between got an approval kept, and so
+   did one whose 72 hours ran out in between. The statement now asks, itself, that the proposal
+   waits and that the approval's time has not passed. Nothing kept is told why: CONFLICT with where
+   the proposal stands, or APPROVAL_EXPIRED.
+3. **An agent whose slip names `proposal:approve` was never asked** (the code held). A test now asks
+   it, and checks §21.9's own words, not only the code.
+4. **The title check was never asked** (the code held). A proposal waiting only for the Treasurer is
+   refused to the CFO, and nothing is kept.
+5. **Another company's proposal was said to be asked in `test/approvals.test.ts`, and was not** (the
+   code held). It is asked now: TENANT_MISMATCH, recorded DENY.
+
+**Smaller, fixed:** the test for a proposal that does not exist accepted any of three codes. Asked
+exactly, it showed a leak (measured, red first): user_123, who may approve nothing, was told
+RESOURCE_NOT_FOUND for a proposal that did not exist and "approving payment.create needs
+payment:approve" for one that did, which says which proposals there are and what they are
+(DSOR-ERR-01b). A person who holds no approve permission at all is now refused before the proposal is
+looked up, in the same words either way. The handler's own reads, made before it writes anything,
+are told as EVIDENCE_STORE_UNAVAILABLE when they fail, not thrown; and that code and APPROVAL_EXPIRED
+join the codes that say a handler did nothing, because §28 says both mean nothing was carried out:
+without that, a refusal the handler knew was clean reached the caller as OUTCOME_UNKNOWN. The test
+"an approval counts once for each person" asked something else, and is renamed.
+
+**Written down, not fixed:** an approval's time is the proposal's 72 hours whatever the risk. A
+person who holds some approve permission but not this one still hears the proposal's operation named;
+nobody in this story does. No test races two approvers, because the story has one CFO; the quorum
+counted in the turn is what makes two at once safe, and the database tier is where a race would be
+measured.
+
+Red first, against step 29 as it was before this decision: 4 of the 9 new tests failed.
+
+## 169 · Step 30's decisions: who may not approve (2026-10-20)
+
+**Decided by:** Claude, on the learner's standing instruction of 2026-10-19, "select the recommended
+setting when you have to ask the human", given before they slept. The problem is stated first, as it
+would have been shown; each choice is the recommendation, and each is open to reversal.
+
+**The problem.** Step 29 lets the CFO approve a waiting payment. It asks whether she holds
+`payment:approve` and is the CFO; it never asks whether she is the one who asked. An approval exists
+so that a second person looks. A CFO who signs the agent's permission slip and then approves what the
+agent asks under it has looked at her own request twice, and a CFO who makes a payment and approves
+it has not been checked at all. Nothing stops either today, only because the CFO cannot make a
+payment and signs no slip in this story; the rule must hold the day she can. And a control that asks
+for two approvals must get two people, not one person twice.
+
+1. **The CFO may make a payment** (`payment:create`, added to the approver role), so the rule has a
+   case to refuse: her own payment above the line waits for the CFO, and she may not approve it.
+   **Rejected:** a person who exists only in the tests, which the program's list of people does not
+   allow; and leaving the rule with no case, which tests nothing.
+2. **The approver must be outside the requesting chain** (`DSOR-SOD-02`): not the subject the
+   proposal was asked for, not the signer of the slip an agent asked under, not any actor in it. Read
+   from what the proposal recorded when it was made, never from the approval's request. Refused
+   `SOD_VIOLATION`, at §21.9, before anything is written.
+3. **An agent never approves** (`DSOR-SOD-01a`), as step 29 already refuses: a test titled by this
+   rule, and the refusal reached even when the agent's slip names `proposal:approve`.
+4. **A quorum counts distinct people** (`DSOR-SOD-04c`): one approval per person and proposal, which
+   step 29's table already keeps; a control that asks for two CFOs waits after the first.
+5. **Owner-approval mode, where a one-person business may approve its own agent with safety nets
+   (§16.2), is not built.** Without it, such a business cannot approve its own agent's requests at all:
+   the strict answer. **Rejected:** building it now, eight rules of its own.
+
+**Told, not asked.** `SOD_VIOLATION` is §28's code for this, retry `never`. The demo shows the CFO's
+own payment refused for her approval.
+
+## 170 · What the review of step 30 found, and what was chosen (2026-10-20)
+
+**Decided by:** Claude, on the standing rule that a review's findings are fixed or written down, and
+on the learner's instruction of 2026-10-19 to take the recommendation; open to reversal.
+
+A hostile reviewer read step 30 while it still held the first port of decision 168. Nothing an agent
+or a caller can send got past `DSOR-SOD-01a`, `DSOR-SOD-02` or `DSOR-SOD-04c`, each measured: arguments
+that name a subject, a requester or an actor chain are ignored, and the stored requester is built from
+the login and the slip DSoR found itself. It found two medium gaps and five low:
+
+1. **An expiry the handler saw was answered OUTCOME_UNKNOWN** (measured). The 72 hours ended between
+   §21.9's look and the handler's write; the handler knew nothing was kept and said APPROVAL_EXPIRED,
+   and the door, which did not count that code as nothing done, rewrote it to OUTCOME_UNKNOWN and kept
+   the request's key for a reconciliation that does not exist. Fixed by decision 168's revision, which
+   counts it as nothing done; and asked now through the door, with the clock moved between the two.
+2. **People were kept apart only by the table** (measured). One approval per person and proposal was
+   the table's rule alone; the count counted rows. With the rule dropped, two CFO approvals sent at once
+   made a control that asks for two APPROVED. The statement now counts approvers, not rows, and no
+   longer names that rule in its `ON CONFLICT`, so the count holds without it. Two tests: two approvals
+   sent at once, one kept and one CONFLICT; and the rule dropped, one person's two rows still one.
+3. **"Not any actor" was never asked** (measured: deleting the clause left every test green). No
+   request can reach it today, because only agents act and agents never approve; it is asked through a
+   recorded requester that names the CFO among its actors, with its own words, "acted for".
+4. **The stored requester was trusted as it stood** (measured). One that could not be read was refused
+   as a store that could not be read, retry `safe_same_key`, an invitation to send again a request that
+   could never pass; an empty subject let the CFO approve her own payment; and a recorded subject that
+   was not the slip's signer let the signer through, because the slip was never read. Now a requester
+   that cannot be read, has an empty subject or no actors, or names a slip the store does not have is
+   refused to everyone, SOD_VIOLATION, retry `never`; and the slip's signer is read from the slip,
+   which is what the rule names. Only the database's owner can write a requester, so none of this is
+   reachable by a caller: it is the second lock behind §21.8.
+5. **Two approvals by one person sent at once both answered COMMITTED, with one approval** (measured,
+   on the first port). Gone with decision 168's revision: one statement keeps one, and the other is
+   CONFLICT.
+6. **Words out of date** (read): the README was step 27's, the status page stopped at `my_28`,
+   `permissions.ts` said the CFO makes no payments, and the order of checks above `whoMayApprove` left
+   out two of them. Each now says what the code does.
+7. **Decision 169 left out a cost** (read). With `payment:create` the CFO can make any payment up to
+   the control's 25,000 USD line with no approval, because a slip's limits bind an agent and a person
+   logged in has none; a slip she signs can pass `payment:create` on to the agent; and her login, which
+   could make nothing before this step, is now the most worth stealing. **Written down, not fixed:**
+   the rule needed a case, and the CFO's own payment is the plainest one. A real deployment would give
+   the approver's role no `payment:create`, or set a limit on a person's own payments, which nothing in
+   this tutorial does yet.
+
+Red first, against step 30 before this decision: 7 of the new tests failed, one of them, the actor,
+only on its words, since the clause refused the CFO in the subject's words, "asked for".

@@ -2,7 +2,7 @@
 
 **This document is the only authority on what is implemented.** The README is the
 idea; the specification is the contract; this page is the facts. Last updated:
-2026-10-15.
+2026-10-20.
 
 ## Specification
 
@@ -49,8 +49,8 @@ implementation, and their tests do not count toward `pnpm coverage:req`. CI runs
 `pnpm check` inside every step, and `pnpm guard` checks each step's rule ids, the
 schema patterns it copies, and [`rules-met.md`](baby_steps_tutorials/rules-met.md).
 
-The table lists the `mj_` learner builds. Steps 01 to 25 also have a second learner's
-builds, `my_01` to `my_25`, described in the next section.
+The table lists the `mj_` learner builds. Steps 01 to 28 also have a second learner's
+builds, `my_01` to `my_28`, and a `my_26b` the map does not have, described in the next section.
 
 | Step | State |
 | --- | --- |
@@ -101,7 +101,7 @@ built in the open with their reasoning recorded in
 learner's copies, listed step by step in the table above, with notes in
 [`mj_notes.md`](baby_steps_tutorials/mj_notes.md).
 
-In the `my_` track, twenty-six of the 52 are built. Test counts are cumulative, because each step inherits the
+In the `my_` track, twenty-nine of the 52 are built, and `my_26b`, which the map does not have. Test counts are cumulative, because each step inherits the
 one before it:
 
 | Step | Tests | The one new idea |
@@ -132,6 +132,10 @@ one before it:
 | `my_23_three_ways_to_call` | 881 | a command is called execute, propose_only or validate_only, said beside its arguments; a dry run claims and proposes nothing, is recorded as VALIDATED and changes nothing; a prepared one stops at READY; the claim keeps the mode |
 | `my_24_limits_with_reservations` | 923 | a slip has a daily limit, 200,000.00 USD for del_100; each payment, and no other command, books its amount against the day in one statement, keyed by its proposal, so requests racing never book past it; the reservation is held, committed or released as the proposal ends |
 | `my_25_revocation_and_the_emergency_brake` | 1021 | the emergency brake: a person suspends one agent or freezes every agent in a company, from DSoR's own store; §21.4 refuses a stopped agent's commands, and the move to EXECUTING asks again; a slip's signer, supervisor or approver, revokes it, active or suspended, and what waited under it is cancelled, if it is still what was read; none of it asks the agent |
+| `my_26_money_done_right` | 1079 | money in any currency: a slip's limits compare an amount in another currency exactly, multiplying and never dividing, at the rates of the company's own rate service, never the request's; the day counts a foreign payment converted and rounded up; an amount that cannot be converted, for no rate, rates more than three days old, or no service, counts as over the limit |
+| `my_26b_the_start_up_gaps` | 1113 | start-up asks about every way in, not only the front door: a rule on a tenant table, a table or view beside them the application may write, one it may read another way, one SET ROLE away, through a helper's owner or by some columns, and every sequence it could set; each question chooses relations by what they are, not by their schema's name |
+| `my_27_controls_in_cel` | 1195 | the company's policy as a control: a rule written in CEL, in DSoR's own store, with its owner, the policy it came from and test cases that must pass, at their own pinned rates, before it is switched on; evaluated at §21.10 for every payment, a person's or the agent's; a condition that cannot be evaluated applies the control, the strictest answer wins, DENY is refused and REQUIRE_APPROVAL waits at PENDING_APPROVAL with its amount booked; the decision's record names each control |
+| `my_28_where_a_rule_came_from` | 1232 | a control points at the policy it came from: a sweep asks a fake KSoR about every control in force, and one whose policy has a later version, other words or no longer exists is marked stale in the same statement as its record, and its owner is told; a stale control is still enforced; `control.activate`, through the whole pipeline, lets only the control's owner, a person, switch it on, asked at §21.9 and again by the statement |
 
 **What this is not.** Read these as worked examples, not as conformance. Three things
 are true of all of them:
@@ -154,7 +158,9 @@ are true of all of them:
   four migrations applied and the demo ran against that server, both chains verifying.
 - **Steps 16 to 25's database tiers pass against Neon,** each on a database of its own, on
   2026-10-14 and 15, 127 ms from the machine that ran them: 39, 51, 51, 51, 52, 53, 60, 60, 62 and 75 tests,
-  none skipped. That first run on a database far away
+  none skipped. Steps 26, 26b and 27's tiers pass on Neon too, 75 tests each, on databases of their
+  own, on 2026-10-19, and step 28's, 81, on 2026-10-20; 26b's, 27's and 28's twice, before and after
+  their reviews' fixes. That first run on a database far away
   found two settings measured on a server on the same machine: how long a request waits for the
   same request still being carried out, and how a company's log is shared by writers. Decision 158
   changed both.
@@ -172,7 +178,7 @@ are true of all of them:
   requirement should be read as implemented on the strength of the tutorial.
 
 The tutorial is also where most of what has been *learned* is written down:
-[`my_notes/decisions.md`](baby_steps_tutorials/my_notes/decisions.md) holds 158 dated
+[`my_notes/decisions.md`](baby_steps_tutorials/my_notes/decisions.md) holds 167 dated
 decisions and [`my_notes/lessons.md`](baby_steps_tutorials/my_notes/lessons.md) holds
 41 lessons, several of them about tests that passed while proving nothing. The `mj_` track
 keeps its own in [`mj_notes.md`](baby_steps_tutorials/mj_notes.md).

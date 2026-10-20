@@ -1,0 +1,49 @@
+{
+  "id": "control.activate",
+  "version": 1,
+  "kind": "command",
+  "effect": "mutating",
+  "input": {
+    "schema": "ControlActivateRequest"
+  },
+  "output": {
+    "schema": "Control"
+  },
+  "authorization": {
+    "permission": "control:activate"
+  },
+  "tenancy": {
+    "required": true
+  },
+  "delegation": {
+    "required": true
+  },
+  "idempotency": {
+    "required": true
+  },
+  "concurrency": {
+    "strategy": "none"
+  },
+  "execution": {
+    "semantics": "atomic"
+  },
+  "preconditions": {
+    "freshness": "current",
+    "predicates": []
+  },
+  "controls": [],
+  "risk": {
+    "level": "high"
+  },
+  "audit": {
+    "level": "full"
+  },
+  "extensions": {
+    "com.panaversity.tutorial": {
+      "example_request": {
+        "control": "dsor://org_456/control/high-value-payment",
+        "version": 8
+      }
+    }
+  }
+}
