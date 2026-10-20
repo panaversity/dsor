@@ -295,7 +295,7 @@ describe("a window past the lock", () => {
 
   // STEP 16: the application may create nothing in dsor, and through a helper whose owner
   // may, it made dsor.proposals anyway, a review measured (decision 124). STEP 22: step 22
-  // built dsor.proposals, so the helper makes a_ledger. STEP 29: it made approvals, until step 29
+  // built dsor.proposals, so the helper makes a_ledger. NEW IN STEP 29: it made approvals, until step 29
   // built a table of that name.
   // Decision 147: and in public, which no test asked. A review narrowed the question to dsor and
   // every test passed.
@@ -484,7 +484,7 @@ describe("a schema the application may create things in", () => {
   // business's. A table the application made there would be its own, every row of it, and a later
   // step's migration would find its name taken. A review measured the application making
   // `dsor.proposals` six steps before step 22 built it (decision 123); STEP 22: the test makes
-  // `a_ledger` now, a name no step builds; STEP 29 built `approvals`, its name before. Migration 008 takes
+  // `a_ledger` now, a name no step builds; NEW IN STEP 29 built `approvals`, its name before. Migration 008 takes
   // CREATE back, and start-up asks PostgreSQL, because a later grant passes the migrations by.
   for (const [id, schema] of [
     ["DSOR-MOD-01", "dsor"],

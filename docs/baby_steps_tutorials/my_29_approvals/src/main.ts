@@ -930,7 +930,7 @@ console.log(
     ),
   ),
 );
-// STEP 29: kept, so the CFO can approve it below.
+// NEW IN STEP 29: kept, so the CFO can approve it below.
 const heldForTheCfo = await callOperation(
   SUPERVISOR,
   "payment.create",

@@ -98,7 +98,7 @@ const person = (id: string, type: PrincipalType, role: string, ...tenants: strin
 // working for — which is what gives DSOR-IDN-03a's "exactly one" something to bite on. The two
 // people belong to org_456 only.
 const people: readonly Principal[] = Object.freeze([
-  // STEP 29: and their titles, which an approval's requirement names (decision 167).
+  // NEW IN STEP 29: and their titles, which an approval's requirement names (decision 167).
   Object.freeze({
     ...person("user_123", "human", "ap_supervisor", "org_456"),
     title: "AP supervisor",

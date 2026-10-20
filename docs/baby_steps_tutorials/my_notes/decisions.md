@@ -6181,18 +6181,24 @@ A hostile reviewer read step 29's commits. The agent is refused; a wrong fingerp
 the approval validates against its schema; two controls asking for the CFO are both satisfied by her
 one approval. It found one high gap and four medium:
 
-1. **High: an approval kept, with its move to APPROVED never made, left the proposal waiting for good**
-   (measured, red first). The approval and the move are two statements. A crash between them left
-   every requirement met and the proposal at PENDING_APPROVAL, and the CFO asking again was refused
-   CONFLICT, "approved already". Now §21.9 lets her through when the quorum is met and the proposal
-   still waits, and the handler, finding her approval kept, makes the move. Making the two one
-   statement would close the gap itself; asking again was chosen because the move already writes its
-   own record in its statement (decision 157), and one statement for both would be a new shape.
+1. **High: an approval and the move it completes were two statements** (measured, red first).
+   `proposal.approve` says it is atomic, and §24 says what that means: it "commits or does not, in
+   one transaction". The approval was one statement and the move to APPROVED another. With the log
+   refusing the move's record, the caller got the database's own error, raw, and the approval stayed
+   kept with the proposal still waiting: every requirement met, and the CFO asking again refused
+   CONFLICT, "approved already", for good. They are one statement now, decision 157's shape: the
+   approval; the move, when it is the last approval the proposal waits for; and the move's record,
+   written only beside the move. All of it or none of it. The quorum is counted in that statement,
+   with the approval it keeps, and the statement runs in the company's turn at the log, a lock in
+   PostgreSQL, so two approvals sent at once are counted one after the other. A first version of
+   this fix, the same day, let the approver ask again to finish a move a crash had left unmade. It
+   was replaced once §24's definition was read: it kept the gap and repaired it afterwards, and the
+   receipt would still have said atomic.
 2. **The handler kept an approval for a proposal that had stopped waiting** (measured, red first).
-   §21.9 looks, then the handler writes; a proposal cancelled in between got an approval kept. The
-   approval is now kept only by a statement that asks, itself, that the proposal waits and the
-   approval's time has not passed. Nothing kept is reported as CONFLICT with where the proposal
-   stands, or APPROVAL_EXPIRED.
+   §21.9 looks, then the handler writes; a proposal cancelled in between got an approval kept, and so
+   did one whose 72 hours ran out in between. The statement now asks, itself, that the proposal
+   waits and that the approval's time has not passed. Nothing kept is told why: CONFLICT with where
+   the proposal stands, or APPROVAL_EXPIRED.
 3. **An agent whose slip names `proposal:approve` was never asked** (the code held). A test now asks
    it, and checks §21.9's own words, not only the code.
 4. **The title check was never asked** (the code held). A proposal waiting only for the Treasurer is
@@ -6201,17 +6207,23 @@ one approval. It found one high gap and four medium:
    code held). It is asked now: TENANT_MISMATCH, recorded DENY.
 
 **Smaller, fixed:** the test for a proposal that does not exist accepted any of three codes. Asked
-exactly, it showed a leak (measured): user_123, who may approve nothing, was told RESOURCE_NOT_FOUND
-for a proposal that did not exist and "approving payment.create needs payment:approve" for one that
-did, which says which proposals there are and what they are (DSOR-ERR-01b). A person who holds no
-approve permission at all is now refused before the proposal is looked up, in the same words either
-way. The test "an approval counts once for each person" asked something else, and is renamed.
+exactly, it showed a leak (measured, red first): user_123, who may approve nothing, was told
+RESOURCE_NOT_FOUND for a proposal that did not exist and "approving payment.create needs
+payment:approve" for one that did, which says which proposals there are and what they are
+(DSOR-ERR-01b). A person who holds no approve permission at all is now refused before the proposal is
+looked up, in the same words either way. The handler's own reads, made before it writes anything,
+are told as EVIDENCE_STORE_UNAVAILABLE when they fail, not thrown; and that code and APPROVAL_EXPIRED
+join the codes that say a handler did nothing, because §28 says both mean nothing was carried out:
+without that, a refusal the handler knew was clean reached the caller as OUTCOME_UNKNOWN. The test
+"an approval counts once for each person" asked something else, and is renamed.
 
-**Written down, not fixed:** the quorum counts every approval kept, not only active ones; an approval
-expires with its proposal, which then no longer waits, so nothing counts it yet, but step 31, which
-carries out an approved proposal, must ask. An approval's time is the proposal's 72 hours whatever
-the risk. A person who holds some approve permission but not this one still hears the proposal's
-operation named; nobody in this story does.
+**Written down, not fixed:** an approval's time is the proposal's 72 hours whatever the risk. A
+person who holds some approve permission but not this one still hears the proposal's operation named;
+nobody in this story does. No test races two approvers, because the story has one CFO; the quorum
+counted in the turn is what makes two at once safe, and the database tier is where a race would be
+measured.
+
+Red first, against step 29 as it was before this decision: 4 of the 9 new tests failed.
 
 ## 169 · Step 30's decisions: who may not approve (2026-10-20)
 

@@ -466,7 +466,7 @@ describe("who you are comes from the login, never from the arguments", () => {
     expect(answer.envelope.correlation.principal_id).toBe("accounts-payable-fte");
     expect(reads).toBe(1);
 
-    // STEP 29: written in RFC 8785's one spelling, keys sorted, as §21.6 writes it (decision 167).
+    // NEW IN STEP 29: written in RFC 8785's one spelling, keys sorted, as §21.6 writes it (decision 167).
     const honest = createHash("sha256")
       .update(canonicalJson({ invoice: INV_1009, expected_version: 1 }))
       .digest("hex");

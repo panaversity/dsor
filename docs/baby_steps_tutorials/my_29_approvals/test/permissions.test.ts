@@ -114,7 +114,7 @@ describe("permissions", () => {
       "invoice:read",
       "payment:cancel",
       "payment:create",
-      "proposal:approve", // STEP 29
+      "proposal:approve", // NEW IN STEP 29
     ]);
     expect([...permissionsOf(person("cfo_100"))].sort()).toEqual([
       "control:activate", // STEP 28
@@ -123,7 +123,7 @@ describe("permissions", () => {
       "delegation:revoke",
       "invoice:read",
       "payment:approve",
-      "proposal:approve", // STEP 29
+      "proposal:approve", // NEW IN STEP 29
     ]);
     // STEP 18: the agent's own role reads; its commands run under a permission slip.
     expect([...permissionsOf(person("accounts-payable-fte"))].sort()).toEqual(["invoice:read"]);

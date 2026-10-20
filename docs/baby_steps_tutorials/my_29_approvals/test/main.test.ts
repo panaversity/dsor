@@ -163,7 +163,7 @@ describe("the program a learner runs", () => {
       // CFO, and the agent's 2,500.00 paid.
       // STEP 28: 74, with control.activate refused another company's address, user_123's and the
       // agent's attempts refused, the CFO's allowed, and the payment that still waits once stale.
-      // STEP 29: 77, with proposal.approve refused another company's address, the CFO's approval
+      // NEW IN STEP 29: 77, with proposal.approve refused another company's address, the CFO's approval
       // of the wrong fingerprint refused, and her approval of the right one.
       expect(rows).toHaveLength(77);
 
@@ -173,8 +173,8 @@ describe("the program a learner runs", () => {
       // Ten since the review: a principal planted in the arguments that is not the caller is refused
       // (DSOR-SRC-02b) where step 05 ignored it, so the demo's third request is a DENY now. Twelve
       // since step 12: one refusal per operation from the generated section.
-      expect(rows.filter((r) => r.includes("DENY"))).toHaveLength(35); // STEP 29: two of proposal.approve's; STEP 28: three of control.activate's; STEP 24: four over the day; STEP 25: the brake's and the slip's addresses, and the agent stopped twice; STEP 26: the pounds, and the rupees at old rates
-      expect(rows.filter((r) => r.includes("ALLOW"))).toHaveLength(42); // STEP 29: the CFO's approval; STEP 28: the CFO's switch, and the payment waiting under a stale control; STEP 13: three pages read; STEP 23: three ways; STEP 24: six made; STEP 25: six of the brake's; decision 152: the agent's read of INV-1009; STEP 26: the rupees, and the dollars at old rates; STEP 27: the CFO's three, a wait for approval being no refusal
+      expect(rows.filter((r) => r.includes("DENY"))).toHaveLength(35); // NEW IN STEP 29: two of proposal.approve's; STEP 28: three of control.activate's; STEP 24: four over the day; STEP 25: the brake's and the slip's addresses, and the agent stopped twice; STEP 26: the pounds, and the rupees at old rates
+      expect(rows.filter((r) => r.includes("ALLOW"))).toHaveLength(42); // NEW IN STEP 29: the CFO's approval; STEP 28: the CFO's switch, and the payment waiting under a stale control; STEP 13: three pages read; STEP 23: three ways; STEP 24: six made; STEP 25: six of the brake's; decision 152: the agent's read of INV-1009; STEP 26: the rupees, and the dollars at old rates; STEP 27: the CFO's three, a wait for approval being no refusal
 
       // Sequences for org_456 and then 0..1 for org_789: each chain counts from zero.
       // STEP 14: the gaps — 1, 5, 26, 28, 30 since decision 152 — are the records of reads, which
@@ -193,7 +193,7 @@ describe("the program a learner runs", () => {
       // STEP 26: 64 decisions and 108 moves, with the money section.
       // STEP 27: 67 decisions and 114 moves, with the CFO's control.
       // STEP 28: 200, with control.activate's and the sweep's record of a stale control.
-      // STEP 29: 210, with the approvals' records and the payment's move to APPROVED.
+      // NEW IN STEP 29: 210, with the approvals' records and the payment's move to APPROVED.
       expect(out).toContain("org_456: 210 records, chain verifies against the head: true");
       expect(out).toContain("org_789: 2 records, chain verifies against the head: true");
       expect(out).toContain("2 refusals counted without a record");
@@ -263,7 +263,7 @@ describe("the program a learner runs", () => {
       // with the money section, whose rupees run two's day refuses: 10,000.00 USD would pass it.
       // STEP 27: 340, with the CFO's control on both runs; run two's 2,500.00 is past the day.
       // STEP 28: 367; on run two the control is stale already, and the CFO's switch a CONFLICT.
-      // STEP 29: 387, the CFO approving a payment on each run.
+      // NEW IN STEP 29: 387, the CFO approving a payment on each run.
       expect(records(second, "org_456")).toBe(387);
       expect(records(second, "org_789")).toBe(4);
       expect(second).toContain("org_456: 387 records, chain verifies against the head: true");
@@ -316,7 +316,7 @@ describe("the program a learner runs", () => {
       // STEP 26: 177 and 2, with the money section.
       // STEP 27: 186 and 2, with the CFO's control.
       // STEP 28: 200 and 2.
-      // STEP 29: 210 and 2.
+      // NEW IN STEP 29: 210 and 2.
       expect(hashesOf(first.raw)).toHaveLength(212);
       expect(hashesOf(second.raw)).toHaveLength(212);
       expect(hashesOf(second.raw)).not.toEqual(hashesOf(first.raw));
@@ -567,7 +567,7 @@ describe("the program a learner runs", () => {
     // STEP 22, decision 157: and each move beside the record of it in the log.
     expect(out).toContain(
       // STEP 28: 78, one place on, behind control.activate's refusal in the generated section.
-      // STEP 29: 79, one place on again, behind proposal.approve's refusal.
+      // NEW IN STEP 29: 79, one place on again, behind proposal.approve's refusal.
       "            -> PROPOSED   accounts-payable-fte  audit:org_456:79   payment.cancel@1 invoked\n",
     );
     expect(out).toContain(
@@ -598,10 +598,10 @@ describe("the program a learner runs", () => {
     // STEP 26: and the money section's, two payments made, four moves each, and two refused, two each.
     // STEP 27: 114, with the CFO's control: two moves for the payment held, four for the one made.
     // STEP 28: 122, with control.activate's moves and the payment held once the control is stale.
-    // STEP 29: 129, with the two approvals' moves and the payment's move to APPROVED.
+    // NEW IN STEP 29: 129, with the two approvals' moves and the payment's move to APPROVED.
     expect(lines.filter((l) => /^\s*\d+\s+move\s/.test(l))).toHaveLength(129);
     // STEP 28: one place on, behind control.activate's refusal in the generated section.
-    // STEP 29: one place on again, behind proposal.approve's refusal in the generated section.
+    // NEW IN STEP 29: one place on again, behind proposal.approve's refusal in the generated section.
     expect(lines).toContain(line("79", "move", "PROPOSED prop_10"));
     expect(lines).toContain(line("80", "ALLOW", "ALLOWED"));
     expect(lines).toContain(line("81", "move", "READY prop_10"));

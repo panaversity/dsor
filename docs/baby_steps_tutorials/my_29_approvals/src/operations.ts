@@ -96,7 +96,6 @@ import {
   hasExpired,
   keepApproval,
   proposalToApprove,
-  quorumMet,
 } from "./approvals.ts";
 // STEP 27: the company's policy, as controls written in CEL (decision 162).
 import type { ConditionInput } from "./cel.ts";
@@ -721,7 +720,21 @@ const handlers: Readonly<Record<string, Handler>> = {
       return { kind: "error", askedBy, envelope: read.refused };
     }
 
-    const target = await proposalToApprove(tenant, read.id);
+    let target;
+    let requirements;
+
+    // NEW IN STEP 29, decision 168: read before anything is written, so a store that cannot be read
+    // is told as nothing done, not thrown.
+    try {
+      target = await proposalToApprove(tenant, read.id);
+      requirements = await requirementsOf(tenant, read.id);
+    } catch {
+      return refused(
+        "EVIDENCE_STORE_UNAVAILABLE",
+        `${read.id} could not be read, so nothing was approved`,
+      );
+    }
+
     const approver = findPerson(askedBy);
 
     if (
@@ -732,7 +745,6 @@ const handlers: Readonly<Record<string, Handler>> = {
       return refused("CONFLICT", `${read.id} is no longer waiting for approval`);
     }
 
-    const requirements = await requirementsOf(tenant, read.id);
     const fills = requirements.filter((r) => r.role === approver.title);
     const at = now();
     const approved = await keepApproval(tenant, read.id, askedBy, {
@@ -754,52 +766,46 @@ const handlers: Readonly<Record<string, Handler>> = {
       approvers: [{ principal: askedBy, basis: `role:${approver.title}`, authn: { at } }],
       sod_mode: "standard",
       expires_at: expiresAt(target.waitingSince),
+    }, {
+      // The move to APPROVED, when this is the last approval, is in the name of this request.
+      subject: askedBy,
+      requestId,
+      operation: target.operation,
+      payloadHash: target.payloadHash,
     });
 
-    // NEW IN STEP 29, decision 168: the proposal stopped waiting, or its time ran out, after §21.9 looked;
-    // nothing was kept, and the caller hears where it stands.
-    if (approved.kind === "not_waiting") {
-      return refused(
-        "CONFLICT",
-        `${read.id} is ${approved.state}, and only one waiting for approval can be approved`,
-      );
+    // NEW IN STEP 29, decision 168: the approval and the move it completes were one statement, so
+    // either both were written or neither. Nothing kept is told why: the proposal stopped waiting, or
+    // its time ran out, after §21.9 looked; this person's own other request kept theirs first; the
+    // store refused the statement; or nobody knows.
+    switch (approved.kind) {
+      case "kept":
+        break;
+      case "not_waiting":
+        return refused(
+          "CONFLICT",
+          `${read.id} is ${approved.state}, and only one waiting for approval can be approved`,
+        );
+      case "expired":
+        return refused(
+          "APPROVAL_EXPIRED",
+          `${read.id} waited for approval until ${expiresAt(target.waitingSince)}, and cannot be approved now`,
+        );
+      case "already":
+        return refused("CONFLICT", `${askedBy} has approved ${read.id} already`);
+      case "not_written":
+        return refused(
+          "EVIDENCE_STORE_UNAVAILABLE",
+          `the approval of ${read.id} could not be written, so nothing was approved`,
+        );
+      case "unknown":
+        return refused(
+          "OUTCOME_UNKNOWN",
+          `the approval of ${read.id} may or may not have been kept: the store did not answer, and it could not be looked for`,
+        );
     }
 
-    if (approved.kind === "expired") {
-      return refused(
-        "APPROVAL_EXPIRED",
-        `${read.id} waited for approval until ${expiresAt(target.waitingSince)}, and cannot be approved now`,
-      );
-    }
-
-    // Every requirement, its quorum counted from the approvals kept, this one among them. STEP 29,
-    // decision 168: an approval kept before, "already", came here because §21.9 found its proposal's
-    // quorum met and the move to APPROVED never made: a crash between the two. Asking again makes it.
-    let status = "PENDING_APPROVAL";
-
-    if (quorumMet(requirements, await approvalsOf(tenant, read.id))) {
-      // With its record, about the proposal approved, in the name of this request.
-      const moved = await moveProposal(
-        tenant,
-        read.id,
-        "PENDING_APPROVAL",
-        "APPROVED",
-        askedBy,
-        `approved: every requirement has its quorum; the last by ${askedBy}, ${approved.id}`,
-        {
-          subject: askedBy,
-          requestId,
-          operation: target.operation,
-          payloadHash: target.payloadHash,
-        },
-      );
-
-      // Another approver's request moved it first: approved all the same.
-      status =
-        moved.kind === "moved" || (await stateOf(tenant, read.id)) === "APPROVED"
-          ? "APPROVED"
-          : "PENDING_APPROVAL";
-    }
+    const status = approved.approved ? "APPROVED" : "PENDING_APPROVAL";
 
     return {
       kind: "result",
@@ -1818,7 +1824,7 @@ const validateTheInput: Stage["run"] = (context) => {
     return refuse(
       askedBy,
       "VALIDATION_FAILED",
-      // STEP 17: an argument JSON would write as something else, named. STEP 29: by canonical.ts.
+      // STEP 17: an argument JSON would write as something else, named. NEW IN STEP 29: by canonical.ts.
       error instanceof NotCanonical
         ? `${nameOf(context.id)} was given arguments that cannot be written down: ${error.message}`
         : `${nameOf(context.id)} was given arguments that cannot be written down`,
@@ -2235,13 +2241,10 @@ async function whoMayApprove(
     );
   }
 
-  // NEW IN STEP 29, decision 168: unless the quorum is met with it, and the proposal still waits: then
-  // the move to APPROVED was never made, and the handler makes it.
   if (
     given_.some((a) =>
       (a.approvers as readonly { principal: string }[]).some((b) => b.principal === principal.id),
-    ) &&
-    !quorumMet(requirements, given_)
+    )
   ) {
     return no("CONFLICT", `${principal.id} has approved ${id} already`);
   }
@@ -3236,6 +3239,11 @@ const NOTHING_WAS_DONE: ReadonlySet<string> = new Set([
   "RESOURCE_NOT_FOUND",
   "VALIDATION_FAILED",
   "AUTHORIZATION_DENIED",
+  // NEW IN STEP 29, decision 168: proposal.approve's handler refuses with these when nothing was
+  // kept: its one statement refused by the store, or the proposal's time run out after §21.9
+  // looked. §28 says both mean nothing was carried out.
+  "EVIDENCE_STORE_UNAVAILABLE",
+  "APPROVAL_EXPIRED",
 ]);
 
 /**

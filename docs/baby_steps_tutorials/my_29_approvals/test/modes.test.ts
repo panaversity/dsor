@@ -711,7 +711,7 @@ const theRows = async (): Promise<unknown[]> =>
     return rows;
   });
 
-/** STEP 29: user_123's 31,400.00 USD payment, held for the CFO: an approval's example. */
+/** NEW IN STEP 29: user_123's 31,400.00 USD payment, held for the CFO: an approval's example. */
 async function aPaymentWaitingForTheCfo(): Promise<Readonly<Record<string, unknown>>> {
   expect((await switchOn("org_456", "high-value-payment", 8)).kind).toBe("switched_on");
 
@@ -732,7 +732,7 @@ async function aPaymentWaitingForTheCfo(): Promise<Readonly<Record<string, unkno
 describe("every command can be called all three ways", () => {
   for (const contract of COMMANDS) {
     it(`DSOR-OPR-05: ${contract.id} is VALIDATED as a dry run and READY when prepared, and neither carries it out`, async () => {
-      // STEP 29: an approval needs a proposal waiting for one, which the story does not start
+      // NEW IN STEP 29: an approval needs a proposal waiting for one, which the story does not start
       // with: user_123's 31,400.00 USD payment, held by the CFO's control, made first, and approved
       // by its own address and fingerprint.
       const example =
@@ -742,7 +742,7 @@ describe("every command can be called all three ways", () => {
       const before = await theRows();
       const { proposals: already, claims } = await leftBehind();
 
-      // STEP 28: each command by someone the rules let run it: a control by its owner. STEP 29:
+      // STEP 28: each command by someone the rules let run it: a control by its owner. NEW IN STEP 29:
       // and an approval by the CFO.
       const caller =
         contract.id === "control.activate" || contract.id === "proposal.approve" ? CFO : SUPERVISOR;
@@ -774,7 +774,7 @@ describe("every command can be called all three ways", () => {
       // Its proposal waits at READY and never went to EXECUTING, the move the door makes just before
       // a handler runs. And nothing the snapshot reads has changed: user_123 has no slip, so not
       // even a reservation is held. The agent's prepared payment would hold one.
-      // STEP 29: the newest, since an approval's example made a payment first.
+      // NEW IN STEP 29: the newest, since an approval's example made a payment first.
       const only = (await proposalsOf("org_456")).at(-1);
 
       expect(only?.state).toBe("READY");

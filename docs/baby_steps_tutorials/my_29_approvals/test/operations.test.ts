@@ -32,7 +32,7 @@ function handlersForBoth() {
     "invoice.list": stub,
     "payment.cancel": stub,
     "payment.create": stub,
-    // STEP 29: and approving a waiting proposal.
+    // NEW IN STEP 29: and approving a waiting proposal.
     "proposal.approve": stub,
   };
 }
@@ -80,7 +80,7 @@ describe("callOperation", () => {
       "invoice.list",
       "payment.cancel", // STEP 17
       "payment.create",
-      "proposal.approve", // STEP 29
+      "proposal.approve", // NEW IN STEP 29
     ]);
   });
 
@@ -171,7 +171,7 @@ describe("callOperation", () => {
     const ids = operationIds();
 
     // STEP 13: three. STEP 17: five, with the payments. STEP 25: seven, with the brake
-    // and the slip torn up. STEP 28: eight, with a control switched on. STEP 29: nine, with an
+    // and the slip torn up. STEP 28: eight, with a control switched on. NEW IN STEP 29: nine, with an
     // approval.
     expect(ids).toEqual([
       "control.activate",
@@ -452,7 +452,7 @@ describe("callOperation", () => {
           // STEP 25: the brake's and the slip's handlers too, so the first one missing is still
           // invoice.issue's. STEP 28: and switching a control on.
           "control.activate": handlersForBoth()["control.activate"],
-          // STEP 29: and approving, so the first one missing is still invoice.issue's.
+          // NEW IN STEP 29: and approving, so the first one missing is still invoice.issue's.
           "proposal.approve": handlersForBoth()["proposal.approve"],
           "control.suspend": handlersForBoth()["control.suspend"],
           "delegation.revoke": handlersForBoth()["delegation.revoke"],
@@ -489,7 +489,7 @@ describe("callOperation", () => {
       "invoice.list",
       "payment.cancel",
       "payment.create",
-      "proposal.approve", // STEP 29
+      "proposal.approve", // NEW IN STEP 29
     ]);
 
     expect(assertPaired(registry, onlyGet, waiting)).toBe(contracts + waiting.size);

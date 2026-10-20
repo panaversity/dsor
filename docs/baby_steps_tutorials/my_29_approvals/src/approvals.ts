@@ -10,10 +10,9 @@
 import { readFileSync } from "node:fs";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormatsModule, { type FormatsPlugin } from "ajv-formats";
-import { now } from "./audit.ts";
+import { now, OutcomeUnknown, recordInsertIf, recordTogether } from "./audit.ts";
 import { WAITS_FOR_APPROVAL_MS } from "./policy-controls.ts";
-import type { ProposalState } from "./proposal.ts";
-import type { Requirement } from "./requirements.ts";
+import { type ForTheRecord, type ProposalState, transition } from "./proposal.ts";
 import { theDatabase } from "./store.ts";
 
 // ajv-formats is CommonJS; under nodenext the callable sits on `.default`, as in audit.ts.
@@ -105,25 +104,36 @@ export function hasExpired(waitingSince: string): boolean {
 
 /** What keeping an approval came to. */
 export type Kept =
-  | { readonly kind: "kept"; readonly id: string }
+  /** Kept; and `approved` when it was the last the proposal waited for, which moved it to APPROVED. */
+  | { readonly kind: "kept"; readonly id: string; readonly approved: boolean }
   /** This person approved this proposal before; theirs is that one. */
   | { readonly kind: "already"; readonly id: string }
   /** The proposal stopped waiting after §21.9 looked, or its time ran out: nothing was kept. */
   | { readonly kind: "not_waiting"; readonly state: ProposalState }
-  | { readonly kind: "expired" };
+  | { readonly kind: "expired" }
+  /** The store refused the statement: no approval was kept, and the proposal did not move. */
+  | { readonly kind: "not_written" }
+  /** The reply was lost, and the approval could not be looked for: nobody knows. */
+  | { readonly kind: "unknown" };
 
 /**
- * Keep one approval, checked against the schema first, with its number from the sequence.
+ * Keep one approval, checked against the schema first, with its number from the sequence; and when
+ * it is the last one the proposal waits for, move the proposal to APPROVED, with the move's record in
+ * the log. One statement, all of it or none of it: `proposal.approve` says it is atomic, and §24
+ * says what that means, commits or does not, in one transaction (DSOR-EXE-05b, decision 168).
  *
- * Kept only while its proposal waits for approval and the approval's time has not passed, asked in
- * the same statement that keeps it: §21.9 looked a moment before, and the proposal could have been
- * cancelled in between (decision 168).
+ * Kept only while the proposal waits for approval and the approval's time has not passed, asked in
+ * the statement itself: §21.9 looked a moment before, and the proposal could have been cancelled
+ * in between. The quorum is counted in the statement too, with this approval, and the statement
+ * runs in the company's turn at the log, so two approvals sent at once are counted one after the
+ * other, never each without the other.
  */
 export async function keepApproval(
   tenant: string,
   proposal: string,
   approver: string,
   record: Approval,
+  by: ForTheRecord,
 ): Promise<Kept> {
   // Checked whole, as the schema says an approval is, with the number and the status a kept one
   // will have; neither is kept in the record itself.
@@ -135,64 +145,144 @@ export async function keepApproval(
     );
   }
 
-  const db = theDatabase(tenant);
+  const cause = `approved: every requirement has its quorum; the last by ${approver}`;
+  let written;
 
   try {
-    const { rows } = await db.query<{ id: string }>(
-      `INSERT INTO dsor.approvals (tenant, proposal, approver, record)
-       SELECT $1, $2, $3, $4::jsonb
-         FROM dsor.proposals p
-        WHERE p.tenant = $1 AND p.id = $2
-          AND ${STATE_NOW} = 'PENDING_APPROVAL'
-          AND $5::timestamptz <= ($4::jsonb ->> 'expires_at')::timestamptz
-       RETURNING id`,
-      [tenant, proposal, approver, JSON.stringify(record), now()],
-    );
-    const id = rows[0]?.id;
+    written = await recordTogether<{ id: string | null; moved: number }>(
+      tenant,
+      [transition(by, tenant, proposal, "PENDING_APPROVAL", "APPROVED", approver, cause)],
+      (records) => {
+        const [move] = records;
 
-    if (id !== undefined) {
-      return Object.freeze({ kind: "kept", id });
-    }
+        if (move === undefined) {
+          throw new TypeError("the move to APPROVED was not sealed; nothing was sent");
+        }
+
+        const params: unknown[] = [
+          tenant,
+          proposal,
+          approver,
+          JSON.stringify(record),
+          now(),
+          cause,
+          move.record_id,
+        ];
+
+        // `kept`: the approval, if the proposal waits and its time has not passed, and not this
+        // person's second. `moved`: the move, if one was kept and, with it, every requirement has
+        // as many approvals naming its control as its quorum. The table, read here, does not hold
+        // the row `kept` writes, which is why that row is added to the count by name.
+        return {
+          sql: `WITH kept AS (
+                  INSERT INTO dsor.approvals (tenant, proposal, approver, record)
+                  SELECT $1, $2, $3, $4::jsonb
+                    FROM dsor.proposals p
+                   WHERE p.tenant = $1 AND p.id = $2
+                     AND ${STATE_NOW} = 'PENDING_APPROVAL'
+                     AND $5::timestamptz <= ($4::jsonb ->> 'expires_at')::timestamptz
+                  ON CONFLICT (tenant, proposal, approver) DO NOTHING
+                  RETURNING id, record),
+                moved AS (
+                  INSERT INTO dsor.proposal_moves (tenant, proposal, from_state, to_state, actor, cause, record)
+                  SELECT $1, $2, 'PENDING_APPROVAL', 'APPROVED', $3, $6, $7
+                   WHERE EXISTS (SELECT 1 FROM kept)
+                     AND NOT EXISTS (
+                       SELECT 1 FROM dsor.requirements r
+                        WHERE r.tenant = $1 AND r.proposal = $2
+                          AND r.quorum > (
+                            SELECT count(*) FROM (
+                              SELECT a.record FROM dsor.approvals a
+                               WHERE a.tenant = $1 AND a.proposal = $2
+                              UNION ALL
+                              SELECT k.record FROM kept k
+                            ) AS given
+                             WHERE EXISTS (
+                               SELECT 1 FROM jsonb_array_elements(given.record -> 'satisfies') AS s
+                                WHERE s ->> 'control' = r.control
+                                  AND (s ->> 'version')::int = r.version)))
+                  RETURNING proposal),
+                r0 AS (${recordInsertIf("EXISTS (SELECT 1 FROM moved)", move, params)})
+                SELECT (SELECT id FROM kept) AS id, (SELECT count(*) FROM moved)::int AS moved`,
+          params,
+        };
+      },
+    );
   } catch (failure) {
-    if ((failure as { code?: unknown }).code !== "23505") {
-      throw failure;
+    // The statement failed, or only its reply was lost. The approval, looked for, says which: there,
+    // the statement committed, and the move with it if it was the last; not there, nothing was
+    // written, unless the server never answered and it may still land.
+    let found;
+
+    try {
+      found = await approvalBy(tenant, proposal, approver);
+    } catch {
+      return Object.freeze({ kind: "unknown" });
     }
 
-    const { rows } = await db.query<{ id: string }>(
-      "SELECT id FROM dsor.approvals WHERE tenant = $1 AND proposal = $2 AND approver = $3",
-      [tenant, proposal, approver],
-    );
+    if (found !== undefined) {
+      return Object.freeze({
+        kind: "kept",
+        id: found,
+        approved: (await stateNow(tenant, proposal)) === "APPROVED",
+      });
+    }
 
-    return Object.freeze({ kind: "already", id: rows[0]?.id ?? "" });
+    return Object.freeze({ kind: failure instanceof OutcomeUnknown ? "unknown" : "not_written" });
   }
 
-  // Nothing kept: say why, from where the proposal stands now.
-  const { rows } = await db.query<{ state: ProposalState }>(
-    `SELECT ${STATE_NOW} AS state FROM dsor.proposals p WHERE p.tenant = $1 AND p.id = $2`,
-    [tenant, proposal],
-  );
-  const state = rows[0]?.state ?? "PROPOSED";
+  const row = written.rows?.[0];
+
+  // The reply was lost and the move's record was found: the statement committed, and it wrote the
+  // record only beside the move, which it made only beside the approval.
+  if (row === undefined) {
+    return Object.freeze({
+      kind: "kept",
+      id: (await approvalBy(tenant, proposal, approver)) ?? "",
+      approved: true,
+    });
+  }
+
+  if (row.id !== null) {
+    return Object.freeze({ kind: "kept", id: row.id, approved: row.moved > 0 });
+  }
+
+  // Nothing kept: say why, from this person's approval, or from where the proposal stands now.
+  const before = await approvalBy(tenant, proposal, approver);
+
+  if (before !== undefined) {
+    return Object.freeze({ kind: "already", id: before });
+  }
+
+  const state = await stateNow(tenant, proposal);
 
   return state === "PENDING_APPROVAL"
     ? Object.freeze({ kind: "expired" })
-    : Object.freeze({ kind: "not_waiting", state });
+    : Object.freeze({ kind: "not_waiting", state: state ?? "PROPOSED" });
 }
 
-/**
- * Whether every requirement has its quorum: for each, as many approvals that satisfy its control as
- * it asks for (DSOR-AUT-02c). An approval expires with its proposal, which is then no longer
- * waiting, so its status is not asked here.
- */
-export function quorumMet(
-  requirements: readonly Requirement[],
-  approvals: readonly Approval[],
-): boolean {
-  return requirements.every(
-    (r) =>
-      approvals.filter((a) =>
-        (a.satisfies as readonly { control: string }[]).some((s) => s.control === r.control),
-      ).length >= r.quorum,
+/** The id of this person's approval of this proposal, or undefined for none. */
+async function approvalBy(
+  tenant: string,
+  proposal: string,
+  approver: string,
+): Promise<string | undefined> {
+  const { rows } = await theDatabase(tenant).query<{ id: string }>(
+    "SELECT id FROM dsor.approvals WHERE tenant = $1 AND proposal = $2 AND approver = $3",
+    [tenant, proposal, approver],
   );
+
+  return rows[0]?.id;
+}
+
+/** Where a proposal stands now, or undefined for none of that name. */
+async function stateNow(tenant: string, proposal: string): Promise<ProposalState | undefined> {
+  const { rows } = await theDatabase(tenant).query<{ state: ProposalState }>(
+    `SELECT ${STATE_NOW} AS state FROM dsor.proposals p WHERE p.tenant = $1 AND p.id = $2`,
+    [tenant, proposal],
+  );
+
+  return rows[0]?.state;
 }
 
 /** A proposal's approvals, oldest first, each whole: its record, its number and its status now. */
