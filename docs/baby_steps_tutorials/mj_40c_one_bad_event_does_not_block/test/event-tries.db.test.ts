@@ -3,6 +3,8 @@
 // closes it (DSOR-EVT-01a, DSOR-EVT-01b; step 40c's README, claims C1 to C6). The tests' own invoice,
 // INV-9001, 500.00 USD of VENDOR-44. The refused payment stands for one to VENDOR-31, whom the
 // accounts system does not know yet.
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import type pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildEvent, type DomainEvent, type EventDraft, type EventType } from "../src/events.ts";
@@ -17,6 +19,7 @@ const pool = newPool();
 const outbox = createDbOutbox(pool);
 const kinds = checkClassifications(shippedLabels).kinds;
 const REFUSED = "the accounts system answers 422: no vendor VENDOR-31";
+const DIE = fileURLToPath(new URL("refuse-and-die.ts", import.meta.url));
 
 beforeAll(() => {
   ownerInvoices("add");
@@ -126,7 +129,7 @@ async function flush(): Promise<void> {
 }
 
 describe("C1 and C2: only the refused payment's events wait", () => {
-  it("DSOR-EVT-01b: C1: on the database, one payment's events are refused: another payment's are delivered and marked in the same run, and the refused one's stay unsent", async () => {
+  it("step 40c's decision D1: C1: on the database, one payment's events are refused: another payment's are delivered and marked in the same run, and the refused one's stay unsent", async () => {
     await flush();
     const [bad, good] = [await drafted(), await drafted()];
     const { got, deliver } = refusing(bad);
@@ -143,7 +146,7 @@ describe("C1 and C2: only the refused payment's events wait", () => {
     expect((await eventsOf(bad)).map((e) => e.sent)).toStrictEqual([false]);
   });
 
-  it("DSOR-EVT-01b: C2: a paid payment's payment.created is refused: its payment.executed is not tried and has no try, and the run that delivers the first delivers the second after it", async () => {
+  it("step 40c's decision D1: C2: a paid payment's payment.created is refused: its payment.executed is not tried and has no try, and the run that delivers the first delivers the second after it", async () => {
     await flush();
     const bad = await paid();
     const tried: string[] = [];
@@ -402,5 +405,119 @@ describe("step 40c's review, L4: an event's number is the next one for its payme
         );
       }),
     ).rejects.toThrow(/is not the next number/);
+  });
+});
+
+/** An alert's times, as the database wrote them. */
+async function alertTimesOf(eventId: string): Promise<{ raised: Date; closed: Date | null }> {
+  const { rows } = await tryThenRollBack(
+    pool,
+    "SELECT raised_at AS raised, closed_at AS closed FROM dsor.event_alerts WHERE event_id = $1",
+    "org_456",
+    [eventId],
+  );
+  return rows[0] as { raised: Date; closed: Date | null };
+}
+
+// Found by step 40c's review, M2 to M4: clauses that a break could remove with every test green.
+//   Each test below fails when its clause is removed (step 40c's README, the breaks).
+describe("step 40c's review, M2 to M4: each clause has a test that needs it", () => {
+  it("step 40c's decision D1: M2: a paid payment refused, written before a good draft: the good one is delivered", async () => {
+    await flush();
+    const bad = await paid();
+    const good = await drafted();
+    const run = await outbox.send("org_456", refusing(bad).deliver, 1000);
+    expect(run.sent).toStrictEqual([(await eventsOf(good))[0]!.event_id]);
+  });
+
+  it("step 40c's decision D1: M2: oldest first across payments: a paid payment's two events come before a later draft's", async () => {
+    await flush();
+    const first = await paid();
+    const later = await drafted();
+    const got: string[] = [];
+    await outbox.send("org_456", async (event) => void got.push(event.event_id), 1000);
+    const [created, executed] = await eventsOf(first);
+    expect(got).toStrictEqual([
+      created!.event_id,
+      executed!.event_id,
+      (await eventsOf(later))[0]!.event_id,
+    ]);
+  });
+
+  it("DSOR-EVT-01a: M3: two payments refused in one run: each gets its own try", async () => {
+    await flush();
+    const [one, two] = [await drafted(), await drafted()];
+    await outbox.send(
+      "org_456",
+      async () => {
+        throw new Error(REFUSED);
+      },
+      1000,
+    );
+    for (const id of [one, two]) {
+      expect(await triesOf((await eventsOf(id))[0]!.event_id)).toStrictEqual([REFUSED]);
+    }
+  });
+
+  it("DSOR-EVT-01a: M3: a sender killed after a refused try, before its commit, leaves no try", async () => {
+    await flush();
+    const bad = await drafted();
+    await drafted();
+    const died = spawnSync(process.execPath, [DIE, bad], { encoding: "utf8" });
+    expect(died.signal).toBe("SIGKILL");
+    expect(died.stdout).toBe("");
+    expect(await triesOf((await eventsOf(bad))[0]!.event_id)).toStrictEqual([]);
+  });
+
+  it("DSOR-EVT-01a: M4: two payments with open alerts; the run that delivers one closes only its alert, and commits", async () => {
+    await flush();
+    const [one, two] = [await drafted(), await drafted()];
+    for (const _ of [1, 2, 3]) {
+      await outbox.send(
+        "org_456",
+        async () => {
+          throw new Error(REFUSED);
+        },
+        1000,
+      );
+    }
+    const run = await outbox.send("org_456", refusing(two).deliver, 1000);
+    expect(run.sent).toStrictEqual([(await eventsOf(one))[0]!.event_id]);
+    expect(await alertsOf((await eventsOf(one))[0]!.event_id)).toStrictEqual([
+      { state: "closed", closed: true },
+    ]);
+    expect(await alertsOf((await eventsOf(two))[0]!.event_id)).toStrictEqual([
+      { state: "open", closed: false },
+    ]);
+  });
+
+  it("DSOR-EVT-01a: M4: an alert's times are the database's: raised now, and closed later, when its event is sent", async () => {
+    await flush();
+    const bad = await drafted();
+    const [event] = await eventsOf(bad);
+    const before = Date.now();
+    for (const _ of [1, 2, 3]) await outbox.send("org_456", refusing(bad).deliver, 1000);
+    await outbox.send("org_456", async () => {}, 1000);
+    const { raised, closed } = await alertTimesOf(event!.event_id);
+    expect(raised.getTime()).toBeGreaterThanOrEqual(before - 5000);
+    expect(closed!.getTime()).toBeGreaterThan(raised.getTime());
+  });
+
+  it("DSOR-EVT-01a: M4: the owner cannot change an alert's payment", async () => {
+    await flush();
+    const bad = await drafted();
+    const [event] = await eventsOf(bad);
+    for (const _ of [1, 2, 3]) await outbox.send("org_456", refusing(bad).deliver, 1000);
+    const changed = ownerEventTries("alert-change", event!.event_id) as { said: string[] };
+    expect(changed.said).toStrictEqual([expect.stringMatching(/never change/)]);
+  });
+
+  it("DSOR-EVT-01a: M4: a try's time is the database's, whatever the owner gives", async () => {
+    await flush();
+    const bad = await drafted();
+    const stamped = ownerEventTries("try-stamp", (await eventsOf(bad))[0]!.event_id) as {
+      said: string[];
+    };
+    expect(stamped.said).toStrictEqual([`done, stored in ${new Date().getUTCFullYear()}`]);
   });
 });

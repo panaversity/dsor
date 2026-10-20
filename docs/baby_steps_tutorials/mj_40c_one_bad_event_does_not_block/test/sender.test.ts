@@ -79,7 +79,7 @@ describe("C6: the sender", () => {
 
   // Changed in step 40c: a failure holds back only its payment's events, so PAY-902's
   //   payment.created is delivered in the same run (step 40c's README, decision D1).
-  it("DSOR-EVT-01b: C1: the receiver fails on PAY-901's payment.executed: PAY-902's payment.created is delivered in the same run, and the next run delivers PAY-901's", async () => {
+  it("step 40c's decision D1: C1: the receiver fails on PAY-901's payment.executed: PAY-902's payment.created is delivered in the same run, and the next run delivers PAY-901's", async () => {
     const outbox = await filled();
     const { got, deliver } = keeper();
     let down = true;
@@ -113,7 +113,7 @@ describe("C6: the sender", () => {
 
   // NEW IN STEP 40c: inside one payment the order holds. An event behind a failure of its payment
   //   is not tried (step 40c's README, claims C1 and C2).
-  it("DSOR-EVT-01b: C2: the receiver refuses PAY-901's payment.created: its payment.executed is not tried, PAY-902's is delivered, and the next run delivers PAY-901's two in order", async () => {
+  it("step 40c's decision D1: C2: the receiver refuses PAY-901's payment.created: its payment.executed is not tried, PAY-902's is delivered, and the next run delivers PAY-901's two in order", async () => {
     const outbox = await filled();
     const { got, deliver } = keeper();
     const tried: string[] = [];
@@ -246,7 +246,7 @@ describe("the review, L5: the sender's lock, its copies, and one company's failu
 // NEW IN STEP 40c: pnpm send-events names the payment it held back, and why, and ends 1 (step
 //   40c's README, claim C7).
 describe("step 40c, C7: what pnpm send-events says about a payment it held back", () => {
-  it("DSOR-EVT-01b: C7: PAY-901's events are refused: the run delivers PAY-902's, names PAY-901 as held back with the reason, and ends 1", async () => {
+  it("step 40c's decision D1: C7: PAY-901's events are refused: the run delivers PAY-902's, names PAY-901 as held back with the reason, and ends 1", async () => {
     const outbox = await filled();
     const refusing: Outbox = {
       ...outbox,
@@ -449,5 +449,34 @@ describe("step 40c's review, M1: a run counts only the events it tries", () => {
       "PAY-901",
       "PAY-902",
     ]);
+  });
+});
+
+// Found by step 40c's review, S5: pnpm send-events could name only the first payment held back.
+describe("step 40c's review: every payment held back is named", () => {
+  it("step 40c's decision D1: C7: PAY-901 and PAY-902 are refused: both are named, each on its own line", async () => {
+    const outbox = await filled();
+    const refusing: Outbox = {
+      ...outbox,
+      send: (tenant, _deliver, limit) =>
+        outbox.send(
+          tenant,
+          async () => {
+            throw new Error("no vendor VENDOR-31");
+          },
+          limit,
+        ),
+    };
+    const out = mkdtempSync(join(tmpdir(), "dsor-40c-both-"));
+    try {
+      const lines: string[] = [];
+      await sendEach(refusing, new Map([["org_456", "org_456.jsonl"]]), out, (l) => lines.push(l));
+      expect(lines.slice(1).map((l) => l.split("'s events")[0])).toStrictEqual([
+        "org_456: held back PAY-901",
+        "org_456: held back PAY-902",
+      ]);
+    } finally {
+      rmSync(out, { recursive: true, force: true });
+    }
   });
 });

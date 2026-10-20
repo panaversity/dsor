@@ -419,11 +419,9 @@ describe("the review, M1: the outbox keeps its events, the owner's writes includ
 
   it("DSOR-EVT-01a: M1: no login may empty dsor.outbox, the owner included", () => {
     const emptied = ownerPaymentEvents("empty") as { said: string };
-    // Changed in step 40c: the failed tries and the event alerts point at events, so PostgreSQL
-    //   refuses the TRUNCATE before the guard is asked (step 40c's README, decisions D4 and D5).
-    expect(emptied.said).toMatch(
-      /an event is never removed|referenced in a foreign key constraint/,
-    );
+    // Changed in step 40c: the owner's program truncates with CASCADE, since the failed tries and
+    //   the event alerts point at events, so the outbox's own guard answers (step 40c's review, L6).
+    expect(emptied.said).toMatch(/an event is never removed/);
   });
 });
 

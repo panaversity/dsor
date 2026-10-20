@@ -437,7 +437,7 @@ describe("C6 and C7: the sender, on the database", () => {
   //   sender's tests failed. Changed in step 40c: the two events are about two payments, so the
   //   second is delivered and marked; only the first payment's events are held back (step 40c's
   //   README, decision D1).
-  it("DSOR-EVT-01b: the first of two unsent events, about two payments, fails: the second is delivered and marked sent, and the first stays unsent", async () => {
+  it("step 40c's decision D1: the first of two unsent events, about two payments, fails: the second is delivered and marked sent, and the first stays unsent", async () => {
     await outbox.send("org_456", async () => {}, 1000);
     const first = requestId("c6-first");
     const second = requestId("c6-second");
@@ -461,7 +461,7 @@ describe("C6 and C7: the sender, on the database", () => {
   // Found by step 40's review, M2: no test said that what was delivered before the failure is
   //   marked, and only that. Changed in step 40c: the three are about three payments, so the third
   //   is delivered and marked too.
-  it("DSOR-EVT-01b: M2: three unsent events about three payments, and the second fails: the first and third are delivered and marked sent, and the second is not", async () => {
+  it("step 40c's decision D1: M2: three unsent events about three payments, and the second fails: the first and third are delivered and marked sent, and the second is not", async () => {
     await outbox.send("org_456", async () => {}, 1000);
     const [a, b, c] = [requestId("m2-a"), requestId("m2-b"), requestId("m2-c")];
     for (const request of [a, b, c]) await draft(request);

@@ -7,6 +7,9 @@
 // - alert-raise <event_id>: an alert written by hand for an event with fewer than three tries.
 // - alert-close <event_id>: the event's open alert closed by hand while the event is unsent.
 // - alert-remove <event_id>: the event's alert removed.
+// - alert-change <event_id>: the alert's payment changed (found by step 40c's review, G6).
+// - try-stamp <event_id>: a try written with a time of 2000-01-01; prints the year the database
+//   stored (found by step 40c's review, G1).
 // - empty: both tables truncated.
 // Run by the tests as:  node test/owner-event-tries.ts <command> [event_id]
 import pg from "pg";
@@ -33,6 +36,15 @@ const STATEMENTS: Record<string, string[]> = {
     "UPDATE dsor.event_alerts SET state = 'closed', closed_at = now() WHERE event_id = $1",
   ],
   "alert-remove": ["DELETE FROM dsor.event_alerts WHERE event_id = $1"],
+  "alert-change": [
+    "UPDATE dsor.event_alerts SET resource = 'dsor://org_456/payment/PAY-000' WHERE event_id = $1",
+  ],
+  "try-stamp": [
+    `INSERT INTO dsor.outbox_tries (tenant_id, event_id, tried_at, reason)
+     SELECT tenant_id, event_id, '2000-01-01T00:00:00Z', 'stamped by the owner'
+       FROM dsor.outbox WHERE event_id = $1
+     RETURNING extract(year FROM tried_at)::int AS year`,
+  ],
   empty: ["TRUNCATE dsor.outbox_tries", "TRUNCATE dsor.event_alerts"],
 };
 
@@ -44,8 +56,9 @@ try {
   for (const sql of statements) {
     await client.query("BEGIN");
     try {
-      const { rowCount } = await client.query(sql, sql.includes("$1") ? [eventId] : []);
-      said.push(`done, ${rowCount ?? 0} rows`);
+      const { rowCount, rows } = await client.query(sql, sql.includes("$1") ? [eventId] : []);
+      const year = (rows[0] as { year?: number } | undefined)?.year;
+      said.push(year === undefined ? `done, ${rowCount ?? 0} rows` : `done, stored in ${year}`);
     } catch (error) {
       said.push((error as Error).message);
     } finally {

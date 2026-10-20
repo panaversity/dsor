@@ -15,7 +15,8 @@
 // - stamp: a draft and its payment.created, written with written_xact 42; prints what was stored
 //   and this transaction's id (the review, M1).
 // - forget <payment>: the payment's events deleted (the review, M1).
-// - empty: dsor.outbox truncated (the review, M1).
+// - empty: dsor.outbox truncated (the review, M1). Changed in step 40c: with CASCADE, so the tries
+//   and alerts that point at events do not stop it first, and the outbox's own guard answers.
 // Run by the tests as:  node test/owner-payment-events.ts <command> [payment]
 import pg from "pg";
 import { buildEvent, type EventType } from "../src/events.ts";
@@ -109,7 +110,7 @@ try {
         `dsor://org_456/payment/${payment}`,
       ]);
     } else {
-      await client.query("TRUNCATE dsor.outbox");
+      await client.query("TRUNCATE dsor.outbox CASCADE");
     }
     await client.query(ROLLED_BACK.includes(command!) ? "ROLLBACK" : "COMMIT");
   } catch (error) {
