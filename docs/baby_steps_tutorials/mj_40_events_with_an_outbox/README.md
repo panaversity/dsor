@@ -191,3 +191,173 @@ Each break will be run for real on a fresh copy, and the number of tests that fa
 | **B5** | The event's data skips the classification |
 | **B6** | The sender ignores which company an event belongs to |
 | **B7** | Every ordering key is 1 |
+
+## What changed since step 39b
+
+| File | What changed |
+| --- | --- |
+| `src/events.ts` | **New.** An event built from DSoR's own data through the classification, with the call's ids; its check against `event.schema.json`; the writer one call uses; the event after the company's code, from the payment DSoR reads again (D1, D3, D5 to D7) |
+| `src/outbox.ts` | **New.** Each resource's events numbered and checked; the memory outbox and its sender; the writer a claim uses on the database (D2, D4, D8, D11) |
+| `src/sender.ts`, `src/send-events.ts`, `package.json` | **New.** The database's sender, one company and one sender at a time, and `pnpm send-events` (D8) |
+| `src/channels.ts`, `channels.json`, `src/receiver.ts` | **New.** One channel per company, a file channel, and the receiver's dedupe (D9, D10) |
+| `migrations/036_outbox.sql`, `store.json` | **New.** `dsor.outbox`, its columns held equal to its event, marked sent once by its guard, each company's own (D2) |
+| `schemas/event.schema.json` | **New.** Copied from the specification |
+| `src/claims.ts`, `src/postgres.ts`, `src/pipeline.ts`, `src/revocation.ts` | Every claim's stores hold the outbox; after the company's code, the proposal's last move writes the payment's event; DSoR's own work gets an event writer |
+| `src/approve.ts`, `src/reconcile.ts` | The approval that moves a proposal to `APPROVED`, and a reconcile that pays, write their events |
+| `src/main.ts` | The story shows the bank scene's events, a sender killed after one delivery, and this run's events in `dsor.outbox` |
+| `test/events.test.ts`, `test/event-shape.test.ts`, `test/sender.test.ts`, `test/outbox.db.test.ts`, `test/send-and-die.ts`, `test/owner-outbox.ts` | **New.** The claims C1 to C7 |
+| The other tests | The store map, the planted catalog, `dsor_runtime`'s privileges, row-level security, and the triggers name the outbox; the approval's event on the database. Each says "Changed in step 40" or "Step 40" |
+
+```bash
+git diff --no-index ../mj_39b_a_checkpoint_kept_elsewhere/src src
+git diff --no-index ../mj_39b_a_checkpoint_kept_elsewhere/test test
+```
+
+## Run it
+
+As in step 39b: a local PostgreSQL 17 and a database of its own. Migration 036 is new.
+
+```bash
+pnpm install
+pnpm migrate
+pnpm start          # the story; its last scene shows the events, a sender that dies, and the dedupe
+pnpm send-events    # delivers each company's unsent events to events/<company>.jsonl
+```
+
+`pnpm send-events` logs in as `dsor_runtime`, `DSOR_DB_URL` in `.env`, and never prints it. Run it
+again and it sends only what is new. Open `events/org_456.jsonl` to read what the accounts system
+would receive.
+
+## Break it
+
+The four stories of "The learner's predictions", run for real on 2026-10-20 on a scratch database,
+by a script that drives DSoR's own code as the tests do. Predict first: each answer is folded
+away. The request ids are shortened, and the scratch paths taken out.
+
+**P1.** user_123 drafts INV-9001, and the database refuses the decision record.
+
+<details>
+<summary>What the database holds after</summary>
+
+```text
+user_123 drafts INV-9001, and the record cannot be written: EVIDENCE_STORE_UNAVAILABLE
+payments of INV-9001 in the database: []
+events in dsor.outbox from that call: []
+the same draft, with the database mended: COMMITTED
+events from that call: [{"type":"payment.created","resource":"dsor://org_456/payment/PAY-906","ordering_key":1,"request":"p1-again-…","sent":false}]
+```
+
+No draft and no event: the event was written in the draft's transaction, and the record's failure
+rolled all three back (C4).
+
+</details>
+
+**P2.** A payment is drafted and paid. The sender delivers its first event to org_456's channel and
+is killed before it marks it sent. Then `pnpm send-events` runs.
+
+<details>
+<summary>What org_456's channel holds, and what the accounts system acts on</summary>
+
+```text
+the sender delivers to org_456's channel and is killed: signal SIGKILL
+org_456's channel now: payment.created PAY-908
+in dsor.outbox, still unsent: ["payment.created sent=false","payment.executed sent=false"]
+$ pnpm send-events
+org_456: sent 2 events
+org_789: sent 0 events
+org_456's channel now: payment.created PAY-908 (evt_45b84b87…), payment.created PAY-908 (evt_45b84b87…), payment.executed PAY-908 (evt_ff42f8db…)
+the accounts system keeps 2, and drops evt_45b84b87…, which it had
+```
+
+The mark never committed, so the event was still unsent and was delivered again: at least once.
+The receiver acts on the first copy of each `event_id` (C7, D10).
+
+</details>
+
+**P3.** The bank takes PAY-909 and never answers. Then dsor-scheduler reconciles it.
+
+<details>
+<summary>PAY-909's events, and their ordering keys</summary>
+
+```text
+user_123 sends PAY-909 and the bank never answers: OUTCOME_UNKNOWN
+its events: [{"type":"payment.created","resource":"dsor://org_456/payment/PAY-909","ordering_key":1,"request":"p3-draft-…","sent":false}]
+dsor-scheduler reconciles it: COMMITTED, COMMITTED
+its events: [{"type":"payment.created",…,"ordering_key":1,"request":"p3-draft-…"},{"type":"payment.executed",…,"ordering_key":2,"request":"p3-reconcile-…"}]
+```
+
+While the outcome is unknown there is no `payment.executed`: DSoR does not announce what it does
+not know. The reconcile that marks it paid writes it, numbered 2, with the reconcile's own request
+id (C2, D4).
+
+</details>
+
+**P4.** org_789 drafts its own INV-2002, and both companies' events are sent.
+
+<details>
+<summary>What each channel holds</summary>
+
+```text
+user_700 drafts org_789's INV-2002: COMMITTED
+$ pnpm send-events
+org_456: sent 3 events
+org_789: sent 1 event
+org_456.jsonl: 3 events, 0 of another company
+org_789.jsonl: 1 events, 0 of another company
+channels.json with one channel for both: channels.json: org_456 and org_789 share the channel all.jsonl; each company needs its own
+```
+
+The sender works inside one company at a time, and the database's row-level security shows it
+that company's events only. A file that would give two companies one channel is refused (C6,
+DSOR-EVT-01d).
+
+</details>
+
+## Build it yourself with Claude Code
+
+| # | Move | What was done |
+|---|---|---|
+| 1 | Understand | The problem, shown with a real run of the two ways to send without an outbox |
+| 2 | Decide | Twelve decisions, by Claude Code, while the learner was away |
+| 3 | The copy | Step 39b copied, its markers removed |
+| 4 | Red | 44 unit tests against stubs, and the database tests |
+| 5 | Code | The event, the outbox, the channels and the receiver, the wiring, the database's table and sender, the story |
+| 6 | Earlier tests | The store map, the catalog, the privileges, row-level security, and the triggers |
+| 7 | Break it | B1 to B8, for real |
+| 8 | Review | A reviewer who had not seen the conversation |
+
+To start it in a new session:
+
+```text
+Build step 40 in learner mode from the design in
+docs/baby_steps_tutorials/mj_40_events_with_an_outbox/README.md.
+```
+
+## Check yourself
+
+1. Why can DSoR not send the event right after the commit, from the same code?
+2. The decision record of user_123's draft cannot be written. Why is there no `payment.created`
+   event in the outbox?
+3. The sender delivers an event and is killed before it marks it sent. What happens next, and who
+   makes sure the accounts system acts on it once?
+4. PAY-901 has two events. What are their ordering keys, and what are they for?
+5. Why does DSoR read the payment again after the company's code, instead of using what the code
+   returned?
+
+<details>
+<summary>Answers</summary>
+
+1. A crash between the commit and the send loses the event: PAY-902 in "Why it matters" is paid and
+   nobody heard. Sending first is worse: PAY-904 was announced and never paid. The outbox writes
+   the event in the change's transaction, so they commit together (C4).
+2. The event was written in the same transaction as the draft and the record. The record failed, so
+   the whole transaction rolled back: no draft, no record, no event (C4, DSOR-EXE-04a).
+3. The mark and the delivery are in one transaction that never committed, so the event is still
+   unsent, and the next run delivers it again. The receiver keeps the first copy of each
+   `event_id` and drops the second (C7, D10).
+4. 1 for `payment.created` and 2 for `payment.executed`: the event's number among PAY-901's
+   events. A receiver that gets them out of order puts them back in order with it (D4).
+5. DSoR never takes anyone's word, the company's code included. An event built from the code's
+   answer could report an amount that was never drafted (D1).
+
+</details>
