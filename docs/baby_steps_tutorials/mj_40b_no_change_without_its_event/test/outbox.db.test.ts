@@ -348,8 +348,11 @@ describe("the review, L4: what else the database holds true of an event", () => 
     );
   });
 
-  it("DSOR-EVT-01a: L4: the same event, as written, is allowed", async () => {
-    expect(await adds(await fresh(requestId("l4-allowed")))).toBe("allowed");
+  // Changed in step 40b: a payment has one payment.created, so the copy is refused, but only by
+  //   step 40b's once-each index, which PostgreSQL checks after a row's CHECK constraints. So
+  //   migration 037's checks let it through (step 40b's README, decision D4).
+  it("DSOR-EVT-01a: L4: the same event, as written, passes migration 037's checks: only step 40b's once-each refuses the copy", async () => {
+    expect(await adds(await fresh(requestId("l4-allowed")))).toMatch(/outbox_once_each/);
   });
 
   it("DSOR-EVT-01a: L4: a mark is the database's clock when it is written, never the time the sender gives", async () => {
@@ -676,28 +679,23 @@ describe("the review, on the database", () => {
 });
 
 describe("the review, L2: two events of one resource at once", () => {
-  /** A payment.created event of org_456 about this payment, which no call drafted. */
+  // Changed in step 40b: about a proposal, not a payment. The database now refuses an event about
+  //   a payment that was never drafted, and a payment's second payment.created (step 40b's README,
+  //   decision D4); proposal.approved is not checked (claim C6).
+  /** A proposal.approved event of org_456 about this proposal, which no call approved. */
   function about(id: string): ReturnType<typeof buildEvent> {
     const kinds = checkClassifications(shippedLabels).kinds;
-    const data = {
-      tenant_id: "org_456",
-      id,
-      invoice_id: "INV-9001",
-      vendor_id: "VENDOR-44",
-      amount: { value: "500.00", currency: "USD" },
-      status: "draft",
-      version: 1,
-    };
-    const resource = `dsor://org_456/payment/${id}`;
-    const correlation = { request_id: requestId("l2"), principal_id: "user_123" };
+    const resource = `dsor://org_456/proposal/${id}`;
+    const data = { tenant_id: "org_456", id, proposal: resource, state: "APPROVED" };
+    const correlation = { request_id: requestId("l2"), principal_id: "cfo_100" };
     return buildEvent(
-      { type: "payment.created", tenant: "org_456", resource, kind: "Payment", data, correlation },
+      { type: "proposal.approved", tenant: "org_456", resource, kind: "Approval", data, correlation },
       kinds,
     );
   }
 
-  it("DSOR-EVT-01a: L2: two transactions add an event about one payment at once: the second waits for the first, and they are numbered 1 and 2", async () => {
-    const id = `PAY-${Date.now()}`;
+  it("DSOR-EVT-01a: L2: two transactions add an event about one proposal at once: the second waits for the first, and they are numbered 1 and 2", async () => {
+    const id = `prop_${randomUUID()}`;
     const two = newPool();
     const [first, second] = [await two.connect(), await two.connect()];
     try {
@@ -720,9 +718,9 @@ describe("the review, L2: two events of one resource at once", () => {
       }
       await two.end();
     }
-    expect(await storyOf(`dsor://org_456/payment/${id}`)).toStrictEqual([
-      ["payment.created", 1],
-      ["payment.created", 2],
+    expect(await storyOf(`dsor://org_456/proposal/${id}`)).toStrictEqual([
+      ["proposal.approved", 1],
+      ["proposal.approved", 2],
     ]);
   });
 

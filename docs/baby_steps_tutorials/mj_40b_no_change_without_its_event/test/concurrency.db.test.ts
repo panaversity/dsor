@@ -16,7 +16,9 @@ import {
   AUDIT_CHAIN_TRIGGER,
   INTENT_TRIGGER,
   OUTBOX_TRIGGER,
+  EVENT_CHANGE_TRIGGER,
   INVOICE_TRIGGER,
+  PAYMENT_EVENT_TRIGGER,
   PAYMENT_TRIGGER,
   PROPOSAL_ALERT,
   PROPOSAL_TRIGGER,
@@ -336,10 +338,16 @@ describe("C8 and C11: the version in a read, and the triggers in the catalog", (
     expect(rows.map((row) => row["def"])).toStrictEqual([
       // Changed in step 39: and the chain of the log, first in the order of their text.
       AUDIT_CHAIN_TRIGGER,
+      // Changed in step 40b: and the check that a payment's change has its event (step 40b's
+      //   README, decision D1).
+      PAYMENT_EVENT_TRIGGER,
       // Changed in step 38b: and the guard on an alert's moves (step 38b's README, claim C7).
       ALERT_TRIGGER,
       ALERTS_STAY,
       CONTROL_TRIGGER,
+      // Changed in step 40b: and the check that an event about a payment has its change (step
+      //   40b's README, decision D2).
+      EVENT_CHANGE_TRIGGER,
       // And, since step 36, the guard on a note's end (step 36's README, decision D1).
       INTENT_TRIGGER,
       INVOICE_TRIGGER,

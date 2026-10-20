@@ -28,6 +28,7 @@ import {
   createDbPayments,
   createDbProposals,
   createDbRates,
+  inCompany,
   loadDotEnv,
   openPool,
   requireEnv,
@@ -35,6 +36,11 @@ import {
 import { redact } from "./db.ts";
 import { randomUUID } from "node:crypto";
 import type { MoveBy } from "../src/proposals.ts";
+import { buildEvent } from "../src/events.ts";
+import { checkClassifications, readClassifications } from "../src/labels.ts";
+import { outboxIn } from "../src/outbox.ts";
+
+const kinds = checkClassifications(readClassifications()).kinds;
 
 loadDotEnv(["DSOR_MIGRATION_URL"]);
 const owner = requireEnv("DSOR_MIGRATION_URL");
@@ -50,14 +56,36 @@ try {
   if (process.argv[2] === "payments") {
     const payments = createDbPayments(pool);
     const amount = { value: "31400.00", currency: "USD" };
-    // On version 1 of INV-1008, which no test changes (step 21's README, decision 12).
-    const drafted = await payments.create(
-      "org_456",
-      { invoice_id: "INV-1008", vendor_id: "VENDOR-44", amount },
-      1,
-    );
-    if (!("payment" in drafted)) throw new Error("INV-1008 is not at version 1");
-    const draft = drafted.payment;
+    // Of INV-1008, which no test changes (step 21's README, decision 12). Changed in step 40b: the
+    //   draft and its payment.created in one transaction, as DSoR writes them, because the database
+    //   refuses a draft with no event, the owner's too (step 40b's README, decision D5).
+    const draft = await inCompany(pool, "org_456", async (client) => {
+      const { rows } = await client.query<{ id: string; version: number }>(
+        `INSERT INTO app.payments
+           (tenant_id, invoice_id, vendor_id, amount_value, amount_currency, status)
+         VALUES ('org_456', 'INV-1008', 'VENDOR-44', 31400.00, 'USD', 'draft')
+         RETURNING id, version`,
+      );
+      const made = rows[0]!;
+      const facts = {
+        type: "payment.created" as const,
+        tenant: "org_456",
+        resource: `dsor://org_456/payment/${made.id}`,
+        kind: "Payment",
+        data: {
+          tenant_id: "org_456",
+          id: made.id,
+          invoice_id: "INV-1008",
+          vendor_id: "VENDOR-44",
+          amount,
+          status: "draft",
+          version: made.version,
+        },
+        correlation: { request_id: "req_owner_store", principal_id: "user_123" },
+      };
+      await outboxIn(client).add("org_456", buildEvent(facts, kinds));
+      return made;
+    });
     const crossCancel = await payments.cancel("org_789", draft.id, draft.version);
     const { rows: after } = await pool.query("SELECT status FROM app.payments WHERE id = $1", [
       draft.id,

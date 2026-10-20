@@ -27,6 +27,10 @@ export const VENDOR_TRIGGER =
   "CREATE TRIGGER vendors_version BEFORE UPDATE ON app.vendors FOR EACH ROW EXECUTE FUNCTION app.next_version()";
 export const PAYMENT_TRIGGER =
   "CREATE TRIGGER payments_version BEFORE UPDATE ON app.payments FOR EACH ROW EXECUTE FUNCTION app.next_version()";
+// NEW IN STEP 40b: a payment drafted or marked paid needs its event, checked at COMMIT (step 40b's
+//   README, decisions D1 and D7).
+export const PAYMENT_EVENT_TRIGGER =
+  "CREATE CONSTRAINT TRIGGER payment_has_its_event AFTER INSERT OR UPDATE OF status ON app.payments DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION dsor.payment_has_its_event()";
 // The guard on proposals, the one trigger on DSoR's own side (step 22's README,
 // decision 3).
 export const PROPOSAL_TRIGGER =
@@ -63,6 +67,10 @@ export const INTENT_TRIGGER =
 // Step 40: the outbox's guard, which lets an event be marked sent once and changes nothing else.
 export const OUTBOX_TRIGGER =
   "CREATE TRIGGER outbox_send BEFORE UPDATE ON dsor.outbox FOR EACH ROW EXECUTE FUNCTION dsor.outbox_sends()";
+// NEW IN STEP 40b: an event about a payment needs its change, checked when it is written (step 40b's
+//   README, decisions D2, D4, and D7).
+export const EVENT_CHANGE_TRIGGER =
+  "CREATE TRIGGER event_has_its_change AFTER INSERT ON dsor.outbox FOR EACH ROW EXECUTE FUNCTION dsor.event_has_its_change()";
 // The log's columns. dsor_runtime may INSERT every one but sequence and at, which the
 // database fills in (step 09's README, decision 6).
 export const AUDIT_COLUMNS: string[] = [
@@ -144,8 +152,11 @@ const OUTBOX_COLUMNS = [
   "written",
   "written_at",
   "sent_at",
+  // NEW IN STEP 40b: the transaction that wrote the event, the database's to fill (step 40b's
+  //   README, decision D6).
+  "written_xact",
 ];
-const OUTBOX_FILLED = ["written", "written_at"];
+const OUTBOX_FILLED = ["written", "written_at", "written_xact"];
 
 // The table dsor.delegations, as migration 010 makes it. dsor_runtime reads every
 // column and writes none (step 18's README, decision 3). Migration 012 lets it
@@ -347,7 +358,7 @@ export function today(): Catalog {
         }),
         rowSecurity: { enabled: true, forced: true },
         rules: [],
-        triggers: [PAYMENT_TRIGGER],
+        triggers: [PAYMENT_EVENT_TRIGGER, PAYMENT_TRIGGER],
       },
       // Step 32's vendors, read and never written, as invoices are (step 32's README, decision D1).
       {
@@ -573,7 +584,7 @@ export function today(): Catalog {
         }),
         rowSecurity: { enabled: true, forced: true },
         rules: [],
-        triggers: [OUTBOX_TRIGGER],
+        triggers: [EVENT_CHANGE_TRIGGER, OUTBOX_TRIGGER],
       },
       // The proposals, behind the company's lock, with their guard.
       {

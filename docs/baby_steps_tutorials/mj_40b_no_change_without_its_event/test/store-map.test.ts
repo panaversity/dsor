@@ -2,7 +2,15 @@
 // README, C4 and C7). No database: these read store.json, and copies of it with one change.
 import { describe, expect, it } from "vitest";
 import { checkStore, readStore, type StoreSource } from "../src/store.ts";
-import { INVOICE_TRIGGER, PAYMENT_TRIGGER, PROPOSAL_ALERT, PROPOSAL_TRIGGER } from "./catalogs.ts";
+import {
+  EVENT_CHANGE_TRIGGER,
+  INVOICE_TRIGGER,
+  OUTBOX_TRIGGER,
+  PAYMENT_EVENT_TRIGGER,
+  PAYMENT_TRIGGER,
+  PROPOSAL_ALERT,
+  PROPOSAL_TRIGGER,
+} from "./catalogs.ts";
 
 const SHIPPED: StoreSource = readStore();
 
@@ -119,9 +127,9 @@ describe("the shipped map", () => {
           UPDATE: ["sent_at"],
         },
       },
-      triggers: [
-        "CREATE TRIGGER outbox_send BEFORE UPDATE ON dsor.outbox FOR EACH ROW EXECUTE FUNCTION dsor.outbox_sends()",
-      ],
+      // Changed in step 40b: and the check that an event about a payment has its change (step
+      //   40b's README, decision D2).
+      triggers: [EVENT_CHANGE_TRIGGER, OUTBOX_TRIGGER],
     });
   });
 
@@ -308,7 +316,12 @@ describe("C11: the map names each trigger", () => {
   it("step 21's decision 11: app.invoices and app.payments have the triggers that raise a row's version", () => {
     const { map } = checkStore(SHIPPED);
     expect(map.tables.get("app.invoices")!.triggers).toStrictEqual([INVOICE_TRIGGER]);
-    expect(map.tables.get("app.payments")!.triggers).toStrictEqual([PAYMENT_TRIGGER]);
+    // Changed in step 40b: and the check that a payment's change has its event, first in the
+    //   order of their text (step 40b's README, decision D1).
+    expect(map.tables.get("app.payments")!.triggers).toStrictEqual([
+      PAYMENT_EVENT_TRIGGER,
+      PAYMENT_TRIGGER,
+    ]);
   });
 
   it.each([
@@ -588,7 +601,8 @@ describe("step 17's C7: the kind business-written", () => {
           UPDATE: ["status"],
         },
       },
-      triggers: [PAYMENT_TRIGGER],
+      // Changed in step 40b: and the check that a payment's change has its event.
+      triggers: [PAYMENT_EVENT_TRIGGER, PAYMENT_TRIGGER],
     });
   });
 
