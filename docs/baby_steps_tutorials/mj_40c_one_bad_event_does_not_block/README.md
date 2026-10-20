@@ -269,7 +269,47 @@ the ordering key numbers (DSOR-EVT-01b).
 
 ### The breaks
 
-Every break is being run again after the review's fixes; the table follows when the run ends.
+Each break was run for real, after the review's fixes, in a copy of this step on a new database:
+change one thing, migrate, run `test/sender.test.ts` and the three database files of the outbox,
+and count the tests that fail. A break is caught when at least one fails. With no break, none
+fails.
+
+| Break | What it changes | Tests that fail |
+|---|---|---|
+| B1 | The database's sender stops the whole company at a failure, as in step 40 | 11 |
+| B2 | The database's sender skips only the failed event, and goes on with its payment's later events | 4 |
+| B3 | The memory sender stops the whole company | 5 |
+| B4 | No try is written for a failure | 14 |
+| B5 | The alert is raised on the second try | 1 |
+| B6 | The alert is raised on every try from the third, with no one-alert-per-event key | 4 |
+| B7 | The alert is not closed when its event is sent | 4 |
+| B8 | `dsor_runtime` may insert an alert | 1 |
+| B9 | A try may be changed or removed | 1 |
+| S1 | A try is written in a transaction of its own, not the run's | 1 |
+| S2 | Only the run's first failure is written as a try | 2 |
+| S3 | The database's sender ends a page of events at a held-back payment, instead of going on | 0: see below |
+| S4 | The database's sender reads every first event before any second one | 2 |
+| S5 | `pnpm send-events` names only the first payment it held back | 1 |
+| Sm | The memory sender reports only its first failure | 2 |
+| G1 | The database does not stamp a try's time | 1 |
+| G4 | An alert's `raised_at` is a fixed date | 1 |
+| G5 | An alert's `closed_at` is its `raised_at` | 1 |
+| G6 | An alert's company, event, payment, and `raised_at` may change | 1 |
+| G7 | Sending one event closes every open alert of its company | 1 |
+| H1 | A reason keeps its control characters | 3 |
+| M1 | Events held back count against the run's tries | 1 |
+| L1 | The alert needs exactly three tries, and may be raised twice | 2 |
+| L2 | A try does not lock its event's row | 1 |
+| L3 | A try may be written for an event held back behind its payment's earlier event | 1 |
+| L4 | An event's number need not be the next one for its payment | 1 |
+
+The review's six other breaks, G2, G3, G8, G10, K1, and S6, are being run again; their rows follow.
+
+**S3 is not a fault any more.** Before D9, `break` there stopped the run at a held-back payment's
+second event, and the payments after it waited. Now the sender notes how far it has read before it
+checks for a held-back payment (`src/sender.ts`, lines 65 and 66). So `break` ends only the page, and
+the next read starts right after the held-back event: the same events are delivered, in the same
+order, with one more read. No test can fail, because nothing is wrong.
 
 ## Build it yourself with Claude Code
 
