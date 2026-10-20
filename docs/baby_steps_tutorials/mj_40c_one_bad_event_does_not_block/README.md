@@ -151,3 +151,208 @@ Asked before the build, as stories. A real run settles each one after the build.
 | B7 | The alert is not closed when its event is sent |
 | B8 | `dsor_runtime` may insert an alert |
 | B9 | A try may be changed: its guard is gone |
+
+## What changed since step 40b
+
+| File | What changed |
+| --- | --- |
+| `src/outbox.ts`, `src/sender.ts` | Both senders hold back only a failed event's payment for the rest of the run, and go on with every other payment. A run's failures are a list, each with its payment's address. The database's sender writes each failed try in its run's transaction (D1, D6, D8) |
+| `src/sender.ts` | `pnpm send-events` names each payment it held back, the event it waits on, and the receiver's reason (C7) |
+| `migrations/041_event_tries.sql` | **New.** `dsor.outbox_tries` and `dsor.event_alerts`, their guards, the trigger that raises an alert on an event's third failed try, and the one that closes it when the event is sent (D2 to D5) |
+| `src/store.ts`, `store.json` | The kind `append-only-watched` (D7); the two tables and their triggers on the map, so start-up refuses a database without them |
+| `src/main.ts` | The story's sender that "dies" after a delivery: a thrown error no longer stops the run, so the scene loses each answer instead, and says so |
+| `test/event-tries.db.test.ts`, `test/owner-event-tries.ts`, `test/db.ts` | **New.** The claims C1 to C6 on the database, and the owner's program that the tests start through `ownerEventTries` |
+| `test/sender.test.ts` | C1, C2, and C7 in memory; step 40's test of a killed sender models the kill directly |
+| `test/outbox.db.test.ts`, `test/payment-events.db.test.ts` | Step 40's three tests of a failure now expect only its payment held back; step 40b's test of an emptied outbox accepts PostgreSQL's own refusal. Each says "Changed in step 40c" |
+| `test/catalogs.ts`, `test/store-map.test.ts`, `test/inspector.test.ts`, `test/concurrency.db.test.ts`, `test/audit.db.test.ts`, `test/rls.db.test.ts`, `test/store.db.test.ts` | The two tables, their triggers, policies, privileges, and counter, by name |
+
+```bash
+git diff --no-index ../mj_40b_no_change_without_its_event/src src
+git diff --no-index ../mj_40b_no_change_without_its_event/test test
+git diff --no-index ../mj_40b_no_change_without_its_event/migrations migrations
+```
+
+## Run it
+
+As in step 40b: a local PostgreSQL 17 and a new database of its own. Migration 041 is new.
+
+```bash
+pnpm install
+pnpm migrate
+pnpm test:db test/event-tries.db.test.ts
+pnpm send-events    # delivers each company's unsent events; names any payment it held back
+```
+
+The file channel of this tutorial never refuses an event, so `pnpm send-events` holds nothing back
+here. "Break it" below shows a receiver that refuses, through the same code.
+
+## Break it
+
+### The learner's predictions, run for real
+
+A real run on 2026-10-20, in a copy of this step on a database of its own. user_123 drafts and sends
+PAY-901 to VENDOR-31, drafts PAY-902, and drafts and sends PAY-903. The receiver refuses every event
+about VENDOR-31 until the accounts system adds it. The receiver is a sketch; the sender and
+`pnpm send-events`' words are this step's own code:
+
+```text
+user_123 drafts INV-1006, 640.00 USD to VENDOR-31: COMMITTED, PAY-901
+user_123 sends PAY-901: COMMITTED
+user_123 drafts INV-1002, 8,900.50 USD to VENDOR-44: COMMITTED, PAY-902
+user_123 drafts INV-1009, 7,425.00 USD to VENDOR-44: COMMITTED, PAY-903
+user_123 sends PAY-903: COMMITTED
+
+P1 and P2. Run 1:
+$ pnpm send-events   (run 1)
+  org_456: sent 3 events
+  org_456: held back PAY-901's events, from evt_38449dd2-4e5b-4a5c-ad2a-dde81b89928c: the accounts system answers 422: no vendor VENDOR-31
+  ended 1
+  the accounts system has heard: ["PAY-902 payment.created #1","PAY-903 payment.created #1","PAY-903 payment.executed #2"]
+  still unsent: ["PAY-901 payment.created #1","PAY-901 payment.executed #2"]
+  failed tries, by event: ["PAY-901 payment.created #1: 1","PAY-901 payment.executed #2: 0"]
+
+P3. Runs 2, 3, and 4:
+  … each run: sent 0 events; held back PAY-901's events …
+  dsor.event_alerts after run 2: []
+  dsor.event_alerts after run 3: ["PAY-901 payment.created #1 open"]
+  dsor.event_alerts after run 4: ["PAY-901 payment.created #1 open"]
+  the reasons kept: 4 tries, "the accounts system answers 422: no vendor VENDOR-31"
+
+P4. VENDOR-31 is added to the accounts system. Run 5:
+$ pnpm send-events   (run 5)
+  org_456: sent 2 events
+  ended 0
+  dsor.event_alerts after run 5: ["closed, closed_at set: true"]
+  the accounts system has heard, in order: ["PAY-902 payment.created #1","PAY-903 payment.created #1","PAY-903 payment.executed #2","PAY-901 payment.created #1","PAY-901 payment.executed #2"]
+```
+
+(Runs 2 to 4 print the same two lines as run 1 with `sent 0 events`; they are shortened here.)
+
+| | The learner's answer | What the run shows |
+|---|---|---|
+| P1 | Nothing yet | PAY-902's and PAY-903's three events, in each payment's order. Only PAY-901 waits. Nothing yet is what step 40b does, in "Why it matters" |
+| P2 | Delivered anyway | Not tried: PAY-901's `payment.executed` #2 has no failed try, and waits behind #1. Delivering it would let the accounts system read a payment paid that it never saw drafted |
+| P3 | One alert | Right: one, for `payment.created` #1, raised by run 3 and still one after run 4 |
+| P4 | Closed by the database | Right: run 5 delivers both events in order, and the same transaction closes the alert |
+
+P1 and P2 miss in opposite directions. P1 stops too much, the whole company, as step 40b did. P2
+stops too little, only the one event. The rule stops exactly one payment: the unit that the
+ordering key orders (DSOR-EVT-01b).
+
+### The breaks
+
+Each break ran on 2026-10-20 in a copy of this folder outside the repository. Each changed one file,
+migrated a fresh database of its own, and ran `test/sender.test.ts`, then
+`test/event-tries.db.test.ts` and `test/outbox.db.test.ts`. With the file restored, all of them
+passed.
+
+| Break | What it removes | Unit tests failed | Database tests failed |
+|---|---|---|---|
+| **B1** | The database's sender stops the whole company at a failure, as in step 40 | 0 | 3 |
+| **B2** | The database's sender skips only the failed event, and goes on with its payment's later events | 0 | 2 |
+| **B3** | The memory sender stops the whole company | 3 | 0 |
+| **B4** | No try is written for a failure | 0 | 5 |
+| **B5** | The alert is raised on the second try, not the third | 0 | 1 |
+| **B6** | The alert is raised on every try from the third, with no one-alert-per-event key | 0 | 1 |
+| **B7** | The alert is not closed when its event is sent | 0 | 1 |
+| **B8** | `dsor_runtime` may insert an alert | 0 | 1 |
+| **B9** | A try may be changed or removed: its guard lets it | 0 | 1 |
+
+Every break is caught. B1 and B2 fail no unit test, and B3 no database test, and that is right:
+the two senders are two pieces of code, and each is caught by the tests of its own world. B4 fails
+five tests, because without tries there is no alert either.
+
+## Build it yourself with Claude Code
+
+| # | Move | What was done |
+|---|---|---|
+| 1 | Understand | The problem, shown with a real run of step 40b's sender held back by one refused payment |
+| 2 | Decide | Six decisions by the learner, D1 to D6; D7 found while checking the design; D8 follows from step 40 |
+| 3 | Predict | P1 to P4, asked as stories before any code |
+| 4 | The copy | Step 40b copied, its markers removed |
+| 5 | Red | Three memory tests and nine database tests, each failing for the right reason; step 40's three failure tests changed to the new rule |
+| 6 | Code | Both senders, `pnpm send-events`' words, one migration, one new kind on the map |
+| 7 | Earlier tests | The map, the catalog, the policies, the privileges, the counters, the triggers |
+| 8 | Break it | P1 to P4, then B1 to B9, for real |
+| 9 | Review | A reviewer who had not seen the conversation |
+
+To start it in a new session:
+
+```text
+Build step 40c in learner mode from the design in
+docs/baby_steps_tutorials/mj_40c_one_bad_event_does_not_block/README.md.
+```
+
+## Check yourself
+
+1. Step 40b's sender stops at the first event it cannot deliver. What does that protect, and what
+   does it cost?
+2. PAY-901's `payment.created` is refused. Why is its `payment.executed` not even tried, while
+   PAY-902's events are delivered?
+3. Why is a refused event kept first in line, and not moved aside after some tries?
+4. Who raises the alert, and why not the sender's own code?
+5. The sender is killed in the middle of a run in which PAY-901 was refused. How many tries does
+   the database keep for that run?
+
+<details>
+<summary>Answers</summary>
+
+1. It protects each payment's order: no `payment.executed` before its `payment.created`. It costs
+   every other payment's events, which wait behind one refused event for no reason, run after run
+   ("Why it matters").
+2. The ordering key orders one payment's events (DSOR-EVT-01b). Passing PAY-901's #1 with its #2
+   would break that order; PAY-902's events have an order of their own, which PAY-901 does not touch
+   (D1, P2).
+3. An event moved aside is lost unless a person looks for it. Kept first in line, it is tried on
+   every run, and its alert says it waits (D2).
+4. The database, in a trigger on the log of tries, on the third try. The sender writes only the
+   try; a sender that forgot to raise the alert could not leave it unraised (D4, D7).
+5. None. The tries are written in the run's transaction, which never commits, as the run marks no
+   event either (D8).
+
+</details>
+
+## Think it through
+
+### Found while building
+
+- **A thrown error is no longer a dying sender.** Step 40's story, and one of its memory tests, made
+  the sender "die" by throwing after a delivery. With D1 a thrown error holds back one payment, and
+  the run goes on. So the test models the kill directly, and the story's scene now loses each
+  answer after its delivery, and says so.
+- **The log of tries needs a trigger, and an append-only table may have none** (D7). A new kind,
+  `append-only-watched`, says so on the map.
+- **An emptied outbox is now refused twice.** The tries and the alerts point at events, so
+  PostgreSQL refuses a `TRUNCATE` of `dsor.outbox` before step 40b's guard is asked. Step 40b's test
+  accepts either refusal.
+- **Two database tests fail on timing in a full run, and pass alone.** `intents.db`'s EXE-04b gives
+  the bank 50 ms, which a busy machine misses; it passed alone twice. `bank.db`'s D7 is open question
+  158, as in step 40b.
+
+### What the review found
+
+The review is running. Its findings, and what was done about each, come here.
+
+### Left open on purpose
+
+- **`alert.list` does not show these alerts, and nothing escalates them** (D4). A person must look
+  in `dsor.event_alerts`.
+- **A run takes the oldest 100 unsent events, held back or not.** A payment held back with many
+  events still fills that window, and could keep every other payment's events out of it.
+- **A slow receiver still holds the run's transaction** (step 40's D8). Each try now waits for it too.
+- **A try's reason is the receiver's words**, cut to 200 characters. DSoR keeps them as they came.
+- **The log of tries only grows** (D5), as the outbox does.
+- **Memory keeps no tries and raises no alerts** (D6).
+
+## The rules this step meets
+
+| Rule | What it says | Spec | Tests |
+|---|---|---|---|
+| DSOR-EVT-01b | Every event carries a per-resource ordering key | [§31](../../../specs/dsor/03-execution.md#31-events) | `test/sender.test.ts`, C1, C2, C7; `test/event-tries.db.test.ts`, C1 and C2 |
+| DSOR-EVT-01a | Events are produced through a transactional outbox | [§31](../../../specs/dsor/03-execution.md#31-events) | `test/event-tries.db.test.ts`, C3 to C6; `test/store-map.test.ts`, `test/inspector.test.ts` |
+
+This step adds no rule id. The specification orders events per resource; this step makes the sender
+keep that order without making a whole company wait. What happens to an event that keeps failing is
+this tutorial's decision.
+
+**Next:** step 41, a payment run.
