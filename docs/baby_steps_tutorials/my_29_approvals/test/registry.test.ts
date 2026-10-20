@@ -30,6 +30,7 @@ describe("the operation registry", () => {
       "invoice.list",
       "payment.cancel", // STEP 17
       "payment.create",
+      "proposal.approve", // STEP 29
     ]);
   });
 

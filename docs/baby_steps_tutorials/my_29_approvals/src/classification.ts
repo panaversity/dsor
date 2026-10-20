@@ -71,6 +71,14 @@ const labels: Readonly<Record<string, Readonly<Record<string, Classification>>>>
     status: "internal",
     cancelled: "internal",
   }),
+  // NEW IN STEP 29: an approval, as its receipt shows it: the proposal, and where it stands now.
+  approval: Object.freeze({
+    uri: "internal",
+    tenantId: "internal",
+    id: "internal",
+    proposal: "internal",
+    status: "internal",
+  }),
   // STEP 25: a brake, as its receipt shows it: what it stops, and whether it is on.
   // STEP 28: and a control switched on, as its receipt shows it: its version and status.
   control: Object.freeze({

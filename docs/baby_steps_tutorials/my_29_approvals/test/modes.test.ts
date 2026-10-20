@@ -15,6 +15,7 @@ import { movesOf, proposalsOf, stateOf } from "../src/proposal.ts";
 import { contractsFromDisk, exampleRequestOf, loadRegistry } from "../src/registry.ts";
 import { overPGlite } from "../src/database.ts";
 import { useDatabase } from "../src/store.ts";
+import { switchOn } from "../src/policy-controls.ts";
 import { aDatabase, asTheOwner, forgetTheLog, resetTheStory } from "./support/database.ts";
 
 const SUPERVISOR = { loggedInAs: "user_123" };
@@ -710,15 +711,41 @@ const theRows = async (): Promise<unknown[]> =>
     return rows;
   });
 
+/** STEP 29: user_123's 31,400.00 USD payment, held for the CFO: an approval's example. */
+async function aPaymentWaitingForTheCfo(): Promise<Readonly<Record<string, unknown>>> {
+  expect((await switchOn("org_456", "high-value-payment", 8)).kind).toBe("switched_on");
+
+  const held = await callOperation(
+    SUPERVISOR,
+    "payment.create",
+    { invoice: "dsor://org_456/invoice/INV-1008", amount: { value: "31400.00", currency: "USD" } },
+    { idempotencyKey: "every-command-a-payment-to-approve" },
+  );
+
+  if (held.kind !== "result" || held.envelope.outcome !== "PENDING_APPROVAL") {
+    throw new Error(`expected a payment waiting for the CFO, got ${JSON.stringify(held)}`);
+  }
+
+  return { proposal: held.envelope.proposal, payload_hash: held.envelope.payload_hash };
+}
+
 describe("every command can be called all three ways", () => {
   for (const contract of COMMANDS) {
     it(`DSOR-OPR-05: ${contract.id} is VALIDATED as a dry run and READY when prepared, and neither carries it out`, async () => {
-      const example = exampleRequestOf(contract) ?? {};
+      // STEP 29: an approval needs a proposal waiting for one, which the story does not start
+      // with: user_123's 31,400.00 USD payment, held by the CFO's control, made first, and approved
+      // by its own address and fingerprint.
+      const example =
+        contract.id === "proposal.approve"
+          ? await aPaymentWaitingForTheCfo()
+          : (exampleRequestOf(contract) ?? {});
       const before = await theRows();
-      const { claims } = await leftBehind();
+      const { proposals: already, claims } = await leftBehind();
 
-      // STEP 28: each command by someone the rules let run it: a control by its owner.
-      const caller = contract.id === "control.activate" ? CFO : SUPERVISOR;
+      // STEP 28: each command by someone the rules let run it: a control by its owner. STEP 29:
+      // and an approval by the CFO.
+      const caller =
+        contract.id === "control.activate" || contract.id === "proposal.approve" ? CFO : SUPERVISOR;
       const dry = await callOperation(caller, contract.id, example, { mode: "validate_only" });
 
       expect(dry.kind === "result" && dry.envelope.outcome, `${contract.id}, a dry run`).toBe(
@@ -728,7 +755,7 @@ describe("every command can be called all three ways", () => {
       // A dry run leaves nothing behind: no proposal, no claim, and no change to the rows the
       // snapshot reads (DSOR-OPR-06). Asked here, and not only after the prepared call, so that a
       // change the dry run made fails as the dry run's.
-      expect(await leftBehind()).toStrictEqual({ proposals: 0, claims });
+      expect(await leftBehind()).toStrictEqual({ proposals: already, claims });
       expect(await theRows(), `${contract.id}, after the dry run`).toStrictEqual(before);
 
       const prepared = await callOperation(caller, contract.id, example, {
@@ -747,7 +774,8 @@ describe("every command can be called all three ways", () => {
       // Its proposal waits at READY and never went to EXECUTING, the move the door makes just before
       // a handler runs. And nothing the snapshot reads has changed: user_123 has no slip, so not
       // even a reservation is held. The agent's prepared payment would hold one.
-      const [only] = await proposalsOf("org_456");
+      // STEP 29: the newest, since an approval's example made a payment first.
+      const only = (await proposalsOf("org_456")).at(-1);
 
       expect(only?.state).toBe("READY");
       expect((await movesOf("org_456", only?.id ?? "")).map((m) => m.to)).toStrictEqual([

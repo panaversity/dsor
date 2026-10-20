@@ -271,6 +271,8 @@ const TENANT_TABLES: ReadonlyArray<readonly [table: string, column: string]> = O
   ["dsor.controls", "tenant"],
   // NEW IN STEP 29: what a waiting proposal waits for (decision 167).
   ["dsor.requirements", "tenant"],
+  // NEW IN STEP 29: and the approvals given to it.
+  ["dsor.approvals", "tenant"],
 ]);
 
 /** The tables as SQL, each looked up with `to_regclass`, which says NULL for one that is missing. */
@@ -1007,6 +1009,33 @@ export async function refuseIfItCanRewriteHistory(db: Database): Promise<void> {
       `this connection is \`${answer.who}\`, and it may change or delete what a proposal waits for, ` +
         `itself, one SET ROLE away, or through a helper function. The application adds a waiting ` +
         `proposal's requirements, and nothing else. See migrations/034_what_a_proposal_waits_for.sql.`,
+    );
+  }
+
+  // NEW IN STEP 29: the approvals. The application adds one, and nothing else: an approval it could
+  // change is one given for another request or by another person, one it could delete is a sign-off
+  // gone from the record, and one whose number or time it could choose is one it could reorder
+  // (decision 167).
+  const { rows: approvals } = await db.query<{ may: boolean }>(
+    `SELECT ${forAnyRoleItCanActAs((role) =>
+      [
+        `has_any_column_privilege(${role}, 'dsor.approvals', 'UPDATE')`,
+        `has_table_privilege(${role}, 'dsor.approvals', 'DELETE')`,
+        `has_table_privilege(${role}, 'dsor.approvals', 'TRUNCATE')`,
+        `EXISTS (SELECT 1 FROM pg_attribute a
+                  WHERE a.attrelid = 'dsor.approvals'::regclass AND a.attnum > 0
+                    AND NOT a.attisdropped
+                    AND a.attname NOT IN ('tenant', 'proposal', 'approver', 'record')
+                    AND has_column_privilege(${role}, a.attrelid, a.attnum, 'INSERT'))`,
+      ].join(" OR "),
+    )} AS may`,
+  );
+
+  if (approvals[0]?.may !== false) {
+    throw new Error(
+      `this connection is \`${answer.who}\`, and it may change or delete an approval, or choose its ` +
+        `number or time, itself, one SET ROLE away, or through a helper function. The application ` +
+        `adds an approval, and nothing else. See migrations/035_approvals.sql.`,
     );
   }
 

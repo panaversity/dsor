@@ -98,6 +98,8 @@ describe("every command says whether it can be undone", () => {
       "invoice.issue atomic",
       "payment.cancel atomic",
       "payment.create compensatable",
+      // STEP 29: an approval kept, and its proposal moved, or nothing.
+      "proposal.approve atomic",
     ]);
   });
 

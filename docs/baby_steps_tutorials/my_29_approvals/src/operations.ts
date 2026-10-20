@@ -81,15 +81,22 @@ import { type Claim, claimKey, KEY, settleKey, TakenButUnread } from "./idempote
 import { reserve, settleReservation, usedToday } from "./reservation.ts";
 // STEP 25: the brake, asked at §21.4 and again as a proposal moves to EXECUTING.
 import { liftTheBrake, pullTheBrake, whatStops } from "./controls.ts";
-import { findPerson } from "./people.ts";
+import { findPerson, type Principal } from "./people.ts";
 import { money, type Money } from "./money.ts";
 // STEP 26: two amounts compared in any two currencies, at the company's rates (decision 159).
 import { CannotConvert, convertUp, exceeds, plus, type RateOf } from "./exchange.ts";
 import { ratesOf } from "./rates.ts";
 // NEW IN STEP 29: RFC 8785, one spelling for every request (decision 167).
 import { canonicalJson, NotCanonical } from "./canonical.ts";
-// NEW IN STEP 29: what a waiting proposal waits for (decision 167).
-import { keepRequirements } from "./requirements.ts";
+// NEW IN STEP 29: what a waiting proposal waits for, and the approvals given to it (decision 167).
+import { keepRequirements, requirementsOf } from "./requirements.ts";
+import {
+  approvalsOf,
+  expiresAt,
+  hasExpired,
+  keepApproval,
+  proposalToApprove,
+} from "./approvals.ts";
 // STEP 27: the company's policy, as controls written in CEL (decision 162).
 import type { ConditionInput } from "./cel.ts";
 import {
@@ -373,6 +380,27 @@ function brakeTargetFrom(
   }
 
   return { agent: agent.id, target: given };
+}
+
+/**
+ * NEW IN STEP 29: the addresses a proposal's arguments name, in this company, for an approval's
+ * `resources`; the proposal itself when they name none (decision 167).
+ */
+function addressesNamedIn(payload: string, tenant: string, proposal: string): string[] {
+  const named = new Set<string>();
+  const walk = (value: unknown): void => {
+    if (typeof value === "string" && value.startsWith(`dsor://${tenant}/`)) {
+      named.add(value);
+    } else if (value !== null && typeof value === "object") {
+      for (const inner of Object.values(value)) {
+        walk(inner);
+      }
+    }
+  };
+
+  walk(JSON.parse(payload) as unknown);
+
+  return named.size === 0 ? [formatUri({ tenant, entity: "proposal", id: proposal })] : [...named];
 }
 
 /**
@@ -664,6 +692,117 @@ const handlers: Readonly<Record<string, Handler>> = {
           id,
           target: read.target,
           suspended,
+        },
+        semantics,
+        payloadHash: hash,
+        tenant,
+        proposal,
+        principalId: askedBy,
+        requestId,
+      }),
+    };
+  },
+
+  // NEW IN STEP 29: approving a waiting proposal (decision 167). Who may, and on what fingerprint,
+  // was decided at §21.9 and recorded. Here the approval is kept, whole, and once every requirement
+  // has its quorum the proposal moves to APPROVED (DSOR-AUT-02c). Nothing carries it out before
+  // step 31.
+  "proposal.approve": async (args, contract, askedBy, tenant, hash, requestId, proposal) => {
+    const semantics = semanticsOf(contract);
+    const refused = (code: string, message: string): HandlerAnswer => ({
+      kind: "error",
+      askedBy,
+      envelope: refusal(code, message, requestId, askedBy),
+    });
+    const read = idFrom(args, "proposal", contract, askedBy, tenant, requestId);
+
+    if ("refused" in read) {
+      return { kind: "error", askedBy, envelope: read.refused };
+    }
+
+    const target = await proposalToApprove(tenant, read.id);
+    const approver = findPerson(askedBy);
+
+    if (
+      target === undefined ||
+      target.waitingSince === undefined ||
+      approver?.title === undefined
+    ) {
+      return refused("CONFLICT", `${read.id} is no longer waiting for approval`);
+    }
+
+    const requirements = await requirementsOf(tenant, read.id);
+    const fills = requirements.filter((r) => r.role === approver.title);
+    const at = now();
+    const approved = await keepApproval(tenant, read.id, askedBy, {
+      proposal: formatUri({ tenant, entity: "proposal", id: read.id }),
+      operation: target.operation,
+      tenant,
+      // What it is about: the addresses its arguments name, or, naming none, the proposal itself.
+      resources: addressesNamedIn(target.payload, tenant, read.id),
+      payload_hash: target.payloadHash,
+      risk: registry.get(target.operation.split("@")[0] ?? "")?.risk.level ?? "high",
+      // Nothing is bound yet: checking the world again at execution is step 31's.
+      bound_state: { mode: "predicate", versions: {} },
+      satisfies: fills.map(({ control, version, role, quorum }) => ({
+        control,
+        version,
+        requirement: { role, quorum },
+      })),
+      // When the approver logged in is this decision's own time: no real login until step 43.
+      approvers: [{ principal: askedBy, basis: `role:${approver.title}`, authn: { at } }],
+      sod_mode: "standard",
+      expires_at: expiresAt(target.waitingSince),
+    });
+
+    if (approved === undefined) {
+      return refused("CONFLICT", `${askedBy} has approved ${read.id} already`);
+    }
+
+    // Every requirement, its quorum counted from the approvals kept, this one among them.
+    const kept = await approvalsOf(tenant, read.id);
+    const complete = requirements.every(
+      (r) =>
+        kept.filter((a) =>
+          (a.satisfies as readonly { control: string }[]).some((s) => s.control === r.control),
+        ).length >= r.quorum,
+    );
+    let status = "PENDING_APPROVAL";
+
+    if (complete) {
+      // With its record, about the proposal approved, in the name of this request.
+      const moved = await moveProposal(
+        tenant,
+        read.id,
+        "PENDING_APPROVAL",
+        "APPROVED",
+        askedBy,
+        `approved: every requirement has its quorum; the last by ${askedBy}, ${approved}`,
+        {
+          subject: askedBy,
+          requestId,
+          operation: target.operation,
+          payloadHash: target.payloadHash,
+        },
+      );
+
+      // Another approver's request moved it first: approved all the same.
+      status =
+        moved.kind === "moved" || (await stateOf(tenant, read.id)) === "APPROVED"
+          ? "APPROVED"
+          : "PENDING_APPROVAL";
+    }
+
+    return {
+      kind: "result",
+      askedBy,
+      envelope: success({
+        data: {
+          uri: formatUri({ tenant, entity: "approval", id: approved }),
+          tenantId: tenant,
+          id: approved,
+          proposal: formatUri({ tenant, entity: "proposal", id: read.id }),
+          status,
         },
         semantics,
         payloadHash: hash,
@@ -1586,6 +1725,39 @@ const validateTheInput: Stage["run"] = (context) => {
       }
     }
 
+    // NEW IN STEP 29: and which proposal, by its address, and the fingerprint the approver approves,
+    // for proposal.approve: facts about the arguments, refused before anything is decided (decision
+    // 167), as step 28's review asked of control.activate's.
+    if (context.contract?.id === "proposal.approve") {
+      const target = Object.hasOwn(given, "proposal") ? given["proposal"] : undefined;
+      const fingerprint = Object.hasOwn(given, "payload_hash") ? given["payload_hash"] : undefined;
+      let named;
+
+      try {
+        named = typeof target === "string" ? parseUri(target) : undefined;
+      } catch {
+        named = undefined;
+      }
+
+      if (named?.entity !== "proposal") {
+        return refuse(
+          askedBy,
+          "VALIDATION_FAILED",
+          "proposal.approve needs a proposal's address, dsor://<company>/proposal/<id>",
+          context.requestId,
+        );
+      }
+
+      if (typeof fingerprint !== "string" || !/^sha256:[0-9a-f]{64}$/.test(fingerprint)) {
+        return refuse(
+          askedBy,
+          "VALIDATION_FAILED",
+          "proposal.approve needs the fingerprint of the request it approves, sha256: and 64 hex digits",
+          context.requestId,
+        );
+      }
+    }
+
     // STEP 28: and which control, by its address and version, for control.activate. Left to the
     // handler, a malformed one passed §21.9, which could not look the control up, and was recorded
     // ALLOW for a person who was not its owner before the handler refused it (decision 166).
@@ -1957,6 +2129,106 @@ const createTheProposal: Stage["run"] = async (context) => {
 };
 
 /**
+ * NEW IN STEP 29: part of §21.9 — who may approve a waiting proposal (decision 167).
+ *
+ * In this order, each refusal recorded before anything is written: a person, logged in as
+ * themselves, never an agent and never under a slip (DSOR-APR-05a); a proposal of this company; the
+ * target operation's approve_permission, held (DSOR-APR-07); still waiting, and its 72 hours not
+ * passed; a requirement whose role is the approver's title; not approved by them already; and last,
+ * the fingerprint, which must be the stored request's (DSOR-APR-09).
+ */
+async function whoMayApprove(
+  context: Context,
+  principal: Principal,
+  tenant: string,
+  given: Readonly<Record<string, unknown>>,
+): Promise<StageResult> {
+  const no = (code: string, message: string): StageResult =>
+    refuse(principal.id, code, message, context.requestId);
+
+  if (principal.type !== "human" || context.delegation !== undefined) {
+    return no(
+      "AUTHORIZATION_DENIED",
+      `only a person, logged in as themselves, may approve; ${principal.id} may not`,
+    );
+  }
+
+  // §21.6 checked the address, and that it is this company's.
+  const id = parseUri(String(given["proposal"])).id;
+  let target;
+
+  try {
+    target = await proposalToApprove(tenant, id);
+  } catch {
+    return no("EVIDENCE_STORE_UNAVAILABLE", `${id} could not be read; nothing was done`);
+  }
+
+  if (target === undefined) {
+    return no("RESOURCE_NOT_FOUND", `there is no proposal ${id} to approve in ${tenant}`);
+  }
+
+  const operation = target.operation.split("@")[0] ?? "";
+  const permission = registry.get(operation)?.authorization.approve_permission;
+
+  if (permission === undefined || !holds(principal, permission)) {
+    return no(
+      "AUTHORIZATION_DENIED",
+      permission === undefined
+        ? `nobody may approve ${operation}: its contract names no approve_permission`
+        : `approving ${operation} needs ${permission}, which ${principal.id} does not hold`,
+    );
+  }
+
+  if (target.state !== "PENDING_APPROVAL" || target.waitingSince === undefined) {
+    return no(
+      "CONFLICT",
+      `${id} is ${target.state}, and only one waiting for approval can be approved`,
+    );
+  }
+
+  if (hasExpired(target.waitingSince)) {
+    return no(
+      "APPROVAL_EXPIRED",
+      `${id} waited for approval until ${expiresAt(target.waitingSince)}, and cannot be approved now`,
+    );
+  }
+
+  let requirements;
+  let given_;
+
+  try {
+    requirements = await requirementsOf(tenant, id);
+    given_ = await approvalsOf(tenant, id);
+  } catch {
+    return no("EVIDENCE_STORE_UNAVAILABLE", `${id} could not be read; nothing was done`);
+  }
+
+  if (!requirements.some((r) => r.role === principal.title)) {
+    return no(
+      "AUTHORIZATION_DENIED",
+      `${id} waits for approval by ${requirements.map((r) => r.role).join(" and ")}, and ${principal.id} is none of them`,
+    );
+  }
+
+  if (
+    given_.some((a) =>
+      (a.approvers as readonly { principal: string }[]).some((b) => b.principal === principal.id),
+    )
+  ) {
+    return no("CONFLICT", `${principal.id} has approved ${id} already`);
+  }
+
+  if (given["payload_hash"] !== target.payloadHash) {
+    return no(
+      "APPROVAL_MISMATCH",
+      `that fingerprint is not the one ${id} was proposed with, so nothing was approved`,
+    );
+  }
+
+  return carryOn(context);
+}
+
+/**
  * STEP 25, decision 143: §21.9, in part — check the target.
  *
  * Who may act on what a command names, and the state it must be in, decided before §21.11 records
@@ -2002,6 +2274,12 @@ const checkTheTarget: Stage["run"] = async (context) => {
           context.requestId,
         )
       : carryOn(context);
+  }
+
+  // NEW IN STEP 29: proposal.approve — who may approve this proposal, and on what fingerprint,
+  // decided before the decision is recorded (decision 167).
+  if (contract.id === "proposal.approve") {
+    return whoMayApprove(context, principal, tenant, given);
   }
 
   // STEP 28: control.activate — only the control's owner, a person logged in as themselves

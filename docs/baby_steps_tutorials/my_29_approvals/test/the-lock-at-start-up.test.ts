@@ -295,7 +295,8 @@ describe("a window past the lock", () => {
 
   // STEP 16: the application may create nothing in dsor, and through a helper whose owner
   // may, it made dsor.proposals anyway, a review measured (decision 124). STEP 22: step 22
-  // built dsor.proposals, so the helper makes approvals, a name a later step still has to build.
+  // built dsor.proposals, so the helper makes a_ledger. STEP 29: it made approvals, until step 29
+  // built a table of that name.
   // Decision 147: and in public, which no test asked. A review narrowed the question to dsor and
   // every test passed.
   for (const [id, schema] of [
@@ -306,17 +307,17 @@ describe("a window past the lock", () => {
       await asTheOwner(async () => {
         await db.exec("CREATE ROLE a_builder");
         await db.exec(`GRANT USAGE, CREATE ON SCHEMA ${schema} TO a_builder`);
-        await db.exec(`CREATE FUNCTION make_approvals() RETURNS void LANGUAGE plpgsql SECURITY DEFINER
-                       AS $$ BEGIN CREATE TABLE ${schema}.approvals (id text); END $$`);
-        await db.exec("ALTER FUNCTION make_approvals() OWNER TO a_builder");
+        await db.exec(`CREATE FUNCTION make_a_ledger() RETURNS void LANGUAGE plpgsql SECURITY DEFINER
+                       AS $$ BEGIN CREATE TABLE ${schema}.a_ledger (id text); END $$`);
+        await db.exec("ALTER FUNCTION make_a_ledger() OWNER TO a_builder");
       });
 
       await expect(refuseIfItCanRewriteHistory(overPGlite(db))).rejects.toThrow(/SECURITY DEFINER/);
 
       // And the route is real: as the application, one call, and a table stands in the schema.
-      await db.exec("SELECT make_approvals()");
+      await db.exec("SELECT make_a_ledger()");
       const { rows } = await db.query<{ owner: string }>(
-        `SELECT tableowner AS owner FROM pg_tables WHERE schemaname = '${schema}' AND tablename = 'approvals'`,
+        `SELECT tableowner AS owner FROM pg_tables WHERE schemaname = '${schema}' AND tablename = 'a_ledger'`,
       );
 
       expect(rows).toStrictEqual([{ owner: "a_builder" }]);
@@ -483,7 +484,7 @@ describe("a schema the application may create things in", () => {
   // business's. A table the application made there would be its own, every row of it, and a later
   // step's migration would find its name taken. A review measured the application making
   // `dsor.proposals` six steps before step 22 built it (decision 123); STEP 22: the test makes
-  // `approvals` now, a name a later step still has to build. Migration 008 takes
+  // `a_ledger` now, a name no step builds; STEP 29 built `approvals`, its name before. Migration 008 takes
   // CREATE back, and start-up asks PostgreSQL, because a later grant passes the migrations by.
   for (const [id, schema] of [
     ["DSOR-MOD-01", "dsor"],
@@ -499,9 +500,9 @@ describe("a schema the application may create things in", () => {
       );
 
       // And the route is real: as the application, a table of a later step's name, its own.
-      await db.exec(`CREATE TABLE ${schema}.approvals (id text)`);
+      await db.exec(`CREATE TABLE ${schema}.a_ledger (id text)`);
       const { rows } = await db.query<{ owner: string }>(
-        `SELECT tableowner AS owner FROM pg_tables WHERE schemaname = '${schema}' AND tablename = 'approvals'`,
+        `SELECT tableowner AS owner FROM pg_tables WHERE schemaname = '${schema}' AND tablename = 'a_ledger'`,
       );
 
       expect(rows).toStrictEqual([{ owner: APPLICATION_ROLE }]);

@@ -54,6 +54,8 @@ describe("DSoR's own store", () => {
     expect(await tablesIn("dsor")).toStrictEqual([
       // STEP 25: the emergency brake (decision 142).
       "agent_controls",
+      // NEW IN STEP 29: the approvals (decision 167).
+      "approvals",
       "audit",
       // STEP 27: the company's controls, its policy in CEL (decision 162).
       "controls",

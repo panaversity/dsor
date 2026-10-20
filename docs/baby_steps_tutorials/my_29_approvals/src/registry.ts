@@ -30,7 +30,11 @@ export interface OperationContract {
   readonly version: number;
   readonly kind: "query" | "command";
   readonly effect: "read" | "additive" | "mutating" | "destructive";
-  readonly authorization: { readonly permission: string };
+  readonly authorization: {
+    readonly permission: string;
+    /** NEW IN STEP 29: what an approver of this operation's waiting proposals must hold. */
+    readonly approve_permission?: string;
+  };
   readonly risk: { readonly level: "low" | "medium" | "high" | "critical" };
   readonly audit: { readonly level: "minimal" | "standard" | "full" };
   readonly idempotency?: { readonly required: boolean };
@@ -315,6 +319,8 @@ export function contractsFromDisk(): readonly ContractDocument[] {
     "invoice.list",
     "payment.cancel",
     "payment.create",
+    // NEW IN STEP 29: approving a waiting proposal (decision 167).
+    "proposal.approve",
   ].map((id) => ({
     where: `src/contracts/${id}.json`,
     expectedId: id,

@@ -369,10 +369,26 @@ export function crossTenantSuite(hooks: SuiteHooks): void {
         await questions.sameWhole(deps, c);
       });
 
-      it(`the other company holds every invoice and payment number ${id}'s example names, in the same state, so a careless write would have something to touch`, async () => {
-        await hooks.reset();
-        await questions.somethingToTouch(deps, c);
-      });
+      // NEW IN STEP 29: an example that names a proposal names one waiting for approval, which the
+      // story does not start with, in either company, and nobody can make in org_789. Its own
+      // example, and another company's proposal refused, are asked in test/approvals.test.ts; the
+      // refusals above hold for it as for every operation. Only proposal.approve may come this way,
+      // and the test below fails for any other that tries (decision 167).
+      const namesAProposal = addressesIn(example).some((a) => parseUri(a).entity === "proposal");
+
+      if (namesAProposal) {
+        it(`${id} names a proposal waiting for approval, which org_789 cannot have in this story; its own example is asked in test/approvals.test.ts`, () => {
+          expect(id).toBe("proposal.approve");
+        });
+      }
+
+      it.skipIf(namesAProposal)(
+        `the other company holds every invoice and payment number ${id}'s example names, in the same state, so a careless write would have something to touch`,
+        async () => {
+          await hooks.reset();
+          await questions.somethingToTouch(deps, c);
+        },
+      );
 
       it(`DSOR-IDN-03b: ${id} leaves the other company's rows exactly as they were`, async () => {
         await hooks.reset();
@@ -384,10 +400,13 @@ export function crossTenantSuite(hooks: SuiteHooks): void {
         await questions.oneDenyInTheLog(deps, c);
       });
 
-      it(`${id}'s example works for its own company, so the refusals above are about the address`, async () => {
-        await hooks.reset();
-        await questions.ownExampleWorks(deps, c);
-      });
+      it.skipIf(namesAProposal)(
+        `${id}'s example works for its own company, so the refusals above are about the address`,
+        async () => {
+          await hooks.reset();
+          await questions.ownExampleWorks(deps, c);
+        },
+      );
     });
   }
 }

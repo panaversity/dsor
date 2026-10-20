@@ -10,7 +10,8 @@
     "schema": "Payment"
   },
   "authorization": {
-    "permission": "payment:create"
+    "permission": "payment:create",
+    "approve_permission": "payment:approve"
   },
   "tenancy": {
     "required": true

@@ -930,16 +930,15 @@ console.log(
     ),
   ),
 );
-console.log(
-  show(
-    await callOperation(
-      SUPERVISOR,
-      "payment.create",
-      { invoice: INV_1008, amount: { value: "31400.00", currency: "USD" } },
-      keyFor("cfo-line-person"),
-    ),
-  ),
+// STEP 29: kept, so the CFO can approve it below.
+const heldForTheCfo = await callOperation(
+  SUPERVISOR,
+  "payment.create",
+  { invoice: INV_1008, amount: { value: "31400.00", currency: "USD" } },
+  keyFor("cfo-line-person"),
 );
+
+console.log(show(heldForTheCfo));
 console.log(
   show(
     await callOperation(
@@ -1004,6 +1003,41 @@ console.log(
   ),
 );
 usePolicySource("org_456", undefined);
+
+// NEW IN STEP 29: the CFO approves user_123's payment (decision 167). She logs in as herself, and
+// names the request by its address and its fingerprint, the payload hash every receipt for it
+// carries. A fingerprint that is not that request's approves nothing. The right one is kept as an
+// approval, and the proposal, which waited for one approval by the CFO, is APPROVED. Nothing carries
+// it out before step 31.
+console.log();
+console.log("The CFO approves user_123's payment, by its address and its fingerprint:");
+console.log();
+
+const waitingProposal =
+  heldForTheCfo.kind === "result" ? (heldForTheCfo.envelope.proposal ?? "") : "";
+const itsFingerprint =
+  heldForTheCfo.kind === "result" ? (heldForTheCfo.envelope.payload_hash ?? "") : "";
+
+console.log(
+  show(
+    await callOperation(
+      CFO,
+      "proposal.approve",
+      { proposal: waitingProposal, payload_hash: `sha256:${"0".repeat(64)}` },
+      keyFor("approve-the-wrong-request"),
+    ),
+  ),
+);
+console.log(
+  show(
+    await callOperation(
+      CFO,
+      "proposal.approve",
+      { proposal: waitingProposal, payload_hash: itsFingerprint },
+      keyFor("approve"),
+    ),
+  ),
+);
 
 // STEP 08: everything above already happened; this is what was written down while it did. Read the
 // `authorization` column: the DENY lines are the ones a program that logged only its successes would

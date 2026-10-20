@@ -52,6 +52,9 @@ export const ROLES: Readonly<Record<string, readonly string[]>> = Object.freeze(
     "delegation:revoke",
     // STEP 28: and switch on a control they own; §21.9 asks whose it is (decision 165).
     "control:activate",
+    // NEW IN STEP 29: and ask to approve; §21.9 asks for the target's approve_permission, which
+    // the supervisor does not hold (decision 167).
+    "proposal:approve",
   ]),
   // STEP 25: and so may the CFO. Either person can stop the agents at 3 a.m., and revoke a
   // slip they signed. Decision 156: the CFO could not revoke one. §21.5 refused her for want of
@@ -63,6 +66,8 @@ export const ROLES: Readonly<Record<string, readonly string[]>> = Object.freeze(
     "delegation:revoke",
     // STEP 28: and the CFO, who owns the CFO's control (decision 165).
     "control:activate",
+    // NEW IN STEP 29: and approve, holding payment:approve above (decision 167).
+    "proposal:approve",
   ]),
   // STEP 18: the agent's own role reads. Every command it sends runs under a permission
   // slip a person signed, and its power there is computed from the slip (decision 127).
