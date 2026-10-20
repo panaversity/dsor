@@ -119,6 +119,13 @@ export function eventWriter(
   };
 }
 
+/** The writer of a call that writes no event: the expiry sweep's, run by a test outside a claim. */
+export const NO_EVENTS: EventWriter = Object.freeze({
+  write: async (): Promise<never> => {
+    throw new Error("this work writes no event");
+  },
+});
+
 // What the company's code changes, as an event: the operation, the event, and the state the
 //   payment must be in after it.
 const AFTER_CODE: Readonly<Record<string, { type: EventType; status: PaymentStatus }>> = {

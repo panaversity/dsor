@@ -25,6 +25,7 @@ import { canMove, memoryProposals, STATES, type ProposalDraft } from "../src/pro
 import type { RequestEnvelope } from "../src/request.ts";
 import type { RoleTableSource } from "../src/permissions.ts";
 import { ownWorkFor } from "../src/revocation.ts";
+import { NO_EVENTS } from "../src/events.ts";
 import { memorySlips, type SlipStore } from "../src/slips.ts";
 import {
   ADMIN,
@@ -400,6 +401,8 @@ describe("C4: the sweep", () => {
       // Changed in step 29: and the contracts, which the sweep never reads (step 29's README,
       // decision D7).
       contracts: new Map(),
+      // Changed in step 40: and a writer of events, which the sweep never uses.
+      events: NO_EVENTS,
     };
     const expire = ownWorkFor()["proposal.expire_due"]!;
     expect(await expire.change(companyOf(SCHEDULER), work)).toStrictEqual({

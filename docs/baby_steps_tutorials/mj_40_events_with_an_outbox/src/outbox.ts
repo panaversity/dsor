@@ -33,6 +33,13 @@ export type Outbox = OutboxWriter & {
 /** The outbox in memory. */
 export type MemoryOutbox = Outbox;
 
+/** The outbox of a call that changes nothing, a query or a dry run: it takes no event. */
+export const NO_OUTBOX: OutboxWriter = Object.freeze({
+  add: async (): Promise<never> => {
+    throw new Error("this call changes nothing, so it writes no event");
+  },
+});
+
 /** How many events one run of the sender takes for one company, unless it is told another. */
 export const SEND_LIMIT = 100;
 

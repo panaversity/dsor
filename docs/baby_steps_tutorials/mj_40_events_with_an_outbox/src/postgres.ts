@@ -3,6 +3,7 @@
 // specs/dsor/03-execution.md, section 30). The invoices are the table app.invoices.
 import type { Alert } from "./alerts.ts";
 import type { HoldStore, KeptHold } from "./holds.ts";
+import { outboxIn } from "./outbox.ts";
 import {
   unknownFromNote,
   type IntentOutcome,
@@ -1294,6 +1295,9 @@ function storesIn(
     // And the holds, in dsor.holds, placed in the claim's transaction with the
     //   note, and read there at line ⑨ (step 37's README, decisions D1 and D6).
     holds: holdsThrough(run),
+    // NEW IN STEP 40: and the outbox, through the claim's own connection, so an event commits with
+    //   its change (DSOR-EVT-01a; step 40's README, decision D1).
+    outbox: outboxIn(client),
     // And the claim's own connection, so the record is written in its
     //   transaction (decision D1).
     transaction: client,

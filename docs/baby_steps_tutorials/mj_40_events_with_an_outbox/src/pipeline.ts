@@ -3,6 +3,8 @@
 import { ownReadOf } from "./alert-list.ts";
 import { heldBy, heldRefusal, holdsOf, NO_HOLDS, type HoldStore } from "./holds.ts";
 import { NO_INTENTS } from "./intents.ts";
+import { NO_OUTBOX } from "./outbox.ts";
+import { eventAfterCode, eventWriter } from "./events.ts";
 import { randomUUID } from "node:crypto";
 import { pinned, readBound, type Bound, type BoundRead } from "./bound.ts";
 import { checkBrake, holdBrake, NO_BRAKES, type BrakeStore } from "./brakes.ts";
@@ -875,6 +877,8 @@ export async function call(
             //   any claim.
             payments: unlocked(registry.payments),
             holds: registry.claims.holds,
+            // NEW IN STEP 40: and writes no event.
+            outbox: NO_OUTBOX,
             checkpoint: async () => {},
           };
           try {
@@ -1010,6 +1014,14 @@ export async function call(
             const bank = ASKS_BANK.has(contract.id) ? registry.plugs.bankOf(tenant) : undefined;
             // And the company's alerts, for the escalation sweep.
             const alerting = registry.alerts.get(tenant);
+            // NEW IN STEP 40: and the writer of this call's events, into the claim's own outbox
+            //   (step 40's README, decision D1).
+            const events = eventWriter(
+              stores.outbox,
+              tenant,
+              correlation,
+              registry.classifications,
+            );
             const work = {
               tenant,
               caller,
@@ -1020,6 +1032,7 @@ export async function call(
               contracts,
               bank,
               alerting,
+              events,
             };
             returned = await job.own.change(job.input, work);
           } else if (job.handler !== undefined) {
@@ -1436,6 +1449,8 @@ export async function call(
           // And no note to write, and nothing to commit.
           intents: NO_INTENTS,
           holds: NO_HOLDS,
+          // NEW IN STEP 40: and no event to write.
+          outbox: NO_OUTBOX,
           checkpoint: async () => {},
         });
       } else {
@@ -1538,6 +1553,23 @@ export async function call(
                   const id = proposalIdOf(tenant, proposal);
                   // And its note, if the work wrote one.
                   await endNote(stores, tenant, id, outcome);
+                  // NEW IN STEP 40: and the event of what the released code did, in the same
+                  //   transaction, with the release's own ids (step 40's README, decision D1).
+                  if ("value" in outcome) {
+                    const events = eventWriter(
+                      stores.outbox,
+                      tenant,
+                      correlation,
+                      registry.classifications,
+                    );
+                    await eventAfterCode(
+                      job.target.id,
+                      outcome.value,
+                      tenant,
+                      stores.payments,
+                      events,
+                    );
+                  }
                   if ("value" in outcome) await stores.reservations.commit(tenant, id);
                   else if (!isUnknown(outcome)) await stores.reservations.release(tenant, id);
                 },
@@ -1641,6 +1673,17 @@ export async function call(
                 const id = proposalIdOf(tenant, proposal);
                 // And its note, if the work wrote one.
                 await endNote(stores, tenant, id, outcome);
+                // NEW IN STEP 40: and the event of what the company's code did, in the same
+                //   transaction: DSoR reads the payment again itself (step 40's README, decision D1).
+                if ("value" in outcome) {
+                  const events = eventWriter(
+                    stores.outbox,
+                    tenant,
+                    correlation,
+                    registry.classifications,
+                  );
+                  await eventAfterCode(contract.id, outcome.value, tenant, stores.payments, events);
+                }
                 if ("value" in outcome) await stores.reservations.commit(tenant, id);
                 else if (!isUnknown(outcome)) await stores.reservations.release(tenant, id);
               },

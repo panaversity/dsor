@@ -4,6 +4,7 @@
 // request is refused (DSOR-IDM-01b to DSOR-IDM-01d in specs/dsor/03-execution.md, section 22;
 // step 20's README, decisions 4, 6, 7, and 9). The program keeps its claims in the table
 // dsor.idempotency (postgres.ts); the unit tests keep them in memory (memoryClaims below).
+import { memoryOutbox, type OutboxWriter } from "./outbox.ts";
 import { memoryHolds, type HoldStore } from "./holds.ts";
 import { memoryIntents, unknownFromNote, type IntentStore } from "./intents.ts";
 import { NO_BRAKES, type BrakeStore } from "./brakes.ts";
@@ -71,6 +72,9 @@ export type WorkStores = {
   // And the holds, placed with the note and read at line ⑨ (step 37's README,
   //   decisions D1 and D6).
   holds: HoldStore;
+  // NEW IN STEP 40: and the outbox, where DSoR writes the event of a change in the change's own
+  //   transaction (DSOR-EVT-01a; step 40's README, decision D1).
+  outbox: OutboxWriter;
   // And the claim's transaction itself, so the record commits with the work.
   transaction?: ClaimTransaction;
 };
@@ -303,6 +307,8 @@ export function memoryClaims(
   intents: IntentStore = memoryIntents(),
   // And these holds, in memory unless the test gives others.
   holds: HoldStore = memoryHolds(),
+  // NEW IN STEP 40: and this outbox, in memory unless the test gives one it reads.
+  outbox: OutboxWriter = memoryOutbox(),
 ): ClaimStore {
   // Each claim by its scope, written as one text.
   const claims = new Map<string, MemoryClaim>();
@@ -392,6 +398,7 @@ export function memoryClaims(
         controls,
         intents,
         holds,
+        outbox,
         // Memory has no transaction to commit, and keeps the note as it is written. From here
         //   on the claim is kept, as the database's is once its checkpoint commits.
         checkpoint: async () => {

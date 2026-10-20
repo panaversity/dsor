@@ -8,6 +8,7 @@
 // under the slip that waits for an approval moves to CANCELLED, and its reservation is released,
 // in the same transaction (DSOR-DEL-04a, DSOR-DEL-04c, and DSOR-DEL-06d in
 // specs/dsor/02-security.md, section 13).
+import type { EventWriter } from "./events.ts";
 import type { Alerting } from "./alerts.ts";
 import { escalationWorkFor } from "./escalation.ts";
 import type { BankLine } from "./bank.ts";
@@ -80,6 +81,9 @@ export type OwnStores = {
   // And the company's alerts, for the escalation sweep (step 38b's README,
   //   decision D4).
   alerting?: Alerting;
+  // NEW IN STEP 40: and the writer of this call's events, bound to its company, its ids, and the
+  //   classifications (step 40's README, decision D1).
+  events: EventWriter;
 };
 
 /** DSoR's own work for a command that changes DSoR's own store, never the company's. */

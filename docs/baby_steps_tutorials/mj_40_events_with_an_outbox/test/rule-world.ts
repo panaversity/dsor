@@ -181,6 +181,7 @@ export function ruleWorld(
       given,
       intents,
       holds,
+      outbox,
     ),
     ownWorkFor(),
     brakes,

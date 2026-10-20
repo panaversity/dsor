@@ -35,7 +35,7 @@ function proposalOf(answer: Answer): string {
   return String("proposal" in answer ? answer.proposal : "");
 }
 
-/** user_123 drafts a payment of INV-1002, 7,425.00 USD of VENDOR-44, under the threshold. */
+/** user_123 drafts a payment of INV-1002, 8,900.50 USD of VENDOR-44, under the threshold. */
 function draft(w: RuleWorld, who: RequestEnvelope = keyed(SUPERVISOR)): Promise<Answer> {
   return w.ask(who, "payment.create", { invoice: INV_1002, expected_version: 1 });
 }
@@ -70,7 +70,7 @@ describe("C1: a draft writes payment.created", () => {
         id: paymentOf(drafted).split("/").at(-1),
         invoice_id: "INV-1002",
         vendor_id: "VENDOR-44",
-        amount: { value: "7425.00", currency: "USD" },
+        amount: { value: "8900.50", currency: "USD" },
         status: "draft",
         version: 1,
       },
@@ -116,7 +116,7 @@ describe("C3 and C1: an approval, then the release", () => {
   it("DSOR-EVT-01a: the agent drafts INV-1008, 31,400.00 USD, which waits for the CFO: no event; cfo_100 approves: proposal.approved; the release drafts PAY-901: payment.created, with the release's ids", async () => {
     const w = await ruleWorldOnTuesday();
     const waiting = await w.draft("INV-1008");
-    expect(waiting).toMatchObject({ code: "PENDING_APPROVAL" });
+    expect(waiting).toMatchObject({ outcome: "PENDING_APPROVAL" });
     expect(await eventsOf(w)).toStrictEqual([]);
     const proposal = proposalOf(waiting);
     const kept = await w.proposals.get("org_456", proposal.split("/").at(-1)!);
