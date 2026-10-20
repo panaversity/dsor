@@ -2216,6 +2216,34 @@ written down to ask the learner, each already run for real and folded away in th
   human behind an agent's slip (open question 157); sent events never cleared; a slow receiver
   holds the sender's transaction; the database does not refuse a change without its event.
 
+### Step 40, understanding after the build (2026-10-20)
+
+The learner came back to a step built while away and said they knew nothing of it. They asked for a
+break, and then for the step from the ground up. Six parts, each settled with a real run in a
+scratch copy outside the repository: the problem (two writes), the outbox (one transaction), what
+an event holds, where DSoR writes one and where it stays silent, the sender, and what is left open.
+
+- **Check-in questions only,** by the learner's choice. No predictions were asked.
+- **The review's H1 attack, run before and after the fix.** Before: code that paid PAY-902 and
+  answered with PAY-901 gave PAY-901 a second `payment.executed`, under a new event id, and PAY-902
+  none. After: PAY-902 gets its `payment.executed` once. Code asked to pay PAY-902 that pays PAY-903
+  gets `OUTCOME_UNKNOWN`, and neither payment gets an event.
+- **A real SIGKILL of the fixed sender.** The channel held PAY-903's first event, and the database
+  still said both of its events were unsent. The rerun delivered that event again with the same
+  `event_id`, and the receiver dropped the copy. A second sender at the same moment got `busy`.
+- **Way of working:** a step built while the learner is away needs a session like this one after
+  it, from the problem up, before the learner reviews the decisions.
+- **Decisions for the learner to review,** each Claude Code's:
+  1. D1: who writes the event. DSoR's code, which can forget; a trigger, which cannot see the call's
+     ids; or both, with a trigger that refuses a payment change that has no event in its
+     transaction.
+  2. D7: a bad event stops its payment, or the payment goes on and the event is lost with an alert.
+  3. D8: a failed delivery stops the whole company, only its resource, or moves the event aside
+     after a number of tries.
+  4. D8: the tick in the delivery's transaction, or events taken for a time limit and ticked later.
+  5. D2: how long a sent event is kept.
+  6. D12: a channel named after its company, or any name with a check that ignores capitals.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.
