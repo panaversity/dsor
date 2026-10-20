@@ -29,7 +29,7 @@ import {
   requestId,
   tryThenRollBack,
 } from "./db.ts";
-import { keyed, SUPERVISOR } from "./helpers.ts";
+import { keyed, SUPERVISOR, USER_700 } from "./helpers.ts";
 
 const pool = newPool();
 const log = createDbLog(pool);
@@ -438,9 +438,19 @@ describe("C6 and C7: the sender, on the database", () => {
     "DSOR-EVT-01d: pnpm send-events writes each company's events to its own channel, and says how many it sent",
     { timeout: 60_000 },
     async () => {
-      // An unsent event of org_456, so the run has one to send.
+      // An unsent event of each company, so each channel has one to hold. Found by step 40's
+      //   review, M3: with none of org_789's, its channel's check passed on an empty file.
       const request = requestId("c6-script");
       await draft(request);
+      const theirs = requestId("c6-script-789");
+      const drafted = await call(
+        registry,
+        log,
+        { ...keyed(USER_700), request_id: theirs },
+        "payment.create",
+        { invoice: "dsor://org_789/invoice/INV-2002", expected_version: 1 },
+      );
+      expect(drafted).toMatchObject({ outcome: "COMMITTED" });
       const out = mkdtempSync(join(tmpdir(), "dsor-40-send-"));
       try {
         const run = spawnSync(process.execPath, [SEND], {
@@ -458,6 +468,9 @@ describe("C6 and C7: the sender, on the database", () => {
         const in456 = readChannel(join(out, "org_456.jsonl"));
         expect(in456.map((e) => e.correlation.request_id)).toContain(request);
         expect(readFileSync(join(out, "org_456.jsonl"), "utf8")).not.toContain('"org_789"');
+        const in789 = readChannel(join(out, "org_789.jsonl"));
+        expect(in789.map((e) => e.correlation.request_id)).toContain(theirs);
+        expect(readFileSync(join(out, "org_789.jsonl"), "utf8")).not.toContain('"org_456"');
       } finally {
         rmSync(out, { recursive: true, force: true });
       }
