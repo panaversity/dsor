@@ -143,7 +143,11 @@ commit atomically."
 - **D7. Checked before it is written** (Claude Code's). Each event is checked against
   `event.schema.json`, copied from the specification, before the outbox takes it. An event that
   fails stops its change: the transaction rolls back, and the caller hears an error. *Downside:* a
-  mistake in an event's shape stops payments, where a looser design would only lose events.
+  mistake in an event's shape stops payments, where a looser design would only lose events. Before
+  the bank is asked, the draft or the send is refused. After the bank has sent, it is worse: the
+  send is `OUTCOME_UNKNOWN`, and every reconcile of it fails too, because its `payment.executed`
+  fails the same check. The money has left, and the proposal stays unknown, its invoice held, until
+  the mistake is fixed. Said in full by the review, L3.
 - **D8. The sender** (Claude Code's). `pnpm send-events`, as DSoR's own login, `dsor_runtime`, one
   company at a time. Inside one transaction per company, it takes the company's lock for sending,
   reads its unsent events in the order they were written, delivers each, marks the delivered ones
