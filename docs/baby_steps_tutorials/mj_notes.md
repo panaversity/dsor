@@ -2194,6 +2194,28 @@ stories before any code, and all four were right.
 - **Left open:** the database server itself can lie; one person holds the login and the key; a new
   record the owner adds; the checkers' reads not recorded (DSOR-AUD-05b); open question 156.
 
+### Step 40, events with an outbox, built while the learner was away (2026-10-20)
+
+Copied from step 39b. The learner asked for step 40 to be built while away, so the twelve decisions
+D0 to D11, and D12 from the review, are Claude Code's, each with its downside, marked for the
+learner to review. The problem was shown with a real run of the two ways to send without an outbox:
+PAY-902 paid and nobody heard, and PAY-904 announced and never paid. Four predictions, P1 to P4, are
+written down to ask the learner, each already run for real and folded away in the README.
+
+- **Red first:** 44 unit tests against stubs, and the database tests.
+- **Found while building:** no test said that DSoR reads the payment again (break B8); the
+  database's sender had no test of its own for a failure in the middle of a run (break B3).
+- **The review:** two high findings. The event's payment came from the company code's answer, so
+  code that paid PAY-902 and answered with PAY-901 announced PAY-901 paid twice (H1); and `pnpm
+  guard` was red (H2). Five medium: memory sealed the record before the event (M1), three missing or
+  empty tests (M2, M3, M5), and two channel names that are one file on macOS and Windows (M4).
+  Seven low. Now DSoR's store notes each change the company's code makes, the event is of that
+  change, written with the work, and each channel is named after its company. Each fix has its test
+  written first and its own commit, and the fixes were broken on purpose in a copy.
+- **Left open:** no `invoice.issued`; no `trace_id`, `session_id`, or trusted `task_id`, and not the
+  human behind an agent's slip (open question 157); sent events never cleared; a slow receiver
+  holds the sender's transaction; the database does not refuse a change without its event.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.

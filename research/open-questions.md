@@ -1058,3 +1058,10 @@ for a human. An agent may gather evidence; it does not settle these alone.
     move to `OUTCOME_UNKNOWN`. After a crash, that move is the start-up sweep's, so three hours down
     and one hour after is four hours after the money may have left. Should the bound count from the
     intent record, written just before the bank was asked, and should §44 say so?
+157. **How should a request carry `trace_id`, `session_id`, and `task_id`?** DSOR-COR-01a asks DSoR
+    to propagate all three through connectors, audit, and events, and the request envelope has no
+    field for any of them. An agent's `task_id` can arrive only inside `agent_asserted`, the agent's
+    own words, which step 33 keeps in the record and the bundle and nowhere else. Step 40's learner
+    build carries `request_id`, `agent_id` or `principal_id`, and `tenant_id` in every event, and
+    none of the three. Should the envelope name them, and should §32 say which may come from an agent
+    and which DSoR must set itself?
