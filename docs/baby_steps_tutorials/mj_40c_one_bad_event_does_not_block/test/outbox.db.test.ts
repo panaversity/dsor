@@ -425,7 +425,8 @@ describe("C6 and C7: the sender, on the database", () => {
       },
       1000,
     );
-    expect(failed).toMatchObject({ sent: [], failed: { why: "the receiver is down" } });
+    // Changed in step 40c: the failures of a run are a list, one for each payment held back.
+    expect(failed).toMatchObject({ sent: [], failed: [{ why: "the receiver is down" }] });
     expect((await eventsOfRequest(request))[0]!["sent_at"]).toBeNull();
     const got: DomainEvent[] = [];
     await outbox.send("org_456", async (event) => void got.push(event), 1000);
@@ -433,8 +434,10 @@ describe("C6 and C7: the sender, on the database", () => {
   });
 
   // Found by break B3: the database's sender could go on after a failure, and only the memory
-  //   sender's tests failed.
-  it("DSOR-EVT-01a: the first of two unsent events fails: the run stops there, and the second is neither delivered nor marked", async () => {
+  //   sender's tests failed. Changed in step 40c: the two events are about two payments, so the
+  //   second is delivered and marked; only the first payment's events are held back (step 40c's
+  //   README, decision D1).
+  it("DSOR-EVT-01b: the first of two unsent events, about two payments, fails: the second is delivered and marked sent, and the first stays unsent", async () => {
     await outbox.send("org_456", async () => {}, 1000);
     const first = requestId("c6-first");
     const second = requestId("c6-second");
@@ -449,14 +452,16 @@ describe("C6 and C7: the sender, on the database", () => {
       },
       1000,
     );
-    expect(run).toMatchObject({ sent: [], failed: { why: "the receiver is down" } });
-    expect(got).toStrictEqual([]);
-    expect((await eventsOfRequest(second))[0]!["sent_at"]).toBeNull();
+    expect(run).toMatchObject({ failed: [{ why: "the receiver is down" }] });
+    expect(got.map((e) => e.correlation.request_id)).toStrictEqual([second]);
+    expect((await eventsOfRequest(second))[0]!["sent_at"]).not.toBeNull();
+    expect((await eventsOfRequest(first))[0]!["sent_at"]).toBeNull();
   });
 
   // Found by step 40's review, M2: no test said that what was delivered before the failure is
-  //   marked, and only that.
-  it("DSOR-EVT-01a: M2: three unsent events, and the second fails: the first is delivered and marked sent, and the second and third are neither", async () => {
+  //   marked, and only that. Changed in step 40c: the three are about three payments, so the third
+  //   is delivered and marked too.
+  it("DSOR-EVT-01b: M2: three unsent events about three payments, and the second fails: the first and third are delivered and marked sent, and the second is not", async () => {
     await outbox.send("org_456", async () => {}, 1000);
     const [a, b, c] = [requestId("m2-a"), requestId("m2-b"), requestId("m2-c")];
     for (const request of [a, b, c]) await draft(request);
@@ -469,17 +474,23 @@ describe("C6 and C7: the sender, on the database", () => {
       },
       1000,
     );
-    expect(got).toStrictEqual([a]);
+    expect(got).toStrictEqual([a, c]);
     const [first] = await eventsOfRequest(a);
     const [second] = await eventsOfRequest(b);
     const [third] = await eventsOfRequest(c);
     expect(run).toStrictEqual({
-      sent: [first!["event_id"]],
-      failed: { event_id: second!["event_id"], why: "the receiver is down" },
+      sent: [first!["event_id"], third!["event_id"]],
+      failed: [
+        {
+          event_id: second!["event_id"],
+          resource: second!["resource"],
+          why: "the receiver is down",
+        },
+      ],
     });
     expect(first!["sent_at"]).not.toBeNull();
     expect(second!["sent_at"]).toBeNull();
-    expect(third!["sent_at"]).toBeNull();
+    expect(third!["sent_at"]).not.toBeNull();
   });
 
   // Found by step 40's review, L5: no test on the database said that a run takes at most its limit.

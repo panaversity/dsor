@@ -77,7 +77,9 @@ describe("C6: the sender", () => {
     expect(in789.got.map((e) => e.resource)).toStrictEqual(["dsor://org_789/payment/PAY-7"]);
   });
 
-  it("DSOR-EVT-01a: the receiver fails on PAY-901's payment.executed: the run stops there, PAY-902 is not delivered before it, and the next run starts again from it", async () => {
+  // Changed in step 40c: a failure holds back only its payment's events, so PAY-902's
+  //   payment.created is delivered in the same run (step 40c's README, decision D1).
+  it("DSOR-EVT-01b: C1: the receiver fails on PAY-901's payment.executed: PAY-902's payment.created is delivered in the same run, and the next run delivers PAY-901's", async () => {
     const outbox = await filled();
     const { got, deliver } = keeper();
     let down = true;
@@ -87,16 +89,62 @@ describe("C6: the sender", () => {
     };
     const first = await outbox.send("org_456", flaky);
     expect(first).toStrictEqual({
-      sent: [got[0]!.event_id],
-      failed: { event_id: expect.any(String), why: "the receiver is down" },
+      sent: got.map((e) => e.event_id),
+      failed: [
+        {
+          event_id: expect.any(String),
+          resource: "dsor://org_456/payment/PAY-901",
+          why: "the receiver is down",
+        },
+      ],
     });
-    expect(got.map((e) => e.type)).toStrictEqual(["payment.created"]);
+    expect(got.map((e) => [e.resource.split("/").at(-1), e.type])).toStrictEqual([
+      ["PAY-901", "payment.created"],
+      ["PAY-902", "payment.created"],
+    ]);
     down = false;
     await outbox.send("org_456", flaky);
     expect(got.map((e) => [e.resource.split("/").at(-1), e.type])).toStrictEqual([
       ["PAY-901", "payment.created"],
-      ["PAY-901", "payment.executed"],
       ["PAY-902", "payment.created"],
+      ["PAY-901", "payment.executed"],
+    ]);
+  });
+
+  // NEW IN STEP 40c: inside one payment the order holds. An event behind a failure of its payment
+  //   is not tried (step 40c's README, claims C1 and C2).
+  it("DSOR-EVT-01b: C2: the receiver refuses PAY-901's payment.created: its payment.executed is not tried, PAY-902's is delivered, and the next run delivers PAY-901's two in order", async () => {
+    const outbox = await filled();
+    const { got, deliver } = keeper();
+    const tried: string[] = [];
+    let down = true;
+    const refusing = async (event: DomainEvent) => {
+      tried.push(`${event.resource.split("/").at(-1)} ${event.type}`);
+      if (down && event.resource.endsWith("/PAY-901")) throw new Error("no vendor VENDOR-31");
+      await deliver(event);
+    };
+    const first = await outbox.send("org_456", refusing);
+    expect(tried).toStrictEqual(["PAY-901 payment.created", "PAY-902 payment.created"]);
+    expect(first.failed).toStrictEqual([
+      {
+        event_id: expect.any(String),
+        resource: "dsor://org_456/payment/PAY-901",
+        why: "no vendor VENDOR-31",
+      },
+    ]);
+    expect(
+      (await outbox.events("org_456")).map(({ event, sent }) => [event.type, sent]),
+    ).toStrictEqual([
+      ["payment.created", false],
+      ["payment.executed", false],
+      ["payment.created", true],
+    ]);
+    down = false;
+    await outbox.send("org_456", refusing);
+    expect(got.map((e) => [e.resource.split("/").at(-1), e.ordering_key])).toStrictEqual([
+      ["PAY-902", 1],
+      ["PAY-901", 1],
+      ["PAY-901", 2],
     ]);
   });
 
@@ -189,6 +237,47 @@ describe("the review, L5: the sender's lock, its copies, and one company's failu
       ]);
       expect(await sendEach(outbox, channels, out, (line) => lines.push(line))).toBe(0);
       expect(lines).toStrictEqual(["org_456: sent 3 events", "org_789: sent 1 event"]);
+    } finally {
+      rmSync(out, { recursive: true, force: true });
+    }
+  });
+});
+
+// NEW IN STEP 40c: pnpm send-events names the payment it held back, and why, and ends 1 (step
+//   40c's README, claim C7).
+describe("step 40c, C7: what pnpm send-events says about a payment it held back", () => {
+  it("DSOR-EVT-01b: C7: PAY-901's events are refused: the run delivers PAY-902's, names PAY-901 as held back with the reason, and ends 1", async () => {
+    const outbox = await filled();
+    const refusing: Outbox = {
+      ...outbox,
+      send: (tenant, deliver, limit) =>
+        outbox.send(
+          tenant,
+          async (event) => {
+            if (event.resource.endsWith("/PAY-901")) throw new Error("no vendor VENDOR-31");
+            await deliver(event);
+          },
+          limit,
+        ),
+    };
+    const out = mkdtempSync(join(tmpdir(), "dsor-40c-each-"));
+    try {
+      const lines: string[] = [];
+      const channels = new Map([
+        ["org_456", "org_456.jsonl"],
+        ["org_789", "org_789.jsonl"],
+      ]);
+      expect(await sendEach(refusing, channels, out, (line) => lines.push(line))).toBe(1);
+      expect(lines).toStrictEqual([
+        "org_456: sent 1 event",
+        expect.stringMatching(
+          /^org_456: held back PAY-901's events, from evt_[0-9a-f-]{36}: no vendor VENDOR-31$/,
+        ),
+        "org_789: sent 1 event",
+      ]);
+      expect(readChannel(join(out, "org_456.jsonl")).map((e) => e.resource)).toStrictEqual([
+        "dsor://org_456/payment/PAY-902",
+      ]);
     } finally {
       rmSync(out, { recursive: true, force: true });
     }

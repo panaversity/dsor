@@ -232,6 +232,13 @@ export function ownerPaymentEvents(...args: string[]): unknown {
   return asOwner("owner-payment-events.ts", args);
 }
 
+// NEW IN STEP 40c: the owner tries to change a failed try or an alert by hand, and the database
+//   refuses (test/owner-event-tries.ts; step 40c's README, claims C3 to C5).
+/** What the owner's program for tries and alerts printed, for these words. */
+export function ownerEventTries(...args: string[]): unknown {
+  return asOwner("owner-event-tries.ts", args);
+}
+
 // Step 32: the owner ends every proposal in flight, between two tests of one file that each
 //   need an invoice free (test/owner-attempts.ts; step 32's README, decision D7).
 /** What the owner's attempts program printed: how many proposals it ended. */
