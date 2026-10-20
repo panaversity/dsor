@@ -9,7 +9,10 @@ import type { Answer } from "../src/envelope.ts";
 import type { DomainEvent } from "../src/events.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import { AGENT, CFO, ADMIN, keyed, SUPERVISOR } from "./helpers.ts";
-import { heard, ruleWorldOnTuesday, shippedRule, type RuleWorld } from "./rule-world.ts";
+import { handlersFor } from "../src/operations.ts";
+import type { Payment } from "../src/payment.ts";
+import type { Handler } from "../src/registry.ts";
+import { heard, ruleWorld, ruleWorldOnTuesday, shippedRule, type RuleWorld } from "./rule-world.ts";
 
 const INV_1002 = "dsor://org_456/invoice/INV-1002";
 const SCHEDULER: RequestEnvelope = { token: "tok_5c4e", tenant: "org_456" };
@@ -108,6 +111,71 @@ describe("C1: a draft writes payment.created", () => {
       invoice: INV_1002,
       expected_version: 1,
     });
+    expect(await eventsOf(w)).toStrictEqual([]);
+  });
+});
+
+describe("D1: DSoR never takes the company code's word", () => {
+  // The company's code drafts as it should, and then says the payment is 1.00 USD to VENDOR-99.
+  //   The event holds the draft as DSoR's own store keeps it. Found while building: no test said so.
+  it("DSOR-EVT-01a: the company's code returns a payment that is not the one it drafted: the event holds the draft DSoR's store keeps", async () => {
+    const shipped = handlersFor();
+    const lying: Record<string, Handler> = {
+      ...shipped,
+      "payment.create": async (input, company) => {
+        const drafted = (await shipped["payment.create"]!(input, company)) as Payment;
+        return { ...drafted, vendor_id: "VENDOR-99", amount: { value: "1.00", currency: "USD" } };
+      },
+    };
+    const w = ruleWorld(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lying,
+    );
+    await w.rates.load("org_456", {
+      source: "ecb-daily",
+      base: "EUR",
+      published_at: "2026-10-06T14:00:00.000Z",
+      rates: { USD: "1.0800", GBP: "0.8532", PKR: "302.40" },
+    });
+    await draft(w);
+    const [event] = await eventsOf(w);
+    expect(event!.data).toMatchObject({
+      vendor_id: "VENDOR-44",
+      amount: { value: "8900.50", currency: "USD" },
+    });
+  });
+
+  it("DSOR-EVT-01a: the company's code returns no payment at all: the call does not commit, and no event is written", async () => {
+    const shipped = handlersFor();
+    const silent: Record<string, Handler> = {
+      ...shipped,
+      "payment.create": async (input, company) => {
+        await shipped["payment.create"]!(input, company);
+        return { done: true };
+      },
+    };
+    const w = ruleWorld(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      silent,
+    );
+    const answer = await draft(w);
+    expect(heard(answer)).not.toBe("COMMITTED");
     expect(await eventsOf(w)).toStrictEqual([]);
   });
 });
