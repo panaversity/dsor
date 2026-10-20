@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PaymentReconcileRequest",
+  "description": "The input of payment.reconcile: the proposal of a payment.execute whose outcome is unknown, as a URI. DSoR asks the company's bank, by the key it derived from this proposal, what happened, and settles the proposal COMMITTED or FAILED with the bank's answer as evidence; a bank that does not answer settles nothing (DSOR-UNK-04a; step 38's README, decisions D1 and D2). This tutorial's own schema: the specification names a reconciliation process, not its operation.",
+  "type": "object",
+  "properties": {
+    "proposal": {
+      "$ref": "urn:dsor:schema:1.3:common#/$defs/resourceUri",
+      "type": "string",
+      "pattern": "^dsor://[^/]+/proposal/"
+    }
+  },
+  "required": ["proposal"],
+  "additionalProperties": false
+}
