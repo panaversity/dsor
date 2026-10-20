@@ -180,17 +180,26 @@ Each will be settled by a real run, shown beside the learner's answer.
 
 ### The breaks
 
-Each break will be run for real on a fresh copy, and the number of tests that fail written here.
+Each break ran on 2026-10-20 in a copy of this folder outside the repository, with a database of
+its own, against the three unit test files and `test/outbox.db.test.ts` with `test/approve.db.test.ts`.
 
-| Break | What it removes |
-|---|---|
-| **B1** | The event is written in a transaction of its own, not the claim's |
-| **B2** | The sender marks events sent before it delivers them |
-| **B3** | The sender goes on after a delivery fails |
-| **B4** | No check against `event.schema.json` |
-| **B5** | The event's data skips the classification |
-| **B6** | The sender ignores which company an event belongs to |
-| **B7** | Every ordering key is 1 |
+| Break | What it removes | Unit tests failed | Database tests failed |
+|---|---|---|---|
+| **B1** | The event is written in a transaction of its own, not the claim's | 0 | 2 |
+| **B2** | The sender marks events sent before it delivers them | 2 | 1 |
+| **B3** | The sender goes on after a delivery fails | 2 | 1 |
+| **B4** | No check against `event.schema.json` | 1 | 0 |
+| **B5** | The event's data skips the classification | 2 | 0 |
+| **B6** | The sender ignores which company an event belongs to | 5 | 0 |
+| **B7** | Every ordering key is 1 | 6 | 12 |
+| **B8** | The event is built from what the company's code returned | 1 | 0 |
+
+B1 is the step's whole idea, and only the database can show it: memory has no transaction. B3 first
+failed no database test: the database's sender had none of its own for a failure in the middle of
+a run. One was added, and it fails on B3. B8 was found while building: no test said that DSoR
+reads the payment again, so two were added (D1). B6 fails no database test because the database
+refuses it twice over: the sender works inside one company, and row-level security shows it that
+company's rows only.
 
 ## What changed since step 39b
 
