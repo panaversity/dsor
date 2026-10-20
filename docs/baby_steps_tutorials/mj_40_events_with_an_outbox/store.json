@@ -250,7 +250,9 @@
       "tenant": "tenant_id",
       "runtime": {
         "table": ["SELECT"],
-        "columns": { "INSERT": ["tenant_id", "resource", "proposal_id"] }
+        "columns": {
+          "INSERT": ["tenant_id", "resource", "proposal_id"]
+        }
       }
     },
     "dsor.alerts": {
@@ -289,6 +291,20 @@
       },
       "triggers": [
         "CREATE TRIGGER intents_end BEFORE UPDATE ON dsor.intents FOR EACH ROW EXECUTE FUNCTION dsor.intent_ends()"
+      ]
+    },
+    "dsor.outbox": {
+      "kind": "control-moved",
+      "tenant": "tenant_id",
+      "runtime": {
+        "table": ["SELECT"],
+        "columns": {
+          "INSERT": ["event_id", "tenant_id", "type", "resource", "ordering_key", "event"],
+          "UPDATE": ["sent_at"]
+        }
+      },
+      "triggers": [
+        "CREATE TRIGGER outbox_send BEFORE UPDATE ON dsor.outbox FOR EACH ROW EXECUTE FUNCTION dsor.outbox_sends()"
       ]
     },
     "dsor.audit_heads": {

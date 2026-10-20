@@ -60,6 +60,9 @@ export const PROPOSAL_ALERT =
   "CREATE TRIGGER proposals_alert AFTER UPDATE OF state ON dsor.proposals FOR EACH ROW EXECUTE FUNCTION dsor.proposal_alerts()";
 export const INTENT_TRIGGER =
   "CREATE TRIGGER intents_end BEFORE UPDATE ON dsor.intents FOR EACH ROW EXECUTE FUNCTION dsor.intent_ends()";
+// Step 40: the outbox's guard, which lets an event be marked sent once and changes nothing else.
+export const OUTBOX_TRIGGER =
+  "CREATE TRIGGER outbox_send BEFORE UPDATE ON dsor.outbox FOR EACH ROW EXECUTE FUNCTION dsor.outbox_sends()";
 // The log's columns. dsor_runtime may INSERT every one but sequence and at, which the
 // database fills in (step 09's README, decision 6).
 export const AUDIT_COLUMNS: string[] = [
@@ -127,6 +130,22 @@ const INTENT_COLUMNS = [
   "ended_at",
 ];
 const INTENT_READ_ONLY = ["written_at", "ended_at"];
+
+// Step 40: dsor.outbox, as migration 036 makes it. dsor_runtime reads every column, adds an event
+//   through six, and marks it sent. written and written_at are the database's to fill (step 40's
+//   README, decision D2).
+const OUTBOX_COLUMNS = [
+  "event_id",
+  "tenant_id",
+  "type",
+  "resource",
+  "ordering_key",
+  "event",
+  "written",
+  "written_at",
+  "sent_at",
+];
+const OUTBOX_FILLED = ["written", "written_at"];
 
 // The table dsor.delegations, as migration 010 makes it. dsor_runtime reads every
 // column and writes none (step 18's README, decision 3). Migration 012 lets it
@@ -542,6 +561,20 @@ export function today(): Catalog {
         rules: [],
         triggers: [],
       },
+      // Step 40: the outbox, behind the company's lock, each event marked sent once.
+      {
+        name: "dsor.outbox",
+        kind: "table",
+        held: ["SELECT"],
+        columns: OUTBOX_COLUMNS.map((name) => {
+          const filled = OUTBOX_FILLED.includes(name);
+          if (name === "sent_at") return { name, held: ["SELECT", "UPDATE"], filled };
+          return { name, held: filled ? ["SELECT"] : ["SELECT", "INSERT"], filled };
+        }),
+        rowSecurity: { enabled: true, forced: true },
+        rules: [],
+        triggers: [OUTBOX_TRIGGER],
+      },
       // The proposals, behind the company's lock, with their guard.
       {
         name: "dsor.proposals",
@@ -590,6 +623,7 @@ export function today(): Catalog {
     sequences: [
       { name: "app.payments_number_seq", held: [] },
       { name: "dsor.audit_sequence_seq", held: [] },
+      { name: "dsor.outbox_written_seq", held: [] },
     ],
     database: [],
     definers: [],

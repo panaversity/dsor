@@ -202,6 +202,19 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
         object: "dsor.notices SELECT",
         held: "notice_id tenant_id to_person rule_id version words at correlation",
       },
+      // Step 40: the outbox. Read every column, add an event through six named columns, and mark it
+      //   sent. Nothing on written or written_at, which the database fills, and no change to what an
+      //   event says or removal (step 40's README, decision D2).
+      { object: "dsor.outbox", held: "SELECT" },
+      {
+        object: "dsor.outbox INSERT",
+        held: "event_id tenant_id type resource ordering_key event",
+      },
+      {
+        object: "dsor.outbox SELECT",
+        held: "event_id tenant_id type resource ordering_key event written written_at sent_at",
+      },
+      { object: "dsor.outbox UPDATE", held: "sent_at" },
       // The proposals. Read every column, add a proposal through named
       // columns, and change its state only. Nothing on created_at, which the database fills
       // (step 22's README, decisions 3 and 9).

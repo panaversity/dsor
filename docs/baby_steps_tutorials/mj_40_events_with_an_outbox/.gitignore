@@ -9,3 +9,6 @@ node_modules/
 
 # Each learner's checkpoints belong to their own database (step 39b's README, decision D11).
 checkpoints/
+
+# Each learner's channels hold the events of their own database (step 40's README, decision D9).
+events/

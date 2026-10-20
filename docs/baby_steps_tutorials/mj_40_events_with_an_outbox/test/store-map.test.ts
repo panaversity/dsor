@@ -45,7 +45,8 @@ describe("the shipped map", () => {
   // Changed in step 36: and dsor.intents, a seventeenth (step 36's README, decision D1).
   // Changed in step 37: and dsor.holds, an eighteenth (step 37's README, decision D1).
   // Changed in step 38b: and dsor.alerts, a nineteenth (step 38b's README, decision D1).
-  it("step 16's decision 1: it names three schemas and twenty tables", () => {
+  // Changed in step 40: and dsor.outbox, a twenty-first (step 40's README, decision D2).
+  it("step 16's decision 1: it names three schemas and twenty-one tables", () => {
     const { map } = checkStore(SHIPPED);
     expect([...map.schemas.keys()]).toStrictEqual(["app", "dsor", "public"]);
     expect([...map.tables.keys()]).toStrictEqual([
@@ -67,6 +68,7 @@ describe("the shipped map", () => {
       "dsor.holds",
       "dsor.alerts",
       "dsor.intents",
+      "dsor.outbox",
       // Changed in step 39: and dsor.audit_heads, a twentieth (step 39's README, decision D8).
       "dsor.audit_heads",
       "dsor.migrations",
@@ -99,6 +101,26 @@ describe("the shipped map", () => {
       },
       triggers: [
         "CREATE TRIGGER intents_end BEFORE UPDATE ON dsor.intents FOR EACH ROW EXECUTE FUNCTION dsor.intent_ends()",
+      ],
+    });
+  });
+
+  // Step 40: an event is read inside its company, added through six named columns, and marked sent
+  //   through one, guarded by its trigger. Nothing removes one (step 40's README, decision D2).
+  it("DSOR-EVT-01a: dsor.outbox is read inside its company, added through named columns, marked sent through sent_at only, and guarded by its trigger", () => {
+    const { map } = checkStore(SHIPPED);
+    expect(map.tables.get("dsor.outbox")).toStrictEqual({
+      kind: "control-moved",
+      tenant: "tenant_id",
+      runtime: {
+        table: ["SELECT"],
+        columns: {
+          INSERT: ["event_id", "tenant_id", "type", "resource", "ordering_key", "event"],
+          UPDATE: ["sent_at"],
+        },
+      },
+      triggers: [
+        "CREATE TRIGGER outbox_send BEFORE UPDATE ON dsor.outbox FOR EACH ROW EXECUTE FUNCTION dsor.outbox_sends()",
       ],
     });
   });

@@ -100,9 +100,11 @@ describe("decision 8: the inspector sees every kind of privilege", () => {
       andWithGrant(["SELECT", "INSERT", "UPDATE", "REFERENCES"]),
     );
     // Since step 17, the counter behind each payment's number too.
+    // Changed in step 40: and the counter behind the outbox's order (step 40's README, decision D2).
     expect(catalog.sequences).toStrictEqual([
       { name: "app.payments_number_seq", held: andWithGrant(["USAGE", "SELECT", "UPDATE"]) },
       { name: "dsor.audit_sequence_seq", held: andWithGrant(["USAGE", "SELECT", "UPDATE"]) },
+      { name: "dsor.outbox_written_seq", held: andWithGrant(["USAGE", "SELECT", "UPDATE"]) },
     ]);
     expect(catalog.schemas.find((s) => s.name === "dsor")?.held).toStrictEqual(
       andWithGrant(["USAGE", "CREATE"]),

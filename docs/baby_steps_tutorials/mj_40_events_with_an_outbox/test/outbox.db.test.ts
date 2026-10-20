@@ -355,7 +355,10 @@ describe("C6 and C7: the sender, on the database", () => {
   it(
     "DSOR-EVT-01d: pnpm send-events writes each company's events to its own channel, and says how many it sent",
     { timeout: 60_000 },
-    () => {
+    async () => {
+      // An unsent event of org_456, so the run has one to send.
+      const request = requestId("c6-script");
+      await draft(request);
       const out = mkdtempSync(join(tmpdir(), "dsor-40-send-"));
       try {
         const run = spawnSync(process.execPath, [SEND], {
@@ -370,6 +373,8 @@ describe("C6 and C7: the sender, on the database", () => {
           const events = readChannel(join(out, `${company}.jsonl`));
           expect(events.every((e) => e.tenant === company)).toBe(true);
         }
+        const in456 = readChannel(join(out, "org_456.jsonl"));
+        expect(in456.map((e) => e.correlation.request_id)).toContain(request);
         expect(readFileSync(join(out, "org_456.jsonl"), "utf8")).not.toContain('"org_789"');
       } finally {
         rmSync(out, { recursive: true, force: true });
