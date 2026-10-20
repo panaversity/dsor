@@ -2500,6 +2500,64 @@ console.log(
   `  it runs again and sends ${rerun.sent.length}: org_456's channel holds ${channel456.length}, and the accounts system keeps ${kept456.kept.length}, dropping ${kept456.dropped.length} it had`,
 );
 
+// NEW IN STEP 41: a payment run, in a world of its own. The agent proposes three of org_456's bills
+//   as one run. The CFO's rule asks about INV-1008, so the run waits for cfo_100, who approves the
+//   list once, with its fingerprint and its totals. A screen that showed a wrong total is refused
+//   first. Then the agent releases the run, and every line is drafted together (step 41's README,
+//   claims C2 to C8).
+console.log("a payment run, in memory, in a world of its own:");
+const runDrafted: Payment[] = [];
+const runKept = memoryProposals(() => Date.parse("2026-10-06T15:05:00Z"));
+const runWorld = await connectorWorld(readConnectors(), createFakeBank(), runDrafted, runKept);
+const runLog = createLog();
+let runKeys = 0;
+const runCall = (who: RequestEnvelope, name: string, input: unknown): Promise<Answer> =>
+  call(runWorld, runLog, withKey(who, `run-${++runKeys}`), name, input);
+const weekRun = {
+  lines: ["INV-1002", "INV-1008", "INV-1006"].map((id) => ({
+    invoice: `dsor://org_456/invoice/${id}`,
+    expected_version: 1,
+  })),
+};
+const proposedRun = await runCall(AGENT, "payment.run", weekRun);
+console.log("  the agent proposes INV-1002, INV-1008, and INV-1006 as one run:");
+console.log(`    ${waitHeard(proposedRun)}`);
+const runUri = String("proposal" in proposedRun ? proposedRun.proposal : "");
+const runShown = await runKept.get("org_456", runUri.split("/").at(-1) ?? "");
+if (runShown === undefined) throw new Error("the story's run is not there");
+const perVendor = (runShown.vendor_totals ?? [])
+  .map((v) => `${v.vendor.split("/").at(-1)} ${v.amount.value}`)
+  .join(", ");
+console.log(
+  `    it keeps its fingerprint, ${runShown.manifest_hash?.slice(0, 19)}…, its total, ${runShown.totals?.map((m) => `${m.value} ${m.currency}`).join(", ")}, and per vendor: ${perVendor}`,
+);
+const lineStates = await runKept.lines("org_456", runUri);
+console.log(
+  `    its lines wait: ${lineStates.map((l) => `${l.invoice.split("/").at(-1)} ${l.state}`).join(", ")}`,
+);
+const screen = {
+  proposal: runShown.uri,
+  payload_hash: runShown.payload_hash,
+  manifest_hash: runShown.manifest_hash,
+  totals: runShown.totals,
+  vendor_totals: runShown.vendor_totals,
+};
+const wrongScreen = { ...screen, totals: [{ value: "39940.50", currency: "USD" }] };
+console.log(
+  "  cfo_100's screen showed 39,940.50 USD; she approves with it:",
+  heard(await runCall(CFO_100, "proposal.approve", wrongScreen)),
+);
+console.log(
+  "  she approves with the run's own totals:",
+  heard(await runCall(CFO_100, "proposal.approve", screen)),
+);
+const releasedRun = await runCall(AGENT, "proposal.execute", { proposal: runShown.uri });
+const runPayments = (releasedRun as { data?: { payments?: { id: string; invoice_id: string }[] } })
+  .data?.payments;
+console.log(
+  `  the agent releases the run: ${"outcome" in releasedRun ? releasedRun.outcome : heard(releasedRun)}, ${runPayments?.map((p) => `${p.id} of ${p.invoice_id}`).join(", ") ?? "nothing"}`,
+);
+
 // Every call above left one record in the log before its answer was returned, the
 // refusals too. dsor_runtime reads one company at a time, and never a
 // record with no company (step 11's README, decisions 4 and 6). So the program reads the
