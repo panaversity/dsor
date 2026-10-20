@@ -99,6 +99,33 @@ async function approvalRows(id: string): Promise<Record<string, unknown>[]> {
   return rows;
 }
 
+// Step 40: the approval that moves a proposal to APPROVED writes its event in the outbox, in the
+//   same transaction (step 40's README, claim C3).
+describe("Step 40: the approval's event, on the database", () => {
+  it("DSOR-EVT-01a: on the database, cfo_100's approval writes one proposal.approved in dsor.outbox, about the proposal, numbered 1, with the call's ids", async () => {
+    const { uri, payload_hash } = await waiting();
+    const answer = await approves(CFO, uri, payload_hash);
+    expect(answer).toMatchObject({ outcome: "COMMITTED", data: { state: "APPROVED" } });
+    const { rows } = await tryThenRollBack(
+      pool,
+      "SELECT type, resource, ordering_key, event FROM dsor.outbox WHERE resource = $1",
+      "org_456",
+      [uri],
+    );
+    expect(rows).toMatchObject([
+      {
+        type: "proposal.approved",
+        resource: uri,
+        ordering_key: 1,
+        event: {
+          type: "proposal.approved",
+          correlation: { request_id: answer.correlation.request_id, tenant_id: "org_456" },
+        },
+      },
+    ]);
+  });
+});
+
 describe("C2 and C3: proposal.approve, on the database (step 29's README, decisions D5, D7, and D9)", () => {
   it("Step 29: on the database, cfo_100 approves intake-fte's waiting payment of INV-9001: dsor.proposals says APPROVED, dsor.approvals keeps the approval, and dsor.audit records the call and the move", async () => {
     const { id, uri, payload_hash } = await waiting();

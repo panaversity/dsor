@@ -4,6 +4,7 @@
 import { readAlerts, type AlertsSource } from "../src/alerts.ts";
 import { memoryHolds, type MemoryHolds } from "../src/holds.ts";
 import { memoryIntents, type MemoryIntents } from "../src/intents.ts";
+import { memoryOutbox, type MemoryOutbox } from "../src/outbox.ts";
 import { readRoleSettings } from "../src/authority.ts";
 import { memoryBrakes } from "../src/brakes.ts";
 import { memoryClaims } from "../src/claims.ts";
@@ -103,6 +104,8 @@ export type RuleWorld = {
   intents: MemoryIntents;
   // Step 37: and the holds (step 37's README, decision D1).
   holds: MemoryHolds;
+  // NEW IN STEP 40: and the outbox, which a test reads and sends (step 40's README, decision D11).
+  outbox: MemoryOutbox;
 };
 
 /** A world in memory: the story's slips, del_100 with step 24's limits, and these rules. */
@@ -153,6 +156,7 @@ export function ruleWorld(
   const brakes = memoryBrakes();
   const intents = memoryIntents();
   const holds = memoryHolds();
+  const outbox = memoryOutbox();
   const rules = memoryControls(controls);
   const given = around(rules);
   const registry = buildRegistry(
@@ -215,6 +219,7 @@ export function ruleWorld(
     bank,
     intents,
     holds,
+    outbox,
   };
 }
 
