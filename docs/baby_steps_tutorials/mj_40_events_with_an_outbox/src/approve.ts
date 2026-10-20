@@ -136,7 +136,7 @@ function wordsOf(
  * the proposal still waits for, and when the approval expires (decision D14).
  */
 async function approve(input: unknown, work: OwnStores): Promise<unknown> {
-  const { tenant, caller, stores, correlation, now, contracts } = work;
+  const { tenant, caller, stores, correlation, now, contracts, events } = work;
   const { proposal: uri } = input as ApproveInput;
   const id = proposalIdOf(tenant, uri);
   const found = await stores.proposals.get(tenant, id);
@@ -187,7 +187,7 @@ async function approve(input: unknown, work: OwnStores): Promise<unknown> {
   };
   const done = await stores.proposals.approve(tenant, id, offer, by);
   if ("refused" in done) throw new Refusal("CONFLICT", wordsOf(id, caller.id, done), "internal");
-  return {
+  const answer = {
     tenant_id: tenant,
     id: done.approval.id,
     proposal: uri,
@@ -195,6 +195,10 @@ async function approve(input: unknown, work: OwnStores): Promise<unknown> {
     waits_for: done.waits_for,
     expires_at: done.approval.expires_at,
   };
+  // NEW IN STEP 40: the approval that moved the proposal to APPROVED writes its event, in the same
+  //   transaction; one that leaves it waiting writes none (step 40's README, claim C3).
+  if (done.state === "APPROVED") await events.write("proposal.approved", uri, "Approval", answer);
+  return answer;
 }
 
 /** DSoR's own work for proposal.approve. */

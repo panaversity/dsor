@@ -15,7 +15,7 @@ import type { Payment } from "./payment.ts";
 import { isProposalOf, proposalIdOf, type Proposal } from "./proposals.ts";
 import { preview } from "./registry.ts";
 import type { OwnLook, OwnStores, OwnWork } from "./revocation.ts";
-import { parseUri } from "./uri.ts";
+import { formatUri, parseUri } from "./uri.ts";
 
 /** What a reconcile answers: the proposal, its state now, and what the bank said. */
 type Reconciliation = { proposal: string; state: string; evidence: string };
@@ -67,7 +67,7 @@ function sameAs(receipt: BankReceipt, payment: Payment): boolean {
 
 /** The work, after line ⑩, inside the claim's transaction. */
 async function reconcile(input: unknown, work: OwnStores): Promise<Reconciliation> {
-  const { tenant, caller, stores, correlation, now, bank } = work;
+  const { tenant, caller, stores, correlation, now, bank, events } = work;
   const { uri, id } = namedIn(input, tenant);
   // Read again inside the claim, so of two reconciles at once, one settles and one hears CONFLICT.
   const proposal = mustBeUnknown(await stores.proposals.get(tenant, id), id);
@@ -128,8 +128,18 @@ async function reconcile(input: unknown, work: OwnStores): Promise<Reconciliatio
     //   booking, when it holds one, stays counted. A draft that does not change at that version is
     //   a fault, and the work rolls back.
     if (payment.status === "draft") {
-      const { changed } = await stores.payments.pay(tenant, payment.id, payment.version);
-      if (!changed) throw new Error(`payment ${payment.id} could not be marked paid`);
+      const { payment: paid, changed } = await stores.payments.pay(
+        tenant,
+        payment.id,
+        payment.version,
+      );
+      if (!changed || paid === undefined) {
+        throw new Error(`payment ${payment.id} could not be marked paid`);
+      }
+      // NEW IN STEP 40: the payment this call marked paid writes its event, in the same transaction,
+      //   with this call's ids. A payment paid already wrote its own (step 40's README, claim C2).
+      const resource = formatUri({ tenant_id: tenant, entity: "payment", id: paid.id });
+      await events.write("payment.executed", resource, "Payment", paid);
     }
     await stores.reservations.commit(tenant, id);
   }
