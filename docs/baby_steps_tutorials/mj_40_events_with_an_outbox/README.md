@@ -102,14 +102,19 @@ commit atomically."
   issuing an invoice is not this tutorial's story, so nothing could write `invoice.issued`.
   *Downside:* the accounts system hears of payments, not of invoices.
 - **D1. DSoR's own code writes each event, where the change is made, in the claim's transaction**
-  (Claude Code's). Three places: the proposal's last move after the company's code, for
-  `payment.create` and `payment.execute`; `proposal.approve`'s own work; and `payment.reconcile`'s
-  own work. After the company's code, DSoR reads the payment again from its own store, and never
-  builds an event from what the code returned. The company's code gets no outbox. The other way was
-  a database trigger, as step 38b's alerts are written, which no path can forget; but a trigger
-  cannot see the call's correlation ids, which each event must carry. *Downside:* a new path that
-  changes a payment must remember its event. The database does not refuse a change without one; a
-  test checks every path this step knows.
+  (Claude Code's). Three places. The first is the company's code, for `payment.create` and
+  `payment.execute`. DSoR gives the code its payments through a wrapper that notes each draft
+  written and each payment marked paid. As soon as the code returns, DSoR checks that the code made
+  exactly the one change its operation names: one draft, or one payment marked paid, and for a send
+  it must be the payment the request names. DSoR reads that payment again from its own store and
+  writes its event, with the work, before the record is sealed. Any other change is an accident,
+  and the work is not kept. What the code returned is never read for an event. The second and third
+  places are `proposal.approve`'s own work and `payment.reconcile`'s own work. The company's code
+  gets no outbox. The other way was a database trigger, as step 38b's alerts are written, which no
+  path can forget; but a trigger cannot see the call's correlation ids, which each event must carry.
+  *Downside:* a new path that changes a payment must remember its event. The database does not
+  refuse a change without one; a test checks every path this step knows. Changed by the review,
+  H1 and M1.
 - **D2. The outbox is a table, `dsor.outbox`** (Claude Code's). One row for each event: the whole
   event as JSON, and its id, company, type, resource, and ordering key as columns, which a check
   holds equal to the JSON. It is kept per company by row-level security, like every DSoR table. A
@@ -156,7 +161,10 @@ commit atomically."
 - **D11. Memory works the same, without a transaction** (Claude Code's). The memory outbox takes
   events from the same three places, and the memory sender delivers the same way. Memory has no
   transaction, so an event written by a call stays with that call's draft, as the draft itself stays.
-  *Downside:* the atomic commit is proved on the database only.
+  One case is memory's own: when the outbox refuses `payment.executed` after the code marked the
+  payment paid, the payment stays paid with no event. So `payment.reconcile` writes
+  `payment.executed` for a paid payment that has none, and never a second. *Downside:* the atomic
+  commit is proved on the database only. Changed by the review, M1 and L1.
 
 ### The tests, by claim
 
@@ -205,13 +213,13 @@ company's rows only.
 
 | File | What changed |
 | --- | --- |
-| `src/events.ts` | **New.** An event built from DSoR's own data through the classification, with the call's ids; its check against `event.schema.json`; the writer one call uses; the event after the company's code, from the payment DSoR reads again (D1, D3, D5 to D7) |
+| `src/events.ts` | **New.** An event built from DSoR's own data through the classification, with the call's ids; its check against `event.schema.json`; the writer one call uses; the payments that note each change the company's code makes, and the event of that change, from the payment DSoR reads again (D1, D3, D5 to D7) |
 | `src/outbox.ts` | **New.** Each resource's events numbered and checked; the memory outbox and its sender; the writer a claim uses on the database (D2, D4, D8, D11) |
 | `src/sender.ts`, `src/send-events.ts`, `package.json` | **New.** The database's sender, one company and one sender at a time, and `pnpm send-events` (D8) |
 | `src/channels.ts`, `channels.json`, `src/receiver.ts` | **New.** One channel per company, a file channel, and the receiver's dedupe (D9, D10) |
 | `migrations/036_outbox.sql`, `store.json` | **New.** `dsor.outbox`, its columns held equal to its event, marked sent once by its guard, each company's own (D2) |
 | `schemas/event.schema.json` | **New.** Copied from the specification |
-| `src/claims.ts`, `src/postgres.ts`, `src/pipeline.ts`, `src/revocation.ts` | Every claim's stores hold the outbox; after the company's code, the proposal's last move writes the payment's event; DSoR's own work gets an event writer |
+| `src/claims.ts`, `src/postgres.ts`, `src/pipeline.ts`, `src/revocation.ts` | Every claim's stores hold the outbox; the company's code gets payments that note each change, and the change's event is written as soon as the code returns; DSoR's own work gets an event writer |
 | `src/approve.ts`, `src/reconcile.ts` | The approval that moves a proposal to `APPROVED`, and a reconcile that pays, write their events |
 | `src/main.ts` | The story shows the bank scene's events, a sender killed after one delivery, and this run's events in `dsor.outbox` |
 | `test/events.test.ts`, `test/event-shape.test.ts`, `test/sender.test.ts`, `test/outbox.db.test.ts`, `test/send-and-die.ts`, `test/owner-outbox.ts` | **New.** The claims C1 to C7 |
@@ -350,8 +358,8 @@ docs/baby_steps_tutorials/mj_40_events_with_an_outbox/README.md.
 3. The sender delivers an event and is killed before it marks it sent. What happens next, and who
    makes sure the accounts system acts on it once?
 4. PAY-901 has two events. What are their ordering keys, and what are they for?
-5. Why does DSoR read the payment again after the company's code, instead of using what the code
-   returned?
+5. Why does DSoR build the event from the change its store saw the company's code make, instead of
+   from what the code returned?
 
 <details>
 <summary>Answers</summary>
@@ -367,6 +375,8 @@ docs/baby_steps_tutorials/mj_40_events_with_an_outbox/README.md.
 4. 1 for `payment.created` and 2 for `payment.executed`: the event's number among PAY-901's
    events. A receiver that gets them out of order puts them back in order with it (D4).
 5. DSoR never takes anyone's word, the company's code included. An event built from the code's
-   answer could report an amount that was never drafted (D1).
+   answer could report an amount that was never drafted. Worse, code that pays PAY-902 and answers
+   with PAY-901 would announce PAY-901 paid a second time, and PAY-902 never (D1; the review's
+   H1).
 
 </details>

@@ -12,9 +12,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createFakeBank } from "../src/bank.ts";
 import type { Answer } from "../src/envelope.ts";
 import type { DomainEvent } from "../src/events.ts";
+import { handlersFor } from "../src/operations.ts";
 import { call } from "../src/pipeline.ts";
 import { createDbLog } from "../src/postgres.ts";
 import { firstOfEach, readChannel } from "../src/receiver.ts";
+import type { Handler } from "../src/registry.ts";
+import type { RequestEnvelope } from "../src/request.ts";
 import { createDbOutbox } from "../src/sender.ts";
 import {
   dbRegistry,
@@ -45,6 +48,8 @@ const registry = dbRegistry(
 );
 const outbox = createDbOutbox(pool);
 const INV_9001 = "dsor://org_456/invoice/INV-9001";
+// dsor-scheduler, DSoR's own login for scheduled work (step 25c's README, decision D1).
+const SCHEDULER: RequestEnvelope = { token: "tok_5c4e", tenant: "org_456" };
 const CRASH = fileURLToPath(new URL("crash-at-the-record.ts", import.meta.url));
 const DIE = fileURLToPath(new URL("send-and-die.ts", import.meta.url));
 const SEND = fileURLToPath(new URL("../src/send-events.ts", import.meta.url));
@@ -84,12 +89,39 @@ async function draftsOf9001(): Promise<number> {
   return rows[0]!["n"] as number;
 }
 
-/** user_123 drafts a payment of INV-9001, with this request id. */
-function draft(request: string): Promise<Answer> {
-  return call(registry, log, { ...keyed(SUPERVISOR), request_id: request }, "payment.create", {
+/** The type and number of each of org_456's events about this resource, as dsor_runtime reads them. */
+async function storyOf(resource: string): Promise<[string, number][]> {
+  const { rows } = await tryThenRollBack(
+    pool,
+    "SELECT type, ordering_key FROM dsor.outbox WHERE resource = $1 ORDER BY written",
+    "org_456",
+    [resource],
+  );
+  return rows.map((row) => [row["type"] as string, row["ordering_key"] as number]);
+}
+
+/** The status org_456 keeps for this payment. */
+async function statusOf(id: string): Promise<unknown> {
+  const { rows } = await tryThenRollBack(
+    pool,
+    "SELECT status FROM app.payments WHERE id = $1",
+    "org_456",
+    [id],
+  );
+  return rows[0]?.["status"];
+}
+
+/** user_123 drafts a payment of INV-9001, with this request id, through this registry. */
+function draft(request: string, through = registry): Promise<Answer> {
+  return call(through, log, { ...keyed(SUPERVISOR), request_id: request }, "payment.create", {
     invoice: INV_9001,
     expected_version: 1,
   });
+}
+
+/** The payment an answer drafted: its address. */
+function paymentOf(answer: Answer): string {
+  return `dsor://org_456/payment/${(answer as { data: { id: string } }).data.id}`;
 }
 
 describe("C1, C2, and C5: the events of a draft and a send, on the database", () => {
@@ -403,4 +435,86 @@ describe("C6 and C7: the sender, on the database", () => {
       }
     },
   );
+});
+
+// Step 40's review, on the database (step 40's README, "What the review found").
+describe("the review, on the database", () => {
+  it("DSOR-EVT-01a: H1: on the database, the code drafts a payment and returns one drafted before: payment.created is about the draft this call wrote, and the earlier one gets no second", async () => {
+    const earlier = paymentOf(await draft(requestId("h1-earlier")));
+    const shipped = handlersFor();
+    const pointing: Record<string, Handler> = {
+      ...shipped,
+      "payment.create": async (input, company) => {
+        await shipped["payment.create"]!(input, company);
+        return company.payments.get(earlier.split("/").at(-1)!);
+      },
+    };
+    const request = requestId("h1-pointing");
+    const answer = await draft(request, dbRegistry(pool, none, pointing));
+    expect(answer).toMatchObject({ outcome: "COMMITTED" });
+    expect(paymentOf(answer)).toBe(earlier);
+    const [event, ...more] = await eventsOfRequest(request);
+    expect(more).toStrictEqual([]);
+    expect(event).toMatchObject({ type: "payment.created", ordering_key: 1 });
+    const written = event!["resource"] as string;
+    expect(written).not.toBe(earlier);
+    expect(await statusOf(written.split("/").at(-1)!)).toBe("draft");
+    expect(await storyOf(earlier)).toStrictEqual([["payment.created", 1]]);
+  });
+
+  // Found while fixing H1: the first build's event read the code's answer, so an answer that was
+  //   no payment rolled the draft back. Such an answer fails as it is shaped for the caller,
+  //   INTERNAL_ERROR, after the work is kept with its record. The event now goes with that work.
+  it("DSOR-EVT-01a: on the database, the code drafts and returns no payment: the caller hears INTERNAL_ERROR, and the draft it wrote is kept with its payment.created, which follows the change, never the answer", async () => {
+    const shipped = handlersFor();
+    const silent: Record<string, Handler> = {
+      ...shipped,
+      "payment.create": async (input, company) => {
+        await shipped["payment.create"]!(input, company);
+        return { done: true };
+      },
+    };
+    const before = await draftsOf9001();
+    const request = requestId("h1-silent");
+    const answer = await draft(request, dbRegistry(pool, none, silent));
+    expect(answer).toMatchObject({ code: "INTERNAL_ERROR" });
+    expect(await draftsOf9001()).toBe(before + 1);
+    const [event, ...more] = await eventsOfRequest(request);
+    expect(more).toStrictEqual([]);
+    expect(event).toMatchObject({ type: "payment.created", ordering_key: 1 });
+    expect(await statusOf((event!["resource"] as string).split("/").at(-1)!)).toBe("draft");
+  });
+
+  it("DSOR-EVT-01a: M1: on the database, dsor.outbox refuses the payment.executed of a send the bank took: OUTCOME_UNKNOWN, and the payment stays a draft with no such event; dsor-scheduler reconciles it: paid, and payment.executed, numbered 2", async () => {
+    // A fresh INV-9001, unpaid: the send of C2 paid the first.
+    ownerAttempts();
+    ownerInvoices("add");
+    const payment = paymentOf(await draft(requestId("m1-draft")));
+    const id = payment.split("/").at(-1)!;
+    const sends = bank.transfers().length;
+    ownerOutbox("refuse");
+    let unknown: Answer;
+    try {
+      unknown = await call(registry, log, keyed(SUPERVISOR), "payment.execute", {
+        invoice: INV_9001,
+        payment,
+        expected_version: 1,
+      });
+    } finally {
+      ownerOutbox("mend");
+    }
+    expect(unknown).toMatchObject({ code: "OUTCOME_UNKNOWN" });
+    expect(bank.transfers()).toHaveLength(sends + 1);
+    expect(await statusOf(id)).toBe("draft");
+    expect(await storyOf(payment)).toStrictEqual([["payment.created", 1]]);
+    const settled = await call(registry, log, keyed(SCHEDULER), "payment.reconcile", {
+      proposal: (unknown as { proposal: string }).proposal,
+    });
+    expect(settled).toMatchObject({ data: { state: "COMMITTED" } });
+    expect(await statusOf(id)).toBe("paid");
+    expect(await storyOf(payment)).toStrictEqual([
+      ["payment.created", 1],
+      ["payment.executed", 2],
+    ]);
+  });
 });

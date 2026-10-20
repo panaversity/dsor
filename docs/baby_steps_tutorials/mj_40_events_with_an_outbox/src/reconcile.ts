@@ -127,6 +127,7 @@ async function reconcile(input: unknown, work: OwnStores): Promise<Reconciliatio
     // Sent: the payment is paid, at the version DSoR read under its lock, and the proposal's
     //   booking, when it holds one, stays counted. A draft that does not change at that version is
     //   a fault, and the work rolls back.
+    const resource = formatUri({ tenant_id: tenant, entity: "payment", id: payment.id });
     if (payment.status === "draft") {
       const { payment: paid, changed } = await stores.payments.pay(
         tenant,
@@ -137,9 +138,15 @@ async function reconcile(input: unknown, work: OwnStores): Promise<Reconciliatio
         throw new Error(`payment ${payment.id} could not be marked paid`);
       }
       // NEW IN STEP 40: the payment this call marked paid writes its event, in the same transaction,
-      //   with this call's ids. A payment paid already wrote its own (step 40's README, claim C2).
-      const resource = formatUri({ tenant_id: tenant, entity: "payment", id: paid.id });
+      //   with this call's ids (step 40's README, claim C2).
       await events.write("payment.executed", resource, "Payment", paid);
+    } else if (!(await stores.outbox.has(tenant, "payment.executed", resource))) {
+      // NEW IN STEP 40: a payment paid already wrote its event with the change, in the same
+      //   transaction, on the database. Memory has no transaction: when the outbox refused the event
+      //   after the code marked the payment paid, the payment stays paid with no event (decision
+      //   D11). So the event is written here, once, and a payment that has one gets no second
+      //   (found by step 40's review, M1 and L1).
+      await events.write("payment.executed", resource, "Payment", payment);
     }
     await stores.reservations.commit(tenant, id);
   }

@@ -21,6 +21,8 @@ export function createDbOutbox(pool: pg.Pool): Outbox {
     //   writes each event inside its change's claim (decision D1).
     add: (tenant, draft) =>
       inCompany(pool, tenant, (client) => outboxIn(client).add(tenant, draft)),
+    has: (tenant, type, resource) =>
+      inCompany(pool, tenant, (client) => outboxIn(client).has(tenant, type, resource)),
     events: (tenant) =>
       inCompany(pool, tenant, async (client) => {
         const { rows } = await client.query<{ event: DomainEvent; sent: boolean }>(

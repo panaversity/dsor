@@ -10,8 +10,8 @@ import type { Correlation } from "./envelope.ts";
 import type { Kinds, Label } from "./labels.ts";
 import { show } from "./masking.ts";
 import type { OutboxWriter } from "./outbox.ts";
-import type { PaymentStatus, PaymentStore } from "./payment.ts";
-import { formatUri } from "./uri.ts";
+import type { Cancelled, Draft, Drafted, PaymentStatus, PaymentStore } from "./payment.ts";
+import { formatUri, parseUri } from "./uri.ts";
 
 /** The events this step writes: three of the four §31 names (decision D0). */
 export type EventType = "payment.created" | "payment.executed" | "proposal.approved";
@@ -126,31 +126,80 @@ export const NO_EVENTS: EventWriter = Object.freeze({
   },
 });
 
-// What the company's code changes, as an event: the operation, the event, and the state the
-//   payment must be in after it.
-const AFTER_CODE: Readonly<Record<string, { type: EventType; status: PaymentStatus }>> = {
-  "payment.create": { type: "payment.created", status: "draft" },
-  "payment.execute": { type: "payment.executed", status: "paid" },
+/** A change the company's code made to a payment through DSoR's store, as the store answered it. */
+export type PaymentChange = { change: "drafted" | "paid"; id: string; version: number };
+
+/**
+ * The company's payments, noting each draft written and each payment marked paid, as the store
+ * answers them. An event is of a change noted here, never of what the code returns (decision D1;
+ * found by step 40's review, H1).
+ */
+export function noting(payments: PaymentStore, changes: PaymentChange[]): PaymentStore {
+  return Object.freeze({
+    ...payments,
+    create: async (tenant: string, draft: Draft, invoiceVersion: number): Promise<Drafted> => {
+      const drafted = await payments.create(tenant, draft, invoiceVersion);
+      if ("payment" in drafted) {
+        const { id, version } = drafted.payment;
+        changes.push({ change: "drafted", id, version });
+      }
+      return drafted;
+    },
+    pay: async (tenant: string, id: string, version: number): Promise<Cancelled> => {
+      const paid = await payments.pay(tenant, id, version);
+      if (paid.changed && paid.payment !== undefined) {
+        changes.push({ change: "paid", id: paid.payment.id, version: paid.payment.version });
+      }
+      return paid;
+    },
+  });
+}
+
+// The one change each operation's code makes to a payment, its event, and the state the payment
+//   is in after it.
+const AFTER_CODE: Readonly<
+  Record<string, { change: PaymentChange["change"]; type: EventType; status: PaymentStatus }>
+> = {
+  "payment.create": { change: "drafted", type: "payment.created", status: "draft" },
+  "payment.execute": { change: "paid", type: "payment.executed", status: "paid" },
 };
 
 /**
- * The event of what the company's code did, after it returned a value. DSoR never takes the code's
- * word: it reads the payment again from its own store, in the same transaction, and the payment
- * must be in the state the operation leaves it in (decision D1).
+ * The event of what the company's code changed, written as soon as the code returns, with the work
+ * and before the record is sealed. DSoR never takes the code's word: the payment is the one the
+ * store noted the code changing, read again from that store, and the code made exactly the one
+ * change its operation names. For payment.execute, that is the payment the validated request names,
+ * or the request the proposal stored. Anything else is an accident, and the work is not kept
+ * (decision D1; found by step 40's review, H1 and M1).
  */
-export async function eventAfterCode(
+export async function eventsOfCode(
   operation: string,
-  returned: unknown,
+  input: unknown,
+  changes: readonly PaymentChange[],
   tenant: string,
   payments: PaymentStore,
   events: EventWriter,
 ): Promise<void> {
   const after = AFTER_CODE[operation];
-  if (after === undefined) return;
-  const id = (returned as { id?: unknown } | null)?.id;
-  const payment = typeof id === "string" ? await payments.get(tenant, id) : undefined;
-  if (payment === undefined || payment.status !== after.status) {
-    throw new Error(`${operation} returned no payment that is ${after.status}`);
+  // An operation with no event drafts and pays nothing: a change with no event is never kept.
+  if (after === undefined) {
+    if (changes.length > 0) throw new Error(`${operation} changed a payment, and has no event`);
+    return;
+  }
+  const [change, ...more] = changes;
+  if (change === undefined || more.length > 0 || change.change !== after.change) {
+    const made = changes.map((c) => `${c.change} ${c.id}`).join(", ") || "nothing";
+    throw new Error(`${operation}'s code must make one change, ${after.change}; it made ${made}`);
+  }
+  if (operation === "payment.execute") {
+    const named = parseUri((input as { payment: string }).payment).id;
+    if (change.id !== named) {
+      throw new Error(`payment.execute was asked to pay ${named}, and its code paid ${change.id}`);
+    }
+  }
+  const payment = await payments.get(tenant, change.id);
+  if (payment?.status !== after.status || payment.version !== change.version) {
+    throw new Error(`payment ${change.id} changed again after its code ${after.change} it`);
   }
   const resource = formatUri({ tenant_id: tenant, entity: "payment", id: payment.id });
   await events.write(after.type, resource, "Payment", payment);

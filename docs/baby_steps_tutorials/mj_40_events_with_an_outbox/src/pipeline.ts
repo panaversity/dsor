@@ -4,7 +4,7 @@ import { ownReadOf } from "./alert-list.ts";
 import { heldBy, heldRefusal, holdsOf, NO_HOLDS, type HoldStore } from "./holds.ts";
 import { NO_INTENTS } from "./intents.ts";
 import { NO_OUTBOX } from "./outbox.ts";
-import { eventAfterCode, eventWriter } from "./events.ts";
+import { eventsOfCode, eventWriter, noting, type PaymentChange } from "./events.ts";
 import { randomUUID } from "node:crypto";
 import { pinned, readBound, type Bound, type BoundRead } from "./bound.ts";
 import { checkBrake, holdBrake, NO_BRAKES, type BrakeStore } from "./brakes.ts";
@@ -997,8 +997,14 @@ export async function call(
           // "Think it through", finding A).
           // Pinned to what line ⑨ read, so the work drafts only on the version line
           // ⑩ reserved for (step 24's README, decision 16). Found by step 24's review.
+          // NEW IN STEP 40: and noting each change the code makes through them, so an event is
+          //   of that change, never of what the code returns (step 40's README, decision D1; found
+          //   by step 40's review, H1).
+          const changes: PaymentChange[] = [];
           const payments =
-            contract["kind"] === "query" ? NO_PAYMENTS : pinned(stores.payments, boundInvoices);
+            contract["kind"] === "query"
+              ? NO_PAYMENTS
+              : pinned(noting(stores.payments, changes), boundInvoices);
           // DSoR's own change gets DSoR's own stores, inside the claim, with the
           //   caller. The company's code never gets them (step 25's README, decision D2).
           let returned: unknown;
@@ -1131,7 +1137,19 @@ export async function call(
                 job.input,
                 companyOf(stores.invoices, tenant, reads, payments, bank),
               );
-              return checkAnswerInTenant(returned, tenant);
+              const answer = checkAnswerInTenant(returned, tenant);
+              // NEW IN STEP 40: the event of what the code changed, with the work, so it is
+              //   written before the record is sealed, in memory as on the database. Inside this
+              //   try: an event refused after the bank was asked is OUTCOME_UNKNOWN (step 40's
+              //   README, decision D1; found by step 40's review, H1 and M1).
+              const events = eventWriter(
+                stores.outbox,
+                tenant,
+                correlation,
+                registry.classifications,
+              );
+              await eventsOfCode(running, job.input, changes, tenant, stores.payments, events);
+              return answer;
             } catch (thrown) {
               // Once the money may have left, the work ends COMMITTED or OUTCOME_UNKNOWN, never
               //   anything else. An accident would undo the claim and the proposal, and a retry
@@ -1553,23 +1571,6 @@ export async function call(
                   const id = proposalIdOf(tenant, proposal);
                   // And its note, if the work wrote one.
                   await endNote(stores, tenant, id, outcome);
-                  // NEW IN STEP 40: and the event of what the released code did, in the same
-                  //   transaction, with the release's own ids (step 40's README, decision D1).
-                  if ("value" in outcome) {
-                    const events = eventWriter(
-                      stores.outbox,
-                      tenant,
-                      correlation,
-                      registry.classifications,
-                    );
-                    await eventAfterCode(
-                      job.target.id,
-                      outcome.value,
-                      tenant,
-                      stores.payments,
-                      events,
-                    );
-                  }
                   if ("value" in outcome) await stores.reservations.commit(tenant, id);
                   else if (!isUnknown(outcome)) await stores.reservations.release(tenant, id);
                 },
@@ -1673,17 +1674,6 @@ export async function call(
                 const id = proposalIdOf(tenant, proposal);
                 // And its note, if the work wrote one.
                 await endNote(stores, tenant, id, outcome);
-                // NEW IN STEP 40: and the event of what the company's code did, in the same
-                //   transaction: DSoR reads the payment again itself (step 40's README, decision D1).
-                if ("value" in outcome) {
-                  const events = eventWriter(
-                    stores.outbox,
-                    tenant,
-                    correlation,
-                    registry.classifications,
-                  );
-                  await eventAfterCode(contract.id, outcome.value, tenant, stores.payments, events);
-                }
                 if ("value" in outcome) await stores.reservations.commit(tenant, id);
                 else if (!isUnknown(outcome)) await stores.reservations.release(tenant, id);
               },

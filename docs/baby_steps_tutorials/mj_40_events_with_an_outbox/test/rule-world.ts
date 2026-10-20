@@ -134,6 +134,8 @@ export function ruleWorld(
   code: Record<string, Handler> = handlersFor(),
   // And each company's alerts, this step's own file unless a test gives another.
   alerts: AlertsSource = readAlerts(),
+  // Step 40: and the outbox, a fresh one unless a test gives one that refuses an event.
+  outbox: MemoryOutbox = memoryOutbox(),
 ): RuleWorld {
   const clock = { now: T0 };
   const bills = [...structuredClone(invoices), ...structuredClone(BILLS)];
@@ -156,7 +158,6 @@ export function ruleWorld(
   const brakes = memoryBrakes();
   const intents = memoryIntents();
   const holds = memoryHolds();
-  const outbox = memoryOutbox();
   const rules = memoryControls(controls);
   const given = around(rules);
   const registry = buildRegistry(

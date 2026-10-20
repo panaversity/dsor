@@ -5,7 +5,7 @@
 // memory outbox and its sender, and the writer a claim uses on the database; src/sender.ts holds
 // the database's sender (step 40's README, decisions D1, D2, D4, D8, and D11).
 import type pg from "pg";
-import { eventProblems, type DomainEvent, type EventDraft } from "./events.ts";
+import { eventProblems, type DomainEvent, type EventDraft, type EventType } from "./events.ts";
 
 /** One event in the outbox, and whether it was sent. */
 export type OutboxRow = { event: DomainEvent; sent: boolean };
@@ -14,7 +14,13 @@ export type OutboxRow = { event: DomainEvent; sent: boolean };
 export type Sent = { sent: string[]; failed?: { event_id: string; why: string }; busy?: true };
 
 /** Where an event is written, in the transaction of the change it reports. */
-export type OutboxWriter = { add: (tenant: string, draft: EventDraft) => Promise<DomainEvent> };
+export type OutboxWriter = {
+  add: (tenant: string, draft: EventDraft) => Promise<DomainEvent>;
+  // And whether a resource has an event of this type already, so a reconcile writes a payment's
+  //   payment.executed once (found by step 40's review, L1).
+  /** Whether the company's outbox holds an event of this type about this resource. */
+  has: (tenant: string, type: EventType, resource: string) => Promise<boolean>;
+};
 
 /** The outbox outside a claim: its events, and the sender. */
 export type Outbox = OutboxWriter & {
@@ -38,6 +44,7 @@ export const NO_OUTBOX: OutboxWriter = Object.freeze({
   add: async (): Promise<never> => {
     throw new Error("this call changes nothing, so it writes no event");
   },
+  has: async (): Promise<boolean> => false,
 });
 
 /** How many events one run of the sender takes for one company, unless it is told another. */
@@ -84,6 +91,11 @@ export function memoryOutbox(): MemoryOutbox {
       rows.push({ event, sent: false });
       return event;
     },
+    has: async (tenant, type, resource) =>
+      rows.some(
+        (row) =>
+          row.event.tenant === tenant && row.event.type === type && row.event.resource === resource,
+      ),
     events: async (tenant) =>
       rows
         .filter((row) => row.event.tenant === tenant)
@@ -136,6 +148,14 @@ export function outboxIn(client: pg.ClientBase): OutboxWriter {
         [event.event_id, tenant, event.type, event.resource, event.ordering_key, event],
       );
       return event;
+    },
+    has: async (tenant, type, resource) => {
+      const { rows } = await client.query<{ has: boolean }>(
+        `SELECT EXISTS (SELECT 1 FROM dsor.outbox
+                         WHERE tenant_id = $1 AND type = $2 AND resource = $3) AS has`,
+        [tenant, type, resource],
+      );
+      return rows[0]?.has === true;
     },
   };
 }
