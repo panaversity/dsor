@@ -1,0 +1,274 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:dsor:schema:1.3:decision-bundle",
+  "title": "decision-bundle",
+  "type": "object",
+  "properties": {
+    "decision_id": {
+      "type": "string"
+    },
+    "operation": {
+      "$ref": "urn:dsor:schema:1.3:common#/$defs/operationRef"
+    },
+    "proposal": {
+      "$ref": "urn:dsor:schema:1.3:common#/$defs/resourceUri"
+    },
+    "tenant": {
+      "$ref": "urn:dsor:schema:1.3:common#/$defs/tenantId"
+    },
+    "identity": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "$ref": "urn:dsor:schema:1.3:common#/$defs/identityMode"
+        },
+        "subject": {
+          "type": "string"
+        },
+        "actor_chain": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "subject_authority": {
+          "type": "object",
+          "properties": {
+            "source": {
+              "enum": [
+                "token",
+                "role_source"
+              ]
+            },
+            "as_of": {
+              "$ref": "urn:dsor:schema:1.3:common#/$defs/timestamp"
+            }
+          },
+          "required": [
+            "source",
+            "as_of"
+          ]
+        }
+      },
+      "required": [
+        "mode",
+        "subject",
+        "actor_chain",
+        "subject_authority"
+      ],
+      "additionalProperties": false
+    },
+    "authority": {
+      "type": "object",
+      "properties": {
+        "delegation": {
+          "type": "string"
+        },
+        "authorization": {
+          "enum": [
+            "ALLOW",
+            "DENY"
+          ]
+        },
+        "controls": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "version": {
+                "type": "integer"
+              },
+              "superseded_version": {
+                "type": "integer"
+              },
+              "outcome": {
+                "$ref": "urn:dsor:schema:1.3:common#/$defs/outcome"
+              },
+              "satisfied_by": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "authority": {
+                "$ref": "urn:dsor:schema:1.3:common#/$defs/authorityReference"
+              },
+              "evaluation_error": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "version",
+              "outcome",
+              "authority"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "authorization",
+        "controls"
+      ],
+      "additionalProperties": false
+    },
+    "money": {
+      "type": "object",
+      "properties": {
+        "conversions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "from": {
+                "$ref": "urn:dsor:schema:1.3:common#/$defs/money"
+              },
+              "to": {
+                "$ref": "urn:dsor:schema:1.3:common#/$defs/money"
+              },
+              "rate": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "as_of": {
+                "$ref": "urn:dsor:schema:1.3:common#/$defs/timestamp"
+              }
+            },
+            "required": [
+              "from",
+              "to",
+              "rate",
+              "source",
+              "as_of"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "conversions"
+      ]
+    },
+    "state": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "uri": {
+            "$ref": "urn:dsor:schema:1.3:common#/$defs/resourceUri"
+          },
+          "version": {
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "observed_at": {
+            "$ref": "urn:dsor:schema:1.3:common#/$defs/timestamp"
+          },
+          "freshness": {
+            "enum": [
+              "CURRENT",
+              "BOUNDED_STALENESS",
+              "OBSERVATIONAL",
+              "CONNECTOR_DEFINED"
+            ]
+          }
+        },
+        "required": [
+          "uri",
+          "observed_at",
+          "freshness"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "approval": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "payload_hash": {
+          "$ref": "urn:dsor:schema:1.3:common#/$defs/hash"
+        },
+        "approvers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "payload_hash",
+        "approvers"
+      ]
+    },
+    "sod_mode": {
+      "enum": [
+        "standard",
+        "owner_approval"
+      ]
+    },
+    "agent_asserted": {
+      "type": "object"
+    },
+    "execution": {
+      "type": "object",
+      "properties": {
+        "idempotency_key": {
+          "type": "string"
+        },
+        "connector": {
+          "type": "string"
+        },
+        "semantics": {
+          "$ref": "urn:dsor:schema:1.3:common#/$defs/semantics"
+        },
+        "intent_at": {
+          "$ref": "urn:dsor:schema:1.3:common#/$defs/timestamp"
+        },
+        "result": {
+          "enum": [
+            "committed",
+            "failed",
+            "outcome_unknown",
+            "not_executed"
+          ]
+        },
+        "finalized_at": {
+          "$ref": "urn:dsor:schema:1.3:common#/$defs/timestamp"
+        }
+      },
+      "required": [
+        "semantics",
+        "result"
+      ]
+    },
+    "sealed_at": {
+      "$ref": "urn:dsor:schema:1.3:common#/$defs/timestamp"
+    },
+    "extensions": {
+      "$ref": "urn:dsor:schema:1.3:common#/$defs/extensions"
+    }
+  },
+  "required": [
+    "decision_id",
+    "operation",
+    "tenant",
+    "identity",
+    "authority",
+    "money",
+    "state",
+    "sod_mode",
+    "execution"
+  ],
+  "additionalProperties": false
+}
