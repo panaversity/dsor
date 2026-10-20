@@ -125,9 +125,10 @@ commit atomically."
   transaction, not the moment of the bank's answer.
 - **D4. The ordering key is the event's number among its resource's events** (Claude Code's). 1, 2,
   3 for each resource, in the order they commit: PAY-901's `payment.created` is 1 and its
-  `payment.executed` is 2. The store writes it while the transaction holds the resource's row, and a
-  unique key refuses two events with one number. *Downside:* it is not the payment's version, which
-  counts a cancellation too, so the two numbers can differ.
+  `payment.executed` is 2. The store writes it while the transaction holds a lock of the resource's
+  own, so a second event about it waits for the first to commit, and a unique key refuses two events
+  with one number. *Downside:* it is not the payment's version, which counts a cancellation too, so
+  the two numbers can differ. The lock was added by the review, L2.
 - **D5. An event's data is the resource as DSoR holds it, through the classification** (Claude
   Code's). For a payment, the payment as DSoR's store reads it after the change; for an approval,
   what `proposal.approve` answers. Every field passes step 14's labels with the clearance

@@ -130,12 +130,19 @@ export function memoryOutbox(): MemoryOutbox {
 
 /**
  * The outbox's writer inside a claim on the database: the event is numbered among its resource's
- * events while the claim's transaction holds the resource's row, and inserted through the claim's
+ * events while the claim's transaction holds the resource's lock, and inserted through the claim's
  * own connection, so it commits with the change or not at all (DSOR-EVT-01a; decisions D1 and D4).
  */
 export function outboxIn(client: pg.ClientBase): OutboxWriter {
   return {
     add: async (tenant, draft) => {
+      // The resource's own lock, held to the end of the transaction, so a second event about it
+      //   waits for the first to commit and then reads its number. Found by step 40's review, L2:
+      //   the number came from max() + 1 with no lock of its own, so two writers could read the
+      //   same highest number, and the unique key refused the second's whole change.
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+        `dsor.outbox ${tenant} ${draft.resource}`,
+      ]);
       const { rows } = await client.query<{ next: number }>(
         `SELECT coalesce(max(ordering_key), 0) + 1 AS next FROM dsor.outbox
           WHERE tenant_id = $1 AND resource = $2`,

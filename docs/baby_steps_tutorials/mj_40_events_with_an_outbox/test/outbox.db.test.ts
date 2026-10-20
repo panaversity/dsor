@@ -4,6 +4,7 @@
 // once, as a real SIGKILL shows (DSOR-EVT-01a, DSOR-EVT-01b, DSOR-EVT-01d, DSOR-EXE-04a; step 40's
 // README, claims C1, C2, C4, C6, and C7). The tests' own invoice, INV-9001, 500.00 USD of VENDOR-44.
 import { spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,13 +12,15 @@ import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createFakeBank } from "../src/bank.ts";
 import type { Answer } from "../src/envelope.ts";
-import type { DomainEvent } from "../src/events.ts";
+import { buildEvent, type DomainEvent } from "../src/events.ts";
+import { checkClassifications } from "../src/labels.ts";
 import { handlersFor } from "../src/operations.ts";
 import { call } from "../src/pipeline.ts";
 import { createDbLog } from "../src/postgres.ts";
 import { firstOfEach, readChannel } from "../src/receiver.ts";
 import type { Handler } from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
+import { outboxIn } from "../src/outbox.ts";
 import { createDbOutbox } from "../src/sender.ts";
 import {
   dbRegistry,
@@ -29,7 +32,7 @@ import {
   requestId,
   tryThenRollBack,
 } from "./db.ts";
-import { keyed, SUPERVISOR, USER_700 } from "./helpers.ts";
+import { keyed, shippedLabels, SUPERVISOR, USER_700 } from "./helpers.ts";
 
 const pool = newPool();
 const log = createDbLog(pool);
@@ -557,5 +560,73 @@ describe("the review, on the database", () => {
       ["payment.created", 1],
       ["payment.executed", 2],
     ]);
+  });
+});
+
+describe("the review, L2: two events of one resource at once", () => {
+  /** A payment.created event of org_456 about this payment, which no call drafted. */
+  function about(id: string): ReturnType<typeof buildEvent> {
+    const kinds = checkClassifications(shippedLabels).kinds;
+    const data = {
+      tenant_id: "org_456",
+      id,
+      invoice_id: "INV-9001",
+      vendor_id: "VENDOR-44",
+      amount: { value: "500.00", currency: "USD" },
+      status: "draft",
+      version: 1,
+    };
+    const resource = `dsor://org_456/payment/${id}`;
+    const correlation = { request_id: requestId("l2"), principal_id: "user_123" };
+    return buildEvent(
+      { type: "payment.created", tenant: "org_456", resource, kind: "Payment", data, correlation },
+      kinds,
+    );
+  }
+
+  it("DSOR-EVT-01a: L2: two transactions add an event about one payment at once: the second waits for the first, and they are numbered 1 and 2", async () => {
+    const id = `PAY-${Date.now()}`;
+    const two = newPool();
+    const [first, second] = [await two.connect(), await two.connect()];
+    try {
+      for (const client of [first, second]) {
+        await client.query("BEGIN");
+        await client.query("SELECT set_config('dsor.tenant_id', 'org_456', true)");
+      }
+      const one = await outboxIn(first).add("org_456", about(id));
+      // The second add starts while the first is not committed, and must wait for it.
+      const waiting = outboxIn(second).add("org_456", about(id));
+      await new Promise((done) => setTimeout(done, 300));
+      await first.query("COMMIT");
+      const other = await waiting;
+      await second.query("COMMIT");
+      expect([one.ordering_key, other.ordering_key]).toStrictEqual([1, 2]);
+    } finally {
+      for (const client of [first, second]) {
+        await client.query("ROLLBACK").catch(() => {});
+        client.release();
+      }
+      await two.end();
+    }
+    expect(await storyOf(`dsor://org_456/payment/${id}`)).toStrictEqual([
+      ["payment.created", 1],
+      ["payment.created", 2],
+    ]);
+  });
+
+  it("DSOR-EVT-01a: L2: an event with a number its resource has used is refused by the unique key", async () => {
+    const request = requestId("l2-unique");
+    await draft(request);
+    const [row] = await eventsOfRequest(request);
+    const copy = { ...(row!["event"] as DomainEvent), event_id: `evt_${randomUUID()}` };
+    await expect(
+      tryThenRollBack(
+        pool,
+        `INSERT INTO dsor.outbox (event_id, tenant_id, type, resource, ordering_key, event)
+         VALUES ($1, 'org_456', $2, $3, $4, $5)`,
+        "org_456",
+        [copy.event_id, copy.type, copy.resource, copy.ordering_key, copy],
+      ),
+    ).rejects.toThrow(/outbox_one_number/);
   });
 });
