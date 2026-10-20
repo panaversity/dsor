@@ -111,6 +111,7 @@ import {
   type RequestEnvelope,
 } from "./request.ts";
 import { semanticsOf } from "./semantics.ts";
+import { checkRunShape } from "./run.ts";
 import { checkExclusive, countInFlight, exclusiveOf } from "./inflight.ts";
 import { checkFreshness, checkPreconditions } from "./preconditions.ts";
 import { lookFor, type OwnWork } from "./revocation.ts";
@@ -418,6 +419,9 @@ export async function call(
     //   README, decision D6).
     const hash = line(6, () => {
       checkInput(name, registry.inputs, copy);
+      // NEW IN STEP 41: and a run's length and its lines, before any bill is read (DSOR-BAT-01a;
+      //   step 41's README, claim C1).
+      checkRunShape(contract, copy);
       try {
         return payloadHash(copy);
       } catch (error) {

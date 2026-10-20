@@ -1,5 +1,6 @@
 // Every operation has a name and a contract, checked at start-up.
 // DSOR-OPR-01, DSOR-OPR-02a, DSOR-OPR-02b in specs/dsor/01-model.md, section 7.
+import { runProblems } from "./run.ts";
 import { ownReadProblems, ownReadsFor, type OwnRead } from "./alert-list.ts";
 import { checkAlerts, readAlerts, type Alerting, type AlertsSource } from "./alerts.ts";
 import { readdirSync, readFileSync } from "node:fs";
@@ -333,6 +334,9 @@ export function buildRegistry(
   problems.push(...freshnessProblems(contracts.values()));
   // And what a command is exclusive over (step 32's README, decision D6).
   problems.push(...exclusiveProblems(contracts.values()));
+  // NEW IN STEP 41: and every run declares how it ends and its most lines, and names a command for
+  //   its lines (DSOR-BAT-01a; step 41's README, claim C1).
+  problems.push(...runProblems(contracts.values()));
   // And every command's strategy is one this step keeps, and an optimistic
   // command's input asks for the version its caller decided on (DSOR-CON-01a; step 21's README,
   // decision 10).

@@ -30,6 +30,7 @@
     "amount": "confidential Money",
     "version": "internal"
   },
+  "PaymentRun": { "payments": "Payment[]" },
   "InvoiceIssueResult": {},
   "Delegation": {
     "tenant_id": "internal",

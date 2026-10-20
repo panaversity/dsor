@@ -246,7 +246,8 @@ describe("C7: a loaded contract is exactly what was written", () => {
     // Changed in step 38: and payment.reconcile (step 38's README, decision D2).
     // Changed in step 38b: and alert.escalate_due (step 38b's README, decision D3).
     // Changed in step 38c: and alert.list (step 38c's README).
-    expect(shipped).toHaveLength(21);
+    // Changed in step 41: and payment.run (step 41's README, claim C1).
+    expect(shipped).toHaveLength(22);
     for (const s of shipped) {
       const written = JSON.parse(s.text) as { id: string };
       expect(registry.contracts.get(written.id)).toStrictEqual(written);

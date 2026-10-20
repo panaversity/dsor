@@ -37,13 +37,21 @@ describe("C1: a run declares how it ends and how long it may be", () => {
     expect(runProblems([unnamed])).toStrictEqual([
       "payment.run: it declares a batch, and names no operation for its lines (DSOR-BAT-01a)",
     ]);
-    expect(runProblems([run])).toStrictEqual([]);
+    const shipped = [...ruleWorld().registry.contracts.values()];
+    expect(runProblems(shipped)).toStrictEqual([]);
+    // And lines of an operation that has no contract, such as a slip of the pen.
+    const misnamed = { ...run, extensions: { "org.panaversity.steps": { line: "payment.draft" } } };
+    const others = shipped.filter((c) => c.id !== "payment.run");
+    expect(runProblems([...others, misnamed])).toStrictEqual([
+      "payment.run: its lines are payment.draft, which is not a command with a contract (DSOR-BAT-01a)",
+    ]);
   });
 
   it("DSOR-BAT-01a: C1: start-up refuses per_item, which this step does not build", () => {
     const run = contract("payment.run");
     const partial = { ...run, batch: { atomicity: "per_item", max_items: 50 } };
-    expect(runProblems([partial])).toStrictEqual([
+    const others = [...ruleWorld().registry.contracts.values()].filter((c) => c.id !== run["id"]);
+    expect(runProblems([...others, partial])).toStrictEqual([
       'payment.run: the atomicity "per_item" is not built yet (DSOR-BAT-01a)',
     ]);
   });

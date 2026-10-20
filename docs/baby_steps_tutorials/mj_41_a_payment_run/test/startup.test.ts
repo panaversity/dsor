@@ -54,7 +54,8 @@ describe("reading the contracts folder", () => {
   // Changed in step 38b: twenty, with alert.escalate_due, first in name order (step 38b's README,
   //   decision D3).
   // Changed in step 38c: twenty-one, with alert.list (step 38c's README).
-  it("the shipped folder holds the twenty-one contracts", () => {
+  // Changed in step 41: twenty-two, with payment.run (step 41's README, claim C1).
+  it("the shipped folder holds the twenty-two contracts", () => {
     expect(shipped.map((s) => s.file)).toEqual([
       "alert.escalate_due.json",
       "alert.list.json",
@@ -68,6 +69,7 @@ describe("reading the contracts folder", () => {
       "payment.create.json",
       "payment.execute.json",
       "payment.reconcile.json",
+      "payment.run.json",
       "proposal.approve.json",
       // And step 31's release (step 31's README, decision D12).
       "proposal.execute.json",

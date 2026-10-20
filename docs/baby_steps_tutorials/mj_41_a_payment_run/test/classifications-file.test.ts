@@ -61,6 +61,9 @@ const LABELS = {
   // (step 25c's README, decision D9).
   // Step 38: what a reconcile answers. The evidence names the bank's reference and the amount.
   PaymentReconciliation: { proposal: "internal", state: "internal", evidence: "confidential" },
+  // Step 41: what a drafted run answers, its payments in the order of its lines (step 41's
+  //   README, claim C3).
+  PaymentRun: { payments: "Payment[]" },
   // Changed in step 38b: the escalation sweep's answer, and each alert it escalated (step 38b's
   //   README, decision D3).
   // Changed in step 38c: alert.list's page, and each alert on it (step 38c's README, D4 and D7).

@@ -47,6 +47,10 @@ function refusedWith(...problems: string[]): string {
 // A contract that fails the schema is not loaded, so its input schema belongs to no contract,
 // and start-up names that too.
 const ORPHAN = "inputs/PaymentCreateRequest.schema.json: no contract names this input schema";
+// Changed in step 41: and payment.run, whose lines are payment.create, names it too (step 41's
+//   README, claim C1).
+const RUN_LINES =
+  "payment.run: its lines are payment.create, which is not a command with a contract (DSOR-BAT-01a)";
 
 /**
  * Starts the program with the shipped contracts, one of them replaced, and gives back
@@ -74,6 +78,7 @@ describe("C1: every command declares its semantics in its contract", () => {
       refusedWith(
         "payment.create.json: must have required property 'execution'",
         'payment.create.json: must match "then" schema',
+        RUN_LINES,
         ORPHAN,
       ),
     );
@@ -84,6 +89,7 @@ describe("C1: every command declares its semantics in its contract", () => {
     expect(startWith(createWith({ compensated_by: ["payment.cancel"] }))).toBe(
       refusedWith(
         "payment.create.json: /execution must have required property 'semantics'",
+        RUN_LINES,
         ORPHAN,
       ),
     );
@@ -118,6 +124,8 @@ describe("C1: every command declares its semantics in its contract", () => {
       ["payment.execute", "non_compensatable"],
       // Step 38: and reconciliation, atomic: it settles all, or nothing (step 38's README, D2).
       ["payment.reconcile", "atomic"],
+      // Step 41: and the run, compensatable as each of its drafts is, by payment.cancel.
+      ["payment.run", "compensatable"],
       // And proposal.approve, atomic: the approval and its move in one
       // transaction (step 29's README, decision D9).
       ["proposal.approve", "atomic"],
@@ -246,7 +254,11 @@ describe("C3: a compensatable command names a real undo, checked at start-up", (
   it("DSOR-EXE-05c: an undo with a contract and no code stops start-up, named", () => {
     const { "payment.cancel": _gone, ...withoutCancel } = handlers;
     expect(startWith(contract("payment.create"), withoutCancel)).toBe(
-      refusedWith('payment.create: compensated_by names "payment.cancel", which has no code'),
+      // Changed in step 41: and payment.run, which names the same undo.
+      refusedWith(
+        'payment.create: compensated_by names "payment.cancel", which has no code',
+        'payment.run: compensated_by names "payment.cancel", which has no code',
+      ),
     );
   });
 
@@ -307,8 +319,12 @@ describe("the review: an undo must be one that some role may run", () => {
         "alert:read",
       ],
     });
+    // Changed in step 41: and payment.run, which names the same undo.
     expect(refusal(() => buildRegistry(shipped, handlers, noCancel))).toBe(
-      refusedWith('payment.create: compensated_by names "payment.cancel", which no role may run'),
+      refusedWith(
+        'payment.create: compensated_by names "payment.cancel", which no role may run',
+        'payment.run: compensated_by names "payment.cancel", which no role may run',
+      ),
     );
   });
 
