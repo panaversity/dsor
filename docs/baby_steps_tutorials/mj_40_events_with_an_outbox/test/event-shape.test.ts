@@ -1,5 +1,5 @@
-// Step 40: the shape of an event. Each validates against event.schema.json, copied from the
-// specification; its id is its own; its ordering key is its number among its resource's events;
+// Step 40: the shape of an event. Each validates against event.schema.json, the specification's
+// own schema; its id is its own; its ordering key is its number among its resource's events;
 // its data passes the classification, so no RESTRICTED value leaves; and the outbox refuses an event
 // that fails the schema (DSOR-EVT-01b, DSOR-EVT-01c, DSOR-COR-01a; step 40's README, claim C5,
 // decisions D3 to D7).
