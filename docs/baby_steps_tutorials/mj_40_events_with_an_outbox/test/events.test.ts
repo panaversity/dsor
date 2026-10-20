@@ -464,6 +464,20 @@ describe("the review, H1: an event is about the payment the call changed, never 
   });
 });
 
+describe("the review, M5: a send whose code pays nothing", () => {
+  it("DSOR-EVT-01a: M5: the code returns PAY-901 still a draft, and never asks the bank: the call does not commit, and no payment.executed is written", async () => {
+    const idle: Record<string, Handler> = {
+      ...handlersFor(),
+      "payment.execute": async (_input, company) => company.payments.get("PAY-901"),
+    };
+    const w = await worldWith(idle);
+    const payment = paymentOf(await draft(w));
+    expect(heard(await send(w, payment))).not.toBe("COMMITTED");
+    expect(await storyOf(w, payment)).toStrictEqual([["payment.created", 1]]);
+    expect(w.bank.transfers()).toStrictEqual([]);
+  });
+});
+
 describe("the review, M1 and L1: the event is written with the work, before the record is sealed", () => {
   it("DSOR-EVT-01a: M1: the outbox refuses PAY-901's payment.executed after the bank sent it: OUTCOME_UNKNOWN, and its only record says so; dsor-scheduler reconciles it: one payment.executed, numbered 2", async () => {
     const { outbox, on } = refusingExecuted();
