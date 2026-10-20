@@ -6,6 +6,7 @@
 import { randomUUID } from "node:crypto";
 import { stillOpen, type Approving, type Offer, type Risk } from "./approvals.ts";
 import { readBound, type BoundRead } from "./bound.ts";
+import { payloadHash } from "./canonical.ts";
 import { Refusal } from "./envelope.ts";
 import { approvePermissionOf } from "./permissions.ts";
 import { isProposalOf, proposalIdOf, type MoveBy, type Proposal } from "./proposals.ts";
@@ -14,7 +15,14 @@ import type { OwnLook, OwnStores, OwnWork } from "./revocation.ts";
 import { inChain } from "./segregation.ts";
 
 /** The input that line ⑥ checked: the proposal's URI, and the fingerprint the approver saw. */
-type ApproveInput = { proposal: string; payload_hash: string };
+// NEW IN STEP 41: and, for a run, its fingerprint and its totals, as the approver saw them.
+type ApproveInput = {
+  proposal: string;
+  payload_hash: string;
+  manifest_hash?: string;
+  totals?: unknown[];
+  vendor_totals?: unknown[];
+};
 
 const NAME = JSON.stringify("proposal.approve");
 
@@ -77,6 +85,13 @@ async function mayApprove(input: unknown, look: OwnLook): Promise<void> {
     const why = `${caller.id} may not approve proposal ${id}: ${chain}`;
     throw new Refusal("SOD_VIOLATION", why, "internal");
   }
+  // NEW IN STEP 41: a line of a run is approved only with its run, never alone, so one approval
+  //   covers the whole list it was shown (step 41's README, decision D7). Before its state, so a
+  //   line that waits is refused for what it is.
+  if (found.run !== undefined) {
+    const why = `proposal ${id} is a line of run ${proposalIdOf(tenant, found.run)}, and is approved only with its run`;
+    throw new Refusal("CONFLICT", why, "internal");
+  }
   if (found.state !== "PENDING_APPROVAL" || found.requires === undefined) {
     const why = `proposal ${id} is ${found.state}, and only a PENDING_APPROVAL proposal is approved`;
     throw new Refusal("CONFLICT", why, "internal");
@@ -107,6 +122,32 @@ async function mayApprove(input: unknown, look: OwnLook): Promise<void> {
   // and no other.
   if (payload_hash !== found.payload_hash) {
     const why = `the fingerprint is not the one of proposal ${id}'s request`;
+    throw new Refusal("APPROVAL_MISMATCH", why, "internal");
+  }
+  // NEW IN STEP 41: and a run's approval binds its fingerprint and its totals too, each compared as
+  //   the approver sent it, with the run's own, written when it started to wait. One draft has
+  //   none of them, so an approval that carries one is not an approval of it (DSOR-BAT-02a; step
+  //   41's README, decision D4).
+  const { manifest_hash, totals, vendor_totals } = input as ApproveInput;
+  if (found.manifest_hash === undefined) {
+    if (manifest_hash !== undefined || totals !== undefined || vendor_totals !== undefined) {
+      const why = `proposal ${id} is not a run, so it has no fingerprint of lines and no totals`;
+      throw new Refusal("APPROVAL_MISMATCH", why, "internal");
+    }
+    return;
+  }
+  if (manifest_hash !== found.manifest_hash) {
+    const why = `the fingerprint is not the one of run ${id}'s lines in their order`;
+    throw new Refusal("APPROVAL_MISMATCH", why, "internal");
+  }
+  if (totals === undefined || payloadHash(totals) !== payloadHash(found.totals)) {
+    throw new Refusal("APPROVAL_MISMATCH", `the totals are not run ${id}'s`, "internal");
+  }
+  if (
+    vendor_totals === undefined ||
+    payloadHash(vendor_totals) !== payloadHash(found.vendor_totals)
+  ) {
+    const why = `the totals per vendor are not run ${id}'s`;
     throw new Refusal("APPROVAL_MISMATCH", why, "internal");
   }
 }
@@ -187,6 +228,20 @@ async function approve(input: unknown, work: OwnStores): Promise<unknown> {
   };
   const done = await stores.proposals.approve(tenant, id, offer, by);
   if ("refused" in done) throw new Refusal("CONFLICT", wordsOf(id, caller.id, done), "internal");
+  // NEW IN STEP 41: a run approved approves every line that waited for it, in the same step, each
+  //   move with its record. A line that waited READY asked for no one, and stays READY for the
+  //   release (step 41's README, claim C6).
+  if (done.state === "APPROVED" && found.manifest_hash !== undefined) {
+    for (const line of await stores.proposals.lines(tenant, uri)) {
+      if (line.state !== "PENDING_APPROVAL") continue;
+      const withRun = { ...by, cause: `approved with its run ${id} by ${caller.id}` };
+      if (
+        !(await stores.proposals.move(tenant, line.id, "PENDING_APPROVAL", "APPROVED", withRun))
+      ) {
+        throw new Error(`the line ${line.id} moved while its run was approved`);
+      }
+    }
+  }
   const answer = {
     tenant_id: tenant,
     id: done.approval.id,

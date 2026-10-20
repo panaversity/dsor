@@ -208,6 +208,9 @@ export type ProposalStore = {
   //   attempt of the same operation (DSOR-EXC-01, DSOR-EXC-02; step 32's README, decisions D7 and
   //   D9).
   inFlightOver: (tenant: string, uri: string) => Promise<InFlight[]>;
+  // NEW IN STEP 41: and the lines of one run, each with its state and its invoice, in the order of
+  //   their ids: an approval and a release move them with their run (step 41's README, claim C6).
+  lines: (tenant: string, run: string) => Promise<RunLineState[]>;
   // And the lock of one operation over one record, held alone until the claim
   //   ends, so two attempts over one invoice look one after the other (step 32's README, D7).
   holdOver: (tenant: string, operation: string, uri: string) => Promise<void>;
@@ -240,6 +243,9 @@ export const IN_FLIGHT: readonly State[] = Object.freeze([
   "EXECUTING",
   "OUTCOME_UNKNOWN",
 ] as State[]);
+
+/** One line of a run: its proposal's id, its state, and the invoice it drafts. */
+export type RunLineState = { id: string; state: State; invoice: string };
 
 /** A proposal in flight over a record: its id, its operation with its version, and its state. */
 export type InFlight = { id: string; operation: string; state: State };
@@ -362,6 +368,8 @@ export const NO_PROPOSALS: ProposalStore = Object.freeze({
   isDue: async () => false,
   // And none in flight, and no lock.
   inFlightOver: async () => [],
+  // And no run's lines.
+  lines: async () => [],
   holdOver: async () => {},
   // And no alert, and escalates none.
   alerts: async () => [],
@@ -586,6 +594,16 @@ export function memoryProposals(now: () => number = Date.now): MemoryProposals {
         if (row.resources.includes(uri)) {
           found.push({ id: row.id, operation: row.operation, state: row.state });
         }
+      }
+      return found.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    },
+    // As the database's SELECT does it: this company, the run's lines, in the order of their ids.
+    lines: async (tenant: string, run: string): Promise<RunLineState[]> => {
+      const found: RunLineState[] = [];
+      for (const row of rows.values()) {
+        if (row.tenant !== tenant || row.run !== run) continue;
+        const { invoice } = row.payload as { invoice: string };
+        found.push({ id: row.id, state: row.state, invoice });
       }
       return found.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     },

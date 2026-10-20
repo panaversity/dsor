@@ -809,8 +809,9 @@ describe("from the review: every command, in each mode", () => {
       // Changed in step 35: and 12 for payment.execute, user_123 and user_700, 6 swaps each of its
       // two URIs (step 35's README, decision D7).
       // Changed in step 41: and 30 for payment.run, the 5 callers of payment.create, 6 swaps each
-      //   of its two URIs (step 41's README, claim C1).
-      expect(report.attacks).toHaveLength(258);
+      //   of its two URIs (step 41's README, claim C1). And 15 for proposal.approve, whose example
+      //   names a run's vendor now, 3 swaps for each of its 5 callers (claim C5).
+      expect(report.attacks).toHaveLength(273);
     },
   );
 

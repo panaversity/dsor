@@ -79,6 +79,7 @@ import {
   type Waiting,
   IN_FLIGHT,
   type InFlight,
+  type RunLineState,
 } from "./proposals.ts";
 import {
   isOutcome,
@@ -2405,6 +2406,17 @@ function proposalsThrough(run: Runner): ProposalStore {
             WHERE tenant_id = $1 AND $2 = ANY (resources) AND state = ANY ($3::text[])
             ORDER BY id`,
           [tenant, uri, IN_FLIGHT],
+        );
+        return rows;
+      }),
+    // NEW IN STEP 41: the lines of one run. DSoR's own WHERE, the company first, with row-level
+    //   security behind it (DSOR-TEN-01b).
+    lines: async (tenant: string, runUri: string): Promise<RunLineState[]> =>
+      run(tenant, async (client) => {
+        const { rows } = await client.query<RunLineState>(
+          `SELECT id, state, payload->>'invoice' AS invoice FROM dsor.proposals
+            WHERE tenant_id = $1 AND run = $2 ORDER BY id`,
+          [tenant, runUri],
         );
         return rows;
       }),
