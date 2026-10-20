@@ -747,32 +747,38 @@ const handlers: Readonly<Record<string, Handler>> = {
 
     const fills = requirements.filter((r) => r.role === approver.title);
     const at = now();
-    const approved = await keepApproval(tenant, read.id, askedBy, {
-      proposal: formatUri({ tenant, entity: "proposal", id: read.id }),
-      operation: target.operation,
+    const approved = await keepApproval(
       tenant,
-      // What it is about: the addresses its arguments name, or, naming none, the proposal itself.
-      resources: addressesNamedIn(target.payload, tenant, read.id),
-      payload_hash: target.payloadHash,
-      risk: registry.get(target.operation.split("@")[0] ?? "")?.risk.level ?? "high",
-      // Nothing is bound yet: checking the world again at execution is step 31's.
-      bound_state: { mode: "predicate", versions: {} },
-      satisfies: fills.map(({ control, version, role, quorum }) => ({
-        control,
-        version,
-        requirement: { role, quorum },
-      })),
-      // When the approver logged in is this decision's own time: no real login until step 43.
-      approvers: [{ principal: askedBy, basis: `role:${approver.title}`, authn: { at } }],
-      sod_mode: "standard",
-      expires_at: expiresAt(target.waitingSince),
-    }, {
-      // The move to APPROVED, when this is the last approval, is in the name of this request.
-      subject: askedBy,
-      requestId,
-      operation: target.operation,
-      payloadHash: target.payloadHash,
-    });
+      read.id,
+      askedBy,
+      {
+        proposal: formatUri({ tenant, entity: "proposal", id: read.id }),
+        operation: target.operation,
+        tenant,
+        // What it is about: the addresses its arguments name, or, naming none, the proposal itself.
+        resources: addressesNamedIn(target.payload, tenant, read.id),
+        payload_hash: target.payloadHash,
+        risk: registry.get(target.operation.split("@")[0] ?? "")?.risk.level ?? "high",
+        // Nothing is bound yet: checking the world again at execution is step 31's.
+        bound_state: { mode: "predicate", versions: {} },
+        satisfies: fills.map(({ control, version, role, quorum }) => ({
+          control,
+          version,
+          requirement: { role, quorum },
+        })),
+        // When the approver logged in is this decision's own time: no real login until step 43.
+        approvers: [{ principal: askedBy, basis: `role:${approver.title}`, authn: { at } }],
+        sod_mode: "standard",
+        expires_at: expiresAt(target.waitingSince),
+      },
+      {
+        // The move to APPROVED, when this is the last approval, is in the name of this request.
+        subject: askedBy,
+        requestId,
+        operation: target.operation,
+        payloadHash: target.payloadHash,
+      },
+    );
 
     // NEW IN STEP 29, decision 168: the approval and the move it completes were one statement, so
     // either both were written or neither. Nothing kept is told why: the proposal stopped waiting, or
@@ -2146,10 +2152,12 @@ const createTheProposal: Stage["run"] = async (context) => {
  * NEW IN STEP 29: part of §21.9 — who may approve a waiting proposal (decision 167).
  *
  * In this order, each refusal recorded before anything is written: a person, logged in as
- * themselves, never an agent and never under a slip (DSOR-APR-05a); a proposal of this company; the
- * target operation's approve_permission, held (DSOR-APR-07); still waiting, and its 72 hours not
- * passed; a requirement whose role is the approver's title; not approved by them already; and last,
- * the fingerprint, which must be the stored request's (DSOR-APR-09).
+ * themselves, never an agent and never under a slip (DSOR-APR-05a); holding some approve
+ * permission, asked before the proposal is looked up, so a person who may approve nothing learns
+ * nothing about it (DSOR-ERR-01b, decision 168); a proposal of this company; the target operation's
+ * approve_permission, held (DSOR-APR-07); still waiting, and its 72 hours not passed; a requirement
+ * whose role is the approver's title; not approved by them already; and last, the fingerprint,
+ * which must be the stored request's (DSOR-APR-09).
  */
 async function whoMayApprove(
   context: Context,
@@ -2172,9 +2180,7 @@ async function whoMayApprove(
   // (DSOR-ERR-01b). Looked up first, a proposal that did not exist was RESOURCE_NOT_FOUND, and one
   // that did named its operation: a way to learn which proposals there are.
   const approvePermissions = [
-    ...new Set(
-      [...registry.values()].flatMap((c) => c.authorization.approve_permission ?? []),
-    ),
+    ...new Set([...registry.values()].flatMap((c) => c.authorization.approve_permission ?? [])),
   ];
 
   if (!approvePermissions.some((p) => holds(principal, p))) {
