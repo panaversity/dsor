@@ -56,6 +56,10 @@
 // header described step 13's program, and left out the masking and cfo_100's read.
 // The log and the invoices are tables in the database named by
 // DSOR_DB_URL, in this step's .env. Run `pnpm migrate` once first.
+import type { DomainEvent } from "./events.ts";
+import { memoryOutbox, type MemoryOutbox } from "./outbox.ts";
+import { firstOfEach } from "./receiver.ts";
+import { createDbOutbox } from "./sender.ts";
 import { createFakeBank, type FakeBank } from "./bank.ts";
 import { readConnectors, type ConnectorsSource } from "./connectors.ts";
 import { randomUUID } from "node:crypto";
@@ -2182,6 +2186,7 @@ console.log(`  ${String(accounting["id"])}, ${String(accounting["write_exclusivi
 // Changed in step 35: and this fake bank, these payments, and these proposals, which step 35's
 //   scene reads.
 // Changed in step 36: and these notes, which step 36's scene reads.
+// Changed in step 40: and this outbox, which step 40's scene reads and sends.
 async function connectorWorld(
   connectors: ConnectorsSource,
   fake: FakeBank = createFakeBank(),
@@ -2190,6 +2195,7 @@ async function connectorWorld(
     Date.parse("2026-10-06T15:05:00Z"),
   ),
   notes: MemoryIntents = memoryIntents(),
+  outbox: MemoryOutbox = memoryOutbox(),
 ) {
   const clock = { now: Date.parse("2026-10-06T15:05:00Z") };
   const store = memoryInvoices(structuredClone(invoices), structuredClone(vendors));
@@ -2218,6 +2224,8 @@ async function connectorWorld(
       rates,
       rules,
       notes,
+      undefined,
+      outbox,
     ),
     ownWorkFor(),
     undefined,
@@ -2303,12 +2311,14 @@ const bankDrafted: Payment[] = [];
 let bankNow = Date.parse("2026-10-06T15:05:00Z");
 const bankKept = memoryProposals(() => bankNow);
 const bankNotes = memoryIntents();
+const bankOutbox = memoryOutbox();
 const bankWorld = await connectorWorld(
   readConnectors(),
   fakeBank,
   bankDrafted,
   bankKept,
   bankNotes,
+  bankOutbox,
 );
 const bankLog = createLog();
 let bankKeys = 0;
@@ -2462,6 +2472,28 @@ for (const note of bankNotes.all()) {
     `    ${proposal_id.slice(0, 13)}…: ${operation} by ${principal} through ${connector}, ended ${outcome ?? "never"}`,
   );
 }
+// NEW IN STEP 40: the events DSoR wrote with the changes, each in its change's own transaction, and
+//   the sender that delivers them to org_456's channel. Its first run dies after one delivery,
+//   before it marks it, so that event comes twice, and the receiver keeps one copy (step 40's
+//   README, claims C1 to C3, C6, and C7).
+console.log("  the events DSoR wrote with the changes, in its outbox:");
+for (const { event } of await bankOutbox.events("org_456")) {
+  const { type, resource, ordering_key, classification, correlation } = event;
+  console.log(
+    `    ${type} ${resource.split("/").at(-1)}, number ${ordering_key}, ${classification}, by request ${correlation.request_id.slice(0, 12)}…`,
+  );
+}
+const channel456: DomainEvent[] = [];
+const dying = await bankOutbox.send("org_456", async (event) => {
+  channel456.push(event);
+  throw new Error("the sender was killed after a delivery");
+});
+console.log(`  the sender delivers one event, then: ${dying.failed?.why ?? "nothing"}`);
+const rerun = await bankOutbox.send("org_456", async (event) => void channel456.push(event));
+const kept456 = firstOfEach(channel456);
+console.log(
+  `  it runs again and sends ${rerun.sent.length}: org_456's channel holds ${channel456.length}, and the accounts system keeps ${kept456.kept.length}, dropping ${kept456.dropped.length} it had`,
+);
 
 // Every call above left one record in the log before its answer was returned, the
 // refusals too. dsor_runtime reads one company at a time, and never a
@@ -2488,6 +2520,16 @@ for (const { sequence, operation, authorization, result, tenant } of records) {
 //   transaction (step 33's README, D2).
 const naming = records.filter((r) => r.decision_bundle !== undefined).length;
 console.log(`${naming} of the records it reads name a decision bundle`);
+// NEW IN STEP 40: and the events this run's calls wrote into dsor.outbox, in their changes' own
+//   transactions, which pnpm send-events delivers (step 40's README, claim C1).
+const ourEvents = (await createDbOutbox(pool).events("org_456")).filter(({ event }) =>
+  ids.has(event.correlation.request_id),
+);
+console.log(
+  `${ourEvents.length} events in dsor.outbox from this run's calls: ${ourEvents
+    .map(({ event }) => `${event.type} ${event.resource.split("/").at(-1)}`)
+    .join(", ")}`,
+);
 // The records it could not read. The program did not see them. It knows they were written
 // because an answer leaves only after its record is committed (DSOR-EXE-02). Found by the
 // review: this line used to state them as if it had read them.
