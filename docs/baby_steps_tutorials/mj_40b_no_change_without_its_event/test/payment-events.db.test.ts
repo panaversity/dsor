@@ -372,3 +372,31 @@ describe("the review, H1: paid is final (step 40b's README, decision D8)", () =>
     expect(await statusOf(id)).toBe("draft");
   });
 });
+
+// Found by step 40b's review, M1: the owner wrote an event with written_xact 42, and could delete or
+//   truncate events. The owner can still switch a check off, which no table guard prevents; these
+//   guards cost little and close the rest (step 40b's README, decision D9).
+describe("the review, M1: the outbox keeps its events, the owner's writes included (step 40b's README, decision D9)", () => {
+  it("DSOR-EVT-01a: M1: the database writes written_xact itself: the owner's 42 becomes this transaction's id", () => {
+    const { stamp } = ownerPaymentEvents("stamp") as { stamp: { stored: string; current: string } };
+    expect(stamp.stored).not.toBe("42");
+    expect(stamp.stored).toBe(stamp.current);
+  });
+
+  it("DSOR-EVT-01a: M1: no login may delete an event, the owner included", async () => {
+    const id = await drafted();
+    const forgot = ownerPaymentEvents("forget", id) as { said: string };
+    expect(forgot.said).toMatch(/an event is never removed/);
+    await expect(
+      tryThenRollBack(pool, "DELETE FROM dsor.outbox WHERE resource = $1", "org_456", [
+        `dsor://org_456/payment/${id}`,
+      ]),
+    ).rejects.toThrow(/permission denied/);
+    expect(await eventsOf(id)).toEqual(["payment.created"]);
+  });
+
+  it("DSOR-EVT-01a: M1: no login may empty dsor.outbox, the owner included", () => {
+    const emptied = ownerPaymentEvents("empty") as { said: string };
+    expect(emptied.said).toMatch(/an event is never removed/);
+  });
+});
