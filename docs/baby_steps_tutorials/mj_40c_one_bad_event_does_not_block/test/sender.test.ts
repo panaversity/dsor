@@ -423,3 +423,31 @@ describe("step 40c's review, H1 and L5: a receiver's reason, cleaned", () => {
     }
   });
 });
+
+// Found by step 40c's review, M1: a run read its oldest `limit` unsent events, and a held-back
+//   payment's later events took places among them, so enough held payments kept every other
+//   payment out of every run. The learner chose: a run counts only the events it tries.
+describe("step 40c's review, M1: a run counts only the events it tries", () => {
+  it("step 40c's decision D1: M1: PAY-901 and PAY-902 are paid and refused; a run that may try 3 still reaches PAY-903", async () => {
+    const outbox = memoryOutbox();
+    for (const id of ["PAY-901", "PAY-902"]) {
+      await outbox.add("org_456", about("org_456", id));
+      await outbox.add("org_456", about("org_456", id, "payment.executed"));
+    }
+    await outbox.add("org_456", about("org_456", "PAY-903"));
+    const { got, deliver } = keeper();
+    const run = await outbox.send(
+      "org_456",
+      async (event) => {
+        if (!event.resource.endsWith("/PAY-903")) throw new Error("no vendor VENDOR-31");
+        await deliver(event);
+      },
+      3,
+    );
+    expect(got.map((e) => e.resource.split("/").at(-1))).toStrictEqual(["PAY-903"]);
+    expect(run.failed?.map((f) => f.resource.split("/").at(-1))).toStrictEqual([
+      "PAY-901",
+      "PAY-902",
+    ]);
+  });
+});

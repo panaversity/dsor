@@ -289,3 +289,21 @@ describe("step 40c's review, H1: any refusal is kept, and the run goes on", () =
     });
   }
 });
+
+// Found by step 40c's review, M1: held-back events filled the run's window of unsent events.
+describe("step 40c's review, M1: a run counts only the events it tries, on the database", () => {
+  it("step 40c's decision D1: M1: two paid payments are refused; a run that may try 3 still delivers a third payment's event", async () => {
+    await flush();
+    const [one, two] = [await paid(), await paid()];
+    const good = await drafted();
+    const run = await outbox.send(
+      "org_456",
+      async (event) => {
+        if (!event.resource.endsWith(`/${good}`)) throw new Error(REFUSED);
+      },
+      3,
+    );
+    expect(run.sent).toStrictEqual([(await eventsOf(good))[0]!.event_id]);
+    expect(run.failed?.map((f) => f.resource.split("/").at(-1))).toStrictEqual([one, two]);
+  });
+});
