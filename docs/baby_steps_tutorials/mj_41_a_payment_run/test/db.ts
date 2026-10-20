@@ -294,6 +294,13 @@ export function ownerRunBills(...args: string[]): unknown {
   return asOwner("owner-run-bills.ts", args);
 }
 
+// NEW IN STEP 41: the owner tries to change a line's run or a run's fingerprint, which the trigger
+//   refuses (test/owner-runs.ts; step 41's README, claim C5).
+/** What the owner's program for runs printed, for these words. */
+export function ownerRuns(...args: string[]): unknown {
+  return asOwner("owner-runs.ts", args);
+}
+
 // The owner tries to change a proposal's request, or to skip a move, and the
 // database's trigger refuses both (test/owner-proposals.ts; step 22's README, decision 3).
 /** What the owner's proposals program printed, for these words. */

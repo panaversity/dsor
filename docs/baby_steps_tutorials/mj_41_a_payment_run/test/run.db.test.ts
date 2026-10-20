@@ -25,6 +25,7 @@ import {
   ownerInvoices,
   ownerLimits,
   ownerRunBills,
+  ownerRuns,
   tryThenRollBack,
 } from "./db.ts";
 import { CFO, keyed, storyDirectories, withPlanted } from "./helpers.ts";
@@ -272,5 +273,52 @@ describe("C5: the database keeps what a run's approval binds to", () => {
       await expect(tryThenRollBack(pool, sql, "org_456", values)).rejects.toThrow();
     }
     expect((await proposals.get("org_456", id))!.totals).toStrictEqual(run.totals);
+  });
+});
+
+// Found by step 41's own breaks, B11 to B13: the trigger's three rules of a run had no test that
+//   needed them. dsor_runtime's privileges refused first, or its move check did.
+describe("C5: the trigger keeps a run's rules, for every login", () => {
+  /** A run of INV-9411 and INV-9412, waiting for the CFO: its id, its URI, and one line's id. */
+  async function waitingRun() {
+    const answer = await asIntake("payment.run", linesOf("INV-9411", "INV-9412"));
+    const run = (await proposals.get("org_456", idOf(answer)))!;
+    const [line] = await proposals.lines("org_456", run.uri);
+    return { id: run.uri.split("/").at(-1)!, uri: run.uri, line: line!.id };
+  }
+
+  it("DSOR-BAT-02a: C5: a run's totals change with no move either: dsor_runtime's move of a waiting run that also rewrites them is refused", async () => {
+    const { id } = await waitingRun();
+    for (const column of ["totals", "vendor_totals"]) {
+      const sql = `UPDATE dsor.proposals SET state = 'CANCELLED', ${column} = '[]'::jsonb WHERE id = $1`;
+      await expect(tryThenRollBack(pool, sql, "org_456", [id])).rejects.toThrow(
+        /a run's totals are written once, when it starts to wait/,
+      );
+    }
+  });
+
+  it("DSOR-BAT-01b: C5: the owner cannot take a line from its run, nor change a run's fingerprint", async () => {
+    const { id, line } = await waitingRun();
+    const unlinked = ownerRuns("unlink", line) as { said: string };
+    expect(unlinked.said).toMatch(/only the state of a proposal changes/);
+    const changed = ownerRuns("refingerprint", id) as { said: string };
+    expect(changed.said).toMatch(/only the state of a proposal changes/);
+  });
+
+  it("DSOR-BAT-01b: C5: dsor_runtime cannot add a line to a run that waits, to a draft that is no run, or to a run that is not there", async () => {
+    const { uri, line } = await waitingRun();
+    const single = await asIntake("payment.create", linesOf("INV-9413").lines[0]);
+    const draft = String((single as { proposal?: string }).proposal);
+    const missing = "dsor://org_456/proposal/prop_00000000-0000-4000-8000-000000000041";
+    const add = `INSERT INTO dsor.proposals (tenant_id, id, operation, mode, state, payload,
+                   payload_hash, resources, requester, idempotency_key, expires_at, run)
+                 SELECT tenant_id, 'prop_' || gen_random_uuid(), operation, mode, 'PROPOSED', payload,
+                        payload_hash, resources, requester, 'line_added', expires_at, $2
+                   FROM dsor.proposals WHERE id = $1`;
+    for (const run of [uri, draft, missing]) {
+      await expect(tryThenRollBack(pool, add, "org_456", [line, run])).rejects.toThrow(
+        /a line is made only with its run/,
+      );
+    }
   });
 });
