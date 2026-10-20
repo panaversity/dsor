@@ -2269,6 +2269,43 @@ owner's writes bound too (D5). The whole step is migrations; no file in `src/` c
   the step are not checked; the owner can switch a check off, or replace its function, which start-up
   does not compare.
 
+### Step 40c, one bad event does not block the rest, decided by the learner (2026-10-20)
+
+Copied from step 40b. Claude Code showed the problem first: step 40b's sender, with a receiver that
+refused every event about VENDOR-31, held back PAY-902's and PAY-903's events too, run after run, and
+nobody was told. Then the learner decided, one question at a time: only the failed payment's events
+stop (D1); keep trying, and alert, never move the event aside (D2); an alert after three failed tries
+(D3); the alerts in a table of their own, `dsor.event_alerts` (D4); a log of failed tries,
+`dsor.outbox_tries` (D5); memory stops per payment too, and the tries and the alerts are the
+database's (D6).
+
+- **Found while checking the design:** the map allows no trigger on an `append-only` table, so the
+  log of tries is a new kind, `append-only-watched` (D7). A try is written in the run's transaction,
+  as step 40's D8 has it (D8).
+- **Predictions, run for real:** the learner expected run 1 to deliver nothing yet; PAY-902's and
+  PAY-903's three events arrived, and only PAY-901 waited. The learner expected PAY-901's
+  `payment.executed` to be delivered anyway; it was not tried. One alert after run 3, and the
+  database closes it when the event is sent: both as expected.
+- **A habit named:** the two misses went in opposite directions. The first held back the whole
+  company, as step 40b does; the second held back only the one event. Ask what a rule holds back:
+  the company, the payment, or the event. Here it is the payment, because the ordering key numbers
+  one resource's events (DSOR-EVT-01b).
+- **The review:** one high finding. A refusal whose reason the database could not keep, with no
+  words, a NUL byte, or more than 200 bytes, aborted every run, and no try or alert was ever kept
+  (H1); every reason is now cleaned first. Events held back used up a run's tries (M1); the learner
+  chose to count only the events tried (D9). Three groups of clauses had no test that needed them
+  (M2 to M4). The database now raises the alert at three tries or more, once (L1), locks the event
+  for a try (L2), and takes a try only for its payment's oldest unsent event (L3). From step 40, an
+  event's number did not have to follow the order it was written; the learner chose to fix it now
+  (L4, D10).
+- **Found along the way:** with D1 a thrown error no longer stops a run, so step 40's memory test
+  of a killed sender, and the story's scene of a sender that loses its answers, were rewritten.
+  Emptying `dsor.outbox` now meets the foreign keys of the tries first, so step 40b's owner program
+  uses `CASCADE`.
+- **Left open:** `alert.list` does not show these alerts, and nothing escalates them; 100 stuck
+  payments would use every try of a run; the log of tries only grows; memory keeps no tries; the
+  owner can switch a trigger off; `dsor_runtime` can raise an alert with three tries of its own.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.
