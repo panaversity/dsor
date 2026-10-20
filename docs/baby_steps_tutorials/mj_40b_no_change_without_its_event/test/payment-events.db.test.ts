@@ -306,3 +306,69 @@ describe("every login and every path (step 40b's README, claim C5)", () => {
     expect(await eventsOf(id)).toEqual(["payment.created", "payment.executed"]);
   });
 });
+
+/** A draft and its payment.created, then paid with its payment.executed, each committed: its id. */
+async function paid(): Promise<string> {
+  const id = await drafted();
+  await inOrg(async (client) => {
+    await payIn(client, id);
+    await writeIn(client, "payment.executed", id, "paid");
+  });
+  return id;
+}
+
+/** The payment's status set by dsor_runtime, as raw SQL can. */
+function setStatusIn(client: pg.PoolClient, id: string, status: string): Promise<unknown> {
+  return client.query("UPDATE app.payments SET status = $2 WHERE tenant_id = 'org_456' AND id = $1", [
+    id,
+    status,
+  ]);
+}
+
+// Found by step 40b's review, H1: a payment paid with its event could be set back to draft, so the
+//   accounts system heard "paid" for money that never left, and the payment could never be paid
+//   again. The learner chose: paid is final, for every login (step 40b's README, decision D8).
+describe("the review, H1: paid is final (step 40b's README, decision D8)", () => {
+  it("DSOR-EVT-01a: H1: a payment marked paid with its event cannot go back to draft in the same transaction", async () => {
+    const id = await drafted();
+    await expect(
+      inOrg(async (client) => {
+        await payIn(client, id);
+        await writeIn(client, "payment.executed", id, "paid");
+        await setStatusIn(client, id, "draft");
+      }),
+    ).rejects.toThrow(/is paid, and paid is final/);
+    expect(await statusOf(id)).toBe("draft");
+    expect(await eventsOf(id)).toEqual(["payment.created"]);
+  });
+
+  it("DSOR-EVT-01a: H1: a paid payment cannot go back to draft in a later transaction", async () => {
+    const id = await paid();
+    await expect(inOrg((client) => setStatusIn(client, id, "draft"))).rejects.toThrow(
+      /is paid, and paid is final/,
+    );
+    expect(await statusOf(id)).toBe("paid");
+  });
+
+  it("DSOR-EVT-01a: H1: a paid payment cannot be cancelled", async () => {
+    const id = await paid();
+    await expect(inOrg((client) => setStatusIn(client, id, "cancelled"))).rejects.toThrow(
+      /is paid, and paid is final/,
+    );
+    expect(await statusOf(id)).toBe("paid");
+  });
+
+  it("DSOR-EVT-01a: H1: the owner cannot set a paid payment back to draft either", async () => {
+    const id = await paid();
+    const unpaid = ownerPaymentEvents("unpay", id) as { said: string };
+    expect(unpaid.said).toMatch(/is paid, and paid is final/);
+    expect(await statusOf(id)).toBe("paid");
+  });
+
+  it("DSOR-EVT-01a: H1: a payment's number never changes, so its events never point at nothing", async () => {
+    const id = await drafted();
+    const renumbered = ownerPaymentEvents("renumber", id) as { said: string };
+    expect(renumbered.said).toMatch(/number never changes/);
+    expect(await statusOf(id)).toBe("draft");
+  });
+});

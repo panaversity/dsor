@@ -5,7 +5,8 @@
 //   test meets it.
 // - mend: the trigger and its function removed, as migration 036 left the table.
 // - change <event_id> <column>: the owner, who holds every privilege, tries to change one column of
-//   an event, event or written_at, in a transaction it rolls back, and prints what the database said.
+//   an event, event, written_at, or written_xact, in a transaction it rolls back, and prints what the
+//   database said.
 //   Only the guard trigger can stop the owner (step 40's review, L4).
 // Run by the tests as:  node test/owner-outbox.ts refuse | mend | change <event_id> <column>
 import pg from "pg";
@@ -20,6 +21,8 @@ const [command, eventId, column] = process.argv.slice(2);
 const CHANGES: Record<string, string> = {
   event: `event = event || '{"note": "changed by the owner"}'::jsonb`,
   written_at: "written_at = written_at - interval '1 day'",
+  // Changed in step 40b: and the transaction that wrote it (step 40b's review, M1).
+  written_xact: "written_xact = '1'",
 };
 const MEND = [
   "DROP TRIGGER IF EXISTS test_refuse_event ON dsor.outbox",
