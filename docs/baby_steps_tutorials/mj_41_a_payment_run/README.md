@@ -309,7 +309,42 @@ All four were right.
 
 ### The breaks
 
-The breaks are being run again; the table follows when the run ends.
+Each break was run for real, in a copy of this step on a new database: change one thing, migrate,
+run `test/run.test.ts` and `test/run.db.test.ts`, and count the tests that fail. A break is caught
+when at least one fails. With no break, none fails.
+
+| Break | What it changes | Unit tests that fail | Database tests that fail |
+|---|---|---|---|
+| B1 | The day's limit is not checked for a run | 4 | 3 |
+| B2 | A line that fails is skipped, and the other lines go on | 1 | 0 |
+| B3 | An approval's totals are not compared, only its fingerprint | 1 | 1 |
+| B4 | The fingerprint sorts the lines before hashing, so their order is lost | 1 | 0 |
+| B5 | A line holds no invoice while its run waits | 1 | 1 |
+| B6 | The release checks the run, and not each line again | 2 | 1 |
+| B7 | The release compares the approval's totals with the stored ones, and does not add up the bills again | 1 | 0 |
+| B8 | Every line of a run gets the run's own key | 1 | 1 |
+| B9 | A line may be approved alone | 1 | 0 |
+| B10 | The most lines a run may hold is not checked | 1 | 0 |
+
+Five more were added while building, for the parts the design's list did not reach:
+
+| Break | What it changes | Unit tests that fail | Database tests that fail |
+|---|---|---|---|
+| B11 | Migration 044: a run's totals may change after it starts to wait | 0 | 0, then 1 |
+| B12 | Migration 044: a line's run, or a run's fingerprint, may change | 0 | 0, then 1 |
+| B13 | Migration 044: a line may be made for any run, at any time | 0 | 0, then 1 |
+| B14 | The database's store does not write a run's totals | 0 | 9 |
+| B15 | Memory's claim undoes only the first proposal after an accident | 1 | 0 |
+
+**B11 to B13 first left every test green.** The tests changed those columns as `dsor_runtime`, and
+something else refused first: `dsor_runtime` holds no right to update a run or a fingerprint, and
+the trigger refuses an update that is not a move. So each rule got a test of its own: a move that
+also rewrites the totals; the owner's own change of a line's run or a run's fingerprint, through
+`test/owner-runs.ts`; and a line added to a run that waits, to a draft, or to no run. Run again
+with them, each break is caught.
+
+Memory and the database share the run's code, so a break in that code is caught where its test
+runs: B2, B4, B7, B9, and B10 by the unit tests.
 
 ## Build it yourself with Claude Code
 
