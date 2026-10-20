@@ -301,6 +301,99 @@ describe("D2: what dsor_runtime may do to an event", () => {
   });
 });
 
+describe("the review, L4: what else the database holds true of an event", () => {
+  /** An insert of this event as dsor_runtime inside org_456, rolled back: its error, or "allowed". */
+  async function adds(event: Record<string, unknown>): Promise<string> {
+    try {
+      await tryThenRollBack(
+        pool,
+        `INSERT INTO dsor.outbox (event_id, tenant_id, type, resource, ordering_key, event)
+         VALUES ($1, 'org_456', $2, $3, $4, $5)`,
+        "org_456",
+        [event["event_id"], event["type"], event["resource"], event["ordering_key"], event],
+      );
+      return "allowed";
+    } catch (error) {
+      return (error as Error).message;
+    }
+  }
+
+  /** org_456's event of this draft, as a new event at number 99, which its resource has not used. */
+  async function fresh(request: string): Promise<Record<string, unknown>> {
+    await draft(request);
+    const [row] = await eventsOfRequest(request);
+    return {
+      ...(row!["event"] as Record<string, unknown>),
+      event_id: `evt_${randomUUID()}`,
+      ordering_key: 99,
+    };
+  }
+
+  it("DSOR-EVT-01d: L4: an event of org_456 about org_789's payment is refused", async () => {
+    const event = await fresh(requestId("l4-resource"));
+    const said = await adds({ ...event, resource: "dsor://org_789/payment/PAY-901" });
+    expect(said).toMatch(/outbox_of_its_company/);
+  });
+
+  it("DSOR-EVT-01d: L4: an event of org_456 whose correlation names org_789 is refused", async () => {
+    const event = await fresh(requestId("l4-correlation"));
+    const correlation = { ...(event["correlation"] as object), tenant_id: "org_789" };
+    expect(await adds({ ...event, correlation })).toMatch(/outbox_of_its_company/);
+  });
+
+  it("DSOR-EVT-01c: L4: an event labelled restricted is refused", async () => {
+    const event = await fresh(requestId("l4-restricted"));
+    expect(await adds({ ...event, classification: "restricted" })).toMatch(
+      /outbox_never_restricted/,
+    );
+  });
+
+  it("DSOR-EVT-01a: L4: the same event, as written, is allowed", async () => {
+    expect(await adds(await fresh(requestId("l4-allowed")))).toBe("allowed");
+  });
+
+  it("DSOR-EVT-01a: L4: a mark is the database's clock when it is written, never the time the sender gives", async () => {
+    const request = requestId("l4-clock");
+    await draft(request);
+    const [row] = await eventsOfRequest(request);
+    const { rows } = await tryThenRollBack(
+      pool,
+      `UPDATE dsor.outbox SET sent_at = '2000-01-01T00:00:00Z' WHERE event_id = $1
+       RETURNING sent_at, now() AS began`,
+      "org_456",
+      [row!["event_id"]],
+    );
+    const { sent_at, began } = rows[0] as { sent_at: Date; began: Date };
+    expect(sent_at.getTime()).toBeGreaterThanOrEqual(began.getTime());
+  });
+
+  it("DSOR-EVT-01a: L4: a mark with no time is refused", async () => {
+    const request = requestId("l4-null");
+    await draft(request);
+    const [row] = await eventsOfRequest(request);
+    await expect(
+      tryThenRollBack(
+        pool,
+        "UPDATE dsor.outbox SET sent_at = NULL WHERE event_id = $1",
+        "org_456",
+        [row!["event_id"]],
+      ),
+    ).rejects.toThrow(/marked with the time it was sent/);
+  });
+
+  it.each(["event", "written_at"])(
+    "DSOR-EVT-01a: L4: the owner, who holds every privilege, cannot change an event's %s: the guard refuses it",
+    async (column) => {
+      const request = requestId("l4-owner");
+      await draft(request);
+      const [row] = await eventsOfRequest(request);
+      expect(ownerOutbox("change", row!["event_id"] as string, column)).toStrictEqual({
+        said: "an event is never changed",
+      });
+    },
+  );
+});
+
 describe("C6 and C7: the sender, on the database", () => {
   it("DSOR-EVT-01a: the sender delivers org_456's unsent events, oldest first, marks them sent, and the next run delivers none of them again", async () => {
     const request = requestId("c6-send");

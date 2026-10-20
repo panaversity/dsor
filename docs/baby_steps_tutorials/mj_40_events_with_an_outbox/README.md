@@ -117,8 +117,10 @@ commit atomically."
   H1 and M1.
 - **D2. The outbox is a table, `dsor.outbox`** (Claude Code's). One row for each event: the whole
   event as JSON, and its id, company, type, resource, and ordering key as columns, which a check
-  holds equal to the JSON. It is kept per company by row-level security, like every DSoR table. A
-  row is never removed, and its `sent_at` is set once. *Downside:* the table only grows; clearing
+  holds equal to the JSON. Since the review, L4, the database also refuses an event about another
+  company's resource, one whose correlation names another company, and one labelled `restricted`
+  (migration 037). It is kept per company by row-level security, like every DSoR table. A row is
+  never removed, and its `sent_at` is set once, by the database's clock. *Downside:* the table only grows; clearing
   sent events is a later job.
 - **D3. An event's id and time** (Claude Code's). `evt_` and a random UUID; the time is DSoR's clock
   when the event is written. *Downside:* the time is a moment after the change, inside the same
@@ -229,7 +231,7 @@ company's rows only.
 | `src/outbox.ts` | **New.** Each resource's events numbered and checked; the memory outbox and its sender; the writer a claim uses on the database (D2, D4, D8, D11) |
 | `src/sender.ts`, `src/send-events.ts`, `package.json` | **New.** The database's sender, one company and one sender at a time, and `pnpm send-events` (D8) |
 | `src/channels.ts`, `channels.json`, `src/receiver.ts` | **New.** One channel per company, a file channel, and the receiver's dedupe (D9, D10) |
-| `migrations/036_outbox.sql`, `store.json` | **New.** `dsor.outbox`, its columns held equal to its event, marked sent once by its guard, each company's own (D2) |
+| `migrations/036_outbox.sql`, `migrations/037_outbox_checks.sql`, `store.json` | **New.** `dsor.outbox`, its columns held equal to its event, marked sent once by its guard, each company's own; and, from the review, each event about its own company and never labelled restricted (D2) |
 | `schemas/event.schema.json` | **New.** Copied from the specification |
 | `src/claims.ts`, `src/postgres.ts`, `src/pipeline.ts`, `src/revocation.ts` | Every claim's stores hold the outbox; the company's code gets payments that note each change, and the change's event is written as soon as the code returns; DSoR's own work gets an event writer |
 | `src/approve.ts`, `src/reconcile.ts` | The approval that moves a proposal to `APPROVED`, and a reconcile that pays, write their events |
@@ -244,7 +246,7 @@ git diff --no-index ../mj_39b_a_checkpoint_kept_elsewhere/test test
 
 ## Run it
 
-As in step 39b: a local PostgreSQL 17 and a database of its own. Migration 036 is new.
+As in step 39b: a local PostgreSQL 17 and a database of its own. Migrations 036 and 037 are new.
 
 ```bash
 pnpm install
