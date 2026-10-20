@@ -2244,6 +2244,31 @@ an event holds, where DSoR writes one and where it stays silent, the sender, and
   5. D2: how long a sent event is kept.
   6. D12: a channel named after its company, or any name with a check that ignores capitals.
 
+### Step 40b, no change without its event, decided by the learner (2026-10-20)
+
+Copied from step 40. Claude Code showed the problem first: step 40 with the one line removed that
+writes `payment.executed` in `payment.reconcile` paid PAY-968 and committed with no event. Then the
+learner decided, one question at a time: the check stands on `app.payments` (D1), both directions
+(D2), the database only (D3), "once each, in the right state" for the second direction (D4), and the
+owner's writes bound too (D5). The whole step is migrations; no file in `src/` changed.
+
+- **Found while checking the design:** `xmin` names the savepoint the company's code runs in, not
+  the transaction, so events carry a column of their own, `written_xact` (D6).
+- **Predictions, run for real:** the learner expected the forgetful reconcile to commit, "the check
+  does not see DSoR's own work"; it heard `INTERNAL_ERROR`, kept nothing, and left INV-9001 held.
+  The learner expected a cancel to commit with no event, and it did.
+- **The review:** one high finding. A payment marked paid with its event could be set back to draft,
+  so the accounts system heard "paid" for money that never left (H1). The learner chose "paid is
+  final" (D8). And the owner can switch a check off, so the claims say so, with cheap guards: the
+  database stamps each event's transaction, and no event is removed (D9). Eleven clauses had no test
+  that needed them; each has one now, and one clause can no longer be reached by any test.
+- **Found along the way:** a database where step 40's tests ran cannot take migration 038, because
+  step 40's L2 test wrote two `payment.created` events about one made-up payment. `bank.db`'s D7
+  failed once in a full run; step 40's own code fails it the same way, so it is open question 158.
+- **Left open:** memory has no such check; `proposal.approved` is not checked; payments from before
+  the step are not checked; the owner can switch a check off, or replace its function, which start-up
+  does not compare.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.

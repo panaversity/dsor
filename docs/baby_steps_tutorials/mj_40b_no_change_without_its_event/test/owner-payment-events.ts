@@ -41,7 +41,10 @@ async function writeEvent(type: EventType, id: string, xact?: string): Promise<u
   const resource = `dsor://org_456/payment/${id}`;
   const data = { tenant_id: "org_456", id, invoice_id: "INV-9001", status: "draft", version: 1 };
   const correlation = { request_id: "req_owner_events", principal_id: "user_123" };
-  const draft = buildEvent({ type, tenant: "org_456", resource, kind: "Payment", data, correlation }, kinds);
+  const draft = buildEvent(
+    { type, tenant: "org_456", resource, kind: "Payment", data, correlation },
+    kinds,
+  );
   const event = { ...draft, ordering_key: 1 };
   const { rows } = await client.query(
     `INSERT INTO dsor.outbox (event_id, tenant_id, type, resource, ordering_key, event, written_xact)

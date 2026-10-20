@@ -689,7 +689,14 @@ describe("the review, L2: two events of one resource at once", () => {
     const data = { tenant_id: "org_456", id, proposal: resource, state: "APPROVED" };
     const correlation = { request_id: requestId("l2"), principal_id: "cfo_100" };
     return buildEvent(
-      { type: "proposal.approved", tenant: "org_456", resource, kind: "Approval", data, correlation },
+      {
+        type: "proposal.approved",
+        tenant: "org_456",
+        resource,
+        kind: "Approval",
+        data,
+        correlation,
+      },
       kinds,
     );
   }

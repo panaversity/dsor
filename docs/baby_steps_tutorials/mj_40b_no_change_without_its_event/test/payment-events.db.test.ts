@@ -53,7 +53,10 @@ function about(type: EventType, id: string, status: "draft" | "paid"): EventDraf
   };
   const resource = `dsor://org_456/payment/${id}`;
   const correlation = { request_id: requestId("40b"), principal_id: "user_123" };
-  return buildEvent({ type, tenant: "org_456", resource, kind: "Payment", data, correlation }, kinds);
+  return buildEvent(
+    { type, tenant: "org_456", resource, kind: "Payment", data, correlation },
+    kinds,
+  );
 }
 
 /** A draft of INV-9001, written as DSoR's payments store writes one: its id. */
@@ -338,10 +341,10 @@ async function paid(): Promise<string> {
 
 /** The payment's status set by dsor_runtime, as raw SQL can. */
 function setStatusIn(client: pg.PoolClient, id: string, status: string): Promise<unknown> {
-  return client.query("UPDATE app.payments SET status = $2 WHERE tenant_id = 'org_456' AND id = $1", [
-    id,
-    status,
-  ]);
+  return client.query(
+    "UPDATE app.payments SET status = $2 WHERE tenant_id = 'org_456' AND id = $1",
+    [id, status],
+  );
 }
 
 // Found by step 40b's review, H1: a payment paid with its event could be set back to draft, so the
@@ -503,9 +506,9 @@ describe("the review, M2: each clause of the check has a test that needs it", ()
     await expect(
       writeOddIn("payment.created", id, `dsor://org_456/payment/${id}/again`),
     ).rejects.toThrow(/is refused/);
-    await expect(
-      writeOddIn("payment.executed", id, `dsor://org_456/x/${id}`),
-    ).rejects.toThrow(/is refused/);
+    await expect(writeOddIn("payment.executed", id, `dsor://org_456/x/${id}`)).rejects.toThrow(
+      /is refused/,
+    );
     expect(await eventsOf(id)).toEqual(["payment.created", "payment.executed"]);
   });
 
