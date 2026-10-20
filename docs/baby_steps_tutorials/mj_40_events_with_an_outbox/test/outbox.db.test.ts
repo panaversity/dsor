@@ -355,6 +355,34 @@ describe("C6 and C7: the sender, on the database", () => {
     expect((await eventsOfRequest(second))[0]!["sent_at"]).toBeNull();
   });
 
+  // Found by step 40's review, M2: no test said that what was delivered before the failure is
+  //   marked, and only that.
+  it("DSOR-EVT-01a: M2: three unsent events, and the second fails: the first is delivered and marked sent, and the second and third are neither", async () => {
+    await outbox.send("org_456", async () => {}, 1000);
+    const [a, b, c] = [requestId("m2-a"), requestId("m2-b"), requestId("m2-c")];
+    for (const request of [a, b, c]) await draft(request);
+    const got: string[] = [];
+    const run = await outbox.send(
+      "org_456",
+      async (event) => {
+        if (event.correlation.request_id === b) throw new Error("the receiver is down");
+        got.push(event.correlation.request_id);
+      },
+      1000,
+    );
+    expect(got).toStrictEqual([a]);
+    const [first] = await eventsOfRequest(a);
+    const [second] = await eventsOfRequest(b);
+    const [third] = await eventsOfRequest(c);
+    expect(run).toStrictEqual({
+      sent: [first!["event_id"]],
+      failed: { event_id: second!["event_id"], why: "the receiver is down" },
+    });
+    expect(first!["sent_at"]).not.toBeNull();
+    expect(second!["sent_at"]).toBeNull();
+    expect(third!["sent_at"]).toBeNull();
+  });
+
   it("DSOR-EVT-01a: two senders of org_456 at once: the second finds the first at work and sends nothing", async () => {
     await outbox.send("org_456", async () => {}, 1000);
     await draft(requestId("c6-two"));
