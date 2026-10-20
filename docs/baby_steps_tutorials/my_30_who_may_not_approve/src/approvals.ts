@@ -13,6 +13,7 @@ import addFormatsModule, { type FormatsPlugin } from "ajv-formats";
 import { now } from "./audit.ts";
 import { WAITS_FOR_APPROVAL_MS } from "./policy-controls.ts";
 import type { ProposalState } from "./proposal.ts";
+import type { Requirement } from "./requirements.ts";
 import { theDatabase } from "./store.ts";
 
 // ajv-formats is CommonJS; under nodenext the callable sits on `.default`, as in audit.ts.
@@ -59,6 +60,13 @@ export interface ProposalToApprove {
   };
 }
 
+/** Where proposal `p` stands now: the state its last move went to. */
+const STATE_NOW = `(SELECT m.to_state FROM dsor.proposal_moves m
+              WHERE m.tenant = p.tenant AND m.proposal = p.id
+                AND NOT EXISTS (SELECT 1 FROM dsor.proposal_moves n
+                                 WHERE n.tenant = m.tenant AND n.proposal = m.proposal
+                                   AND n.from_state = m.to_state))`;
+
 /** One proposal of one company, or undefined for none of that name. */
 export async function proposalToApprove(
   tenant: string,
@@ -72,12 +80,7 @@ export async function proposalToApprove(
     waiting_since: string | null;
     requester: string;
   }>(
-    `SELECT p.operation, p.payload_hash, p.payload, p.requester,
-            (SELECT m.to_state FROM dsor.proposal_moves m
-              WHERE m.tenant = p.tenant AND m.proposal = p.id
-                AND NOT EXISTS (SELECT 1 FROM dsor.proposal_moves n
-                                 WHERE n.tenant = m.tenant AND n.proposal = m.proposal
-                                   AND n.from_state = m.to_state)) AS state,
+    `SELECT p.operation, p.payload_hash, p.payload, p.requester, ${STATE_NOW} AS state,
             (SELECT to_char(m.at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
                FROM dsor.proposal_moves m
               WHERE m.tenant = p.tenant AND m.proposal = p.id
@@ -137,16 +140,28 @@ export function hasExpired(waitingSince: string): boolean {
   return Date.parse(now()) > Date.parse(waitingSince) + WAITS_FOR_APPROVAL_MS;
 }
 
+/** What keeping an approval came to. */
+export type Kept =
+  | { readonly kind: "kept"; readonly id: string }
+  /** This person approved this proposal before; theirs is that one. */
+  | { readonly kind: "already"; readonly id: string }
+  /** The proposal stopped waiting after §21.9 looked, or its time ran out: nothing was kept. */
+  | { readonly kind: "not_waiting"; readonly state: ProposalState }
+  | { readonly kind: "expired" };
+
 /**
- * Keep one approval, checked against the schema first, with its number from the sequence. Answers
- * its id, or `undefined` when this person has approved this proposal already.
+ * Keep one approval, checked against the schema first, with its number from the sequence.
+ *
+ * Kept only while its proposal waits for approval and the approval's time has not passed, asked in
+ * the same statement that keeps it: §21.9 looked a moment before, and the proposal could have been
+ * cancelled in between (decision 168).
  */
 export async function keepApproval(
   tenant: string,
   proposal: string,
   approver: string,
   record: Approval,
-): Promise<string | undefined> {
+): Promise<Kept> {
   // Checked whole, as the schema says an approval is, with the number and the status a kept one
   // will have; neither is kept in the record itself.
   const whole = { id: "apr_0", ...record, status: "active" };
@@ -157,21 +172,64 @@ export async function keepApproval(
     );
   }
 
-  try {
-    const { rows } = await theDatabase(tenant).query<{ id: string }>(
-      `INSERT INTO dsor.approvals (tenant, proposal, approver, record)
-       VALUES ($1, $2, $3, $4::jsonb) RETURNING id`,
-      [tenant, proposal, approver, JSON.stringify(record)],
-    );
+  const db = theDatabase(tenant);
 
-    return rows[0]?.id;
+  try {
+    const { rows } = await db.query<{ id: string }>(
+      `INSERT INTO dsor.approvals (tenant, proposal, approver, record)
+       SELECT $1, $2, $3, $4::jsonb
+         FROM dsor.proposals p
+        WHERE p.tenant = $1 AND p.id = $2
+          AND ${STATE_NOW} = 'PENDING_APPROVAL'
+          AND $5::timestamptz <= ($4::jsonb ->> 'expires_at')::timestamptz
+       RETURNING id`,
+      [tenant, proposal, approver, JSON.stringify(record), now()],
+    );
+    const id = rows[0]?.id;
+
+    if (id !== undefined) {
+      return Object.freeze({ kind: "kept", id });
+    }
   } catch (failure) {
-    if ((failure as { code?: unknown }).code === "23505") {
-      return undefined;
+    if ((failure as { code?: unknown }).code !== "23505") {
+      throw failure;
     }
 
-    throw failure;
+    const { rows } = await db.query<{ id: string }>(
+      "SELECT id FROM dsor.approvals WHERE tenant = $1 AND proposal = $2 AND approver = $3",
+      [tenant, proposal, approver],
+    );
+
+    return Object.freeze({ kind: "already", id: rows[0]?.id ?? "" });
   }
+
+  // Nothing kept: say why, from where the proposal stands now.
+  const { rows } = await db.query<{ state: ProposalState }>(
+    `SELECT ${STATE_NOW} AS state FROM dsor.proposals p WHERE p.tenant = $1 AND p.id = $2`,
+    [tenant, proposal],
+  );
+  const state = rows[0]?.state ?? "PROPOSED";
+
+  return state === "PENDING_APPROVAL"
+    ? Object.freeze({ kind: "expired" })
+    : Object.freeze({ kind: "not_waiting", state });
+}
+
+/**
+ * Whether every requirement has its quorum: for each, as many approvals that satisfy its control as
+ * it asks for (DSOR-AUT-02c). An approval expires with its proposal, which is then no longer
+ * waiting, so its status is not asked here.
+ */
+export function quorumMet(
+  requirements: readonly Requirement[],
+  approvals: readonly Approval[],
+): boolean {
+  return requirements.every(
+    (r) =>
+      approvals.filter((a) =>
+        (a.satisfies as readonly { control: string }[]).some((s) => s.control === r.control),
+      ).length >= r.quorum,
+  );
 }
 
 /** A proposal's approvals, oldest first, each whole: its record, its number and its status now. */

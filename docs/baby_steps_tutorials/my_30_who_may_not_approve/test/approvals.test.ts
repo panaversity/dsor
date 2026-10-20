@@ -160,11 +160,11 @@ describe("who may approve", () => {
     const waiting = await aWaitingPayment();
 
     expect(seen(await approve(SUPERVISOR, waiting.proposal, waiting.hash))).toMatch(
-      /^AUTHORIZATION_DENIED: approving payment\.create needs payment:approve/,
+      /^AUTHORIZATION_DENIED: approving needs payment:approve, and user_123 holds none of them/,
     );
   });
 
-  it("DSOR-APR-05a: an approval counts once for each person: the CFO's second is a CONFLICT", async () => {
+  it("DSOR-APR-05a: a person approves a proposal once: the CFO's second, while it still waits, is a CONFLICT", async () => {
     // Two requirements, so the first approval leaves it waiting, and a second try is asked.
     await asTheOwner(() =>
       db.exec(`INSERT INTO dsor.controls (tenant, id, version, operation, status, record, switched_on_at)
@@ -238,10 +238,10 @@ describe("what may not be approved", () => {
     );
   });
 
-  it("DSOR-ERR-01b: a proposal that does not exist is refused as one the caller may not approve", async () => {
+  it("DSOR-ERR-01b: the CFO is told a proposal that does not exist is not there", async () => {
     expect(
       seen(await approve(CFO, "dsor://org_456/proposal/prop_999", `sha256:${"0".repeat(64)}`)),
-    ).toMatch(/^RESOURCE_NOT_FOUND|^AUTHORIZATION_DENIED|^CONFLICT/);
+    ).toMatch(/^RESOURCE_NOT_FOUND: /);
   });
 
   for (const [what, args] of [
