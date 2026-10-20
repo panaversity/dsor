@@ -18,6 +18,7 @@ import {
   newPool,
   ownerAttempts,
   ownerInvoices,
+  ownerOutbox,
   ownerPaymentEvents,
   requestId,
   tryThenRollBack,
@@ -133,27 +134,27 @@ async function refusedDraft(
 }
 
 describe("a change needs its event (step 40b's README, claims C1 and C2)", () => {
-  it("DSOR-EVT-01a: C1: a transaction that drafts a payment and writes no event does not commit, and the draft is gone", async () => {
+  it("DSOR-EXE-04a: C1: a transaction that drafts a payment and writes no event does not commit, and the draft is gone", async () => {
     const { error, id } = await refusedDraft(async (client, keep) => keep(await draftIn(client)));
     expect(String(error)).toMatch(/payment\.created/);
     expect(id).toBeDefined();
     expect(await statusOf(id!)).toBeUndefined();
   });
 
-  it("DSOR-EXE-04a: C1: a draft with its payment.created, written after it in the same transaction, commits", async () => {
+  it("DSOR-EVT-01a: C1: a draft with its payment.created, written after it in the same transaction, commits", async () => {
     const id = await drafted();
     expect(await statusOf(id)).toBe("draft");
     expect(await eventsOf(id)).toEqual(["payment.created"]);
   });
 
-  it("DSOR-EVT-01a: C2: a transaction that marks a draft paid and writes no event does not commit, and the payment stays a draft", async () => {
+  it("DSOR-EXE-04a: C2: a transaction that marks a draft paid and writes no event does not commit, and the payment stays a draft", async () => {
     const id = await drafted();
     await expect(inOrg((client) => payIn(client, id))).rejects.toThrow(/payment\.executed/);
     expect(await statusOf(id)).toBe("draft");
     expect(await eventsOf(id)).toEqual(["payment.created"]);
   });
 
-  it("DSOR-EXE-04a: C2: a draft marked paid with its payment.executed, in the same transaction, commits", async () => {
+  it("DSOR-EVT-01a: C2: a draft marked paid with its payment.executed, in the same transaction, commits", async () => {
     const id = await drafted();
     await inOrg(async (client) => {
       await payIn(client, id);
@@ -163,7 +164,8 @@ describe("a change needs its event (step 40b's README, claims C1 and C2)", () =>
     expect(await eventsOf(id)).toEqual(["payment.created", "payment.executed"]);
   });
 
-  it("DSOR-EVT-01a: C2: an event from an earlier transaction does not count: the owner drafts a removed payment again under its old id, and it does not commit", async () => {
+  // Changed after step 40b's review, M4: this event is a payment.created, so the test is C1's.
+  it("DSOR-EVT-01a: C1: an event from an earlier transaction does not count: the owner drafts a removed payment again under its old id, and it does not commit", async () => {
     const id = await drafted();
     const again = ownerPaymentEvents("again", id) as { said: string; id: string };
     expect(again.said).toMatch(/payment\.created/);
@@ -213,7 +215,7 @@ describe("an event needs its change (step 40b's README, claim C4)", () => {
     });
     await expect(
       inOrg((client) => writeIn(client, "payment.executed", id, "paid")),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/outbox_once_each/);
     expect(await eventsOf(id)).toEqual(["payment.created", "payment.executed"]);
   });
 
@@ -221,7 +223,7 @@ describe("an event needs its change (step 40b's README, claim C4)", () => {
     const id = await drafted();
     await expect(
       inOrg((client) => writeIn(client, "payment.created", id, "draft")),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/outbox_once_each/);
     expect(await eventsOf(id)).toEqual(["payment.created"]);
   });
 });
@@ -249,7 +251,7 @@ describe("every login and every path (step 40b's README, claim C5)", () => {
     ).rejects.toThrow(/permission denied/);
   });
 
-  it("DSOR-EVT-01a: C5: through DSoR, a reconcile whose event is never written does not commit: the payment stays a draft, the proposal stays OUTCOME_UNKNOWN, and the shipped reconcile then settles it", async () => {
+  it("DSOR-EXE-04a: C5: through DSoR, a reconcile whose event is never written does not commit: INTERNAL_ERROR, recorded; the payment stays a draft, the proposal OUTCOME_UNKNOWN, and its invoice held; the shipped reconcile then settles it", async () => {
     const bank = createFakeBank();
     const banks = new Map([["fake-bank", { bank, waitMs: 50 }]]);
     const none = undefined;
@@ -287,7 +289,19 @@ describe("every login and every path (step 40b's README, claim C5)", () => {
     const refused: Answer = await call(forgetful, log, keyed(SCHEDULER), "payment.reconcile", {
       proposal,
     });
-    expect(refused).toHaveProperty("code");
+    // Changed after step 40b's review, L1: what the caller hears, and what the log keeps.
+    expect(refused).toMatchObject({ code: "INTERNAL_ERROR", retry: "never" });
+    const request = (refused as { correlation: { request_id: string } }).correlation.request_id;
+    const record = await tryThenRollBack(
+      pool,
+      `SELECT operation, result FROM dsor.audit
+        WHERE kind = 'decision' AND correlation->>'request_id' = $1`,
+      "org_456",
+      [request],
+    );
+    expect(record.rows).toStrictEqual([
+      { operation: "payment.reconcile@1", result: "INTERNAL_ERROR" },
+    ]);
     expect(await statusOf(id)).toBe("draft");
     expect(await eventsOf(id)).toEqual(["payment.created"]);
     const { rows } = await tryThenRollBack(
@@ -297,6 +311,11 @@ describe("every login and every path (step 40b's README, claim C5)", () => {
       [proposal.split("/").at(-1)],
     );
     expect(rows[0]?.["state"]).toBe("OUTCOME_UNKNOWN");
+    const another = await call(registry, log, keyed(SUPERVISOR), "payment.create", {
+      invoice: INV_9001,
+      expected_version: 1,
+    });
+    expect(another).toMatchObject({ code: "RESOURCE_HELD" });
 
     const settled = await call(registry, log, keyed(SCHEDULER), "payment.reconcile", {
       proposal,
@@ -398,5 +417,122 @@ describe("the review, M1: the outbox keeps its events, the owner's writes includ
   it("DSOR-EVT-01a: M1: no login may empty dsor.outbox, the owner included", () => {
     const emptied = ownerPaymentEvents("empty") as { said: string };
     expect(emptied.said).toMatch(/an event is never removed/);
+  });
+});
+
+/** A payment of INV-9001 written with this status, as raw SQL can: its id. */
+async function writePaymentIn(client: pg.PoolClient, status: string): Promise<string> {
+  const { rows } = await client.query<{ id: string }>(
+    `INSERT INTO app.payments
+       (tenant_id, invoice_id, vendor_id, amount_value, amount_currency, status)
+     VALUES ('org_456', 'INV-9001', 'VENDOR-44', 500.00, 'USD', $1) RETURNING id`,
+    [status],
+  );
+  return rows[0]!.id;
+}
+
+/** An event about one payment, with its resource changed, written straight into dsor.outbox. */
+function writeOddIn(type: EventType, id: string, resource: string): Promise<unknown> {
+  const event = { ...about(type, id, type === "payment.created" ? "draft" : "paid"), resource };
+  return tryThenRollBack(
+    pool,
+    `INSERT INTO dsor.outbox (event_id, tenant_id, type, resource, ordering_key, event)
+     VALUES ($1, 'org_456', $2, $3, 1, $4)`,
+    "org_456",
+    [event.event_id, type, resource, { ...event, ordering_key: 1 }],
+  );
+}
+
+// Found by step 40b's review, M2: eleven clauses of migration 038 could be removed with every test
+//   still green. Each test below fails when its clause is removed (step 40b's README, the breaks).
+describe("the review, M2: each clause of the check has a test that needs it", () => {
+  it("DSOR-EXE-04a: M2: two drafts in one transaction with one payment.created: the commit fails, naming the second", async () => {
+    const ids: string[] = [];
+    const error = await inOrg(async (client) => {
+      ids.push(await draftIn(client), await draftIn(client));
+      await writeIn(client, "payment.created", ids[0]!, "draft");
+    }).catch((thrown: unknown) => thrown);
+    expect(String(error)).toMatch(new RegExp(`payment ${ids[1]} was drafted`));
+    expect(await statusOf(ids[0]!)).toBeUndefined();
+  });
+
+  it("DSOR-EXE-04a: M2: two payments marked paid in one transaction with one payment.executed: the commit fails", async () => {
+    const [one, two] = [await drafted(), await drafted()];
+    await expect(
+      inOrg(async (client) => {
+        await payIn(client, one);
+        await payIn(client, two);
+        await writeIn(client, "payment.executed", one, "paid");
+      }),
+    ).rejects.toThrow(new RegExp(`payment ${two} was marked paid`));
+    expect([await statusOf(one), await statusOf(two)]).toEqual(["draft", "draft"]);
+  });
+
+  it("DSOR-EXE-04a: M2: a payment written as paid with no event: the commit fails", async () => {
+    await expect(inOrg((client) => writePaymentIn(client, "paid"))).rejects.toThrow(
+      /payment\.created/,
+    );
+  });
+
+  it("DSOR-EXE-04a: M2: a payment written as paid with its payment.created only: the commit fails, for want of its payment.executed", async () => {
+    await expect(
+      inOrg(async (client) => {
+        const id = await writePaymentIn(client, "paid");
+        await writeIn(client, "payment.created", id, "draft");
+      }),
+    ).rejects.toThrow(/payment\.executed/);
+  });
+
+  it("DSOR-EXE-04a: M2: a payment written as paid with its payment.executed only: the commit fails, for want of its payment.created", async () => {
+    await expect(
+      inOrg(async (client) => {
+        const id = await writePaymentIn(client, "paid");
+        await writeIn(client, "payment.executed", id, "paid");
+      }),
+    ).rejects.toThrow(/payment\.created/);
+  });
+
+  it("DSOR-EXE-04a: M2: a payment written as cancelled with no event: the commit fails", async () => {
+    await expect(inOrg((client) => writePaymentIn(client, "cancelled"))).rejects.toThrow(
+      /payment\.created/,
+    );
+  });
+
+  it("DSOR-EVT-01a: M2: an event whose resource only starts with a payment's address is refused", async () => {
+    const id = await paid();
+    await expect(
+      writeOddIn("payment.created", id, `dsor://org_456/payment/${id}/again`),
+    ).rejects.toThrow(/is refused/);
+    await expect(
+      writeOddIn("payment.executed", id, `dsor://org_456/x/${id}`),
+    ).rejects.toThrow(/is refused/);
+    expect(await eventsOf(id)).toEqual(["payment.created", "payment.executed"]);
+  });
+
+  it("DSOR-EVT-01a: M2: the owner cannot change the transaction an event names", async () => {
+    const id = await drafted();
+    const { rows } = await tryThenRollBack(
+      pool,
+      "SELECT event_id FROM dsor.outbox WHERE resource = $1",
+      "org_456",
+      [`dsor://org_456/payment/${id}`],
+    );
+    const changed = ownerOutbox("change", String(rows[0]?.["event_id"]), "written_xact") as {
+      said: string;
+    };
+    expect(changed.said).toMatch(/an event is never changed/);
+  });
+
+  it("DSOR-EVT-01a: M2: the owner's payment.created about PAY-000, which was never drafted, is refused", () => {
+    const ghost = ownerPaymentEvents("ghost") as { said: string };
+    expect(ghost.said).toMatch(/PAY-000/);
+  });
+
+  // Found by step 40b's review, L2: removal is a change with no event type, and no test said so.
+  it("DSOR-EVT-01a: C3: the owner removes a draft, with no event, and it commits", async () => {
+    const id = await drafted();
+    expect(ownerPaymentEvents("remove", id)).toMatchObject({ said: "committed" });
+    expect(await statusOf(id)).toBeUndefined();
+    expect(await eventsOf(id)).toEqual(["payment.created"]);
   });
 });
