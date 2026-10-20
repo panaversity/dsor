@@ -112,7 +112,8 @@ describe("C1: every table with a company column has its lock", () => {
   // And dsor.approvals (step 29's README, decision D8).
   // And dsor.intents, the notes (step 36's README, decision D1).
   // Changed in step 40: and dsor.outbox, the events (step 40's README, decision D2).
-  it("DSOR-RP-01b: app.invoices, app.payments, app.vendors, dsor.alerts, dsor.approvals, dsor.audit, dsor.brakes, dsor.controls, dsor.decision_bundles, dsor.delegations, dsor.holds, dsor.idempotency, dsor.intents, dsor.limit_counters, dsor.notices, dsor.outbox, dsor.proposals, dsor.rates, and dsor.reservations have row-level security enabled, forced, and policies", async () => {
+  // Changed in step 40c: and dsor.event_alerts and dsor.outbox_tries (step 40c's README, D4, D5).
+  it("DSOR-RP-01b: app.invoices, app.payments, app.vendors, dsor.alerts, dsor.approvals, dsor.audit, dsor.brakes, dsor.controls, dsor.decision_bundles, dsor.delegations, dsor.event_alerts, dsor.holds, dsor.idempotency, dsor.intents, dsor.limit_counters, dsor.notices, dsor.outbox, dsor.outbox_tries, dsor.proposals, dsor.rates, and dsor.reservations have row-level security enabled, forced, and policies", async () => {
     const { rows } = await observer.query(TENANT_TABLES);
     expect(rows).toStrictEqual([
       { table: "app.invoices", enabled: true, forced: true, policies: 1 },
@@ -131,6 +132,8 @@ describe("C1: every table with a company column has its lock", () => {
       { table: "dsor.decision_bundles", enabled: true, forced: true, policies: 1 },
       // And suspend_only (step 19b's README, decision 13), slip_moves since step 25.
       { table: "dsor.delegations", enabled: true, forced: true, policies: 2 },
+      // Step 40c: the alerts of events that failed three times, with the company's rule.
+      { table: "dsor.event_alerts", enabled: true, forced: true, policies: 1 },
       // The company's rule, and answer_once (step 20's README, decision 12).
       // Step 37: the holds, with the company's rule.
       { table: "dsor.holds", enabled: true, forced: true, policies: 1 },
@@ -143,6 +146,8 @@ describe("C1: every table with a company column has its lock", () => {
       { table: "dsor.notices", enabled: true, forced: true, policies: 1 },
       // Step 40: the events, with the company's rule; the trigger guards the mark.
       { table: "dsor.outbox", enabled: true, forced: true, policies: 1 },
+      // Step 40c: the failed tries, with the company's rule.
+      { table: "dsor.outbox_tries", enabled: true, forced: true, policies: 1 },
       { table: "dsor.proposals", enabled: true, forced: true, policies: 1 },
       { table: "dsor.rates", enabled: true, forced: true, policies: 1 },
       { table: "dsor.reservations", enabled: true, forced: true, policies: 3 },
@@ -326,6 +331,16 @@ describe("C1: every table with a company column has its lock", () => {
       // The claims. dsor_runtime may fill a claim's answer only while it is
       // empty, and must leave one in it: an answer is written once. Restrictive, beside the
       // company's rule (step 20's README, decision 12).
+      // Step 40c: the company's rule on the event alerts.
+      {
+        table: "dsor.event_alerts",
+        name: "tenant_isolation",
+        command: "ALL",
+        roles: ["public"],
+        using: `(tenant_id = ${company})`,
+        check: null,
+        kind: "PERMISSIVE",
+      },
       // Step 37: the company's rule on the holds.
       {
         table: "dsor.holds",
@@ -387,6 +402,16 @@ describe("C1: every table with a company column has its lock", () => {
       // Step 40: the company's rule on the events.
       {
         table: "dsor.outbox",
+        name: "tenant_isolation",
+        command: "ALL",
+        roles: ["public"],
+        using: `(tenant_id = ${company})`,
+        check: null,
+        kind: "PERMISSIVE",
+      },
+      // Step 40c: and on the failed tries.
+      {
+        table: "dsor.outbox_tries",
         name: "tenant_isolation",
         command: "ALL",
         roles: ["public"],

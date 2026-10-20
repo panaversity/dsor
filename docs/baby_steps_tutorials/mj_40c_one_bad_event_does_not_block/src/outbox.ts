@@ -11,7 +11,13 @@ import { eventProblems, type DomainEvent, type EventDraft, type EventType } from
 export type OutboxRow = { event: DomainEvent; sent: boolean };
 
 /** What one run of the sender did for one company. */
-export type Sent = { sent: string[]; failed?: { event_id: string; why: string }; busy?: true };
+// Changed in step 40c: a run's failures are a list, one for each payment it held back, with the
+//   payment's address, so a person can be told which payment waits (step 40c's README, decision D1).
+/** One event a run could not deliver: its id, its payment's address, and the receiver's reason. */
+export type Failed = { event_id: string; resource: string; why: string };
+
+/** What one run of the sender did for one company. */
+export type Sent = { sent: string[]; failed?: Failed[]; busy?: true };
 
 /** Where an event is written, in the transaction of the change it reports. */
 export type OutboxWriter = {
@@ -27,7 +33,8 @@ export type Outbox = OutboxWriter & {
   events: (tenant: string) => Promise<OutboxRow[]>;
   /**
    * Delivers the company's unsent events, oldest first, at most `limit`, and marks the delivered
-   * ones sent. It stops at the first delivery that fails.
+   * ones sent. A delivery that fails holds back the rest of its payment's events in this run, and
+   * the run goes on with the other payments (step 40c's README, decision D1).
    */
   send: (
     tenant: string,
@@ -106,21 +113,30 @@ export function memoryOutbox(): MemoryOutbox {
       try {
         const due = rows.filter((row) => row.event.tenant === tenant && !row.sent).slice(0, limit);
         const sent: string[] = [];
-        let failed: Sent["failed"];
+        const failed: Failed[] = [];
+        // NEW IN STEP 40c: the payments held back in this run. A failure holds back the rest of its
+        //   payment's events, so a payment's later event never passes its earlier one, and every
+        //   other payment goes on (step 40c's README, decisions D1 and D6).
+        const held = new Set<string>();
         for (const row of due) {
+          if (held.has(row.event.resource)) continue;
           try {
             await deliver(structuredClone(row.event));
           } catch (error) {
-            // A failure stops the run, so a resource's later event never passes its earlier one.
-            failed = { event_id: row.event.event_id, why: whyOf(error) };
-            break;
+            held.add(row.event.resource);
+            failed.push({
+              event_id: row.event.event_id,
+              resource: row.event.resource,
+              why: whyOf(error),
+            });
+            continue;
           }
           sent.push(row.event.event_id);
         }
         // Marked at the end of the run, as the database's sender marks them in its last
         //   statement before its commit: a run that dies before this marks nothing.
         for (const row of due) if (sent.includes(row.event.event_id)) row.sent = true;
-        return failed === undefined ? { sent } : { sent, failed };
+        return failed.length === 0 ? { sent } : { sent, failed };
       } finally {
         sending.delete(tenant);
       }

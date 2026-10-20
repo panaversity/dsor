@@ -289,8 +289,12 @@ describe("C7: at least once, and the receiver's dedupe", () => {
     const outbox = await filled();
     const { got, deliver } = keeper();
     // Delivered, then the sender stops before it notes the delivery, as a killed process does.
+    //   Changed in step 40c: a thrown error no longer stops the run, only its payment's events, so
+    //   after the first delivery nothing more reaches the receiver, as nothing would after a kill.
+    let dead = false;
     const dying = async (event: DomainEvent) => {
-      await deliver(event);
+      if (!dead) await deliver(event);
+      dead = true;
       throw new Error("killed after the delivery");
     };
     await outbox.send("org_456", dying);

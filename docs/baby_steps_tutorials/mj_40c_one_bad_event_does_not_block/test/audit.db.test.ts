@@ -155,6 +155,12 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
       { object: "dsor.delegations UPDATE", held: "status" },
       // Step 37: the holds. Read every column, and add a hold through three named columns. Nothing
       //   on placed_at, which the database fills, and no change or removal (step 37's README, D1).
+      // Step 40c: the event alerts, read only (step 40c's README, claim C6).
+      { object: "dsor.event_alerts", held: "SELECT" },
+      {
+        object: "dsor.event_alerts SELECT",
+        held: "tenant_id event_id resource raised_at state closed_at",
+      },
       { object: "dsor.holds", held: "SELECT" },
       { object: "dsor.holds INSERT", held: "tenant_id resource proposal_id" },
       { object: "dsor.holds SELECT", held: "tenant_id resource proposal_id placed_at" },
@@ -216,6 +222,12 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
         held: "event_id tenant_id type resource ordering_key event written written_at sent_at written_xact",
       },
       { object: "dsor.outbox UPDATE", held: "sent_at" },
+      // Step 40c: the failed tries. Read every column and add a try through three; nothing on its
+      //   number or time, which the database fills, and no change or removal. The alerts are read
+      //   only: the database raises and closes them (step 40c's README, claim C6).
+      { object: "dsor.outbox_tries", held: "SELECT" },
+      { object: "dsor.outbox_tries INSERT", held: "tenant_id event_id reason" },
+      { object: "dsor.outbox_tries SELECT", held: "try tenant_id event_id tried_at reason" },
       // The proposals. Read every column, add a proposal through named
       // columns, and change its state only. Nothing on created_at, which the database fills
       // (step 22's README, decisions 3 and 9).

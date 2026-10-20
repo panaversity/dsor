@@ -3,8 +3,14 @@
 import { describe, expect, it } from "vitest";
 import { checkStore, readStore, type StoreSource } from "../src/store.ts";
 import {
+  EVENT_ALERTS_MOVE,
+  EVENT_ALERTS_STAY,
   EVENT_CHANGE_TRIGGER,
   INVOICE_TRIGGER,
+  OUTBOX_CLOSE_ALERT,
+  TRIES_STAY,
+  TRIES_WRITTEN,
+  TRY_ALERT,
   OUTBOX_KEEP_TRIGGER,
   OUTBOX_STAMP_TRIGGER,
   OUTBOX_STAY_TRIGGER,
@@ -58,7 +64,9 @@ describe("the shipped map", () => {
   // Changed in step 37: and dsor.holds, an eighteenth (step 37's README, decision D1).
   // Changed in step 38b: and dsor.alerts, a nineteenth (step 38b's README, decision D1).
   // Changed in step 40: and dsor.outbox, a twenty-first (step 40's README, decision D2).
-  it("step 16's decision 1: it names three schemas and twenty-one tables", () => {
+  // Changed in step 40c: and dsor.outbox_tries and dsor.event_alerts, a twenty-second and a
+  //   twenty-third (step 40c's README, decisions D4 and D5).
+  it("step 16's decision 1: it names three schemas and twenty-three tables", () => {
     const { map } = checkStore(SHIPPED);
     expect([...map.schemas.keys()]).toStrictEqual(["app", "dsor", "public"]);
     expect([...map.tables.keys()]).toStrictEqual([
@@ -81,10 +89,34 @@ describe("the shipped map", () => {
       "dsor.alerts",
       "dsor.intents",
       "dsor.outbox",
+      "dsor.outbox_tries",
+      "dsor.event_alerts",
       // Changed in step 39: and dsor.audit_heads, a twentieth (step 39's README, decision D8).
       "dsor.audit_heads",
       "dsor.migrations",
     ]);
+  });
+
+  // NEW IN STEP 40c: the log of failed tries is read inside its company, added to through three
+  //   columns, and watched by its triggers; the alerts are read only (step 40c's README, D4 to D7).
+  it("DSOR-EVT-01a: C3: dsor.outbox_tries is append-only and watched, added to through three named columns", () => {
+    const { map } = checkStore(SHIPPED);
+    expect(map.tables.get("dsor.outbox_tries")).toStrictEqual({
+      kind: "append-only-watched",
+      tenant: "tenant_id",
+      runtime: { table: ["SELECT"], columns: { INSERT: ["tenant_id", "event_id", "reason"] } },
+      triggers: [TRIES_STAY, TRIES_WRITTEN, TRY_ALERT],
+    });
+  });
+
+  it("DSOR-EVT-01a: C6: dsor.event_alerts is read inside its company, and dsor_runtime writes no column of it", () => {
+    const { map } = checkStore(SHIPPED);
+    expect(map.tables.get("dsor.event_alerts")).toStrictEqual({
+      kind: "control-moved",
+      tenant: "tenant_id",
+      runtime: { table: ["SELECT"], columns: {} },
+      triggers: [EVENT_ALERTS_MOVE, EVENT_ALERTS_STAY],
+    });
   });
 
   // Step 36: a note is read inside its company, added through nine named columns, and ended
@@ -134,8 +166,10 @@ describe("the shipped map", () => {
       // Changed in step 40b: and the check that an event about a payment has its change (step
       //   40b's README, decision D2).
       // And, since its review, M1, the guards that stamp each event and keep it (decision D9).
+      // And, since step 40c, the trigger that closes an event's alert when it is sent.
       triggers: [
         EVENT_CHANGE_TRIGGER,
+        OUTBOX_CLOSE_ALERT,
         OUTBOX_KEEP_TRIGGER,
         OUTBOX_TRIGGER,
         OUTBOX_STAMP_TRIGGER,
@@ -514,7 +548,8 @@ describe("C7: the map itself is checked", () => {
       // Step 17's business-written is a fourth kind, step 18's control-read a fifth, and step
       // 19b's control-written a sixth.
       // And step 22's control-moved.
-      'store.json: dsor.migrations has the kind "ledger", which is not business, business-written, append-only, append-only-chained, control-read, control-written, control-claimed, control-moved, or bookkeeping',
+      // And step 40c's append-only-watched.
+      'store.json: dsor.migrations has the kind "ledger", which is not business, business-written, append-only, append-only-chained, append-only-watched, control-read, control-written, control-claimed, control-moved, or bookkeeping',
     ]);
   });
 

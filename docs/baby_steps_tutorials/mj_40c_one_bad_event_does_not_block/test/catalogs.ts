@@ -170,6 +170,32 @@ const OUTBOX_COLUMNS = [
 ];
 const OUTBOX_FILLED = ["written", "written_at", "written_xact"];
 
+// NEW IN STEP 40c: the log of an event's failed tries, and the alerts its third raises (step 40c's
+//   README, decisions D4, D5, and D7). dsor_runtime reads both, adds a try through three columns,
+//   and changes neither; the database fills a try's number and time, and raises and closes alerts.
+const TRY_COLUMNS = ["try", "tenant_id", "event_id", "tried_at", "reason"];
+const TRY_FILLED = ["try", "tried_at"];
+const EVENT_ALERT_COLUMNS = [
+  "tenant_id",
+  "event_id",
+  "resource",
+  "raised_at",
+  "state",
+  "closed_at",
+];
+export const TRIES_STAY =
+  "CREATE TRIGGER outbox_tries_stay BEFORE TRUNCATE ON dsor.outbox_tries FOR EACH STATEMENT EXECUTE FUNCTION dsor.outbox_tries_stay()";
+export const TRIES_WRITTEN =
+  "CREATE TRIGGER outbox_tries_written BEFORE INSERT OR DELETE OR UPDATE ON dsor.outbox_tries FOR EACH ROW EXECUTE FUNCTION dsor.outbox_tries_written()";
+export const TRY_ALERT =
+  "CREATE TRIGGER outbox_try_alert AFTER INSERT ON dsor.outbox_tries FOR EACH ROW EXECUTE FUNCTION dsor.outbox_try_alerts()";
+export const EVENT_ALERTS_MOVE =
+  "CREATE TRIGGER event_alerts_move BEFORE INSERT OR DELETE OR UPDATE ON dsor.event_alerts FOR EACH ROW EXECUTE FUNCTION dsor.event_alerts_move()";
+export const EVENT_ALERTS_STAY =
+  "CREATE TRIGGER event_alerts_stay BEFORE TRUNCATE ON dsor.event_alerts FOR EACH STATEMENT EXECUTE FUNCTION dsor.event_alerts_stay()";
+export const OUTBOX_CLOSE_ALERT =
+  "CREATE TRIGGER outbox_close_alert AFTER UPDATE OF sent_at ON dsor.outbox FOR EACH ROW EXECUTE FUNCTION dsor.outbox_closes_alert()";
+
 // The table dsor.delegations, as migration 010 makes it. dsor_runtime reads every
 // column and writes none (step 18's README, decision 3). Migration 012 lets it
 // change the status, and nothing else (step 19b's README, decision 3).
@@ -504,6 +530,16 @@ export function today(): Catalog {
         triggers: [],
       },
       // Step 37: the holds, behind the company's lock, added and never changed.
+      // Step 40c: the alerts of events that failed three times, raised and closed by the database.
+      {
+        name: "dsor.event_alerts",
+        kind: "table",
+        held: ["SELECT"],
+        columns: EVENT_ALERT_COLUMNS.map((name) => ({ name, held: ["SELECT"], filled: false })),
+        rowSecurity: { enabled: true, forced: true },
+        rules: [],
+        triggers: [EVENT_ALERTS_MOVE, EVENT_ALERTS_STAY],
+      },
       {
         name: "dsor.holds",
         kind: "table",
@@ -598,6 +634,7 @@ export function today(): Catalog {
         rules: [],
         triggers: [
           EVENT_CHANGE_TRIGGER,
+          OUTBOX_CLOSE_ALERT,
           OUTBOX_KEEP_TRIGGER,
           OUTBOX_TRIGGER,
           OUTBOX_STAMP_TRIGGER,
@@ -605,6 +642,23 @@ export function today(): Catalog {
         ],
       },
       // The proposals, behind the company's lock, with their guard.
+      // Step 40c: the log of failed tries, added to and never changed.
+      {
+        name: "dsor.outbox_tries",
+        kind: "table",
+        held: ["SELECT"],
+        columns: TRY_COLUMNS.map((name) => {
+          const filled = TRY_FILLED.includes(name);
+          return {
+            name,
+            held: filled || name === "try" ? ["SELECT"] : ["SELECT", "INSERT"],
+            filled,
+          };
+        }),
+        rowSecurity: { enabled: true, forced: true },
+        rules: [],
+        triggers: [TRIES_STAY, TRIES_WRITTEN, TRY_ALERT],
+      },
       {
         name: "dsor.proposals",
         kind: "table",
@@ -652,6 +706,7 @@ export function today(): Catalog {
     sequences: [
       { name: "app.payments_number_seq", held: [] },
       { name: "dsor.audit_sequence_seq", held: [] },
+      { name: "dsor.outbox_tries_try_seq", held: [] },
       { name: "dsor.outbox_written_seq", held: [] },
     ],
     database: [],

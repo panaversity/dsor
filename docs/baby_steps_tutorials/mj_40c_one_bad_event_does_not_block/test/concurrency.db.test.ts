@@ -20,6 +20,12 @@ import {
   OUTBOX_STAMP_TRIGGER,
   OUTBOX_STAY_TRIGGER,
   EVENT_CHANGE_TRIGGER,
+  EVENT_ALERTS_MOVE,
+  EVENT_ALERTS_STAY,
+  OUTBOX_CLOSE_ALERT,
+  TRIES_STAY,
+  TRIES_WRITTEN,
+  TRY_ALERT,
   INVOICE_TRIGGER,
   PAYMENT_EVENT_TRIGGER,
   PAYMENT_STAYS_TRIGGER,
@@ -351,6 +357,10 @@ describe("C8 and C11: the version in a read, and the triggers in the catalog", (
       CONTROL_TRIGGER,
       // Changed in step 40b: and the check that an event about a payment has its change (step
       //   40b's README, decision D2).
+      // Changed in step 40c: and the guards of the event alerts, and of the failed tries, and the
+      //   triggers that raise and close an event's alert (step 40c's README, D4, D5, and D7).
+      EVENT_ALERTS_MOVE,
+      EVENT_ALERTS_STAY,
       EVENT_CHANGE_TRIGGER,
       // And, since step 36, the guard on a note's end (step 36's README, decision D1).
       INTENT_TRIGGER,
@@ -358,10 +368,14 @@ describe("C8 and C11: the version in a read, and the triggers in the catalog", (
       // Changed in step 40: and the guard on an event's mark (step 40's README, decision D2).
       // Changed in step 40b: and the guards that keep each event and stamp it (step 40b's README,
       //   decision D9), around the guard on an event's mark, in the order of their text.
+      OUTBOX_CLOSE_ALERT,
       OUTBOX_KEEP_TRIGGER,
       OUTBOX_TRIGGER,
       OUTBOX_STAMP_TRIGGER,
       OUTBOX_STAY_TRIGGER,
+      TRIES_STAY,
+      TRIES_WRITTEN,
+      TRY_ALERT,
       // Changed in step 40b: and the guard that keeps paid final (step 40b's README, decision D8).
       PAYMENT_STAYS_TRIGGER,
       PAYMENT_TRIGGER,

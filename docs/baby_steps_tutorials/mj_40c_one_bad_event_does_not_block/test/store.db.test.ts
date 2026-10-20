@@ -104,6 +104,8 @@ describe("decision 8: the inspector sees every kind of privilege", () => {
     expect(catalog.sequences).toStrictEqual([
       { name: "app.payments_number_seq", held: andWithGrant(["USAGE", "SELECT", "UPDATE"]) },
       { name: "dsor.audit_sequence_seq", held: andWithGrant(["USAGE", "SELECT", "UPDATE"]) },
+      // Changed in step 40c: and the counter behind each failed try (step 40c's README, D5).
+      { name: "dsor.outbox_tries_try_seq", held: andWithGrant(["USAGE", "SELECT", "UPDATE"]) },
       { name: "dsor.outbox_written_seq", held: andWithGrant(["USAGE", "SELECT", "UPDATE"]) },
     ]);
     expect(catalog.schemas.find((s) => s.name === "dsor")?.held).toStrictEqual(

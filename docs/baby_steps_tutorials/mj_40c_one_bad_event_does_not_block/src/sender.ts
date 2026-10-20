@@ -7,7 +7,7 @@
 import type pg from "pg";
 import { fileChannel } from "./channels.ts";
 import type { DomainEvent } from "./events.ts";
-import { outboxIn, SEND_LIMIT, type Outbox, type Sent } from "./outbox.ts";
+import { outboxIn, SEND_LIMIT, type Failed, type Outbox, type Sent } from "./outbox.ts";
 import { inCompany } from "./postgres.ts";
 
 /** The words of a failed delivery, never more than a line. */
@@ -42,20 +42,36 @@ export function createDbOutbox(pool: pg.Pool): Outbox {
           [`dsor.outbox ${tenant}`],
         );
         if (lock[0]?.got !== true) return { sent: [], busy: true };
-        const { rows } = await client.query<{ event_id: string; event: DomainEvent }>(
-          `SELECT event_id, event FROM dsor.outbox
+        const { rows } = await client.query<{
+          event_id: string;
+          resource: string;
+          event: DomainEvent;
+        }>(
+          `SELECT event_id, resource, event FROM dsor.outbox
             WHERE tenant_id = $1 AND sent_at IS NULL ORDER BY written LIMIT $2`,
           [tenant, limit],
         );
         const sent: string[] = [];
-        let failed: Sent["failed"];
-        for (const { event_id, event } of rows) {
+        const failed: Failed[] = [];
+        // NEW IN STEP 40c: a failure holds back the rest of its payment's events in this run, so a
+        //   payment's later event never passes its earlier one, and every other payment goes on
+        //   (step 40c's README, decision D1).
+        const held = new Set<string>();
+        for (const { event_id, resource, event } of rows) {
+          if (held.has(resource)) continue;
           try {
             await deliver(event);
           } catch (error) {
-            // A failure stops the run, so a resource's later event never passes its earlier one.
-            failed = { event_id, why: whyOf(error) };
-            break;
+            held.add(resource);
+            const why = whyOf(error);
+            failed.push({ event_id, resource, why });
+            // The failed try is kept, in this run's transaction; the database raises the event's
+            //   alert on its third (step 40c's README, decisions D3, D5, and D8).
+            await client.query(
+              "INSERT INTO dsor.outbox_tries (tenant_id, event_id, reason) VALUES ($1, $2, $3)",
+              [tenant, event_id, why],
+            );
+            continue;
           }
           sent.push(event_id);
         }
@@ -67,7 +83,7 @@ export function createDbOutbox(pool: pg.Pool): Outbox {
             [tenant, sent],
           );
         }
-        return failed === undefined ? { sent } : { sent, failed };
+        return failed.length === 0 ? { sent } : { sent, failed };
       }),
   };
 }
@@ -102,9 +118,11 @@ export async function sendEach(
     }
     const n = run.sent.length;
     say(`${tenant}: sent ${n} event${n === 1 ? "" : "s"}`);
-    if (run.failed !== undefined) {
+    // Changed in step 40c: each payment held back, by name, and the event it waits on (step 40c's
+    //   README, claim C7).
+    for (const { event_id, resource, why } of run.failed ?? []) {
       failed = true;
-      say(`${tenant}: stopped at ${run.failed.event_id}: ${run.failed.why}`);
+      say(`${tenant}: held back ${resource.split("/").at(-1)}'s events, from ${event_id}: ${why}`);
     }
   }
   return failed ? 1 : 0;

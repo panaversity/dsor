@@ -87,6 +87,13 @@ export const KINDS: ReadonlyMap<string, Kind> = new Map<string, Kind>([
     "append-only-chained",
     { side: "dsor", table: ["SELECT"], columns: ["INSERT"], key: true, triggers: true },
   ],
+  // NEW IN STEP 40c: append-only too, and watched: triggers that the map names in full keep each
+  //   row as written and act on what is added, such as the log of an event's failed tries, whose
+  //   third raises the event's alert (step 40c's README, decision D7).
+  [
+    "append-only-watched",
+    { side: "dsor", table: ["SELECT"], columns: ["INSERT"], key: true, triggers: true },
+  ],
   // DSoR's own records that it reads and never writes: read them, inside their company. The
   // permission slips were one (step 18's README, decision 3).
   // No table is one now. The slips are control-written (step 19b's README,

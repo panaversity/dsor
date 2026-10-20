@@ -2473,9 +2473,9 @@ for (const note of bankNotes.all()) {
   );
 }
 // The events DSoR wrote with the changes, each in its change's own transaction, and
-//   the sender that delivers them to org_456's channel. Its first run dies after one delivery,
-//   before it marks it, so that event comes twice, and the receiver keeps one copy (step 40's
-//   README, claims C1 to C3, C6, and C7).
+//   the sender that delivers them to org_456's channel. Its first run loses each answer after the
+//   delivery, before it marks it, so those events come twice, and the receiver keeps one copy of
+//   each (step 40's README, claims C1 to C3, C6, and C7).
 console.log("  the events DSoR wrote with the changes, in its outbox:");
 for (const { event } of await bankOutbox.events("org_456")) {
   const { type, resource, ordering_key, classification, correlation } = event;
@@ -2483,12 +2483,17 @@ for (const { event } of await bankOutbox.events("org_456")) {
     `    ${type} ${resource.split("/").at(-1)}, number ${ordering_key}, ${classification}, by request ${correlation.request_id.slice(0, 12)}…`,
   );
 }
+// Changed in step 40c: a failed delivery no longer stops the run, only its payment's events (step
+//   40c's README, decision D1). So the first run here loses each answer after the delivery: the
+//   receiver has each payment's first event, and the sender counts each as failed.
 const channel456: DomainEvent[] = [];
 const dying = await bankOutbox.send("org_456", async (event) => {
   channel456.push(event);
-  throw new Error("the sender was killed after a delivery");
+  throw new Error("the answer was lost after the delivery");
 });
-console.log(`  the sender delivers one event, then: ${dying.failed?.why ?? "nothing"}`);
+console.log(
+  `  the sender delivers ${channel456.length} events, then: ${dying.failed?.[0]?.why ?? "nothing"}, for each`,
+);
 const rerun = await bankOutbox.send("org_456", async (event) => void channel456.push(event));
 const kept456 = firstOfEach(channel456);
 console.log(
