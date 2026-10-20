@@ -278,6 +278,12 @@ const PROPOSAL_COLUMNS = [
   // Step 32: the record its operation is exclusive over, which migration 029 adds last
   // (step 32's README, decision D7).
   "exclusive_over",
+  // Step 41: a line's run and a run's fingerprint, written with it, and a run's totals, written
+  //   once when it starts to wait, which migration 044 adds last (step 41's README, C5).
+  "run",
+  "manifest_hash",
+  "totals",
+  "vendor_totals",
 ];
 
 // Dsor.brakes, as migration 019 makes it. dsor_runtime reads every column, adds a
@@ -671,6 +677,9 @@ export function today(): Catalog {
           const filled = name === "created_at";
           if (name === "state") return { name, held: ["SELECT", "INSERT", "UPDATE"], filled };
           if (name === "requires") return { name, held: ["SELECT", "UPDATE"], filled };
+          if (name === "totals" || name === "vendor_totals") {
+            return { name, held: ["SELECT", "UPDATE"], filled };
+          }
           return { name, held: filled ? ["SELECT"] : ["SELECT", "INSERT"], filled };
         }),
         rowSecurity: { enabled: true, forced: true },

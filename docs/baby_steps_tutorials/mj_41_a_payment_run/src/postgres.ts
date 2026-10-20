@@ -39,7 +39,8 @@ import {
   type RevokeReason,
   type SuspendReason,
 } from "./log.ts";
-import { money } from "./money.ts";
+import { money, type Money } from "./money.ts";
+import type { RunTotals, VendorTotal } from "./run.ts";
 import type { Payment, PaymentStatus, PaymentStore } from "./payment.ts";
 import type { Vendor, VendorStatus } from "./vendor.ts";
 import type { RateSheet } from "./exchange.ts";
@@ -62,6 +63,7 @@ import { approvalOf, stillOpen, type Approval, type Approving, type Offer } from
 import {
   checkMove,
   checkRequires,
+  checkTotals,
   dsorMover,
   isProposalOf,
   proposalIdOf,
@@ -2121,6 +2123,11 @@ type ProposalRow = {
   expires_at: Date;
   // And what it waits for, once it waits.
   requires: Requirement[] | null;
+  // NEW IN STEP 41: a line's run, and a run's fingerprint and totals.
+  run: string | null;
+  manifest_hash: string | null;
+  totals: Money[] | null;
+  vendor_totals: VendorTotal[] | null;
 };
 
 // One move's record, as pg gives it back.
@@ -2173,9 +2180,9 @@ function proposalsThrough(run: Runner): ProposalStore {
           // after created_at and within 720 hours of it (step 25c's README, decision D6).
           `INSERT INTO dsor.proposals (tenant_id, id, operation, mode, state, payload, payload_hash,
                                        resources, requester, idempotency_key, expires_at,
-                                       exclusive_over)
+                                       exclusive_over, run, manifest_hash)
            VALUES ($1, $2, $3, $9, 'PROPOSED', $4::jsonb, $5, $6::text[], $7::jsonb, $8,
-                   now() + $10::bigint * interval '1 millisecond', $11)`,
+                   now() + $10::bigint * interval '1 millisecond', $11, $12, $13)`,
           [
             tenant,
             id,
@@ -2190,6 +2197,9 @@ function proposalsThrough(run: Runner): ProposalStore {
             // The record its operation is exclusive over, or none: the key
             //   proposals_one_attempt reads it (migration 029; step 32's README, decision D7).
             draft.exclusive_over ?? null,
+            // NEW IN STEP 41: a line's run, or a run's fingerprint (migration 044).
+            draft.run ?? null,
+            draft.manifest_hash ?? null,
           ],
         );
         if (rowCount !== 1)
@@ -2216,18 +2226,23 @@ function proposalsThrough(run: Runner): ProposalStore {
       to: State,
       by: MoveBy,
       requires?: Requirement[],
+      totals?: RunTotals,
     ): Promise<boolean> => {
       // DSoR's own guard first, before any statement. The trigger is the database's (decision 3).
       checkMove(from, to, by);
       // And what it waits for, on the move to PENDING_APPROVAL only.
       checkRequires(from, to, requires);
-      return run(tenant, (client) => moveWith(client, tenant, id, from, to, by, requires));
+      // NEW IN STEP 41: and a run's totals, only on its move out of PROPOSED to wait. That a run
+      //   that waits has them, the trigger checks: the store does not read the row first.
+      if (totals !== undefined) checkTotals(from, to, true, totals);
+      return run(tenant, (client) => moveWith(client, tenant, id, from, to, by, requires, totals));
     },
     get: async (tenant: string, id: string): Promise<Proposal | undefined> =>
       run(tenant, async (client) => {
         const { rows } = await client.query<ProposalRow>(
           `SELECT tenant_id, id, operation, mode, state, payload, payload_hash, resources, requester,
-                  idempotency_key, created_at, expires_at, requires
+                  idempotency_key, created_at, expires_at, requires, run, manifest_hash, totals,
+                  vendor_totals
              FROM dsor.proposals WHERE tenant_id = $1 AND id = $2`,
           [tenant, id],
         );
@@ -2455,15 +2470,24 @@ async function moveWith(
   to: State,
   by: MoveBy,
   requires?: Requirement[],
+  // NEW IN STEP 41: and a run's totals, on the move that starts its wait.
+  totals?: RunTotals,
 ): Promise<boolean> {
   // Only while it is still in `from`: the check and the write are one statement, so a second mover
   // that read the same state changes nothing (step 22's README, decision 6). DSoR's own WHERE, the
   // company first, with row-level security behind it (DSOR-TEN-01b).
   // And what it waits for, named only on the move that starts the wait (step 29's README, decision
   // D4).
-  const named = requires === undefined ? "" : ", requires = $5::jsonb";
   const values: unknown[] = [tenant, id, to, from];
-  if (requires !== undefined) values.push(JSON.stringify(requires));
+  let named = "";
+  if (requires !== undefined) {
+    values.push(JSON.stringify(requires));
+    named += `, requires = $${values.length}::jsonb`;
+  }
+  if (totals !== undefined) {
+    values.push(JSON.stringify(totals.totals), JSON.stringify(totals.vendor_totals));
+    named += `, totals = $${values.length - 1}::jsonb, vendor_totals = $${values.length}::jsonb`;
+  }
   const { rows } = await client.query<{ operation: string }>(
     `UPDATE dsor.proposals SET state = $3${named}
       WHERE tenant_id = $1 AND id = $2 AND state = $4 RETURNING operation`,
@@ -2556,6 +2580,11 @@ function proposalOf(row: ProposalRow, moves: MoveRow[], approvals: string[]): Pr
     state: row.state,
     // And what it waits for, once it waits.
     ...(row.requires === null ? {} : { requires: row.requires }),
+    // NEW IN STEP 41: and a line's run, and a run's fingerprint and totals, when it has them.
+    ...(row.run === null ? {} : { run: row.run }),
+    ...(row.manifest_hash === null ? {} : { manifest_hash: row.manifest_hash }),
+    ...(row.totals === null ? {} : { totals: row.totals }),
+    ...(row.vendor_totals === null ? {} : { vendor_totals: row.vendor_totals }),
     // And its approvals, once it has one.
     ...(approvals.length === 0 ? {} : { approvals }),
     payload: row.payload,

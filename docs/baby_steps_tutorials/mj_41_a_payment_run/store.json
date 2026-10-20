@@ -134,9 +134,11 @@
             "requester",
             "idempotency_key",
             "expires_at",
-            "exclusive_over"
+            "exclusive_over",
+            "run",
+            "manifest_hash"
           ],
-          "UPDATE": ["state", "requires"]
+          "UPDATE": ["state", "requires", "totals", "vendor_totals"]
         }
       },
       "triggers": [

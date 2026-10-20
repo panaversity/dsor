@@ -3,6 +3,7 @@
 // 50,000 USD a payment and 200,000 USD a day, over the tests' own bills, INV-9411 to INV-9418, which
 // test/owner-run-bills.ts adds. The CFO's rule is the shipped one: above 25,000 USD. A real
 // PostgreSQL, never a mock.
+import { randomUUID } from "node:crypto";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { payloadHash } from "../src/canonical.ts";
 import { readControls } from "../src/controls.ts";
@@ -117,7 +118,10 @@ async function bookingOf(run: string): Promise<Record<string, unknown>[]> {
 describe("C2 to C4: a run, proposed on the database", () => {
   it("DSOR-BAT-01b: C2: a run of three lines keeps four proposals: each line a payment.create proposal naming its run, with the key derived from the run's key and its invoice", async () => {
     const input = linesOf("INV-9411", "INV-9412", "INV-9413");
-    const answer = await asIntake("payment.run", input, "k-run-41-c2");
+    // A key of this test run's own: the database keeps every claim, so a fixed key would replay a
+    //   run an earlier test run made.
+    const key = `k-run-41-c2-${randomUUID()}`;
+    const answer = await asIntake("payment.run", input, key);
     expect(answer).toMatchObject({ outcome: "PENDING_APPROVAL" });
     const run = (await proposals.get("org_456", idOf(answer)))!;
     expect(run).toMatchObject({
@@ -131,7 +135,7 @@ describe("C2 to C4: a run, proposed on the database", () => {
       expect(kept).toMatchObject({
         operation: "payment.create@1",
         run: run.uri,
-        idempotency_key: lineKeyOf("k-run-41-c2", line.invoice),
+        idempotency_key: lineKeyOf(key, line.invoice),
       });
     }
     expect(await statesOf(run.uri.split("/").at(-1)!)).toStrictEqual([

@@ -306,10 +306,15 @@ describe("the shipped map", () => {
             // Step 32: and the record its operation is exclusive over, written once (step 32's
             // README, decision D7).
             "exclusive_over",
+            // Step 41: and a line's run and a run's fingerprint, written once (step 41's README,
+            //   claim C5).
+            "run",
+            "manifest_hash",
           ],
           // Changed in step 29: and what a waiting proposal waits for, which the move to
           // PENDING_APPROVAL writes once (step 29's README, decision D4).
-          UPDATE: ["state", "requires"],
+          // Changed in step 41: and a run's totals, which the move that starts its wait writes once.
+          UPDATE: ["state", "requires", "totals", "vendor_totals"],
         },
       },
       // Changed in step 38b: and the trigger that raises and closes its alert (step 38b's README,
