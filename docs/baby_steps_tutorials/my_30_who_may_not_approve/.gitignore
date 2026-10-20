@@ -1,0 +1,12 @@
+node_modules/
+*.log
+.DS_Store
+
+# Secrets never go into git. From step 09 this folder has a .env file.
+.env
+.env.*
+!.env.example
+
+# The demo's own database. `pnpm start` keeps the audit log here between runs, which is the whole
+# point of step 09 — so it is a real database on disk, and it is nobody else's business.
+.local-database/
