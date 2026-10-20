@@ -301,6 +301,28 @@ describe("C6 and C7: the sender, on the database", () => {
     expect(got.map((e) => e.correlation.request_id)).toContain(request);
   });
 
+  // Found by break B3: the database's sender could go on after a failure, and only the memory
+  //   sender's tests failed.
+  it("DSOR-EVT-01a: the first of two unsent events fails: the run stops there, and the second is neither delivered nor marked", async () => {
+    await outbox.send("org_456", async () => {}, 1000);
+    const first = requestId("c6-first");
+    const second = requestId("c6-second");
+    await draft(first);
+    await draft(second);
+    const got: DomainEvent[] = [];
+    const run = await outbox.send(
+      "org_456",
+      async (event) => {
+        if (event.correlation.request_id === first) throw new Error("the receiver is down");
+        got.push(event);
+      },
+      1000,
+    );
+    expect(run).toMatchObject({ sent: [], failed: { why: "the receiver is down" } });
+    expect(got).toStrictEqual([]);
+    expect((await eventsOfRequest(second))[0]!["sent_at"]).toBeNull();
+  });
+
   it("DSOR-EVT-01a: two senders of org_456 at once: the second finds the first at work and sends nothing", async () => {
     await outbox.send("org_456", async () => {}, 1000);
     await draft(requestId("c6-two"));
