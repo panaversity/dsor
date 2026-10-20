@@ -223,6 +223,31 @@ reads the payment again, so two were added (D1). B6 fails no database test becau
 refuses it twice over: the sender works inside one company, and row-level security shows it that
 company's rows only.
 
+After the review, its fixes were broken on purpose too, on 2026-10-20, in a new copy outside the
+repository with a database of its own, against the same five test files, which now hold the
+review's tests. B1, B3, B7, and B8 ran again; B8 now hands the event the code's answer in place of
+the payment read again. The other rows each undo one fix. L4a and L4b change the database itself,
+so only its tests ran.
+
+| Break | What it removes | Unit tests failed | Database tests failed |
+|---|---|---|---|
+| **B1** | The event is written in a transaction of its own, not the claim's | 0 | 2 |
+| **B3** | The sender goes on after a delivery fails | 2 | 2 |
+| **B7** | Every ordering key is 1 | 9 | 28 |
+| **B8** | The event's data is the company code's answer | 4 | 2 |
+| **H1** | The event's payment is the one the code's answer names, and a send's is not checked against its request | 4 | 2 |
+| **H1b** | No check that the code made exactly the one change its operation names | 2 | 0 |
+| **M1** | The event is written in the proposal's last move, after memory seals the record | 2 | 0 |
+| **L1** | A reconcile writes `payment.executed` for a paid payment whether it has one or not | 1 | 0 |
+| **L2** | No lock of the resource's own before its number is read | 0 | 1 |
+| **L4a** | Migration 037's two checks dropped | not run | 3 |
+| **L4b** | The guard trigger without its column check and its clock | not run | 4 |
+
+Every break is caught. M1 and L1 fail no database test, and that is right: on the database the
+event and the record are in one transaction whichever comes first, and a payment paid there always
+has its event. They are memory's faults, so memory's tests catch them. L2 fails no unit test,
+because memory has no second writer.
+
 ## What changed since step 39b
 
 | File | What changed |
@@ -350,13 +375,14 @@ said the two companies share `all.jsonl`. Now each channel must be named after i
 | # | Move | What was done |
 |---|---|---|
 | 1 | Understand | The problem, shown with a real run of the two ways to send without an outbox |
-| 2 | Decide | Twelve decisions, by Claude Code, while the learner was away |
+| 2 | Decide | Twelve decisions, by Claude Code, while the learner was away; a thirteenth, D12, from the review |
 | 3 | The copy | Step 39b copied, its markers removed |
 | 4 | Red | 44 unit tests against stubs, and the database tests |
 | 5 | Code | The event, the outbox, the channels and the receiver, the wiring, the database's table and sender, the story |
 | 6 | Earlier tests | The store map, the catalog, the privileges, row-level security, and the triggers |
 | 7 | Break it | B1 to B8, for real |
 | 8 | Review | A reviewer who had not seen the conversation |
+| 9 | Fix | Each finding fixed with its test written first, in a commit of its own, and the fixes broken on purpose |
 
 To start it in a new session:
 
@@ -395,3 +421,82 @@ docs/baby_steps_tutorials/mj_40_events_with_an_outbox/README.md.
    H1).
 
 </details>
+
+## Think it through
+
+### Found while building
+
+- **No test said that DSoR reads the payment again.** Break B8 built the event from the company
+  code's answer, and only one test failed. Two tests were added: code that answers with another
+  amount, and code that answers with no payment (D1).
+- **The database's sender had no test of its own for a failure in the middle of a run.** Break B3
+  let the sender go on after a failed delivery, and only the memory tests failed. A database test
+  was added, and it fails on B3.
+- **Found while fixing H1: an answer that is no payment.** The first build read the code's answer
+  for the event, so code that drafted and then answered `{ "done": true }` had its draft rolled
+  back, because the event could not be built. Now the event is of the draft, so the draft and its
+  event are kept, and the caller hears `INTERNAL_ERROR`: the answer fails as it is shaped for the
+  caller, after the work and its record are kept. Step 39b ends such a call the same way, run to
+  check: `INTERNAL_ERROR`, the proposal `COMMITTED`, the draft kept. The first build had changed
+  that by accident.
+- **Found while checking L3, in memory only.** A reconcile whose event fails its check still moves
+  the proposal to `COMMITTED` in memory, because memory keeps what DSoR's own work wrote before an
+  accident (D11). On the database the move rolls back with the rest.
+
+### What the review found
+
+A reviewer who had not seen the conversation read the rules, the code, and this README, and
+attacked a copy with code of its own. It found two high findings, five medium, and seven low. Each
+was fixed with its test written first, in a commit of its own, and the fixes were broken on purpose
+in a copy on a database of their own (see the breaks above). The learner was away, so the choices
+the fixes needed are Claude Code's, each with its downside: D1, D4, D7, D11, and the new D12.
+
+| # | What it found | What was done |
+|---|---|---|
+| H1 | The event's payment came from the company code's answer. Code that paid PAY-902 and answered with PAY-901, paid already, announced PAY-901 paid a second time, and PAY-902 never. Code that drafted PAY-902 and answered with PAY-901 announced PAY-901 drafted twice | DSoR gives the code payments that note each draft and each payment marked paid. The event is of that change, which must be the one change its operation names, and for a send the payment the request names. Any other change is an accident, and the work is not kept (D1) |
+| H2 | `pnpm guard` was red: a test's first line read as a marker for copied code | Reworded |
+| M1 | Memory sealed the record before the proposal's last move wrote the event. An event refused after the bank left a record saying `ok` beside an `OUTCOME_UNKNOWN` answer | The event is written with the work, before the record is sealed, in memory as on the database (D1) |
+| M2 | No database test said that a run whose second delivery fails marks the first, and only the first | A test with three events |
+| M3 | The test of `pnpm send-events` drafted nothing for org_789, so "every event in org_789's channel is org_789's" passed on an empty file | It drafts org_789's INV-2002 first |
+| M4 | `a.jsonl` and `A.jsonl` passed as two channels. On a disk that does not tell capitals apart they are one file | Each channel is named after its company (D12) |
+| M5 | No test of a send whose code pays nothing | A test |
+| L1 | No test that a reconcile of a payment paid already writes no second `payment.executed` | A test. The reconcile also writes the event of a paid payment that has none, which memory can leave (D11) |
+| L2 | The ordering key was the highest number plus one, with no lock of its own. Two writers at once read the same number, and the second's whole change was refused | A lock of the resource's own; a test of two writers at once, and one of the unique key (D4) |
+| L3 | D7's downside left out the worst case: an event that fails its check after the bank has sent | Said in D7 |
+| L4 | The database did not check that an event's resource and correlation are its company's, nor its label. The guard's clock and its column check had no test | Migration 037; tests, the column check through the owner (D2) |
+| L5 | No test of the memory sender's lock, its copies, or the database sender's limit. And `pnpm send-events` stopped at the first company whose run threw | Tests. The script goes on to the next company, and ends 1 |
+| L6 | The `task_id` test read as the rule met. C8 left out the human behind an agent's slip | Retitled as C8's gap; C8 says it |
+| L7 | This README named `test/channels.test.ts`, which does not exist, and D1, D11, and answer 5 described the first build | Corrected |
+
+### Left open on purpose
+
+- **No `invoice.issued`.** No code issues an invoice in this tutorial, so nothing could write it
+  (D0).
+- **No `trace_id`, `session_id`, or trusted `task_id` in an event.** A request has no place for the
+  first two, and an agent's `task_id` arrives as its own words, `agent_asserted`, which DSoR does not
+  repeat as a fact. DSOR-COR-01a is met only in part. Open question 157 asks how a request should
+  carry them.
+- **The human behind an agent's slip.** The event of the agent's draft names
+  `accounts-payable-fte`, not user_123, who signed del_100. A receiver that wants the human must ask
+  DSoR (C8).
+- **Sent events are never cleared.** `dsor.outbox` only grows (D2). Clearing it is a later job, with
+  its own rule for how long an event is kept.
+- **A slow receiver holds the sender's transaction.** The sender marks events in the transaction
+  that read them, so it stays open while it delivers (D8). A receiver that takes minutes holds a
+  connection for minutes.
+- **The database does not refuse a change without its event.** A new path that drafts or pays must
+  remember its event (D1). The tests check every path this step knows; a trigger could check every
+  path, but it cannot see the call's correlation ids.
+
+## The rules this step meets
+
+| Rule | What it says | Spec | Tests |
+| --- | --- | --- | --- |
+| DSOR-EVT-01a | Events are produced through a transactional outbox, tied to the recorded outcome | [§31](../../../specs/dsor/03-execution.md#31-events) | [`test/events.test.ts`](test/events.test.ts), [`test/sender.test.ts`](test/sender.test.ts), [`test/outbox.db.test.ts`](test/outbox.db.test.ts), [`test/approve.db.test.ts`](test/approve.db.test.ts) |
+| DSOR-EVT-01b | Every event validates against `event.schema.json`, with a unique id, the resource, a per-resource ordering key, correlation ids, and `origin` | [§31](../../../specs/dsor/03-execution.md#31-events) | [`test/event-shape.test.ts`](test/event-shape.test.ts), [`test/outbox.db.test.ts`](test/outbox.db.test.ts) |
+| DSOR-EVT-01c | An event never holds a `RESTRICTED` value | [§31](../../../specs/dsor/03-execution.md#31-events) | [`test/event-shape.test.ts`](test/event-shape.test.ts), [`test/outbox.db.test.ts`](test/outbox.db.test.ts) |
+| DSOR-EVT-01d | Event channels are tenant-scoped | [§31](../../../specs/dsor/03-execution.md#31-events) | [`test/sender.test.ts`](test/sender.test.ts), [`test/events.test.ts`](test/events.test.ts), [`test/outbox.db.test.ts`](test/outbox.db.test.ts) |
+| DSOR-COR-01a, partly | The call's `request_id`, `agent_id` or `principal_id`, and `tenant_id` travel into events; `trace_id`, `session_id`, and `task_id` do not yet (C8) | [§32](../../../specs/dsor/03-execution.md#32-correlation) | [`test/events.test.ts`](test/events.test.ts), [`test/event-shape.test.ts`](test/event-shape.test.ts) |
+| DSOR-EXE-04a, for the outbox | The change, its outcome, and its outbox entry commit together, or none does | [§21](../../../specs/dsor/03-execution.md#21-command-pipeline) | [`test/outbox.db.test.ts`](test/outbox.db.test.ts) |
+
+**Next:** step 41, a payment run.
