@@ -186,8 +186,8 @@ commit atomically."
 |---|---|
 | C1 to C3, C5 | `test/events.test.ts`: the story's calls in memory, and the events each leaves |
 | C5 | `test/event-shape.test.ts`: each event against `event.schema.json`, the ordering keys, a planted `RESTRICTED` field |
-| C6, C7 | `test/sender.test.ts`: the memory sender against receivers that fail, and the receiver's dedupe; `test/channels.test.ts`: `channels.json` |
-| C1 to C7 | `test/outbox.db.test.ts`: the same on the database, with a record that cannot be written, a sender killed after delivering, and two senders at once |
+| C6, C7 | `test/sender.test.ts`: the memory sender against receivers that fail, its lock and its copies, the receiver's dedupe, `channels.json`, and `sendEach`, the script's run over every company |
+| C1 to C7 | `test/outbox.db.test.ts`: the same on the database, with a record that cannot be written, a sender killed after delivering, and two senders at once; and the review's tests, each titled by its finding |
 
 ### The learner's predictions, to ask after the build
 
