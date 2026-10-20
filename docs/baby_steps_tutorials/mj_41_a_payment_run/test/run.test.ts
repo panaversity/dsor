@@ -390,3 +390,98 @@ describe("C5 and C6: one approval, of the list and its totals", () => {
     expect((await proposalAt(w, line.uri))!.state).toBe("PENDING_APPROVAL");
   });
 });
+
+/** Run A, approved by cfo_100: its URI. */
+async function approvedRunA(w: RuleWorld): Promise<string> {
+  const { run, shown } = await waitingRunA(w);
+  const approval = await w.ask(keyed(CFO), "proposal.approve", shown);
+  expect(approval).toMatchObject({ data: { state: "APPROVED" } });
+  return run.uri;
+}
+
+/** The states of a run and of its lines, the run first. */
+async function statesOf(w: RuleWorld, run: string): Promise<string[]> {
+  const lines = await linesOf(w, run);
+  return [(await proposalAt(w, run))!.state, ...lines.map((p) => p.state)];
+}
+
+describe("C8: the release, all or nothing again", () => {
+  it("step 41's decision D2: C8: the agent releases the approved run: every line is drafted, in the order of its lines, each with its payment.created, and all are COMMITTED", async () => {
+    const w = ruleWorld();
+    const run = await approvedRunA(w);
+    const released = await w.ask(keyed(AGENT), "proposal.execute", { proposal: run });
+    expect(released).toMatchObject({ outcome: "COMMITTED" });
+    const payments = (released as { data: { payments: { invoice_id: string }[] } }).data.payments;
+    expect(payments.map((p) => p.invoice_id)).toStrictEqual(["INV-1002", "INV-1008", "INV-1006"]);
+    expect(w.drafted.map((p) => p.invoice_id)).toStrictEqual(["INV-1002", "INV-1008", "INV-1006"]);
+    const created = (await w.outbox.events("org_456")).filter(
+      (e) => e.event.type === "payment.created",
+    );
+    expect(created).toHaveLength(3);
+    expect(await statesOf(w, run)).toStrictEqual(Array(4).fill("COMMITTED"));
+    expect(await w.reservations.all()).toMatchObject([{ state: "committed" }]);
+  });
+
+  it("step 41's decision D2: C8: a run prepared in propose_only mode, whose lines asked for no one, is released whole", async () => {
+    const w = ruleWorld();
+    const prepared = await w.ask({ ...keyed(AGENT), mode: "propose_only" }, "payment.run", RUN_B);
+    expect(prepared).toMatchObject({ outcome: "READY" });
+    const run = String((prepared as { proposal: string }).proposal);
+    expect(await statesOf(w, run)).toStrictEqual(Array(4).fill("READY"));
+    const released = await w.ask(keyed(AGENT), "proposal.execute", { proposal: run });
+    expect(released).toMatchObject({ outcome: "COMMITTED" });
+    expect(w.drafted).toHaveLength(3);
+    expect(await statesOf(w, run)).toStrictEqual(Array(4).fill("COMMITTED"));
+  });
+
+  it("step 41's decision D2: C8: a vendor suspended after the approval voids the whole run at its release: nothing drafted, every line INVALIDATED, the booking given back", async () => {
+    const w = ruleWorld();
+    const run = await approvedRunA(w);
+    w.vendors.find((v) => v.id === "VENDOR-31")!.status = "suspended";
+    const released = await w.ask(keyed(AGENT), "proposal.execute", { proposal: run });
+    expect(released).toMatchObject({
+      code: "APPROVAL_INVALIDATED",
+      message: expect.stringMatching(/line 3 of "payment\.run"/),
+    });
+    expect(w.drafted).toStrictEqual([]);
+    expect(await statesOf(w, run)).toStrictEqual(Array(4).fill("INVALIDATED"));
+    expect(await w.reservations.all()).toMatchObject([{ state: "released" }]);
+  });
+
+  it("DSOR-BAT-02a: C8: a bill corrected after the approval, to a new version, voids the run at its release", async () => {
+    const w = ruleWorld();
+    const run = await approvedRunA(w);
+    const bill1002 = w.bills.find((b) => b.id === "INV-1002")!;
+    bill1002.amount = money("9900.50", "USD");
+    bill1002.open_amount = money("9900.50", "USD");
+    bill1002.version = 2;
+    const released = await w.ask(keyed(AGENT), "proposal.execute", { proposal: run });
+    expect(released).toMatchObject({ code: "APPROVAL_INVALIDATED" });
+    expect(w.drafted).toStrictEqual([]);
+    expect(await statesOf(w, run)).toStrictEqual(Array(4).fill("INVALIDATED"));
+  });
+
+  it("DSOR-BAT-02a: C8: a bill whose amount changed with no new version still voids the run: its totals are added up again from the bills, and no longer match", async () => {
+    const w = ruleWorld();
+    const run = await approvedRunA(w);
+    const bill1006 = w.bills.find((b) => b.id === "INV-1006")!;
+    bill1006.open_amount = money("6400.00", "USD");
+    const released = await w.ask(keyed(AGENT), "proposal.execute", { proposal: run });
+    expect(released).toMatchObject({
+      code: "APPROVAL_INVALIDATED",
+      message: expect.stringMatching(/totals/),
+    });
+    expect(w.drafted).toStrictEqual([]);
+  });
+
+  it("step 41's decision D7: C6: a line is never released alone: the agent's release of a line that waits READY is refused, and it still waits", async () => {
+    const w = ruleWorld();
+    const { run } = await waitingRunA(w);
+    const line = (await linesOf(w, run.uri))[0]!;
+    expect(line.state).toBe("READY");
+    const released = await w.ask(keyed(AGENT), "proposal.execute", { proposal: line.uri });
+    expect(released).toMatchObject({ code: "CONFLICT" });
+    expect((await proposalAt(w, line.uri))!.state).toBe("READY");
+    expect(w.drafted).toStrictEqual([]);
+  });
+});
