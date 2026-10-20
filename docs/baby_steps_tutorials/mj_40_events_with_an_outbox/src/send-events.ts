@@ -1,14 +1,15 @@
 // NEW IN STEP 40: pnpm send-events. As DSoR's own login, dsor_runtime, it sends each company's
 // unsent events, oldest first, to the company's own channel named in channels.json: a file of JSON
 // lines in the events folder, or in the folder DSOR_EVENTS_DIR names. It exits 0 when every company
-// sent all it took, 1 when a delivery failed, and 2 when it could not send. The login comes from
-// .env and is never printed (DSOR-EVT-01a, DSOR-EVT-01d; step 40's README, decisions D8 and D9).
+// sent all it took, 1 when a delivery or a company's run failed, and 2 when it could not send at
+// all. A company that fails never stops the next. The login comes from .env and is never printed
+// (DSOR-EVT-01a, DSOR-EVT-01d; step 40's README, decisions D8 and D9).
 import { fileURLToPath } from "node:url";
-import { checkChannels, fileChannel, readChannels } from "./channels.ts";
+import { checkChannels, readChannels } from "./channels.ts";
 import { loadDotEnv, openPool, requireEnv } from "./postgres.ts";
-import { createDbOutbox } from "./sender.ts";
+import { createDbOutbox, sendEach } from "./sender.ts";
 
-/** What the script did: 0 sent, 1 a delivery failed, 2 not sent. */
+/** What the script did: 0 sent, 1 a delivery or a company's run failed, 2 not sent. */
 async function sendAll(): Promise<0 | 1 | 2> {
   loadDotEnv(["DSOR_DB_URL", "DSOR_EVENTS_DIR"]);
   const { channels, problems } = checkChannels(readChannels());
@@ -23,26 +24,11 @@ async function sendAll(): Promise<0 | 1 | 2> {
       ? named
       : fileURLToPath(new URL("../events/", import.meta.url));
   const pool = openPool(requireEnv("DSOR_DB_URL"));
-  const outbox = createDbOutbox(pool);
-  let failed = false;
   try {
-    for (const [tenant, file] of channels) {
-      const run = await outbox.send(tenant, fileChannel(dir, file));
-      if (run.busy === true) {
-        console.log(`${tenant}: another sender is at work, so this one sent nothing`);
-        continue;
-      }
-      const n = run.sent.length;
-      console.log(`${tenant}: sent ${n} event${n === 1 ? "" : "s"}`);
-      if (run.failed !== undefined) {
-        failed = true;
-        console.log(`${tenant}: stopped at ${run.failed.event_id}: ${run.failed.why}`);
-      }
-    }
+    return await sendEach(createDbOutbox(pool), channels, dir, (line) => console.log(line));
   } finally {
     await pool.end();
   }
-  return failed ? 1 : 0;
 }
 
 try {

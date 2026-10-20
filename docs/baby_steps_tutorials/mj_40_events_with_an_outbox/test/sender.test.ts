@@ -10,8 +10,9 @@ import { afterAll, describe, expect, it } from "vitest";
 import { checkChannels, fileChannel, readChannels } from "../src/channels.ts";
 import { buildEvent, type DomainEvent } from "../src/events.ts";
 import { checkClassifications } from "../src/labels.ts";
-import { memoryOutbox, type MemoryOutbox } from "../src/outbox.ts";
+import { memoryOutbox, type MemoryOutbox, type Outbox } from "../src/outbox.ts";
 import { firstOfEach, readChannel } from "../src/receiver.ts";
+import { sendEach } from "../src/sender.ts";
 import { shippedLabels } from "./helpers.ts";
 
 const KINDS = checkClassifications(shippedLabels).kinds;
@@ -105,6 +106,92 @@ describe("C6: the sender", () => {
     expect((await outbox.send("org_456", deliver, 2)).sent).toHaveLength(2);
     expect((await outbox.send("org_456", deliver, 2)).sent).toHaveLength(1);
     expect(got.map((e) => e.ordering_key)).toStrictEqual([1, 2, 1]);
+  });
+});
+
+// Step 40's review, L5: what the memory sender and the script did with no test to say so.
+describe("the review, L5: the sender's lock, its copies, and one company's failure", () => {
+  it("DSOR-EVT-01a: L5: two runs of org_456's sender at once: the second finds the first at work and sends nothing, and org_789's run is not held", async () => {
+    const outbox = await filled();
+    let open!: () => void;
+    const gate = new Promise<void>((done) => (open = done));
+    const first = outbox.send("org_456", async () => {
+      await gate;
+    });
+    const second = await outbox.send("org_456", async () => {});
+    const theirs = await outbox.send("org_789", async () => {});
+    open();
+    expect(second).toStrictEqual({ sent: [], busy: true });
+    expect(theirs.sent).toHaveLength(1);
+    expect((await first).sent).toHaveLength(3);
+  });
+
+  it("DSOR-EVT-01a: L5: a receiver that changes the event it is given changes nothing in the outbox", async () => {
+    const outbox = await filled();
+    await outbox.send("org_456", async (event) => {
+      event.resource = "dsor://org_456/payment/PAY-666";
+      (event.data as { amount: { value: string } }).amount.value = "1.00";
+    });
+    const kept = (await outbox.events("org_456")).map((row) => row.event);
+    expect(kept.map((e) => e.resource.split("/").at(-1))).toStrictEqual([
+      "PAY-901",
+      "PAY-901",
+      "PAY-902",
+    ]);
+    expect(kept.map((e) => (e.data as { amount: { value: string } }).amount.value)).toStrictEqual([
+      "31400.00",
+      "31400.00",
+      "31400.00",
+    ]);
+  });
+
+  it("DSOR-EVT-01a: L5: org_456's run throws: org_789's events are still sent, each company says what it did, and the run ends 1", async () => {
+    const outbox = await filled();
+    const broken: Outbox = {
+      ...outbox,
+      send: async (tenant, deliver, limit) => {
+        if (tenant === "org_456") {
+          throw Object.assign(new Error("lost the connection to postgres://dsor_runtime:pw@db"), {
+            code: "57P01",
+          });
+        }
+        return outbox.send(tenant, deliver, limit);
+      },
+    };
+    const out = mkdtempSync(join(tmpdir(), "dsor-40-each-"));
+    try {
+      const lines: string[] = [];
+      const channels = new Map([
+        ["org_456", "org_456.jsonl"],
+        ["org_789", "org_789.jsonl"],
+      ]);
+      expect(await sendEach(broken, channels, out, (line) => lines.push(line))).toBe(1);
+      expect(lines).toStrictEqual([
+        "org_456: not sent: the outbox could not be read (57P01)",
+        "org_789: sent 1 event",
+      ]);
+      expect(readChannel(join(out, "org_789.jsonl")).map((e) => e.resource)).toStrictEqual([
+        "dsor://org_789/payment/PAY-7",
+      ]);
+    } finally {
+      rmSync(out, { recursive: true, force: true });
+    }
+  });
+
+  it("DSOR-EVT-01a: L5: every company sends all it took: the run ends 0", async () => {
+    const outbox = await filled();
+    const out = mkdtempSync(join(tmpdir(), "dsor-40-each-"));
+    try {
+      const lines: string[] = [];
+      const channels = new Map([
+        ["org_456", "org_456.jsonl"],
+        ["org_789", "org_789.jsonl"],
+      ]);
+      expect(await sendEach(outbox, channels, out, (line) => lines.push(line))).toBe(0);
+      expect(lines).toStrictEqual(["org_456: sent 3 events", "org_789: sent 1 event"]);
+    } finally {
+      rmSync(out, { recursive: true, force: true });
+    }
   });
 });
 

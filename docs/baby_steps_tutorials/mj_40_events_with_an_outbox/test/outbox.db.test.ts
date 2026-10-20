@@ -479,6 +479,25 @@ describe("C6 and C7: the sender, on the database", () => {
     expect(third!["sent_at"]).toBeNull();
   });
 
+  // Found by step 40's review, L5: no test on the database said that a run takes at most its limit.
+  it("DSOR-EVT-01a: L5: a run with a limit of 1 delivers the oldest unsent event only, and the next run the one after it", async () => {
+    await outbox.send("org_456", async () => {}, 1000);
+    const [a, b] = [requestId("l5-a"), requestId("l5-b")];
+    await draft(a);
+    await draft(b);
+    const got: string[] = [];
+    const run = await outbox.send(
+      "org_456",
+      async (event) => void got.push(event.correlation.request_id),
+      1,
+    );
+    expect(got).toStrictEqual([a]);
+    expect(run.sent).toHaveLength(1);
+    expect((await eventsOfRequest(b))[0]!["sent_at"]).toBeNull();
+    await outbox.send("org_456", async (event) => void got.push(event.correlation.request_id), 1);
+    expect(got).toStrictEqual([a, b]);
+  });
+
   it("DSOR-EVT-01a: two senders of org_456 at once: the second finds the first at work and sends nothing", async () => {
     await outbox.send("org_456", async () => {}, 1000);
     await draft(requestId("c6-two"));

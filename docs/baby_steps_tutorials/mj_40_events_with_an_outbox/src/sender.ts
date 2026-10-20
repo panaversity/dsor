@@ -5,6 +5,7 @@
 // delivered ones sent, and commits. A run that dies before its commit marks nothing, so its
 // deliveries happen again: at least once (step 40's README, decisions D8 and D11; claims C6, C7).
 import type pg from "pg";
+import { fileChannel } from "./channels.ts";
 import type { DomainEvent } from "./events.ts";
 import { outboxIn, SEND_LIMIT, type Outbox, type Sent } from "./outbox.ts";
 import { inCompany } from "./postgres.ts";
@@ -69,4 +70,42 @@ export function createDbOutbox(pool: pg.Pool): Outbox {
         return failed === undefined ? { sent } : { sent, failed };
       }),
   };
+}
+
+/**
+ * Sends each company's unsent events to its channel, one company after another, and says what each
+ * did. 0 when every company sent all it took, 1 when one did not (decision D8).
+ */
+export async function sendEach(
+  outbox: Outbox,
+  channels: ReadonlyMap<string, string>,
+  dir: string,
+  say: (line: string) => void,
+): Promise<0 | 1> {
+  let failed = false;
+  for (const [tenant, file] of channels) {
+    let run: Sent;
+    try {
+      run = await outbox.send(tenant, fileChannel(dir, file));
+    } catch (error) {
+      // One company's failure never stops the next company's sending. Never the error itself: a
+      //   connection error can repeat the login. Found by step 40's review, L5: the first company
+      //   that threw ended the whole run.
+      failed = true;
+      const code = (error as { code?: string }).code ?? "error";
+      say(`${tenant}: not sent: the outbox could not be read (${code})`);
+      continue;
+    }
+    if (run.busy === true) {
+      say(`${tenant}: another sender is at work, so this one sent nothing`);
+      continue;
+    }
+    const n = run.sent.length;
+    say(`${tenant}: sent ${n} event${n === 1 ? "" : "s"}`);
+    if (run.failed !== undefined) {
+      failed = true;
+      say(`${tenant}: stopped at ${run.failed.event_id}: ${run.failed.why}`);
+    }
+  }
+  return failed ? 1 : 0;
 }
