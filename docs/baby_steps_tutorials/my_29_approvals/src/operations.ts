@@ -96,6 +96,7 @@ import {
   hasExpired,
   keepApproval,
   proposalToApprove,
+  quorumMet,
 } from "./approvals.ts";
 // STEP 27: the company's policy, as controls written in CEL (decision 162).
 import type { ConditionInput } from "./cel.ts";
@@ -755,21 +756,28 @@ const handlers: Readonly<Record<string, Handler>> = {
       expires_at: expiresAt(target.waitingSince),
     });
 
-    if (approved === undefined) {
-      return refused("CONFLICT", `${askedBy} has approved ${read.id} already`);
+    // NEW IN STEP 29, decision 168: the proposal stopped waiting, or its time ran out, after §21.9 looked;
+    // nothing was kept, and the caller hears where it stands.
+    if (approved.kind === "not_waiting") {
+      return refused(
+        "CONFLICT",
+        `${read.id} is ${approved.state}, and only one waiting for approval can be approved`,
+      );
     }
 
-    // Every requirement, its quorum counted from the approvals kept, this one among them.
-    const kept = await approvalsOf(tenant, read.id);
-    const complete = requirements.every(
-      (r) =>
-        kept.filter((a) =>
-          (a.satisfies as readonly { control: string }[]).some((s) => s.control === r.control),
-        ).length >= r.quorum,
-    );
+    if (approved.kind === "expired") {
+      return refused(
+        "APPROVAL_EXPIRED",
+        `${read.id} waited for approval until ${expiresAt(target.waitingSince)}, and cannot be approved now`,
+      );
+    }
+
+    // Every requirement, its quorum counted from the approvals kept, this one among them. STEP 29,
+    // decision 168: an approval kept before, "already", came here because §21.9 found its proposal's
+    // quorum met and the move to APPROVED never made: a crash between the two. Asking again makes it.
     let status = "PENDING_APPROVAL";
 
-    if (complete) {
+    if (quorumMet(requirements, await approvalsOf(tenant, read.id))) {
       // With its record, about the proposal approved, in the name of this request.
       const moved = await moveProposal(
         tenant,
@@ -777,7 +785,7 @@ const handlers: Readonly<Record<string, Handler>> = {
         "PENDING_APPROVAL",
         "APPROVED",
         askedBy,
-        `approved: every requirement has its quorum; the last by ${askedBy}, ${approved}`,
+        `approved: every requirement has its quorum; the last by ${askedBy}, ${approved.id}`,
         {
           subject: askedBy,
           requestId,
@@ -798,9 +806,9 @@ const handlers: Readonly<Record<string, Handler>> = {
       askedBy,
       envelope: success({
         data: {
-          uri: formatUri({ tenant, entity: "approval", id: approved }),
+          uri: formatUri({ tenant, entity: "approval", id: approved.id }),
           tenantId: tenant,
-          id: approved,
+          id: approved.id,
           proposal: formatUri({ tenant, entity: "proposal", id: read.id }),
           status,
         },
@@ -2153,6 +2161,23 @@ async function whoMayApprove(
     );
   }
 
+  // NEW IN STEP 29, decision 168: a person who may approve nothing is told so before the proposal is
+  // looked up, in words that are the same whether it exists or not, and name no operation of it
+  // (DSOR-ERR-01b). Looked up first, a proposal that did not exist was RESOURCE_NOT_FOUND, and one
+  // that did named its operation: a way to learn which proposals there are.
+  const approvePermissions = [
+    ...new Set(
+      [...registry.values()].flatMap((c) => c.authorization.approve_permission ?? []),
+    ),
+  ];
+
+  if (!approvePermissions.some((p) => holds(principal, p))) {
+    return no(
+      "AUTHORIZATION_DENIED",
+      `approving needs ${approvePermissions.join(" or ")}, and ${principal.id} holds none of them`,
+    );
+  }
+
   // §21.6 checked the address, and that it is this company's.
   const id = parseUri(String(given["proposal"])).id;
   let target;
@@ -2210,10 +2235,13 @@ async function whoMayApprove(
     );
   }
 
+  // NEW IN STEP 29, decision 168: unless the quorum is met with it, and the proposal still waits: then
+  // the move to APPROVED was never made, and the handler makes it.
   if (
     given_.some((a) =>
       (a.approvers as readonly { principal: string }[]).some((b) => b.principal === principal.id),
-    )
+    ) &&
+    !quorumMet(requirements, given_)
   ) {
     return no("CONFLICT", `${principal.id} has approved ${id} already`);
   }

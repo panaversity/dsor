@@ -6172,6 +6172,47 @@ approve one spelling while the program holds another.
 - **Who may not approve, beyond an agent, is step 30's**: the person who signed the agent's slip, and
   one person counted twice towards a quorum.
 
+## 168 · What the review of step 29 found, and what was chosen (2026-10-20)
+
+**Decided by:** Claude, on the standing rule that a review's findings are fixed or written down, and
+on the learner's instruction of 2026-10-19 to take the recommendation; open to reversal.
+
+A hostile reviewer read step 29's commits. The agent is refused; a wrong fingerprint keeps nothing;
+the approval validates against its schema; two controls asking for the CFO are both satisfied by her
+one approval. It found one high gap and four medium:
+
+1. **High: an approval kept, with its move to APPROVED never made, left the proposal waiting for good**
+   (measured, red first). The approval and the move are two statements. A crash between them left
+   every requirement met and the proposal at PENDING_APPROVAL, and the CFO asking again was refused
+   CONFLICT, "approved already". Now §21.9 lets her through when the quorum is met and the proposal
+   still waits, and the handler, finding her approval kept, makes the move. Making the two one
+   statement would close the gap itself; asking again was chosen because the move already writes its
+   own record in its statement (decision 157), and one statement for both would be a new shape.
+2. **The handler kept an approval for a proposal that had stopped waiting** (measured, red first).
+   §21.9 looks, then the handler writes; a proposal cancelled in between got an approval kept. The
+   approval is now kept only by a statement that asks, itself, that the proposal waits and the
+   approval's time has not passed. Nothing kept is reported as CONFLICT with where the proposal
+   stands, or APPROVAL_EXPIRED.
+3. **An agent whose slip names `proposal:approve` was never asked** (the code held). A test now asks
+   it, and checks §21.9's own words, not only the code.
+4. **The title check was never asked** (the code held). A proposal waiting only for the Treasurer is
+   refused to the CFO, and nothing is kept.
+5. **Another company's proposal was said to be asked in `test/approvals.test.ts`, and was not** (the
+   code held). It is asked now: TENANT_MISMATCH, recorded DENY.
+
+**Smaller, fixed:** the test for a proposal that does not exist accepted any of three codes. Asked
+exactly, it showed a leak (measured): user_123, who may approve nothing, was told RESOURCE_NOT_FOUND
+for a proposal that did not exist and "approving payment.create needs payment:approve" for one that
+did, which says which proposals there are and what they are (DSOR-ERR-01b). A person who holds no
+approve permission at all is now refused before the proposal is looked up, in the same words either
+way. The test "an approval counts once for each person" asked something else, and is renamed.
+
+**Written down, not fixed:** the quorum counts every approval kept, not only active ones; an approval
+expires with its proposal, which then no longer waits, so nothing counts it yet, but step 31, which
+carries out an approved proposal, must ask. An approval's time is the proposal's 72 hours whatever
+the risk. A person who holds some approve permission but not this one still hears the proposal's
+operation named; nobody in this story does.
+
 ## 169 · Step 30's decisions: who may not approve (2026-10-20)
 
 **Decided by:** Claude, on the learner's standing instruction of 2026-10-19, "select the recommended
