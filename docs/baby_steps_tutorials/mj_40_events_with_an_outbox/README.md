@@ -93,7 +93,7 @@ commit atomically."
 | C5 | Every event validates against `event.schema.json`: an `event_id` no other event has, the resource's URI, its number among that resource's events as the ordering key, `origin` `dsor`, and the call's correlation ids with the company's (DSOR-EVT-01b, DSOR-COR-01a, partly). Its data never holds a `RESTRICTED` value (DSOR-EVT-01c) |
 | C6 | `pnpm send-events` delivers each company's unsent events, oldest first, to that company's channel only, and marks each one sent. A failure stops that company's delivery, and the rest wait for the next run. One sender works on a company at a time (DSOR-EVT-01d) |
 | C7 | At least once: a sender killed after a delivery and before its mark delivers that event again, and the receiver drops an `event_id` it has seen |
-| C8 | What it does not do, said in this README: no `invoice.issued`, because no code issues an invoice; no `trace_id` or `session_id`, because no request carries one; and an agent's `task_id` stays where step 33 keeps it |
+| C8 | What it does not do, said in this README: no `invoice.issued`, because no code issues an invoice; no `trace_id` or `session_id`, because no request carries one; an agent's `task_id` stays where step 33 keeps it; and an agent's event names the agent, never the human whose slip it holds: user_123 is not in the event of the agent's draft. Said in full since the review, L6 |
 
 ### Decisions
 

@@ -309,7 +309,9 @@ describe("C2: a payment paid writes payment.executed", () => {
 });
 
 describe("C5: the correlation ids", () => {
-  it("DSOR-COR-01a: the agent's draft: the event names the agent, the request, and the company", async () => {
+  // And no principal_id: the event does not name user_123, whose slip the agent holds. C8 says so
+  //   (step 40's review, L6).
+  it("DSOR-COR-01a: the agent's draft: the event names the agent, the request, and the company, and not the human whose slip the agent holds", async () => {
     const w = await ruleWorldOnTuesday();
     const drafted = await w.draft("INV-1002");
     const [event] = await eventsOf(w);
@@ -327,7 +329,9 @@ describe("C5: the correlation ids", () => {
     expect(event!.correlation.request_id).toBe("req_from_the_desk_1");
   });
 
-  it("DSOR-COR-01a: a task id the agent says it works on stays in agent_asserted: no event carries it", async () => {
+  // Retitled by step 40's review, L6: this is the gap C8 names, not the rule met. DSOR-COR-01a asks
+  //   for task_id in every event; a request has no place DSoR trusts for it (open question 157).
+  it("DSOR-COR-01a: C8, not met yet: a task id the agent asserts stays in agent_asserted, so no event carries it", async () => {
     const w = await ruleWorldOnTuesday();
     const asserted = { purpose: "weekly payment run", task_id: "task-2026-10-20-40" };
     await w.ask(
