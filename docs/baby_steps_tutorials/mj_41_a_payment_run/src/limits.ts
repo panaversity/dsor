@@ -480,7 +480,9 @@ export async function checkRunDay(
   const total = sumOf(bookings);
   // A run of nothing to pay takes nothing from the day, as one draft of nothing does.
   if (millionths(total.value) === 0n) return;
-  const held = reserveFor === undefined ? undefined : await store.get(tenant, reserveFor);
+  // A release finds its run's booking again, and books nothing more; its dry run counts it once.
+  const own = check.booked ?? reserveFor;
+  const held = own === undefined ? undefined : await store.get(tenant, own);
   const fits =
     held?.state === "held"
       ? true
