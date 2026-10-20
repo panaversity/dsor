@@ -123,7 +123,7 @@ describe("permissions", () => {
       "delegation:revoke",
       "invoice:read",
       "payment:approve",
-      "payment:create", // STEP 30
+      "payment:create", // NEW IN STEP 30
       "proposal:approve", // STEP 29
     ]);
     // STEP 18: the agent's own role reads; its commands run under a permission slip.

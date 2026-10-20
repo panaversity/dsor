@@ -50,13 +50,16 @@ export interface ProposalToApprove {
   readonly waitingSince: string | undefined;
   /**
    * NEW IN STEP 30: who asked for it, as it recorded when it was made: the subject, which is the
-   * slip's signer for an agent's command, the actors, and the slip (decision 169).
+   * slip's signer for an agent's command, the actors, and the slip (decision 169). Undefined when
+   * what it recorded cannot be read (decision 170).
    */
-  readonly requester: {
-    readonly subject: string;
-    readonly actorChain: readonly string[];
-    readonly delegation?: string;
-  };
+  readonly requester:
+    | {
+        readonly subject: string;
+        readonly actorChain: readonly string[];
+        readonly delegation?: string;
+      }
+    | undefined;
 }
 
 /** Where proposal `p` stands now: the state its last move went to. */
@@ -104,28 +107,42 @@ export async function proposalToApprove(
 }
 
 /**
- * NEW IN STEP 30: the requester a proposal recorded, read as it was written (§21.8). Anything else
- * is a requester nobody can be told apart from, and is refused as one: everyone is in its chain.
+ * NEW IN STEP 30: the requester a proposal recorded, read as it was written (§21.8): a subject, the
+ * actors, and the slip, each a name. Anything else is a requester nobody can be told apart from,
+ * and §21.9 refuses everyone for it, as it would if everyone were in its chain.
+ *
+ * Decision 170: undefined, not a throw. Thrown, it was caught as a store that could not be read,
+ * EVIDENCE_STORE_UNAVAILABLE with retry `safe_same_key`: an invitation to send again a request
+ * that could never pass. And an empty subject is no subject: read as one, the CFO approved her
+ * own payment, a review measured.
  */
 function requesterFrom(text: string): ProposalToApprove["requester"] {
-  const parsed = JSON.parse(text) as {
-    subject?: unknown;
-    actor_chain?: unknown;
-    delegation?: unknown;
-  };
+  let parsed: { subject?: unknown; actor_chain?: unknown; delegation?: unknown };
+
+  try {
+    parsed = JSON.parse(text) as typeof parsed;
+  } catch {
+    return undefined;
+  }
+
+  const aName = (value: unknown): value is string =>
+    typeof value === "string" && value.trim() !== "";
 
   if (
-    typeof parsed.subject !== "string" ||
+    parsed === null ||
+    typeof parsed !== "object" ||
+    !aName(parsed.subject) ||
     !Array.isArray(parsed.actor_chain) ||
-    !parsed.actor_chain.every((a) => typeof a === "string")
+    !parsed.actor_chain.every(aName) ||
+    (parsed.delegation !== undefined && !aName(parsed.delegation))
   ) {
-    throw new TypeError("a proposal recorded a requester this program cannot read");
+    return undefined;
   }
 
   return Object.freeze({
     subject: parsed.subject,
     actorChain: Object.freeze([...(parsed.actor_chain as string[])]),
-    ...(typeof parsed.delegation === "string" ? { delegation: parsed.delegation } : {}),
+    ...(parsed.delegation === undefined ? {} : { delegation: parsed.delegation }),
   });
 }
 
@@ -209,7 +226,10 @@ export async function keepApproval(
         // `kept`: the approval, if the proposal waits and its time has not passed, and not this
         // person's second. `moved`: the move, if one was kept and, with it, every requirement has
         // as many approvals naming its control as its quorum. The table, read here, does not hold
-        // the row `kept` writes, which is why that row is added to the count by name.
+        // the row `kept` writes, which is why that row is added to the count by name. NEW IN STEP
+        // 30: counted as people, not rows, so one person's two approvals are one even without the
+        // table's one-row-per-person rule, which `ON CONFLICT` no longer names (DSOR-SOD-04c,
+        // decision 170).
         return {
           sql: `WITH kept AS (
                   INSERT INTO dsor.approvals (tenant, proposal, approver, record)
@@ -218,8 +238,8 @@ export async function keepApproval(
                    WHERE p.tenant = $1 AND p.id = $2
                      AND ${STATE_NOW} = 'PENDING_APPROVAL'
                      AND $5::timestamptz <= ($4::jsonb ->> 'expires_at')::timestamptz
-                  ON CONFLICT (tenant, proposal, approver) DO NOTHING
-                  RETURNING id, record),
+                  ON CONFLICT DO NOTHING
+                  RETURNING id, approver, record),
                 moved AS (
                   INSERT INTO dsor.proposal_moves (tenant, proposal, from_state, to_state, actor, cause, record)
                   SELECT $1, $2, 'PENDING_APPROVAL', 'APPROVED', $3, $6, $7
@@ -228,11 +248,11 @@ export async function keepApproval(
                        SELECT 1 FROM dsor.requirements r
                         WHERE r.tenant = $1 AND r.proposal = $2
                           AND r.quorum > (
-                            SELECT count(*) FROM (
-                              SELECT a.record FROM dsor.approvals a
+                            SELECT count(DISTINCT given.approver) FROM (
+                              SELECT a.approver, a.record FROM dsor.approvals a
                                WHERE a.tenant = $1 AND a.proposal = $2
                               UNION ALL
-                              SELECT k.record FROM kept k
+                              SELECT k.approver, k.record FROM kept k
                             ) AS given
                              WHERE EXISTS (
                                SELECT 1 FROM jsonb_array_elements(given.record -> 'satisfies') AS s

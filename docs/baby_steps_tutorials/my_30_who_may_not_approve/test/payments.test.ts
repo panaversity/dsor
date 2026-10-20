@@ -279,7 +279,7 @@ describe("payment.create", () => {
   });
 
   it("DSOR-AUT-01b: the CFO may not cancel a payment", async () => {
-    // STEP 30: she may make one now (decision 169), so that a payment she asked for is one she
+    // NEW IN STEP 30: she may make one now (decision 169), so that a payment she asked for is one she
     // may not approve. Cancelling stays the payment clerks' job.
     const refusal = refusalOf(
       await callOperation(CFO, "payment.cancel", {

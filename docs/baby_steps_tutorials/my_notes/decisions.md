@@ -6257,3 +6257,51 @@ for two approvals must get two people, not one person twice.
 
 **Told, not asked.** `SOD_VIOLATION` is §28's code for this, retry `never`. The demo shows the CFO's
 own payment refused for her approval.
+
+## 170 · What the review of step 30 found, and what was chosen (2026-10-20)
+
+**Decided by:** Claude, on the standing rule that a review's findings are fixed or written down, and
+on the learner's instruction of 2026-10-19 to take the recommendation; open to reversal.
+
+A hostile reviewer read step 30 while it still held the first port of decision 168. Nothing an agent
+or a caller can send got past `DSOR-SOD-01a`, `DSOR-SOD-02` or `DSOR-SOD-04c`, each measured: arguments
+that name a subject, a requester or an actor chain are ignored, and the stored requester is built from
+the login and the slip DSoR found itself. It found two medium gaps and five low:
+
+1. **An expiry the handler saw was answered OUTCOME_UNKNOWN** (measured). The 72 hours ended between
+   §21.9's look and the handler's write; the handler knew nothing was kept and said APPROVAL_EXPIRED,
+   and the door, which did not count that code as nothing done, rewrote it to OUTCOME_UNKNOWN and kept
+   the request's key for a reconciliation that does not exist. Fixed by decision 168's revision, which
+   counts it as nothing done; and asked now through the door, with the clock moved between the two.
+2. **People were kept apart only by the table** (measured). One approval per person and proposal was
+   the table's rule alone; the count counted rows. With the rule dropped, two CFO approvals sent at once
+   made a control that asks for two APPROVED. The statement now counts approvers, not rows, and no
+   longer names that rule in its `ON CONFLICT`, so the count holds without it. Two tests: two approvals
+   sent at once, one kept and one CONFLICT; and the rule dropped, one person's two rows still one.
+3. **"Not any actor" was never asked** (measured: deleting the clause left every test green). No
+   request can reach it today, because only agents act and agents never approve; it is asked through a
+   recorded requester that names the CFO among its actors, with its own words, "acted for".
+4. **The stored requester was trusted as it stood** (measured). One that could not be read was refused
+   as a store that could not be read, retry `safe_same_key`, an invitation to send again a request that
+   could never pass; an empty subject let the CFO approve her own payment; and a recorded subject that
+   was not the slip's signer let the signer through, because the slip was never read. Now a requester
+   that cannot be read, has an empty subject or no actors, or names a slip the store does not have is
+   refused to everyone, SOD_VIOLATION, retry `never`; and the slip's signer is read from the slip,
+   which is what the rule names. Only the database's owner can write a requester, so none of this is
+   reachable by a caller: it is the second lock behind §21.8.
+5. **Two approvals by one person sent at once both answered COMMITTED, with one approval** (measured,
+   on the first port). Gone with decision 168's revision: one statement keeps one, and the other is
+   CONFLICT.
+6. **Words out of date** (read): the README was step 27's, the status page stopped at `my_28`,
+   `permissions.ts` said the CFO makes no payments, and the order of checks above `whoMayApprove` left
+   out two of them. Each now says what the code does.
+7. **Decision 169 left out a cost** (read). With `payment:create` the CFO can make any payment up to
+   the control's 25,000 USD line with no approval, because a slip's limits bind an agent and a person
+   logged in has none; a slip she signs can pass `payment:create` on to the agent; and her login, which
+   could make nothing before this step, is now the most worth stealing. **Written down, not fixed:**
+   the rule needed a case, and the CFO's own payment is the plainest one. A real deployment would give
+   the approver's role no `payment:create`, or set a limit on a person's own payments, which nothing in
+   this tutorial does yet.
+
+Red first, against step 30 before this decision: 7 of the new tests failed, one of them, the actor,
+only on its words, since the clause refused the CFO in the subject's words, "asked for".

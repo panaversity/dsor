@@ -17,13 +17,15 @@
 // `TENANT_MISMATCH`.
 
 import type { PGlite } from "@electric-sql/pglite";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { approvalsOf, keepApproval } from "../src/approvals.ts";
-import { type AuditRecord, theLog } from "../src/audit.ts";
-import { callOperation, type OperationAnswer } from "../src/operations.ts";
+import { type AuditRecord, resetClock, setClock, theLog } from "../src/audit.ts";
+import { callOperation, type OperationAnswer, PIPELINE } from "../src/operations.ts";
+import type { Context } from "../src/pipeline.ts";
 import { switchOn } from "../src/policy-controls.ts";
-import { moveProposal, stateOf } from "../src/proposal.ts";
+import { moveProposal, proposalsOf, stateOf } from "../src/proposal.ts";
 import { aDatabase, asTheOwner, BY_A_TEST, resetTheStory } from "./support/database.ts";
+import { makeDoor } from "./support/door.ts";
 
 const CFO = { loggedInAs: "cfo_100", tenant: "org_456" };
 const SUPERVISOR = { loggedInAs: "user_123", tenant: "org_456" };
@@ -42,6 +44,10 @@ afterAll(async () => {
 beforeEach(async () => {
   await resetTheStory();
   expect((await switchOn("org_456", "high-value-payment", 8)).kind).toBe("switched_on");
+});
+
+afterEach(() => {
+  resetClock();
 });
 
 /** user_123's 31,400.00 USD payment, held for the CFO: its proposal's address, fingerprint and id. */
@@ -197,6 +203,38 @@ describe("an approval kept, and the move it completes", () => {
     expect(await approvalsOf("org_456", second.id)).toStrictEqual([]);
     expect(await stateOf("org_456", second.id)).toBe("PENDING_APPROVAL");
   });
+
+  it("DSOR-APR-04a: 72 hours that end between §21.9's look and the handler's write are APPROVAL_EXPIRED, and the request did nothing", async () => {
+    // A review measured this answered OUTCOME_UNKNOWN, retry after_reconciliation: the handler knew
+    // nothing was kept, and the door, not counting APPROVAL_EXPIRED as nothing done, said unknown.
+    const waiting = await aWaitingPayment();
+    const list = PIPELINE.map((stage) =>
+      stage.name === "record the decision"
+        ? Object.freeze({
+            ...stage,
+            run: async (context: Context) => {
+              const done = await stage.run(context);
+
+              // §21.9 has looked, and its 72 hours had not passed. Now they have.
+              setClock(() => new Date(Date.now() + 73 * 60 * 60 * 1000).toISOString());
+
+              return done;
+            },
+          })
+        : stage,
+    );
+    const answer = await makeDoor(list)(CFO, "proposal.approve", {
+      proposal: waiting.proposal,
+      payload_hash: waiting.hash,
+    });
+
+    expect(seen(answer)).toMatch(/^APPROVAL_EXPIRED: prop_\d+ waited for approval until/);
+    expect(answer.kind === "error" && answer.envelope.retry).toBe("never");
+    expect(await approvalsOf("org_456", waiting.id)).toStrictEqual([]);
+    expect(
+      (await proposalsOf("org_456")).find((p) => p.operation === "proposal.approve@1")?.state,
+    ).toBe("FAILED");
+  });
 });
 
 describe("§21.9's refusals, each asked", () => {
@@ -218,9 +256,10 @@ describe("§21.9's refusals, each asked", () => {
     const waiting = await aWaitingPayment();
 
     await asTheOwner(() =>
-      db.query("UPDATE dsor.requirements SET role = 'Treasurer' WHERE tenant = 'org_456' AND proposal = $1", [
-        waiting.id,
-      ]),
+      db.query(
+        "UPDATE dsor.requirements SET role = 'Treasurer' WHERE tenant = 'org_456' AND proposal = $1",
+        [waiting.id],
+      ),
     );
 
     expect(seen(await approve(CFO, waiting.proposal, waiting.hash))).toMatch(
@@ -231,9 +270,9 @@ describe("§21.9's refusals, each asked", () => {
   });
 
   it("DSOR-TEN-02b: the CFO approving org_789's proposal is refused TENANT_MISMATCH, and recorded DENY", async () => {
-    expect(seen(await approve(CFO, "dsor://org_789/proposal/prop_1", `sha256:${"0".repeat(64)}`))).toMatch(
-      /^TENANT_MISMATCH/,
-    );
+    expect(
+      seen(await approve(CFO, "dsor://org_789/proposal/prop_1", `sha256:${"0".repeat(64)}`)),
+    ).toMatch(/^TENANT_MISMATCH/);
     expect((await lastDecision())?.authorization).toBe("DENY");
   });
 
@@ -247,8 +286,8 @@ describe("§21.9's refusals, each asked", () => {
   });
 
   it("DSOR-ERR-01b: the CFO, who may approve, is told a proposal that does not exist is not there", async () => {
-    expect(seen(await approve(CFO, "dsor://org_456/proposal/prop_999", `sha256:${"0".repeat(64)}`))).toBe(
-      "RESOURCE_NOT_FOUND: there is no proposal prop_999 to approve in org_456",
-    );
+    expect(
+      seen(await approve(CFO, "dsor://org_456/proposal/prop_999", `sha256:${"0".repeat(64)}`)),
+    ).toBe("RESOURCE_NOT_FOUND: there is no proposal prop_999 to approve in org_456");
   });
 });

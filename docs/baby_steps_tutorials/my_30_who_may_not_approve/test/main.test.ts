@@ -165,7 +165,7 @@ describe("the program a learner runs", () => {
       // agent's attempts refused, the CFO's allowed, and the payment that still waits once stale.
       // STEP 29: 77, with proposal.approve refused another company's address, the CFO's approval
       // of the wrong fingerprint refused, and her approval of the right one.
-      // STEP 30: 79, with the CFO's own payment held for the CFO, and her approval of it refused.
+      // NEW IN STEP 30: 79, with the CFO's own payment held for the CFO, and her approval of it refused.
       expect(rows).toHaveLength(79);
 
       // Denials recorded, which is step 08's point: a program that logged only its successes
@@ -174,8 +174,8 @@ describe("the program a learner runs", () => {
       // Ten since the review: a principal planted in the arguments that is not the caller is refused
       // (DSOR-SRC-02b) where step 05 ignored it, so the demo's third request is a DENY now. Twelve
       // since step 12: one refusal per operation from the generated section.
-      expect(rows.filter((r) => r.includes("DENY"))).toHaveLength(36); // STEP 30: the CFO approving her own. // STEP 29: two of proposal.approve's; STEP 28: three of control.activate's; STEP 24: four over the day; STEP 25: the brake's and the slip's addresses, and the agent stopped twice; STEP 26: the pounds, and the rupees at old rates
-      expect(rows.filter((r) => r.includes("ALLOW"))).toHaveLength(43); // STEP 30: the CFO's own payment, held. // STEP 29: the CFO's approval; STEP 28: the CFO's switch, and the payment waiting under a stale control; STEP 13: three pages read; STEP 23: three ways; STEP 24: six made; STEP 25: six of the brake's; decision 152: the agent's read of INV-1009; STEP 26: the rupees, and the dollars at old rates; STEP 27: the CFO's three, a wait for approval being no refusal
+      expect(rows.filter((r) => r.includes("DENY"))).toHaveLength(36); // NEW IN STEP 30: the CFO approving her own; STEP 29: two of proposal.approve's; STEP 28: three of control.activate's; STEP 24: four over the day; STEP 25: the brake's and the slip's addresses, and the agent stopped twice; STEP 26: the pounds, and the rupees at old rates
+      expect(rows.filter((r) => r.includes("ALLOW"))).toHaveLength(43); // NEW IN STEP 30: the CFO's own payment, held; STEP 29: the CFO's approval; STEP 28: the CFO's switch, and the payment waiting under a stale control; STEP 13: three pages read; STEP 23: three ways; STEP 24: six made; STEP 25: six of the brake's; decision 152: the agent's read of INV-1009; STEP 26: the rupees, and the dollars at old rates; STEP 27: the CFO's three, a wait for approval being no refusal
 
       // Sequences for org_456 and then 0..1 for org_789: each chain counts from zero.
       // STEP 14: the gaps — 1, 5, 26, 28, 30 since decision 152 — are the records of reads, which

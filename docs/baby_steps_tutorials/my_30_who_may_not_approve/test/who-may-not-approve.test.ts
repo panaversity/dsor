@@ -12,11 +12,11 @@
 
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { approvalsOf } from "../src/approvals.ts";
+import { approvalsOf, keepApproval } from "../src/approvals.ts";
 import { callOperation, type OperationAnswer } from "../src/operations.ts";
 import { switchOn } from "../src/policy-controls.ts";
 import { stateOf } from "../src/proposal.ts";
-import { aDatabase, asTheOwner, resetTheStory } from "./support/database.ts";
+import { aDatabase, asTheOwner, BY_A_TEST, resetTheStory } from "./support/database.ts";
 
 const CFO = { loggedInAs: "cfo_100", tenant: "org_456" };
 const SUPERVISOR = { loggedInAs: "user_123", tenant: "org_456" };
@@ -136,6 +136,97 @@ describe("an agent", () => {
   });
 });
 
+const TWO_SIGNATURES = `INSERT INTO dsor.controls (tenant, id, version, operation, status, record, switched_on_at)
+  SELECT tenant, 'two-signatures', 1, operation, 'active',
+         record || '{"id": "two-signatures", "version": 1,
+                     "effect": {"require_approval": {"role": "CFO", "quorum": 2}}}'::jsonb,
+         now()
+    FROM dsor.controls WHERE tenant = 'org_456' AND id = 'high-value-payment' AND version = 8`;
+
+/** Write what a proposal recorded as its requester, as the database's owner: a test's way to reach it. */
+const recordedRequester = (proposalId: string, requester: string): Promise<unknown> =>
+  asTheOwner(() =>
+    db.query("UPDATE dsor.proposals SET requester = $1 WHERE tenant = 'org_456' AND id = $2", [
+      requester,
+      proposalId,
+    ]),
+  );
+
+describe("the requesting chain, as the proposal recorded it (decision 170)", () => {
+  it("DSOR-SOD-02: not any actor: a requester that names the CFO among its actors is refused to her", async () => {
+    // No request can make this today, because only agents act, and agents never approve. The rule
+    // says "not any actor", so the clause is asked through what the proposal recorded.
+    const waiting = await heldForTheCfo(SUPERVISOR);
+
+    await recordedRequester(
+      waiting.id,
+      JSON.stringify({ subject: "user_123", actor_chain: ["accounts-payable-fte", "cfo_100"] }),
+    );
+
+    expect(seen(await approve(CFO, waiting))).toMatch(
+      /^SOD_VIOLATION: cfo_100 acted for user_123 in asking for prop_\d+, and may not approve it/,
+    );
+    expect(await approvalsOf("org_456", waiting.id)).toStrictEqual([]);
+  });
+
+  it("DSOR-SOD-02: the slip's signer is read from the slip: a recorded subject that is not its signer does not let the signer through", async () => {
+    await asTheOwner(() =>
+      db.exec(`UPDATE dsor.delegations SET status = 'revoked', revoked_by = 'user_123',
+                      revoked_at = now(), revoked_reason = 'replaced by del_300'
+                WHERE tenant = 'org_456' AND id = 'del_100';
+               INSERT INTO dsor.delegations (tenant, id, delegator, delegate, permissions, status,
+                                             expires_at, modes)
+               VALUES ('org_456', 'del_300', 'cfo_100', 'accounts-payable-fte',
+                       ARRAY['payment:create'], 'active', '2099-12-31T23:59:59Z', ARRAY['unattended'])`),
+    );
+    const waiting = await heldForTheCfo(AGENT);
+
+    // The subject beside the slip says user_123; the slip says the CFO signed it.
+    await recordedRequester(
+      waiting.id,
+      JSON.stringify({
+        subject: "user_123",
+        actor_chain: ["accounts-payable-fte"],
+        delegation: "del_300",
+      }),
+    );
+
+    expect(seen(await approve(CFO, waiting))).toMatch(
+      /^SOD_VIOLATION: cfo_100 signed del_300, under which accounts-payable-fte asked for prop_\d+/,
+    );
+  });
+
+  for (const [what, requester] of [
+    ["that is not JSON", "not a requester"],
+    ["with an empty subject", JSON.stringify({ subject: "", actor_chain: [] })],
+    ["with no actors", JSON.stringify({ subject: "user_123" })],
+    [
+      "naming a slip that does not exist",
+      JSON.stringify({
+        subject: "user_123",
+        actor_chain: ["accounts-payable-fte"],
+        delegation: "del_999",
+      }),
+    ],
+  ] as const) {
+    it(`DSOR-SOD-02: a requester ${what} is refused to everyone, SOD_VIOLATION, and a retry cannot help`, async () => {
+      // Taken as nobody, an empty subject let the CFO approve her own payment, a review measured; and
+      // one that could not be read was told as a store that could not be read, to be sent again.
+      const waiting = await heldForTheCfo(SUPERVISOR);
+
+      await recordedRequester(waiting.id, requester);
+
+      const answer = await approve(CFO, waiting);
+
+      expect(seen(answer)).toMatch(
+        /^SOD_VIOLATION: prop_\d+ (recorded a requester|was asked for under del_999)/,
+      );
+      expect(answer.kind === "error" && answer.envelope.retry).toBe("never");
+      expect(await approvalsOf("org_456", waiting.id)).toStrictEqual([]);
+    });
+  }
+});
+
 describe("a quorum", () => {
   it("DSOR-SOD-04c: two approvals by the CFO are one person, and a control asking for two keeps waiting", async () => {
     await asTheOwner(() =>
@@ -154,6 +245,51 @@ describe("a quorum", () => {
     );
     expect(await approvalsOf("org_456", waiting.id)).toHaveLength(1);
     expect(await stateOf("org_456", waiting.id)).toBe("PENDING_APPROVAL");
+  });
+
+  it("DSOR-SOD-04c: two approvals by the CFO sent at once are one person: one is kept, the other is CONFLICT, and it keeps waiting", async () => {
+    // Decision 170: a review sent the two one after the other only; AGENTS.md asks for requests
+    // sent at once.
+    await asTheOwner(() => db.exec(TWO_SIGNATURES));
+    const waiting = await heldForTheCfo(SUPERVISOR);
+    const answers = await Promise.all([approve(CFO, waiting), approve(CFO, waiting)]);
+
+    expect(answers.map(seen).sort()).toStrictEqual([
+      "COMMITTED",
+      `CONFLICT: cfo_100 has approved ${waiting.id} already`,
+    ]);
+    expect(await approvalsOf("org_456", waiting.id)).toHaveLength(1);
+    expect(await stateOf("org_456", waiting.id)).toBe("PENDING_APPROVAL");
+  });
+
+  it("DSOR-SOD-04c: the count is of people: without the table's one-row-per-person rule, one person's two approvals still do not make two", async () => {
+    // A review dropped the rule and measured a control asking for two going APPROVED on one CFO.
+    // The statement counts approvers now, not rows; this breaks the first lock to show the second.
+    await asTheOwner(() => db.exec(TWO_SIGNATURES));
+    const waiting = await heldForTheCfo(SUPERVISOR);
+
+    await approve(CFO, waiting);
+
+    const [approval] = await approvalsOf("org_456", waiting.id);
+    const { id: _id, status: _status, ...record } = approval ?? {};
+
+    await asTheOwner(() =>
+      db.exec("ALTER TABLE dsor.approvals DROP CONSTRAINT approvals_tenant_proposal_approver_key"),
+    );
+
+    try {
+      const again = await keepApproval("org_456", waiting.id, "cfo_100", record, BY_A_TEST);
+
+      expect(again).toMatchObject({ kind: "kept", approved: false });
+      expect(await approvalsOf("org_456", waiting.id)).toHaveLength(2);
+      expect(await stateOf("org_456", waiting.id)).toBe("PENDING_APPROVAL");
+    } finally {
+      await asTheOwner(() =>
+        db.exec(`DELETE FROM dsor.approvals WHERE tenant = 'org_456';
+                 ALTER TABLE dsor.approvals
+                   ADD CONSTRAINT approvals_tenant_proposal_approver_key UNIQUE (tenant, proposal, approver)`),
+      );
+    }
   });
 });
 

@@ -747,32 +747,38 @@ const handlers: Readonly<Record<string, Handler>> = {
 
     const fills = requirements.filter((r) => r.role === approver.title);
     const at = now();
-    const approved = await keepApproval(tenant, read.id, askedBy, {
-      proposal: formatUri({ tenant, entity: "proposal", id: read.id }),
-      operation: target.operation,
+    const approved = await keepApproval(
       tenant,
-      // What it is about: the addresses its arguments name, or, naming none, the proposal itself.
-      resources: addressesNamedIn(target.payload, tenant, read.id),
-      payload_hash: target.payloadHash,
-      risk: registry.get(target.operation.split("@")[0] ?? "")?.risk.level ?? "high",
-      // Nothing is bound yet: checking the world again at execution is step 31's.
-      bound_state: { mode: "predicate", versions: {} },
-      satisfies: fills.map(({ control, version, role, quorum }) => ({
-        control,
-        version,
-        requirement: { role, quorum },
-      })),
-      // When the approver logged in is this decision's own time: no real login until step 43.
-      approvers: [{ principal: askedBy, basis: `role:${approver.title}`, authn: { at } }],
-      sod_mode: "standard",
-      expires_at: expiresAt(target.waitingSince),
-    }, {
-      // The move to APPROVED, when this is the last approval, is in the name of this request.
-      subject: askedBy,
-      requestId,
-      operation: target.operation,
-      payloadHash: target.payloadHash,
-    });
+      read.id,
+      askedBy,
+      {
+        proposal: formatUri({ tenant, entity: "proposal", id: read.id }),
+        operation: target.operation,
+        tenant,
+        // What it is about: the addresses its arguments name, or, naming none, the proposal itself.
+        resources: addressesNamedIn(target.payload, tenant, read.id),
+        payload_hash: target.payloadHash,
+        risk: registry.get(target.operation.split("@")[0] ?? "")?.risk.level ?? "high",
+        // Nothing is bound yet: checking the world again at execution is step 31's.
+        bound_state: { mode: "predicate", versions: {} },
+        satisfies: fills.map(({ control, version, role, quorum }) => ({
+          control,
+          version,
+          requirement: { role, quorum },
+        })),
+        // When the approver logged in is this decision's own time: no real login until step 43.
+        approvers: [{ principal: askedBy, basis: `role:${approver.title}`, authn: { at } }],
+        sod_mode: "standard",
+        expires_at: expiresAt(target.waitingSince),
+      },
+      {
+        // The move to APPROVED, when this is the last approval, is in the name of this request.
+        subject: askedBy,
+        requestId,
+        operation: target.operation,
+        payloadHash: target.payloadHash,
+      },
+    );
 
     // STEP 29, decision 168: the approval and the move it completes were one statement, so
     // either both were written or neither. Nothing kept is told why: the proposal stopped waiting, or
@@ -2146,10 +2152,13 @@ const createTheProposal: Stage["run"] = async (context) => {
  * STEP 29: part of §21.9 — who may approve a waiting proposal (decision 167).
  *
  * In this order, each refusal recorded before anything is written: a person, logged in as
- * themselves, never an agent and never under a slip (DSOR-APR-05a); a proposal of this company; the
- * target operation's approve_permission, held (DSOR-APR-07); still waiting, and its 72 hours not
- * passed; a requirement whose role is the approver's title; not approved by them already; and last,
- * the fingerprint, which must be the stored request's (DSOR-APR-09).
+ * themselves, never an agent and never under a slip (DSOR-APR-05a); holding some approve
+ * permission, asked before the proposal is looked up, so a person who may approve nothing learns
+ * nothing about it (DSOR-ERR-01b, decision 168); a proposal of this company; the target operation's
+ * approve_permission, held (DSOR-APR-07); still waiting, and its 72 hours not passed; a requirement
+ * whose role is the approver's title; NEW IN STEP 30: nobody in its requesting chain (DSOR-SOD-02,
+ * decisions 169 and 170); not approved by them already; and last, the fingerprint, which must be
+ * the stored request's (DSOR-APR-09).
  */
 async function whoMayApprove(
   context: Context,
@@ -2172,9 +2181,7 @@ async function whoMayApprove(
   // (DSOR-ERR-01b). Looked up first, a proposal that did not exist was RESOURCE_NOT_FOUND, and one
   // that did named its operation: a way to learn which proposals there are.
   const approvePermissions = [
-    ...new Set(
-      [...registry.values()].flatMap((c) => c.authorization.approve_permission ?? []),
-    ),
+    ...new Set([...registry.values()].flatMap((c) => c.authorization.approve_permission ?? [])),
   ];
 
   if (!approvePermissions.some((p) => holds(principal, p))) {
@@ -2241,17 +2248,53 @@ async function whoMayApprove(
     );
   }
 
-  // NEW IN STEP 30: and never someone in its requesting chain: the subject it was asked for, which
-  // is the signer of the slip an agent asked under, or any actor in it (DSOR-SOD-02, decision 169).
-  // Read from what the proposal recorded when it was made, never from this request.
-  const { subject, actorChain, delegation } = target.requester;
-
-  if (subject === principal.id || actorChain.includes(principal.id)) {
+  // NEW IN STEP 30: and never someone in its requesting chain: the subject it was asked for, the
+  // signer of the slip an agent asked under, or any actor in it (DSOR-SOD-02, decision 169). Read
+  // from what the proposal recorded when it was made, never from this request. Decision 170: and
+  // the slip's signer from the slip itself, which the rule names, not only from the subject the
+  // proposal recorded beside it; and a requester that cannot be read is refused to everyone.
+  if (target.requester === undefined) {
     return no(
       "SOD_VIOLATION",
-      delegation !== undefined && subject === principal.id
-        ? `${principal.id} signed ${delegation}, under which ${actorChain.join(", ")} asked for ${id}, and may not approve it`
-        : `${principal.id} asked for ${id}, and may not approve it`,
+      `${id} recorded a requester this program cannot read, so nobody can be shown to be outside its chain, and nobody may approve it`,
+    );
+  }
+
+  const { subject, actorChain, delegation } = target.requester;
+  let signer: string | undefined;
+
+  if (delegation !== undefined) {
+    try {
+      signer = (await slipNamed(tenant, delegation))?.delegator;
+    } catch {
+      return no("EVIDENCE_STORE_UNAVAILABLE", `${id} could not be read; nothing was done`);
+    }
+
+    // A slip is never deleted, only revoked: one the proposal names and the store does not have is
+    // a requester nobody can check.
+    if (signer === undefined) {
+      return no(
+        "SOD_VIOLATION",
+        `${id} was asked for under ${delegation}, which cannot be found, so nobody may approve it`,
+      );
+    }
+  }
+
+  if (signer === principal.id) {
+    return no(
+      "SOD_VIOLATION",
+      `${principal.id} signed ${delegation}, under which ${actorChain.join(", ")} asked for ${id}, and may not approve it`,
+    );
+  }
+
+  if (subject === principal.id) {
+    return no("SOD_VIOLATION", `${principal.id} asked for ${id}, and may not approve it`);
+  }
+
+  if (actorChain.includes(principal.id)) {
+    return no(
+      "SOD_VIOLATION",
+      `${principal.id} acted for ${subject} in asking for ${id}, and may not approve it`,
     );
   }
 

@@ -39,7 +39,8 @@ import type { Principal } from "./people.ts";
  * this list directly, standing in for what a real login would carry (decision 130).
  */
 // STEP 17: the supervisor and the agent may make a draft payment and take one back. The
-// CFO approves payments, in a later step, and makes none (decision 125).
+// CFO approves payments, in a later step, and makes none (decision 125). NEW IN STEP 30: she makes
+// them now, below, so there is a payment she may not approve (decision 169).
 export const ROLES: Readonly<Record<string, readonly string[]>> = Object.freeze({
   ap_supervisor: Object.freeze([
     "invoice:read",
