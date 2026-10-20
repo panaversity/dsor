@@ -159,3 +159,204 @@ test.
 | B5 | The owner is let through |
 | B6 | `dsor_runtime` may set `written_xact` |
 | B7 | The first check runs at once, not at commit |
+
+## What changed since step 40
+
+No file in `src/` changed. The whole check lives in the database.
+
+| File | What changed |
+| --- | --- |
+| `migrations/038_payment_events.sql` | **New.** `written_xact` on `dsor.outbox`; step 40's guard keeps it too; the once-each index; the check at `COMMIT` on `app.payments`; the check on `dsor.outbox` when an event is written (D1 to D7) |
+| `store.json` | The map names the two new triggers, so start-up refuses a database without them |
+| `test/payment-events.db.test.ts`, `test/owner-payment-events.ts` | **New.** The claims C1 to C5 |
+| `test/catalogs.ts`, `test/store-map.test.ts`, `test/inspector.test.ts`, `test/concurrency.db.test.ts`, `test/audit.db.test.ts` | The two triggers and the new column, by name; start-up refuses a database that lacks either trigger |
+| `test/owner-store.ts`, `test/outbox.db.test.ts` | Three fixtures write what the check now asks: the owner's draft writes its `payment.created`, L2's two events are about a proposal, and L4's copy is refused by the once-each index. Each says "Changed in step 40b" |
+
+```bash
+git diff --no-index ../mj_40_events_with_an_outbox/migrations migrations
+git diff --no-index ../mj_40_events_with_an_outbox/test test
+```
+
+## Run it
+
+As in step 40: a local PostgreSQL 17 and a database of its own. **Use a new database for this
+step.** A database where step 40's tests ran holds two `payment.created` events about one made-up
+payment, written by step 40's L2 test. There, migration 038 cannot build its once-each index, and it
+stops with `migration failed, nothing changed: could not create unique index "outbox_once_each"`.
+
+```bash
+pnpm install
+pnpm migrate
+pnpm test:db test/payment-events.db.test.ts
+pnpm start          # the story of step 40, unchanged: every path DSoR has writes its events
+```
+
+## Break it
+
+### The learner's predictions, run for real
+
+**P1.** The check is in place, and the reconcile that forgot its event line runs. A real run on
+2026-10-20, in a copy of this step with that one line removed, on a database of its own:
+
+```text
+user_123 drafts PAY-901 for INV-9001: COMMITTED
+user_123 sends PAY-901, and the bank never answers: OUTCOME_UNKNOWN
+dsor-scheduler reconciles it; the bank did send it: INTERNAL_ERROR (DSoR hit an unexpected error)
+in the database: PAY-901 is draft; its events: ["payment.created #1"]
+$ pnpm send-events
+org_456: sent 1 event
+org_789: sent 0 events
+the accounts system hears of PAY-901: ["payment.created"]
+```
+
+The learner answered `COMMITTED`, paid, no event: "the check does not see DSoR's own work". That is
+what step 40 does, in "Why it matters" above. Here the check stands on `app.payments`, and every
+path writes there, DSoR's own work included. So the commit failed, and nothing of the reconcile was
+kept. The proposal is still `OUTCOME_UNKNOWN`. The log still holds the call, as record 17:
+`payment.reconcile@1`, `INTERNAL_ERROR`. And INV-9001 stays held: a new draft of INV-9001 in the
+same database heard `RESOURCE_HELD`, "try again once it is reconciled". The forgotten line now
+stops payments loudly, where before it lost an event quietly. Once the line is back, the shipped
+reconcile settles the payment, and the test of C5 shows it.
+
+**P2.** user_123 cancels the draft PAY-901 through DSoR, on a fresh database:
+
+```text
+user_123 drafts PAY-901: COMMITTED
+user_123 cancels PAY-901: COMMITTED
+in the database: PAY-901 is cancelled; its events: ["payment.created"]
+```
+
+The learner answered `COMMITTED`, no event. Right: the check asks for an event only for a draft and
+for a payment marked paid, the two changes that have an event type.
+
+### The breaks
+
+Each break ran on 2026-10-20 in a copy of this folder outside the repository. Each changed migration
+038, migrated a fresh database of its own, and ran `test/store-map.test.ts` and
+`test/inspector.test.ts`, then `test/payment-events.db.test.ts`, `test/outbox.db.test.ts`,
+`test/store.db.test.ts`, and `test/audit.db.test.ts`. With the migration restored, all of them
+passed.
+
+| Break | What it removes | Unit tests failed | Database tests failed |
+|---|---|---|---|
+| **B1** | The first check: its function returns at once | 0 | 5 |
+| **B2** | "This transaction": `written_xact` is no longer compared | 0 | 1 |
+| **B3** | The second check: its function returns at once | 0 | 2 |
+| **B4** | Once each: the unique index dropped | 0 | 3 |
+| **B5** | The owner let through: the first check returns at once for any login but `dsor_runtime` | 0 | 2 |
+| **B6** | `dsor_runtime` granted INSERT and UPDATE on `written_xact` | 0 | 6 |
+| **B7** | The first check runs at once, `NOT DEFERRABLE`, not at commit | 0 | 39 |
+
+Every break is caught. The unit tests fail none, and that is right: they read `store.json`, which
+no break changed. B2 is caught by one test only, the owner's draft written again under its old id:
+every other way to have an event from an earlier transaction is refused by the second check or by
+once-each first. B7 fails 39 tests because every draft DSoR writes is refused: the payment is
+written before its event, and the check no longer waits. That is decision D7, seen.
+
+## Build it yourself with Claude Code
+
+| # | Move | What was done |
+|---|---|---|
+| 1 | Understand | Step 40 from the ground up, in a session of its own; then the problem of this step, shown with a real run of step 40 with one line removed |
+| 2 | Decide | Five decisions by the learner, D1 to D5; D6 found while checking the design; D7 follows from step 40 |
+| 3 | The copy | Step 40 copied, its markers removed |
+| 4 | Red | Fourteen database tests: ten fail for the right reason, and four are the "yes" beside each "no" |
+| 5 | Code | One migration |
+| 6 | Earlier tests | The map, the catalog, the privileges, the triggers, and three fixtures |
+| 7 | Break it | P1 and P2, then B1 to B7, for real |
+| 8 | Review | A reviewer who had not seen the conversation |
+
+To start it in a new session:
+
+```text
+Build step 40b in learner mode from the design in
+docs/baby_steps_tutorials/mj_40b_no_change_without_its_event/README.md.
+```
+
+## Check yourself
+
+1. Step 40 writes each event in the same transaction as its change. So what can still go wrong, and
+   why does a test not catch it every time?
+2. Why does the check "this change has its event" wait until `COMMIT`, while "this event has its
+   change" runs at once?
+3. Why does the check name the transaction with a column of its own, `written_xact`, and not with
+   PostgreSQL's hidden column `xmin`?
+4. user_123 cancels a draft. Why does the check let it through with no event?
+5. The reconcile that forgot its event is refused. Who notices, and what stays stuck until it is
+   fixed?
+
+<details>
+<summary>Answers</summary>
+
+1. A path can forget the one line that writes its event. The change still commits, with no event:
+   PAY-968 in "Why it matters". A test catches it only where someone wrote that test, and a new
+   path, like step 41's, has none until someone does.
+2. DSoR writes the payment first and the event after, because the event carries the payment as it
+   was stored. When the payment is written, its event does not exist yet, so that check waits for
+   the end. When an event is written, its change is already there (D7).
+3. The company's code runs inside a savepoint, and a row written there carries the savepoint's own
+   id in `xmin`, not the transaction's. `pg_current_xact_id()` names the whole transaction, even
+   inside a savepoint (D6).
+4. A cancel has no event type, and the check asks only for the two that have one: a draft needs
+   `payment.created`, and a payment marked paid needs `payment.executed` (C3).
+5. dsor-scheduler hears `INTERNAL_ERROR`, and the log keeps that answer. The proposal stays
+   `OUTCOME_UNKNOWN`, so INV-9001 stays held, and every new draft of it hears `RESOURCE_HELD` until a
+   reconcile that writes its event runs (P1).
+
+</details>
+
+## Think it through
+
+### Found while building
+
+- **`xmin` would not work.** Checking the design against step 40's code found that the company's
+  code runs inside a savepoint, `SAVEPOINT work`. A row written there carries the savepoint's id in
+  `xmin`. So the check names the transaction with a column of its own, filled with
+  `pg_current_xact_id()` (D6).
+- **Three fixtures planted what the check now refuses.** The owner's draft in `owner-store.ts` had
+  no event. Step 40's L2 test wrote two `payment.created` events about a payment that was never
+  drafted. And L4's control wrote a copy of an event. Each now writes what the check asks, and says
+  so. This is D5's downside, seen.
+- **A database where step 40's tests ran cannot take migration 038.** Its outbox already holds two
+  `payment.created` events about one payment, from step 40's L2 test, so the once-each index cannot
+  be built. The migration stops and changes nothing. "Run it" says to start on a new database.
+- **The refused reconcile holds its invoice.** Settled while running P2: the database where P1 ran
+  refused a new draft of INV-9001 with `RESOURCE_HELD`, because P1's proposal is still
+  `OUTCOME_UNKNOWN`.
+- **One database test failed once in a full run: `bank.db`'s D7.** It expects a cancel that arrives
+  150 ms into a send to wait for the payment's lock and hear `STALE_STATE`, and it heard
+  `RESOURCE_HELD`. It passed alone on a fresh database. Step 40's own code, on a database where its
+  full suite had run, failed it once and passed it on the next run. So it is not this step: it is the
+  race that old holds make worse, open question 158.
+
+### What the review found
+
+The review is running. Its findings, and what was done about each, come here.
+
+### Left open on purpose
+
+- **Memory has no such check** (D3). The unit tests catch a forgotten event only where someone wrote
+  a test for it.
+- **`proposal.approved` is not checked.** The check stands on the payment (D1), and an approval is
+  not a payment.
+- **Payments from before this step are not checked** (D4). A payment drafted with no event before
+  migration 038 could still get a `payment.created` later.
+- **The check sees that an event exists, not what it says.** What an event says is DSoR's code's job,
+  checked since step 40's review (H1).
+- **In a real company, payments sit behind a connector.** There DSoR cannot add a check to the
+  company's table, and DSOR-EXE-04a does not apply either (D1). This step's check depends on this
+  tutorial's layout, where the two stores share one database.
+- **A forgotten event after the bank leaves money sent and a proposal unknown.** That is loud by
+  design: the reconcile fails until the code is fixed, as P1 shows. The money is not lost; the
+  announcement waits.
+
+## The rules this step meets
+
+This step adds no rule. It makes two of step 40's rules hold for every path, in the database.
+
+| Rule | What it says | Spec | Tests |
+|---|---|---|---|
+| DSOR-EVT-01a | Events are produced through a transactional outbox that ties the event to the recorded outcome | [§31](../../../specs/dsor/03-execution.md#31-events) | `test/payment-events.db.test.ts`, C1 to C5; `test/inspector.test.ts`, C5 |
+| DSOR-EXE-04a | Where the stores share a transaction, the state change, the outcome, and the outbox entry commit atomically | [§21](../../../specs/dsor/03-execution.md#21-command-pipeline) | `test/payment-events.db.test.ts`, C1 and C2 |
+
+**Next:** step 40c, one bad event does not block the rest. Then step 41, a payment run.
