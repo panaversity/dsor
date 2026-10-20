@@ -303,7 +303,23 @@ fails.
 | L3 | A try may be written for an event held back behind its payment's earlier event | 1 |
 | L4 | An event's number need not be the next one for its payment | 1 |
 
-The review's six other breaks, G2, G3, G8, G10, K1, and S6, are being run again; their rows follow.
+The review's six other breaks were run again too, with every unit test and three more database
+files: the store, its locks, and its log. G2, G3, K1, and S6 then left every test green. So each got
+a test of its own, and its row below is the break run again with that test:
+
+| Break | What it changes | Tests that fail |
+|---|---|---|
+| G2 | A try may be written for an event already sent | 1 |
+| G3 | A try's company need not be its event's company | 1 |
+| G8 | The alerts lose their one-alert-per-event key | 4 |
+| G10 | An alert may be raised for an event already sent | 0: see below |
+| K1 | The kind of the log of tries allows UPDATE on its columns, and DELETE | 2 |
+| S6 | A reason is cut at 201 bytes, not 200 | 1 |
+
+**G10 cannot be reached.** An event gets its third try only through the trigger that then raises
+its alert. Once the event is sent, that alert is closed, and its key refuses a second one. So no
+writer can ask for an alert of a sent event, unless the owner first switches a trigger off, which
+"Left open" names. The check stays: it costs one line, and it says the rule where a reader looks.
 
 **S3 is not a fault any more.** Before D9, `break` there stopped the run at a held-back payment's
 second event, and the payments after it waited. Now the sender notes how far it has read before it
