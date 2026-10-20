@@ -395,9 +395,10 @@ docs/baby_steps_tutorials/mj_40c_one_bad_event_does_not_block/README.md.
 - **The tries and the alerts point at events.** So PostgreSQL refuses a plain `TRUNCATE` of
   `dsor.outbox` before step 40b's guard is asked. The owner's program now truncates with `CASCADE`,
   and step 40b's guard answers, as its test expects.
-- **Two database tests fail on timing in a full run, and pass alone.** `intents.db`'s EXE-04b gives
-  the bank 50 ms, which a busy machine misses; it passed alone twice. `bank.db`'s D7 is open question
-  158, as in step 40b.
+- **Two database tests can fail on timing in a full run, and pass alone.** `intents.db`'s EXE-04b
+  gives the bank 50 ms, which a busy machine misses. `bank.db`'s D7 is open question 158, as in step
+  40b. Each failed once while this step was built. The last full run, on a new database after every
+  fix, passed all 684.
 
 ### What the review found
 
