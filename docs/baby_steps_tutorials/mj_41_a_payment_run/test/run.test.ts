@@ -9,7 +9,7 @@ import type { Invoice } from "../src/invoice.ts";
 import { money } from "../src/money.ts";
 import { handlersFor } from "../src/operations.ts";
 import { lineKeyOf, runProblems } from "../src/run.ts";
-import { AGENT, contract, keyed, SUPERVISOR, without } from "./helpers.ts";
+import { AGENT, CFO, contract, keyed, SUPERVISOR, without } from "./helpers.ts";
 import { ruleWorld, type RuleWorld } from "./rule-world.ts";
 
 /** A run's input: one line for each of these bills of org_456, each decided on version 1. */
@@ -292,5 +292,101 @@ describe("C3: an accident keeps nothing of a run", () => {
     expect(answer).toMatchObject({ code: "INTERNAL_ERROR" });
     expect(await w.proposals.all()).toStrictEqual([]);
     expect(await w.reservations.all()).toStrictEqual([]);
+  });
+});
+
+/** Run A, waiting for cfo_100: its URI, and what her screen shows of it. */
+async function waitingRunA(w: RuleWorld) {
+  const answer = await w.ask(keyed(AGENT), "payment.run", RUN_A);
+  const run = (await proposalAt(w, String((answer as { proposal: string }).proposal)))!;
+  const shown = {
+    proposal: run.uri,
+    payload_hash: run.payload_hash,
+    manifest_hash: run.manifest_hash,
+    totals: run.totals,
+    vendor_totals: run.vendor_totals,
+  };
+  return { run, shown };
+}
+
+describe("C5 and C6: one approval, of the list and its totals", () => {
+  it("DSOR-BAT-02a: C5: cfo_100 approves the run with its payload hash, its fingerprint, and its totals: the run and the line she was asked about are APPROVED", async () => {
+    const w = ruleWorld();
+    const { run, shown } = await waitingRunA(w);
+    const approval = await w.ask(keyed(CFO), "proposal.approve", shown);
+    expect(approval).toMatchObject({ outcome: "COMMITTED", data: { state: "APPROVED" } });
+    expect((await proposalAt(w, run.uri))!.state).toBe("APPROVED");
+    expect((await linesOf(w, run.uri)).map((p) => p.state)).toStrictEqual([
+      "READY",
+      "APPROVED",
+      "READY",
+    ]);
+  });
+
+  it.each([
+    ["a fingerprint of other lines", { manifest_hash: payloadHash(RUN_B.lines) }],
+    ["the totals her screen showed wrong", { totals: [{ value: "39940.50", currency: "USD" }] }],
+    [
+      "the totals per vendor in another order",
+      {
+        vendor_totals: [
+          {
+            vendor: "dsor://org_456/vendor/VENDOR-44",
+            amount: { value: "40300.50", currency: "USD" },
+          },
+          {
+            vendor: "dsor://org_456/vendor/VENDOR-31",
+            amount: { value: "640.00", currency: "USD" },
+          },
+        ],
+      },
+    ],
+  ])(
+    "DSOR-BAT-02a: C5: an approval with %s is refused with APPROVAL_MISMATCH, and the run still waits",
+    async (_what, changed) => {
+      const w = ruleWorld();
+      const { run, shown } = await waitingRunA(w);
+      const approval = await w.ask(keyed(CFO), "proposal.approve", { ...shown, ...changed });
+      expect(approval).toMatchObject({ code: "APPROVAL_MISMATCH" });
+      expect((await proposalAt(w, run.uri))!.state).toBe("PENDING_APPROVAL");
+      expect((await linesOf(w, run.uri))[1]!.state).toBe("PENDING_APPROVAL");
+    },
+  );
+
+  it("DSOR-BAT-02a: C5: an approval of a run with only its payload hash, as for one draft, is refused with APPROVAL_MISMATCH", async () => {
+    const w = ruleWorld();
+    const { run, shown } = await waitingRunA(w);
+    const { proposal, payload_hash } = shown;
+    const approval = await w.ask(keyed(CFO), "proposal.approve", { proposal, payload_hash });
+    expect(approval).toMatchObject({ code: "APPROVAL_MISMATCH" });
+    expect((await proposalAt(w, run.uri))!.state).toBe("PENDING_APPROVAL");
+  });
+
+  it("DSOR-BAT-02a: C5: an approval of one draft that carries a fingerprint is refused: one draft is no run", async () => {
+    const w = ruleWorld();
+    const answer = await w.draft("INV-1008");
+    const uri = String((answer as { proposal: string }).proposal);
+    const draft = (await proposalAt(w, uri))!;
+    const approval = await w.ask(keyed(CFO), "proposal.approve", {
+      proposal: uri,
+      payload_hash: draft.payload_hash,
+      manifest_hash: draft.payload_hash,
+      totals: [],
+      vendor_totals: [],
+    });
+    expect(approval).toMatchObject({ code: "APPROVAL_MISMATCH" });
+    expect((await proposalAt(w, uri))!.state).toBe("PENDING_APPROVAL");
+  });
+
+  it("step 41's decision D7: C6: a line is never approved alone: cfo_100's approval of INV-1008's line is refused, and it still waits", async () => {
+    const w = ruleWorld();
+    const { run } = await waitingRunA(w);
+    const line = (await linesOf(w, run.uri))[1]!;
+    const approval = await w.ask(keyed(CFO), "proposal.approve", {
+      proposal: line.uri,
+      payload_hash: line.payload_hash,
+    });
+    expect(approval).toMatchObject({ code: "CONFLICT" });
+    expect((await proposalAt(w, line.uri))!.state).toBe("PENDING_APPROVAL");
   });
 });
