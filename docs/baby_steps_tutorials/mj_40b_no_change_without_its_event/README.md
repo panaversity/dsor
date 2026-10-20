@@ -131,8 +131,8 @@ one database, so they share a transaction. That is the case DSOR-EXE-04a names.
 | Claim | Test |
 |---|---|
 | C1 | As `dsor_runtime`, a transaction that inserts a draft and no event: `COMMIT` fails, and the draft is gone. The same with its event: it commits |
-| C2 | A transaction that marks a draft paid with no event fails at `COMMIT`. With an event written in an earlier transaction, it fails too. With its event, it commits |
-| C3 | A cancel, a version change, and an owner's change of amount commit with no event. Step 40's whole suite stays green: every path DSoR has writes its events |
+| C2 | A transaction that marks a draft paid with no event fails at `COMMIT`. With its event, it commits. An event from an earlier transaction does not count: the owner removes a draft and writes it again under its old id, and the commit fails, though its old `payment.created` is still there |
+| C3 | user_123 cancels a draft through DSoR, and the owner changes a draft's amount: both commit, with no event. Step 40's whole suite stays green: every path DSoR has writes its events |
 | C4 | A `payment.created` about PAY-000, which does not exist, is refused. A `payment.executed` about a draft is refused. A second `payment.executed` about a paid payment is refused |
 | C5 | The owner's draft with no event fails at `COMMIT`. `dsor_runtime` cannot set `written_xact`. Through DSoR: a reconcile whose event is never written does not commit |
 

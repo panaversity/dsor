@@ -224,6 +224,14 @@ export function ownerOutbox(...args: string[]): unknown {
   return asOwner("owner-outbox.ts", args);
 }
 
+// NEW IN STEP 40b: the owner drafts a payment with no event, or drafts one again under an old id,
+//   and the database's check refuses both (test/owner-payment-events.ts; step 40b's README, claims
+//   C1 and C5).
+/** What the owner's payment program printed, for these words. */
+export function ownerPaymentEvents(...args: string[]): unknown {
+  return asOwner("owner-payment-events.ts", args);
+}
+
 // Step 32: the owner ends every proposal in flight, between two tests of one file that each
 //   need an invoice free (test/owner-attempts.ts; step 32's README, decision D7).
 /** What the owner's attempts program printed: how many proposals it ended. */
