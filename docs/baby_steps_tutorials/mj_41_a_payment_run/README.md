@@ -218,4 +218,199 @@ Asked before the build, as stories. A real run settles each one after the build.
 | B9 | A line may be approved alone |
 | B10 | The most lines a run may hold is not checked |
 
-**Next:** the build, piece by piece, with each piece's tests written first.
+## What changed since step 40c
+
+| File | What changed |
+| --- | --- |
+| `contracts/payment.run.json`, `inputs/PaymentRunRequest.schema.json`, `examples/payment.run.json` | **New.** The run's contract, with its batch, all or nothing and 50 lines, and the operation its lines are; its input, the lines and nothing else; its example (C1) |
+| `src/run.ts` | **New.** Start-up's check of a run's contract; line ⑥'s check of its length and of a bill named twice; a line's derived key; the totals per currency and per vendor (C1, C2, C5) |
+| `src/pipeline.ts` | A run at lines ⑧ to ⑩: each line's proposal, its checks, the one booking of the total, the denial of the whole run; its work, which drafts every line in the claim's one transaction; its check again at the release; and its lines' moves with it (C2 to C4, C6 to C8) |
+| `src/approve.ts`, `inputs/ProposalApproveRequest.schema.json`, `examples/proposal.approve.json` | A run's approval carries its fingerprint and its totals, compared last; a line is never approved alone; the run approved moves its waiting lines (C5, C6) |
+| `src/proposals.ts`, `src/postgres.ts`, `migrations/044_payment_runs.sql`, `store.json` | **New migration.** A line's run and a run's fingerprint, written with the proposal; a run's totals, written once when it starts to wait; a run's lines, listed; the trigger's rules for each, and the map's privileges (C2, C5) |
+| `src/limits.ts` | The day's limit for a run: every line's amount converted as one draft's is, added up, and booked once, keyed by the run (C4) |
+| `src/claims.ts` | Memory's claim undoes every proposal an accident's call made, a run's lines too (C3) |
+| `src/registry.ts`, `classifications.json` | Start-up runs the run's check; a drafted run's answer, its payments, is labelled |
+| `src/main.ts` | The story's scene of a payment run |
+| `test/run.test.ts`, `test/run.db.test.ts`, `test/owner-run-bills.ts`, `test/db.ts` | **New.** The claims in memory and on PostgreSQL; the owner's program that adds the runs' own bills |
+| `test/cross-tenant.test.ts`, `test/cross-tenant.db.test.ts`, `test/modes.test.ts`, `test/contract.test.ts`, `test/registry.test.ts`, `test/startup.test.ts`, `test/semantics.test.ts`, `test/classifications-file.test.ts`, `test/program.db.test.ts`, `test/audit.db.test.ts`, `test/catalogs.ts`, `test/store-map.test.ts` | The earlier tests that list every contract, every attack, and every privilege name the run. Each says "Changed in step 41" |
+
+```bash
+git diff --no-index ../mj_40c_one_bad_event_does_not_block/src src
+git diff --no-index ../mj_40c_one_bad_event_does_not_block/test test
+git diff --no-index ../mj_40c_one_bad_event_does_not_block/migrations migrations
+```
+
+## Run it
+
+As in step 40c: a local PostgreSQL 17 and a new database of its own. Migration 044 is new.
+
+```bash
+pnpm install
+pnpm migrate
+pnpm test:db test/run.db.test.ts
+pnpm start          # the story; its last scene is a payment run
+```
+
+`pnpm start` ends with the run's scene, in memory. In that world PAY-901 is the first payment
+drafted, of INV-1002, not the story's PAY-901 of INV-1008:
+
+```text
+a payment run, in memory, in a world of its own:
+  the agent proposes INV-1002, INV-1008, and INV-1006 as one run:
+    PENDING_APPROVAL, needs CFO x1 (high-value-payment), until 2026-10-13T15:05:00.000Z
+    it keeps its fingerprint, sha256:111abbaa9bf7…, its total, 40940.50 USD, and per vendor: VENDOR-31 640.00, VENDOR-44 40300.50
+    its lines wait: INV-1008 PENDING_APPROVAL, INV-1002 READY, INV-1006 READY
+  cfo_100's screen showed 39,940.50 USD; she approves with it: APPROVAL_MISMATCH: the totals are not run prop_5a8052ff-…'s
+  she approves with the run's own totals: answered, apr_92ce8c8e-…
+  the agent releases the run: COMMITTED, PAY-901 of INV-1002, PAY-902 of INV-1008, PAY-903 of INV-1006
+```
+
+(The two ids are shortened here.)
+
+## Break it
+
+### The learner's predictions, run for real
+
+A real run on 2026-10-20, on this step's own code, in memory, in a copy. The week's 37 bills of
+"Why it matters" are added to the world. P2 to P4 use 12 of them, 187,250.00 USD in all: INV-3008
+is among them, and three of VENDOR-31's. The words are DSoR's own; the ids are this run's:
+
+```text
+P1. accounts-payable-fte proposes the whole week as one run, 37 lines, 430,845.50 USD:
+  DSoR answers: LIMIT_EXCEEDED: "payment.run" would pass slip del_100's limit for one day
+  drafts: 0; bookings held: 0
+  the run DENIED; its lines: 37 DENIED
+
+P2. A run of 12 lines, INV-3003, INV-3005, INV-3006, INV-3007, INV-3008, INV-3010, INV-3012, INV-3023, INV-3031, INV-3032, INV-3035, INV-3036:
+  DSoR answers: PENDING_APPROVAL
+  the run keeps: totals [{"value":"187250.00","currency":"USD"}]
+  cfo_100 approves with the right fingerprint and the totals her screen showed, 186,250.00 USD: APPROVAL_MISMATCH: the totals are not run prop_d6ec481c-9089-4672-829a-5d7facaa0115's
+  after: the run PENDING_APPROVAL; its lines: 9 READY, 3 PENDING_APPROVAL
+
+P3. While the run waits, user_123 drafts INV-3008 alone with payment.create:
+  DSoR answers: CONFLICT: invoice INV-3008 has an attempt in flight already: proposal dsor://org_456/proposal/prop_cc879011-9517-4096-a647-401232ad3ecd, PENDING_APPROVAL
+  drafts of INV-3008: 0
+
+P4. cfo_100 approves the run with what the run keeps; then the accounts team suspends VENDOR-31; the agent releases:
+  cfo_100 approves: APPROVED
+  DSoR answers: APPROVAL_INVALIDATED: proposal prop_d6ec481c-9089-4672-829a-5d7facaa0115 is INVALIDATED: CONFLICT: line 1 of "payment.run": a precondition of payment.create does not hold: state.vendor.status == "approved"
+  drafts: 0; the run INVALIDATED; its lines: 12 INVALIDATED
+  the run's booking: released
+```
+
+| | The learner's answer | What the run shows |
+|---|---|---|
+| P1 | Refused, no drafts | Right: `LIMIT_EXCEEDED` for the whole run. The run and its 37 lines are `DENIED`, and no booking is held |
+| P2 | Mismatch, still waits | Right: `APPROVAL_MISMATCH` on the totals, and the run and its three CFO lines still wait |
+| P3 | Refused, none | Right: `CONFLICT`, naming the line that holds INV-3008, and no draft of it |
+| P4 | Whole run void, none | Right: `APPROVAL_INVALIDATED`, naming line 1, the first of VENDOR-31. The run and all 12 lines are `INVALIDATED`, nothing is drafted, and the booking is given back |
+
+All four were right.
+
+### The breaks
+
+The breaks are being run again; the table follows when the run ends.
+
+## Build it yourself with Claude Code
+
+| # | Move | What was done |
+|---|---|---|
+| 1 | Understand | The problem, shown with a real run of step 40c's code: 37 bills, one call each |
+| 2 | Decide | Seven decisions by the learner, D1 to D7; the learner moved D8 to step 41b |
+| 3 | Predict | P1 to P4, asked as stories before any code |
+| 4 | The copy | Step 40c copied, its markers removed |
+| 5 | Build, piece by piece | Five pieces, each with its tests written first and seen red: the run's shape; proposing a run; approving it; releasing it; the database |
+| 6 | Earlier tests | The lists of contracts, attacks, privileges, and columns |
+| 7 | Break it | P1 to P4, then the breaks, for real |
+| 8 | Review | A reviewer who had not seen the conversation |
+
+To start it in a new session:
+
+```text
+Build step 41 in learner mode from the design in
+docs/baby_steps_tutorials/mj_41_a_payment_run/README.md.
+```
+
+## Check yourself
+
+1. Why can a run that drafts be all or nothing, and a run that sends money cannot?
+2. The agent proposes 37 bills one call at a time, and the day's limit stops it at bill 16. What
+   does a run change?
+3. cfo_100 approves a run. Why does her approval carry the totals as well as the fingerprint?
+4. A line of a waiting run waits `READY`, because no rule asks about it. Why can the agent not
+   release that line alone?
+5. Between the approval and the release, INV-1006's open amount changes, and its version does not.
+   What does the release do, and how does it know?
+
+<details>
+<summary>Answers</summary>
+
+1. A draft lives in DSoR's own database, so 37 drafts can be made in one transaction, which
+   commits or rolls back whole. A payment the bank sent cannot be taken back (D1, D2).
+2. The run is checked as a whole before anything is drafted: its total against the day's limit,
+   once (DSOR-BAT-02b). If it does not fit, nothing is drafted, and no bill is left out because of
+   where it sat in the list (C4, P1).
+3. The fingerprint covers the lines, which name bills, not amounts. The totals are the money she
+   approved. Both are bound, so a list she did not see, or money she did not see, is refused
+   (DSOR-BAT-02a, D4, P2).
+4. Its run is the unit the CFO approved. A line released alone would draft a list nobody approved,
+   one line long (D2, D7).
+5. It voids the run and every line, `INVALIDATED`, and drafts nothing. It adds the totals up again
+   from the bills as they are now, and they no longer match the ones the approval bound (C8).
+
+</details>
+
+## Think it through
+
+### Found while building
+
+- **A vendor has no address in line ⑨'s read.** Line ⑨ keeps the address of each invoice and
+  payment it binds, not of the vendor. So a run takes each line's vendor from the invoice line ⑨
+  read, and writes its address itself.
+- **Memory undid one proposal after an accident.** A call has made one proposal until now, so
+  memory's claim undid only the first. A run makes one for each line, so its lines stayed
+  `EXECUTING`, each holding its invoice. Memory now undoes every proposal the call made, as the
+  database's rollback does.
+- **A fixed idempotency key in a database test replayed an earlier test run.** The database keeps
+  every claim, so the second run of the test was answered with a run made before the database kept
+  fingerprints. DSoR was right to replay; the test now makes a key of its own each run.
+- **The approval's example names a vendor now.** The cross-company suite attacks every field of an
+  example, so it swaps the vendor of a run's totals too: 15 more attacks.
+- **`bank.db`'s D7 fails on this machine**, alone too, as it does for step 40c's own code on its
+  own database, 3 of 3. It is open question 158: the holds left by earlier runs slow every send.
+
+### What the review found
+
+The review is running.
+
+### Left open on purpose
+
+- **A run that waits cannot be changed** (D8): its lines hold their invoices until it is approved
+  and released, or until it expires. Step 41b builds a new run that replaces a waiting one.
+- **A run drafts and does not send** (D1). Each payment is still sent with a `payment.execute` of
+  its own.
+- **No run lets some lines through** (D2). DSOR-BAT-01c and DSOR-BAT-02c wait for a step that
+  builds `per_item`.
+- **The specification has no place for totals per vendor.** `proposal.schema.json`'s `totals` is a
+  list of amounts per currency. This tutorial adds `vendor_totals`, and the question goes to the
+  specification.
+- **The run's decision record lists each line's controls in the order of the lines**, and does not
+  name the line each came from. Each line's own proposal shows what its rule asked.
+- **No rule judges a run's total** (D7).
+- **The answer of a waiting run carries no fingerprint or totals**: `result-envelope.schema.json`
+  has no field for them, and the approver reads them from the run's proposal, never through the
+  agent.
+
+## The rules this step meets
+
+| Rule | What it says | Spec | Tests |
+|---|---|---|---|
+| DSOR-BAT-01a | A batch command declares its atomicity and its most items | [§8](../../../specs/dsor/01-model.md#8-batch-operations) | `test/run.test.ts`, C1 |
+| DSOR-BAT-01b | Each item has its own derived key, control evaluation, and recorded outcome | [§8](../../../specs/dsor/01-model.md#8-batch-operations) | `test/run.test.ts`, C2; `test/run.db.test.ts`, C2 |
+| DSOR-BAT-02a | A batch's approval binds a manifest hash over its ordered items, and its totals per currency and per counterparty | [§8](../../../specs/dsor/01-model.md#8-batch-operations) | `test/run.test.ts`, C5 and C8; `test/run.db.test.ts`, C5 and C8 |
+| DSOR-BAT-02b | Cumulative limits are evaluated atomically against the batch's total | [§8](../../../specs/dsor/01-model.md#8-batch-operations) | `test/run.test.ts`, C4; `test/run.db.test.ts`, C4 |
+
+All or nothing, a line never approved or released alone, and a line's hold on its invoice are this
+tutorial's rules: those tests are titled by step 41's decisions D2, D5, and D7.
+
+**Next:** step 41b, a new run that replaces a waiting one.
