@@ -307,3 +307,100 @@ describe("step 40c's review, M1: a run counts only the events it tries, on the d
     expect(run.failed?.map((f) => f.resource.split("/").at(-1))).toStrictEqual([one, two]);
   });
 });
+
+/** Tries written straight into the log by dsor_runtime, in one statement, as raw SQL can. */
+function writeTries(eventId: string, count: number): Promise<unknown> {
+  const values = Array.from({ length: count }, (_, i) => `('org_456', $1, 'raw try ${i}')`);
+  return inOrg((client) =>
+    client.query(
+      `INSERT INTO dsor.outbox_tries (tenant_id, event_id, reason) VALUES ${values.join(", ")}`,
+      [eventId],
+    ),
+  );
+}
+
+// Found by step 40c's review, L1, L2, and L3: the alert counted to exactly three, a try and a mark
+//   of one event could pass each other, and a try could be written for an event held back.
+describe("step 40c's review, L1 to L3: the rules of a try, kept by the database", () => {
+  it("DSOR-EVT-01a: L1: tries written two at a time, from two to four, still raise the event's one alert", async () => {
+    await flush();
+    const bad = await drafted();
+    for (const _ of [1, 2]) await outbox.send("org_456", refusing(bad).deliver, 1000);
+    const [event] = await eventsOf(bad);
+    await writeTries(event!.event_id, 2);
+    expect(await alertsOf(event!.event_id)).toStrictEqual([{ state: "open", closed: false }]);
+  });
+
+  it("DSOR-EVT-01a: L1: three tries written at once raise one alert, not an error", async () => {
+    await flush();
+    const bad = await drafted();
+    const [event] = await eventsOf(bad);
+    await writeTries(event!.event_id, 3);
+    expect(await alertsOf(event!.event_id)).toStrictEqual([{ state: "open", closed: false }]);
+  });
+
+  it("DSOR-EVT-01a: L2: the third try and the mark that sends the event cannot pass each other: the alert ends closed", async () => {
+    await flush();
+    const bad = await drafted();
+    for (const _ of [1, 2]) await outbox.send("org_456", refusing(bad).deliver, 1000);
+    const [event] = await eventsOf(bad);
+    const two = newPool();
+    const [trier, marker] = [await two.connect(), await two.connect()];
+    try {
+      for (const client of [trier, marker]) {
+        await client.query("BEGIN");
+        await client.query("SELECT set_config('dsor.tenant_id', 'org_456', true)");
+      }
+      await trier.query(
+        "INSERT INTO dsor.outbox_tries (tenant_id, event_id, reason) VALUES ('org_456', $1, 'third')",
+        [event!.event_id],
+      );
+      const marking = marker.query("UPDATE dsor.outbox SET sent_at = now() WHERE event_id = $1", [
+        event!.event_id,
+      ]);
+      await new Promise((done) => setTimeout(done, 300));
+      await trier.query("COMMIT");
+      await marking;
+      await marker.query("COMMIT");
+    } finally {
+      for (const client of [trier, marker]) {
+        await client.query("ROLLBACK").catch(() => {});
+        client.release();
+      }
+      await two.end();
+    }
+    expect((await eventsOf(bad))[0]!.sent).toBe(true);
+    expect(await alertsOf(event!.event_id)).toStrictEqual([{ state: "closed", closed: true }]);
+  });
+
+  it("DSOR-EVT-01a: L3: a try for an event held back behind its payment's earlier unsent event is refused", async () => {
+    await flush();
+    const bad = await paid();
+    const [, executed] = await eventsOf(bad);
+    await expect(writeTries(executed!.event_id, 1)).rejects.toThrow(
+      /a try is written only for its payment's oldest unsent event/,
+    );
+  });
+});
+
+// Found by step 40c's review, L4, from step 40: the sender orders a payment's events by when they
+//   were written, and nothing made that agree with their ordering keys. The learner chose to fix it.
+describe("step 40c's review, L4: an event's number is the next one for its payment", () => {
+  it("DSOR-EVT-01b: L4: a payment's first event numbered 2 is refused", async () => {
+    await expect(
+      inOrg(async (client) => {
+        const { rows } = await client.query<{ id: string }>(
+          `INSERT INTO app.payments
+             (tenant_id, invoice_id, vendor_id, amount_value, amount_currency, status)
+           VALUES ('org_456', 'INV-9001', 'VENDOR-44', 500.00, 'USD', 'draft') RETURNING id`,
+        );
+        const event = { ...about("payment.created", rows[0]!.id, "draft"), ordering_key: 2 };
+        await client.query(
+          `INSERT INTO dsor.outbox (event_id, tenant_id, type, resource, ordering_key, event)
+           VALUES ($1, 'org_456', $2, $3, 2, $4)`,
+          [event.event_id, event.type, event.resource, event],
+        );
+      }),
+    ).rejects.toThrow(/is not the next number/);
+  });
+});
