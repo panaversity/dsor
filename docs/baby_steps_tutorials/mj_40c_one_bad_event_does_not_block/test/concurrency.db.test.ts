@@ -23,6 +23,7 @@ import {
   EVENT_ALERTS_MOVE,
   EVENT_ALERTS_STAY,
   OUTBOX_CLOSE_ALERT,
+  OUTBOX_NEXT_NUMBER,
   TRIES_STAY,
   TRIES_WRITTEN,
   TRY_ALERT,
@@ -370,6 +371,8 @@ describe("C8 and C11: the version in a read, and the triggers in the catalog", (
       //   decision D9), around the guard on an event's mark, in the order of their text.
       OUTBOX_CLOSE_ALERT,
       OUTBOX_KEEP_TRIGGER,
+      // And the check of an event's number (step 40c's review, L4).
+      OUTBOX_NEXT_NUMBER,
       OUTBOX_TRIGGER,
       OUTBOX_STAMP_TRIGGER,
       OUTBOX_STAY_TRIGGER,

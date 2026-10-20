@@ -193,6 +193,9 @@ export const EVENT_ALERTS_MOVE =
   "CREATE TRIGGER event_alerts_move BEFORE INSERT OR DELETE OR UPDATE ON dsor.event_alerts FOR EACH ROW EXECUTE FUNCTION dsor.event_alerts_move()";
 export const EVENT_ALERTS_STAY =
   "CREATE TRIGGER event_alerts_stay BEFORE TRUNCATE ON dsor.event_alerts FOR EACH STATEMENT EXECUTE FUNCTION dsor.event_alerts_stay()";
+// And, since step 40c's review, L4: an event's number is the next one for its resource.
+export const OUTBOX_NEXT_NUMBER =
+  "CREATE TRIGGER outbox_next_number AFTER INSERT ON dsor.outbox FOR EACH ROW EXECUTE FUNCTION dsor.outbox_next_number()";
 export const OUTBOX_CLOSE_ALERT =
   "CREATE TRIGGER outbox_close_alert AFTER UPDATE OF sent_at ON dsor.outbox FOR EACH ROW EXECUTE FUNCTION dsor.outbox_closes_alert()";
 
@@ -636,6 +639,7 @@ export function today(): Catalog {
           EVENT_CHANGE_TRIGGER,
           OUTBOX_CLOSE_ALERT,
           OUTBOX_KEEP_TRIGGER,
+          OUTBOX_NEXT_NUMBER,
           OUTBOX_TRIGGER,
           OUTBOX_STAMP_TRIGGER,
           OUTBOX_STAY_TRIGGER,

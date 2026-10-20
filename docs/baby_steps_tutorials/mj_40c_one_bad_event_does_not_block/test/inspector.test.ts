@@ -10,6 +10,7 @@ import {
   INVOICE_TRIGGER,
   OUTBOX_CLOSE_ALERT,
   OUTBOX_KEEP_TRIGGER,
+  OUTBOX_NEXT_NUMBER,
   OUTBOX_STAMP_TRIGGER,
   TRY_ALERT,
   OUTBOX_STAY_TRIGGER,
@@ -402,6 +403,7 @@ describe("C11: each trigger is the one the map names", () => {
       relationIn(c, "dsor.outbox").triggers = [
         OUTBOX_CLOSE_ALERT,
         OUTBOX_KEEP_TRIGGER,
+        OUTBOX_NEXT_NUMBER,
         OUTBOX_TRIGGER,
         OUTBOX_STAMP_TRIGGER,
         OUTBOX_STAY_TRIGGER,
@@ -435,6 +437,7 @@ describe("C11: each trigger is the one the map names", () => {
       relationIn(c, "dsor.outbox").triggers = [
         EVENT_CHANGE_TRIGGER,
         OUTBOX_CLOSE_ALERT,
+        OUTBOX_NEXT_NUMBER,
         OUTBOX_TRIGGER,
       ];
     });
