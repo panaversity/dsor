@@ -73,6 +73,14 @@ export const OUTBOX_TRIGGER =
   "CREATE TRIGGER outbox_send BEFORE UPDATE ON dsor.outbox FOR EACH ROW EXECUTE FUNCTION dsor.outbox_sends()";
 // NEW IN STEP 40b: an event about a payment needs its change, checked when it is written (step 40b's
 //   README, decisions D2, D4, and D7).
+// NEW IN STEP 40b: the database stamps each event with its transaction, and no event is removed,
+//   one by one or all at once (step 40b's README, decision D9; found by its review, M1).
+export const OUTBOX_KEEP_TRIGGER =
+  "CREATE TRIGGER outbox_keep BEFORE DELETE ON dsor.outbox FOR EACH ROW EXECUTE FUNCTION dsor.outbox_keeps()";
+export const OUTBOX_STAMP_TRIGGER =
+  "CREATE TRIGGER outbox_stamp BEFORE INSERT ON dsor.outbox FOR EACH ROW EXECUTE FUNCTION dsor.outbox_stamps()";
+export const OUTBOX_STAY_TRIGGER =
+  "CREATE TRIGGER outbox_stay BEFORE TRUNCATE ON dsor.outbox FOR EACH STATEMENT EXECUTE FUNCTION dsor.outbox_keeps()";
 export const EVENT_CHANGE_TRIGGER =
   "CREATE TRIGGER event_has_its_change AFTER INSERT ON dsor.outbox FOR EACH ROW EXECUTE FUNCTION dsor.event_has_its_change()";
 // The log's columns. dsor_runtime may INSERT every one but sequence and at, which the
@@ -588,7 +596,13 @@ export function today(): Catalog {
         }),
         rowSecurity: { enabled: true, forced: true },
         rules: [],
-        triggers: [EVENT_CHANGE_TRIGGER, OUTBOX_TRIGGER],
+        triggers: [
+          EVENT_CHANGE_TRIGGER,
+          OUTBOX_KEEP_TRIGGER,
+          OUTBOX_TRIGGER,
+          OUTBOX_STAMP_TRIGGER,
+          OUTBOX_STAY_TRIGGER,
+        ],
       },
       // The proposals, behind the company's lock, with their guard.
       {

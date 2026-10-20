@@ -8,6 +8,9 @@ import { checkStore, readStore, type StoreMap } from "../src/store.ts";
 import {
   EVENT_CHANGE_TRIGGER,
   INVOICE_TRIGGER,
+  OUTBOX_KEEP_TRIGGER,
+  OUTBOX_STAMP_TRIGGER,
+  OUTBOX_STAY_TRIGGER,
   OUTBOX_TRIGGER,
   PAYMENT_EVENT_TRIGGER,
   PAYMENT_STAYS_TRIGGER,
@@ -393,10 +396,26 @@ describe("C11: each trigger is the one the map names", () => {
 
   it("DSOR-EVT-01a: C5: the check that an event has its change, missing, is a difference, so start-up refuses", () => {
     const found = differencesWith((c) => {
-      relationIn(c, "dsor.outbox").triggers = [OUTBOX_TRIGGER];
+      relationIn(c, "dsor.outbox").triggers = [
+        OUTBOX_KEEP_TRIGGER,
+        OUTBOX_TRIGGER,
+        OUTBOX_STAMP_TRIGGER,
+        OUTBOX_STAY_TRIGGER,
+      ];
     });
     expect(found).toStrictEqual([
       `store.json names the trigger ${EVENT_CHANGE_TRIGGER}, which the database does not have`,
+    ]);
+  });
+
+  it("DSOR-EVT-01a: M1: the guards that stamp each event and keep it, missing, are differences, so start-up refuses", () => {
+    const found = differencesWith((c) => {
+      relationIn(c, "dsor.outbox").triggers = [EVENT_CHANGE_TRIGGER, OUTBOX_TRIGGER];
+    });
+    expect(found).toStrictEqual([
+      `store.json names the trigger ${OUTBOX_KEEP_TRIGGER}, which the database does not have`,
+      `store.json names the trigger ${OUTBOX_STAMP_TRIGGER}, which the database does not have`,
+      `store.json names the trigger ${OUTBOX_STAY_TRIGGER}, which the database does not have`,
     ]);
   });
   // Changed in step 38b: each keeps the proposals' alert trigger, so it changes one thing (step

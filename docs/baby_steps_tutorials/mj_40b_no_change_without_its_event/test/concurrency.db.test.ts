@@ -16,6 +16,9 @@ import {
   AUDIT_CHAIN_TRIGGER,
   INTENT_TRIGGER,
   OUTBOX_TRIGGER,
+  OUTBOX_KEEP_TRIGGER,
+  OUTBOX_STAMP_TRIGGER,
+  OUTBOX_STAY_TRIGGER,
   EVENT_CHANGE_TRIGGER,
   INVOICE_TRIGGER,
   PAYMENT_EVENT_TRIGGER,
@@ -353,7 +356,12 @@ describe("C8 and C11: the version in a read, and the triggers in the catalog", (
       INTENT_TRIGGER,
       INVOICE_TRIGGER,
       // Changed in step 40: and the guard on an event's mark (step 40's README, decision D2).
+      // Changed in step 40b: and the guards that keep each event and stamp it (step 40b's README,
+      //   decision D9), around the guard on an event's mark, in the order of their text.
+      OUTBOX_KEEP_TRIGGER,
       OUTBOX_TRIGGER,
+      OUTBOX_STAMP_TRIGGER,
+      OUTBOX_STAY_TRIGGER,
       // Changed in step 40b: and the guard that keeps paid final (step 40b's README, decision D8).
       PAYMENT_STAYS_TRIGGER,
       PAYMENT_TRIGGER,

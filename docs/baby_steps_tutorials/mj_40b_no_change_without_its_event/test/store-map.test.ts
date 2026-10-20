@@ -5,6 +5,9 @@ import { checkStore, readStore, type StoreSource } from "../src/store.ts";
 import {
   EVENT_CHANGE_TRIGGER,
   INVOICE_TRIGGER,
+  OUTBOX_KEEP_TRIGGER,
+  OUTBOX_STAMP_TRIGGER,
+  OUTBOX_STAY_TRIGGER,
   OUTBOX_TRIGGER,
   PAYMENT_EVENT_TRIGGER,
   PAYMENT_STAYS_TRIGGER,
@@ -130,7 +133,14 @@ describe("the shipped map", () => {
       },
       // Changed in step 40b: and the check that an event about a payment has its change (step
       //   40b's README, decision D2).
-      triggers: [EVENT_CHANGE_TRIGGER, OUTBOX_TRIGGER],
+      // And, since its review, M1, the guards that stamp each event and keep it (decision D9).
+      triggers: [
+        EVENT_CHANGE_TRIGGER,
+        OUTBOX_KEEP_TRIGGER,
+        OUTBOX_TRIGGER,
+        OUTBOX_STAMP_TRIGGER,
+        OUTBOX_STAY_TRIGGER,
+      ],
     });
   });
 
