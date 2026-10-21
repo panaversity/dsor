@@ -1026,6 +1026,18 @@ export async function call(
       const { invoices, reservations, slips, brakes, rates, controls, proposals } = stores;
       const { payments, holds } = stores;
       const evaluated: ControlOutcome[] = [];
+      // A limit that no usable rate can convert to is a check that cannot be made now: the run
+      //   waits for a fresh sheet, as one draft does (step 31's README, decision D15). Found by step
+      //   41's review, M1: it voided an approved run.
+      unconvertibleOfRecord = undefined;
+      const waits = (thrown: unknown): unknown =>
+        thrown instanceof Refusal && thrown.code === "LIMIT_EXCEEDED" && unconvertibleOfRecord
+          ? new Refusal(
+              "FRESHNESS_UNSATISFIABLE",
+              `no rate is usable now, so run ${runId} waits: ${thrown.message}`,
+              "public",
+            )
+          : thrown;
       for (const plan of runPlans) {
         const asked: Asked = {
           contract: ofLines,
@@ -1056,6 +1068,8 @@ export async function call(
           controlsOfRecord = undefined;
         } catch (thrown) {
           if (!(thrown instanceof Refusal)) throw thrown;
+          const waiting = waits(thrown);
+          if (waiting !== thrown) throw waiting;
           throw lineRefusal(plan.index, target.id, thrown);
         }
       }
@@ -1071,6 +1085,11 @@ export async function call(
         ...(inClaim ? { reserveFor: runId } : { booked: runId }),
         rates: readOnce(rates),
         policy: registry.moneyPolicies.get(tenant),
+        unconvertible: (cause) => {
+          unconvertibleOfRecord = cause;
+        },
+      }).catch((thrown: unknown) => {
+        throw waits(thrown);
       });
       const now = totalsOf(reads);
       const approved = { totals: loaded.totals, vendor_totals: loaded.vendor_totals };
