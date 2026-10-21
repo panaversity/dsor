@@ -880,6 +880,14 @@ export async function call(
       const dsor = dsorMover(requester);
       const operation = `${lineContract.id}@${String(lineContract["version"])}`;
       const { lines } = copy as { lines: RunLine[] };
+      // Every line's lock first, in the order of the invoices' addresses, as one attempt at each
+      //   bill takes it, so two runs over the same bills take their locks in one order, and one
+      //   waits for the other. Found by step 41's review, M2: taken in the order of each run's lines,
+      //   two runs in opposite orders each held one lock and waited for the other's.
+      const invoicesInOrder = [...new Set(lines.map((line) => line.invoice))].sort();
+      for (const invoice of invoicesInOrder) {
+        await stores.proposals.holdOver(tenant, lineContract.id, invoice);
+      }
       // Every line's proposal first, so each line has a record of its own, one the checks never
       //   reached too.
       runPlans = [];

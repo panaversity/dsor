@@ -366,10 +366,17 @@ export function memoryClaims(
       const others: string[] = [];
       // The locks this claim holds, each given back when the claim ends.
       const held: (() => void)[] = [];
+      // And their keys, so a lock it holds is not waited for twice.
+      const heldKeys = new Set<string>();
       // Whether the checkpoint passed, so the claim and its note count as kept.
       let noted = false;
       const holdOver = async (tenant: string, operation: string, uri: string): Promise<void> => {
         const key = JSON.stringify([tenant, operation, uri]);
+        // NEW IN STEP 41: a lock this claim holds already is held, as the database's advisory lock
+        //   is taken again by its own transaction. A run takes its lines' locks first, then each
+        //   line's check takes its own again (step 41's review, M2).
+        if (heldKeys.has(key)) return;
+        heldKeys.add(key);
         const before = locks.get(key) ?? Promise.resolve();
         let free = (): void => {};
         const mine = new Promise<void>((resolve) => (free = resolve));
