@@ -514,3 +514,66 @@ describe("step 41's review, H3: amounts added exactly, six decimal places too", 
     expect(Number(booking!.amount.value)).toBeLessThan(9100);
   });
 });
+
+// Found by step 41's review, H1 and H2: a dry run of a run checked none of its lines and said ALLOW,
+//   and every dry release of a run was INTERNAL_ERROR. A dry run hears what the real call would, and
+//   changes nothing (DSOR-OPR-05, DSOR-OPR-06).
+describe("step 41's review, H1 and H2: a dry run of a run, and of its release", () => {
+  const DRY = { ...AGENT, mode: "validate_only" as const };
+
+  it("DSOR-BAT-01b: H1: a dry run of a run that a line's rule asks about hears REQUIRE_APPROVAL, and makes nothing", async () => {
+    const w = ruleWorld();
+    const answer = await w.ask(DRY, "payment.run", RUN_A);
+    expect(answer).toMatchObject({ outcome: "VALIDATED", decision: "REQUIRE_APPROVAL" });
+    expect(await w.proposals.all()).toStrictEqual([]);
+    expect(await w.reservations.all()).toStrictEqual([]);
+  });
+
+  it("DSOR-BAT-01b: H1: a dry run of small lines hears ALLOW", async () => {
+    const w = ruleWorld();
+    const answer = await w.ask(DRY, "payment.run", RUN_B);
+    expect(answer).toMatchObject({ outcome: "VALIDATED", decision: "ALLOW" });
+  });
+
+  it("DSOR-BAT-01b: H1: a dry run with a suspended vendor's line, or a bill that is not there, is refused as the real run is, naming the line", async () => {
+    const w = ruleWorld();
+    w.vendors.find((v) => v.id === "VENDOR-31")!.status = "suspended";
+    const suspended = await w.ask(DRY, "payment.run", RUN_B);
+    expect(suspended).toMatchObject({
+      message: expect.stringMatching(/^line 3 of "payment\.run": /),
+    });
+    const real = await w.ask(keyed(AGENT), "payment.run", RUN_B);
+    expect((suspended as { code: string }).code).toBe((real as { code: string }).code);
+    const missing = await w.ask(DRY, "payment.run", lines("INV-1002", "INV-9999"));
+    expect(missing).toMatchObject({
+      message: expect.stringMatching(/^line 2 of "payment\.run": /),
+    });
+  });
+
+  it("DSOR-BAT-02b: H1: a dry run whose total would pass the day's limit hears LIMIT_EXCEEDED, and books nothing", async () => {
+    const w = ruleWorld();
+    const ids = ["INV-3101", "INV-3102", "INV-3103", "INV-3104", "INV-3105"];
+    for (const id of ids) bill(w, id, "VENDOR-44", "45000.00");
+    const answer = await w.ask(DRY, "payment.run", lines(...ids));
+    expect(answer).toMatchObject({ code: "LIMIT_EXCEEDED" });
+    expect(await w.reservations.all()).toStrictEqual([]);
+  });
+
+  it("DSOR-BAT-02a: H2: a dry release of an approved run hears ALLOW, and moves nothing", async () => {
+    const w = ruleWorld();
+    const run = await approvedRunA(w);
+    const answer = await w.ask(DRY, "proposal.execute", { proposal: run });
+    expect(answer).toMatchObject({ outcome: "VALIDATED", decision: "ALLOW" });
+    expect(await statesOf(w, run)).toStrictEqual(["APPROVED", "READY", "APPROVED", "READY"]);
+    expect(w.drafted).toStrictEqual([]);
+  });
+
+  it("DSOR-BAT-02a: H2: a dry release of an approved run whose vendor was suspended says it would be invalidated, and moves nothing", async () => {
+    const w = ruleWorld();
+    const run = await approvedRunA(w);
+    w.vendors.find((v) => v.id === "VENDOR-31")!.status = "suspended";
+    const answer = await w.ask(DRY, "proposal.execute", { proposal: run });
+    expect(answer).toMatchObject({ code: "APPROVAL_INVALIDATED" });
+    expect(await statesOf(w, run)).toStrictEqual(["APPROVED", "READY", "APPROVED", "READY"]);
+  });
+});
