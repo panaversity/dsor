@@ -8,9 +8,9 @@ import type { Answer } from "../src/envelope.ts";
 import type { Invoice } from "../src/invoice.ts";
 import { money } from "../src/money.ts";
 import { handlersFor } from "../src/operations.ts";
-import { lineKeyOf, runProblems } from "../src/run.ts";
+import { lineKeyOf, runProblems, totalsOf } from "../src/run.ts";
 import { AGENT, CFO, contract, keyed, SUPERVISOR, without } from "./helpers.ts";
-import { ruleWorld, type RuleWorld } from "./rule-world.ts";
+import { ruleWorld, ruleWorldOnTuesday, type RuleWorld } from "./rule-world.ts";
 
 /** A run's input: one line for each of these bills of org_456, each decided on version 1. */
 function lines(...ids: string[]): { lines: { invoice: string; expected_version: number }[] } {
@@ -20,8 +20,8 @@ function lines(...ids: string[]): { lines: { invoice: string; expected_version: 
 }
 
 /** A bill of org_456, issued, version 1, added to the world's invoices. */
-function bill(w: RuleWorld, id: string, vendor: string, value: string): void {
-  const amount = money(value, "USD");
+function bill(w: RuleWorld, id: string, vendor: string, value: string, currency = "USD"): void {
+  const amount = money(value, currency);
   const fields = { vendor_id: vendor, amount, open_amount: amount, status: "issued" };
   w.bills.push({ tenant_id: "org_456", id, ...fields, version: 1 } as Invoice);
 }
@@ -483,5 +483,34 @@ describe("C8: the release, all or nothing again", () => {
     expect(released).toMatchObject({ code: "CONFLICT" });
     expect((await proposalAt(w, line.uri))!.state).toBe("READY");
     expect(w.drafted).toStrictEqual([]);
+  });
+});
+
+// Found by step 41's review, H3: an amount with six decimal places, as a conversion makes, lost its
+//   whole fraction when added, so a run with a line in another currency was refused as past the
+//   day's limit, far below it.
+describe("step 41's review, H3: amounts added exactly, six decimal places too", () => {
+  it("DSOR-BAT-02b: H3: totals keep the fraction of an amount with six decimal places", () => {
+    const vendor = "dsor://org_456/vendor/VENDOR-44";
+    const { totals } = totalsOf([
+      { spends: money("27300.123457", "USD"), vendor },
+      { spends: money("100.00", "USD"), vendor },
+    ]);
+    expect(totals).toStrictEqual([{ value: "27400.123457", currency: "USD" }]);
+    expect(totalsOf([{ spends: money("1.000001", "USD"), vendor }]).totals).toStrictEqual([
+      { value: "1.000001", currency: "USD" },
+    ]);
+  });
+
+  it("DSOR-BAT-02b: H3: a run with a line of 100.00 GBP is booked by its converted total, and drafted, as each line alone would be", async () => {
+    const w = await ruleWorldOnTuesday();
+    bill(w, "INV-3301", "VENDOR-44", "100.00", "GBP");
+    const answer = await w.ask(keyed(AGENT), "payment.run", lines("INV-3301", "INV-1002"));
+    expect(answer).toMatchObject({ outcome: "COMMITTED" });
+    expect(w.drafted.map((p) => p.invoice_id)).toStrictEqual(["INV-3301", "INV-1002"]);
+    const [booking] = await w.reservations.all();
+    expect(booking!.amount.currency).toBe("USD");
+    expect(Number(booking!.amount.value)).toBeGreaterThan(9000);
+    expect(Number(booking!.amount.value)).toBeLessThan(9100);
   });
 });
