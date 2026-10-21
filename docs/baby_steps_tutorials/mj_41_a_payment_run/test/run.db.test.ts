@@ -322,3 +322,22 @@ describe("C5: the trigger keeps a run's rules, for every login", () => {
     }
   });
 });
+
+// Found by step 41's review, M2: on the database, two runs over the same bills in opposite orders
+//   could each take one bill's lock and wait for the other's, and PostgreSQL killed one as a
+//   deadlock: INTERNAL_ERROR.
+describe("step 41's review, M2: runs over the same bills at once, on the database", () => {
+  it("DSOR-BAT-01b: M2: six pairs of runs of INV-9411 and INV-9413, in opposite orders, at once: none is an accident", async () => {
+    const said: string[] = [];
+    for (let pair = 0; pair < 6; pair++) {
+      const answers = await Promise.all([
+        asIntake("payment.run", linesOf("INV-9411", "INV-9413")),
+        asIntake("payment.run", linesOf("INV-9413", "INV-9411")),
+      ]);
+      for (const answer of answers) {
+        said.push("code" in answer ? answer.code : String((answer as { outcome: string }).outcome));
+      }
+    }
+    expect(said).not.toContain("INTERNAL_ERROR");
+  });
+});

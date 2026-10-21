@@ -600,3 +600,20 @@ describe("step 41's review, M1: no usable rate at the release is not a no", () =
     expect(w.drafted).toStrictEqual([]);
   });
 });
+
+// Found by step 41's review, M2: two runs over the same bills, in opposite orders, each took the
+//   first bill's lock and waited for the other's. On the database one was killed as a deadlock; in
+//   memory both waited for ever.
+describe("step 41's review, M2: two runs over the same bills at once", () => {
+  it("DSOR-BAT-01b: M2: two runs of INV-1002 and INV-1009, in opposite orders, at once: both end, and neither is an accident", async () => {
+    const w = ruleWorld();
+    const both = Promise.all([
+      w.ask(keyed(AGENT), "payment.run", lines("INV-1002", "INV-1009")),
+      w.ask(keyed(AGENT), "payment.run", lines("INV-1009", "INV-1002")),
+    ]);
+    const timeout = new Promise<"stuck">((resolve) => setTimeout(() => resolve("stuck"), 2000));
+    const ended = await Promise.race([both, timeout]);
+    expect(ended).not.toBe("stuck");
+    for (const answer of ended as Answer[]) expect(saidOf(answer)).not.toBe("INTERNAL_ERROR");
+  });
+});
