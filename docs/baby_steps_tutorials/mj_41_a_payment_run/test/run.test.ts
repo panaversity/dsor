@@ -577,3 +577,26 @@ describe("step 41's review, H1 and H2: a dry run of a run, and of its release", 
     expect(await statesOf(w, run)).toStrictEqual(["APPROVED", "READY", "APPROVED", "READY"]);
   });
 });
+
+// Found by step 41's review, M1: a sheet of rates that went stale between the approval and the
+//   release voided an approved run, where one draft waits for a fresh sheet (step 31's README,
+//   decision D15). A check that cannot be made now is not a no.
+describe("step 41's review, M1: no usable rate at the release is not a no", () => {
+  it("DSOR-BAT-02b: M1: four days after the approval, with no fresh sheet, the release waits: FRESHNESS_UNSATISFIABLE, the run and its lines still waiting, the booking held", async () => {
+    const w = await ruleWorldOnTuesday();
+    bill(w, "INV-3301", "VENDOR-44", "790.00", "GBP");
+    const answer = await w.ask(keyed(AGENT), "payment.run", lines("INV-3301", "INV-1008"));
+    const run = (await proposalAt(w, String((answer as { proposal: string }).proposal)))!;
+    const { uri, payload_hash, manifest_hash, totals, vendor_totals } = run;
+    const shown = { proposal: uri, payload_hash, manifest_hash, totals, vendor_totals };
+    expect(await w.ask(keyed(CFO), "proposal.approve", shown)).toMatchObject({
+      data: { state: "APPROVED" },
+    });
+    w.clock.now += 4 * 24 * 60 * 60 * 1000;
+    const released = await w.ask(keyed(AGENT), "proposal.execute", { proposal: uri });
+    expect(released).toMatchObject({ code: "FRESHNESS_UNSATISFIABLE" });
+    expect(await statesOf(w, uri)).toStrictEqual(["APPROVED", "READY", "APPROVED"]);
+    expect(await w.reservations.all()).toMatchObject([{ state: "held" }]);
+    expect(w.drafted).toStrictEqual([]);
+  });
+});
