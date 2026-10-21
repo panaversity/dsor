@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import { stillOpen, type Approving, type Offer, type Risk } from "./approvals.ts";
 import { readBound, type BoundRead } from "./bound.ts";
 import { payloadHash } from "./canonical.ts";
+import { lineOperationOf, type RunLine } from "./run.ts";
 import { Refusal } from "./envelope.ts";
 import { approvePermissionOf } from "./permissions.ts";
 import { isProposalOf, proposalIdOf, type MoveBy, type Proposal } from "./proposals.ts";
@@ -192,15 +193,28 @@ async function approve(input: unknown, work: OwnStores): Promise<unknown> {
   //   bound as a vendor. Since step 32 every record of the state was named as an invoice, VENDOR-44
   //   too (step 33's README, found while building). A record that is not there has no version.
   const read: BoundRead[] = [];
+  // NEW IN STEP 41: a run binds what each of its lines binds, read with the contract of its lines,
+  //   in the order of the lines. Found by step 41's review, M3: the run's own contract binds
+  //   nothing, so its approval kept no version.
+  const ofLines = contracts.get(lineOperationOf(target) ?? "");
+  const requests =
+    ofLines === undefined
+      ? [{ contract: target, payload: found.payload }]
+      : (found.payload as { lines: RunLine[] }).lines.map((line) => ({
+          contract: ofLines,
+          payload: line,
+        }));
   // Changed in step 37: with the payments, for a contract that binds one.
-  await readBound(
-    target,
-    found.payload,
-    stores.invoices,
-    tenant,
-    (one) => read.push(one),
-    stores.payments,
-  );
+  for (const request of requests) {
+    await readBound(
+      request.contract,
+      request.payload,
+      stores.invoices,
+      tenant,
+      (one) => read.push(one),
+      stores.payments,
+    );
+  }
   const versions = Object.fromEntries(
     read.flatMap((one) => (one.version === undefined ? [] : [[one.uri, one.version]])),
   );
