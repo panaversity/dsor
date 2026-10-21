@@ -99,7 +99,9 @@ export function sumOf(amounts: Money[]): Money {
   // Millionths read no minus sign, so a total is never below zero.
   const digits = total.toString().padStart(7, "0");
   const whole = digits.slice(0, -6);
-  const value = places === 0 ? whole : `${whole}.${digits.slice(-6, -6 + places)}`;
+  // The first `places` of the six digits after the point. Found by step 41's review, H3: a slice
+  //   that ended at -6 + places ended at 0 for six places, and lost the whole fraction.
+  const value = places === 0 ? whole : `${whole}.${digits.slice(-6).slice(0, places)}`;
   return { value, currency: first.currency };
 }
 
