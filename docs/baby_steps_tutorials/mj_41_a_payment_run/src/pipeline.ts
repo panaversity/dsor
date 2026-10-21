@@ -812,6 +812,344 @@ export async function call(
         }
         return { loaded, target, code };
       });
+    // The run's own parts come before the checks that call them: a dry release of a run calls
+    //   its check again before the call's later lines run. Found by step 41's review, H2: declared
+    //   below, it was not there yet, and every dry release of a run was INTERNAL_ERROR.
+    // NEW IN STEP 41: a run, at lines ⑧ to ⑩. Each line becomes a proposal of its own, of the
+    //   operation the run's contract names, tied to the run, with a key DSoR derives from the run's
+    //   key and the line's invoice. Each line passes lines ⑨ and ⑩ as one draft would, in the order
+    //   of the lines, with no booking of its own. Then the day's limit is checked once, against the
+    //   run's total, by one booking keyed by the run. The first line refused, or a total that does
+    //   not fit, refuses the whole run before anything is drafted: the run and every line end DENIED.
+    //   Otherwise each line waits as its own checks say, and the run waits for every approval its
+    //   lines ask for (DSOR-BAT-01b, DSOR-BAT-02b; step 41's README, decisions D2, D5, D6, and D7).
+    type LinePlan = {
+      index: number;
+      id: string;
+      line: RunLine;
+      requires?: Requirement[];
+      bound?: Bound;
+    };
+    // Moves every line of a run that is in one of these states to `to`, each with its record, as
+    //   the store holds them now: a run's lines move with it (step 41's README, claims C3, C6, C8).
+    const moveLines = async (
+      stores: WorkStores,
+      run: string,
+      from: readonly string[],
+      to: Parameters<ProposalStore["move"]>[3],
+      by: { mover: Mover; cause: string },
+    ): Promise<void> => {
+      for (const line of await stores.proposals.lines(tenant, run)) {
+        if (!from.includes(line.state)) continue;
+        const move = { ...by, correlation };
+        if (!(await stores.proposals.move(tenant, line.id, line.state, to, move))) {
+          throw new Error(`the line ${line.id} moved while its run moved`);
+        }
+      }
+    };
+    // The run's lines, once line ⑧ has opened them, which its work and its last move read.
+    let runPlans: LinePlan[] = [];
+    // A line's refusal, as the run's caller hears it: the same code and label, with the line named.
+    const lineRefusal = (index: number, run: string, thrown: Refusal): Refusal =>
+      new Refusal(
+        thrown.code,
+        `line ${index + 1} of ${JSON.stringify(run)}: ${thrown.message}`,
+        thrown.label,
+      );
+    // What line ⑨ read of one line: what it spends, and its vendor, by the address of the vendor of
+    //   the invoice it read. A line that passed its preconditions has both.
+    const lineReadOf = (bound: Bound | undefined, index: number): LineRead => {
+      const spends = bound?.spends;
+      const vendorId = Object.values(bound?.invoices ?? {})[0]?.vendor_id;
+      if (spends === undefined || vendorId === undefined) {
+        throw new Error(`line ${index + 1} of a run has no amount or no vendor`);
+      }
+      return { spends, vendor: formatUri({ tenant_id: tenant, entity: "vendor", id: vendorId }) };
+    };
+    const decideRun = async (
+      stores: WorkStores,
+      runUri: string,
+      runKey: string,
+    ): Promise<Refusal | Decided> => {
+      if (lineContract === undefined) throw new Error("a run with no contract for its lines");
+      // A dry run opens no proposal, so it never comes here.
+      if (mode === "validate_only") throw new Error("a dry run opened a run's lines");
+      const runId = proposalIdOf(tenant, runUri);
+      const asked = asCalled();
+      const { requester } = asked;
+      const dsor = dsorMover(requester);
+      const operation = `${lineContract.id}@${String(lineContract["version"])}`;
+      const { lines } = copy as { lines: RunLine[] };
+      // Every line's proposal first, so each line has a record of its own, one the checks never
+      //   reached too.
+      runPlans = [];
+      for (const [index, line] of lines.entries()) {
+        const id = `prop_${randomUUID()}`;
+        const exclusive = exclusiveOf(lineContract, line);
+        const draft: ProposalDraft = {
+          operation,
+          mode,
+          payload: line,
+          payload_hash: payloadHash(line),
+          resources: urisIn(line),
+          requester,
+          idempotency_key: lineKeyOf(runKey, line.invoice),
+          ...(exclusive === undefined ? {} : { exclusive_over: exclusive }),
+          run: runUri,
+        };
+        const cause = `${lineContract.id} called as line ${index + 1} of run ${runId}`;
+        const by = { mover: callerMover(requester), cause, correlation };
+        await stores.proposals.create(tenant, id, draft, by, lifetimeOf(registry, tenant));
+        runPlans.push({ index, id, line });
+      }
+      // The run is refused, so every line ends DENIED with it, each with the reason.
+      const denyAll = async (cause: string): Promise<void> => {
+        for (const plan of runPlans) {
+          const by = { mover: dsor, cause, correlation };
+          if (!(await stores.proposals.move(tenant, plan.id, "PROPOSED", "DENIED", by))) {
+            throw new Error(`the line ${plan.id} was no longer PROPOSED`);
+          }
+        }
+      };
+      // Each line's controls, in the order of the lines, for the run's record.
+      const evaluated: ControlOutcome[] = [];
+      for (const plan of runPlans) {
+        try {
+          plan.requires = await decideBeforeWork(
+            stores.invoices,
+            stores.reservations,
+            stores.slips,
+            stores.brakes,
+            stores.rates,
+            stores.controls,
+            stores.proposals,
+            { payments: stores.payments, holds: stores.holds },
+            plan.id,
+            { ...asked, contract: lineContract, copy: plan.line },
+            { seen: (bound) => (plan.bound = bound) },
+          );
+          evaluated.push(...(controlsOfRecord ?? []));
+          controlsOfRecord = undefined;
+        } catch (thrown) {
+          if (!isOutcome(thrown)) throw thrown;
+          await denyAll(`line ${plan.index + 1} of its run was refused: ${thrown.code}`);
+          return lineRefusal(plan.index, contract.id, thrown);
+        }
+      }
+      if (evaluated.length > 0) controlsOfRecord = evaluated;
+      // What each line spends, and its vendor, as line ⑨ read them.
+      const reads = runPlans.map((plan) => lineReadOf(plan.bound, plan.index));
+      // The day's limit, once, against the whole run.
+      try {
+        await checkRunDay({
+          operation: contract.id,
+          tenant,
+          slip: asked.slip?.id,
+          limits: limitsOf(asked.slip),
+          amounts: reads.map((read) => read.spends),
+          store: stores.reservations,
+          reserveFor: runId,
+          rates: readOnce(stores.rates),
+          policy: registry.moneyPolicies.get(tenant),
+          converted: (conversion) => {
+            const before = conversionOfRecord?.rates ?? {};
+            conversionOfRecord = { ...conversion, rates: { ...before, ...conversion.rates } };
+          },
+          unconvertible: (cause) => {
+            unconvertibleOfRecord = cause;
+          },
+          noted: (one) => {
+            evidence.converted.push(one);
+          },
+        });
+      } catch (thrown) {
+        if (!isOutcome(thrown)) throw thrown;
+        await denyAll(`its run was refused: ${thrown.code}`);
+        return thrown;
+      }
+      // Each line waits as its own checks say: for its approvals, or READY for its run.
+      for (const plan of runPlans) {
+        const asks = plan.requires;
+        const to = asks === undefined ? "READY" : "PENDING_APPROVAL";
+        const cause =
+          asks === undefined
+            ? "no control asks for an approval"
+            : `the control ${asks.map((r) => r.control).join(", ")} asks for an approval`;
+        const by = { mover: dsor, cause, correlation };
+        if (!(await stores.proposals.move(tenant, plan.id, "PROPOSED", to, by, asks))) {
+          throw new Error(`the line ${plan.id} was no longer PROPOSED`);
+        }
+      }
+      // The run waits for every approval its lines ask for, each once.
+      const waitsFor = new Map<string, Requirement>();
+      for (const plan of runPlans) {
+        for (const r of plan.requires ?? []) {
+          waitsFor.set(JSON.stringify([r.control, r.control_version]), r);
+        }
+      }
+      const totals = totalsOf(reads);
+      if (waitsFor.size > 0) return { requires: [...waitsFor.values()], totals };
+      // In execute mode the work starts now, for every line with its run.
+      if (mode === "execute") {
+        for (const plan of runPlans) {
+          const by = { mover: dsor, cause: "execute mode: the work starts", correlation };
+          if (!(await stores.proposals.move(tenant, plan.id, "READY", "EXECUTING", by))) {
+            throw new Error(`the line ${plan.id} was no longer READY`);
+          }
+        }
+      }
+      return { totals };
+    };
+    // NEW IN STEP 41: a run's check again, at its release, on live data: each line, in the order of
+    //   the lines, as its own release would check it, against what is true now; then the day's limit,
+    //   whose booking is found again; then the totals, added up again from the bills as they are now,
+    //   against the ones the approval bound; then the approvals against what the lines ask for now.
+    //   Any "no" voids the whole run (DSOR-APR-03a, DSOR-BAT-02a; step 41's README, claim C8).
+    const checkRunAgain = async (
+      stores: WorkStores,
+      loaded: Proposal,
+      target: Contract,
+      inClaim: boolean,
+      asker: { roles: readonly string[]; slip: Slip | undefined },
+    ): Promise<void> => {
+      const runId = proposalIdOf(tenant, loaded.uri);
+      const ofLines = registry.contracts.get(lineOperationOf(target) ?? "");
+      if (ofLines === undefined) throw new Error("a run with no contract for its lines");
+      const { lines } = loaded.payload as { lines: RunLine[] };
+      const kept = await stores.proposals.lines(tenant, loaded.uri);
+      runPlans = lines.map((line, index) => {
+        const found = kept.find((one) => one.invoice === line.invoice);
+        if (found === undefined)
+          throw new Error(`line ${index + 1} of run ${runId} has no proposal`);
+        return { index, id: found.id, line };
+      });
+      const { invoices, reservations, slips, brakes, rates, controls, proposals } = stores;
+      const { payments, holds } = stores;
+      const evaluated: ControlOutcome[] = [];
+      for (const plan of runPlans) {
+        const asked: Asked = {
+          contract: ofLines,
+          copy: plan.line,
+          own: undefined,
+          requester: loaded.requester,
+          roles: asker.roles,
+          slip: asker.slip,
+          ...decidedOnOf(ofLines, plan.line),
+          ...(inClaim ? {} : { booked: plan.id }),
+          release: true,
+        };
+        try {
+          plan.requires = await decideBeforeWork(
+            invoices,
+            reservations,
+            slips,
+            brakes,
+            rates,
+            controls,
+            proposals,
+            { payments, holds },
+            inClaim ? plan.id : undefined,
+            asked,
+            { seen: (bound) => (plan.bound = bound) },
+          );
+          evaluated.push(...(controlsOfRecord ?? []));
+          controlsOfRecord = undefined;
+        } catch (thrown) {
+          if (!(thrown instanceof Refusal)) throw thrown;
+          throw lineRefusal(plan.index, target.id, thrown);
+        }
+      }
+      if (evaluated.length > 0) controlsOfRecord = evaluated;
+      const reads = runPlans.map((plan) => lineReadOf(plan.bound, plan.index));
+      await checkRunDay({
+        operation: target.id,
+        tenant,
+        slip: asker.slip?.id,
+        limits: limitsOf(asker.slip),
+        amounts: reads.map((read) => read.spends),
+        store: reservations,
+        ...(inClaim ? { reserveFor: runId } : { booked: runId }),
+        rates: readOnce(rates),
+        policy: registry.moneyPolicies.get(tenant),
+      });
+      const now = totalsOf(reads);
+      const approved = { totals: loaded.totals, vendor_totals: loaded.vendor_totals };
+      if (payloadHash(now) !== payloadHash(approved)) {
+        const why = `run ${runId}'s totals, added up again from the bills as they are now, are not the ones it was approved with`;
+        throw new Refusal("STALE_STATE", why, "internal");
+      }
+      const waitsFor = new Map<string, Requirement>();
+      for (const plan of runPlans) {
+        for (const r of plan.requires ?? []) {
+          waitsFor.set(JSON.stringify([r.control, r.control_version]), r);
+        }
+      }
+      const given = await proposals.approvals(tenant, runId);
+      evidence.counted = await line(10, () =>
+        checkApprovals(loaded, [...waitsFor.values()], given, slips, tenant),
+      );
+    };
+    // A run's dry run: each line checked as the real run checks it, outside any claim, with no lock
+    //   and no booking, then the day's limit against the run's total, which it checks and does not
+    //   book. It answers what every line asks for. Found by step 41's review, H1: the dry run checked
+    //   the run's own contract, which binds nothing, and said ALLOW to every run (DSOR-OPR-05).
+    const dryRun = async (): Promise<Requirement[] | undefined> => {
+      if (lineContract === undefined) throw new Error("a run with no contract for its lines");
+      const asked = asCalled();
+      const { lines } = copy as { lines: RunLine[] };
+      const outside = { payments: unlocked(registry.payments), holds: registry.claims.holds };
+      const waitsFor = new Map<string, Requirement>();
+      const reads: LineRead[] = [];
+      for (const [index, line] of lines.entries()) {
+        let bound: Bound | undefined;
+        try {
+          const asks = await decideBeforeWork(
+            registry.invoices,
+            registry.claims.reservations,
+            registry.delegations,
+            registry.brakes,
+            registry.claims.rates,
+            registry.controls,
+            registry.claims.proposals,
+            outside,
+            undefined,
+            { ...asked, contract: lineContract, copy: line },
+            { seen: (seen) => (bound = seen) },
+          );
+          for (const r of asks ?? [])
+            waitsFor.set(JSON.stringify([r.control, r.control_version]), r);
+        } catch (thrown) {
+          if (!(thrown instanceof Refusal)) throw thrown;
+          throw lineRefusal(index, contract.id, thrown);
+        }
+        reads.push(lineReadOf(bound, index));
+      }
+      await checkRunDay({
+        operation: contract.id,
+        tenant,
+        slip: asked.slip?.id,
+        limits: limitsOf(asked.slip),
+        amounts: reads.map((read) => read.spends),
+        store: registry.claims.reservations,
+        rates: readOnce(registry.claims.rates),
+        policy: registry.moneyPolicies.get(tenant),
+      });
+      return waitsFor.size === 0 ? undefined : [...waitsFor.values()];
+    };
+    // A run's lines end as their run ends: COMMITTED, FAILED, or OUTCOME_UNKNOWN, each move with
+    //   its record (step 41's README, claim C3).
+    const closeLines = async (stores: WorkStores, outcome: Ended, by: Mover): Promise<void> => {
+      const ended = "value" in outcome;
+      const unknown = !ended && outcome.refused.code === "OUTCOME_UNKNOWN";
+      const to = ended ? "COMMITTED" : unknown ? "OUTCOME_UNKNOWN" : "FAILED";
+      for (const plan of runPlans) {
+        const move = { mover: by, cause: `its run ended ${to}`, correlation };
+        if (!(await stores.proposals.move(tenant, plan.id, "EXECUTING", to, move))) {
+          throw new Error(`the line ${plan.id} was no longer EXECUTING`);
+        }
+      }
+    };
+
     // The check again, on live data, for the stored request and whoever asked for
     //   it: its fingerprint, lines ③ to ⑤ for the asker, line ⑨'s read, line ⑩'s rules and limits,
     //   and the approvals against what the rules ask for now (DSOR-APR-03a, DSOR-APR-03b,
@@ -962,22 +1300,26 @@ export async function call(
     if (mode === "validate_only") {
       let requires: Requirement[] | undefined;
       try {
-        requires = await decideBeforeWork(
-          registry.invoices,
-          registry.claims.reservations,
-          registry.delegations,
-          registry.brakes,
-          // And the claim store's rates, outside any claim.
-          registry.claims.rates,
-          // And the world's rules, outside any claim.
-          registry.controls,
-          // And the proposals, outside any claim.
-          registry.claims.proposals,
-          // And the payments and the holds, outside any claim, so a dry run hears RESOURCE_HELD
-          //   as the real call would (DSOR-OPR-06). The payment is read without its lock: a dry run
-          //   waits for no send. Found by step 37's review, F4: it waited for the bank's answer.
-          { payments: unlocked(registry.payments), holds: registry.claims.holds },
-        );
+        // NEW IN STEP 41: a run's own dry run, line by line, then its total.
+        requires =
+          lineContract !== undefined
+            ? await dryRun()
+            : await decideBeforeWork(
+                registry.invoices,
+                registry.claims.reservations,
+                registry.delegations,
+                registry.brakes,
+                // And the claim store's rates, outside any claim.
+                registry.claims.rates,
+                // And the world's rules, outside any claim.
+                registry.controls,
+                // And the proposals, outside any claim.
+                registry.claims.proposals,
+                // And the payments and the holds, outside any claim, so a dry run hears RESOURCE_HELD
+                //   as the real call would (DSOR-OPR-06). The payment is read without its lock: a dry run
+                //   waits for no send. Found by step 37's review, F4: it waited for the bank's answer.
+                { payments: unlocked(registry.payments), holds: registry.claims.holds },
+              );
       } catch (thrown) {
         // Masked as the real call's refusal is, as it leaves the claim (step 23's README, decision
         // 3).
@@ -1005,292 +1347,6 @@ export async function call(
     //   place, after the intent record (step 24's README, decision 6).
     // And the job it runs: the call's own code and input, or, for a release, the
     //   code of the operation the proposal holds and the request it stored (DSOR-APR-10).
-    // NEW IN STEP 41: a run, at lines ⑧ to ⑩. Each line becomes a proposal of its own, of the
-    //   operation the run's contract names, tied to the run, with a key DSoR derives from the run's
-    //   key and the line's invoice. Each line passes lines ⑨ and ⑩ as one draft would, in the order
-    //   of the lines, with no booking of its own. Then the day's limit is checked once, against the
-    //   run's total, by one booking keyed by the run. The first line refused, or a total that does
-    //   not fit, refuses the whole run before anything is drafted: the run and every line end DENIED.
-    //   Otherwise each line waits as its own checks say, and the run waits for every approval its
-    //   lines ask for (DSOR-BAT-01b, DSOR-BAT-02b; step 41's README, decisions D2, D5, D6, and D7).
-    type LinePlan = {
-      index: number;
-      id: string;
-      line: RunLine;
-      requires?: Requirement[];
-      bound?: Bound;
-    };
-    // Moves every line of a run that is in one of these states to `to`, each with its record, as
-    //   the store holds them now: a run's lines move with it (step 41's README, claims C3, C6, C8).
-    const moveLines = async (
-      stores: WorkStores,
-      run: string,
-      from: readonly string[],
-      to: Parameters<ProposalStore["move"]>[3],
-      by: { mover: Mover; cause: string },
-    ): Promise<void> => {
-      for (const line of await stores.proposals.lines(tenant, run)) {
-        if (!from.includes(line.state)) continue;
-        const move = { ...by, correlation };
-        if (!(await stores.proposals.move(tenant, line.id, line.state, to, move))) {
-          throw new Error(`the line ${line.id} moved while its run moved`);
-        }
-      }
-    };
-    // The run's lines, once line ⑧ has opened them, which its work and its last move read.
-    let runPlans: LinePlan[] = [];
-    const decideRun = async (
-      stores: WorkStores,
-      runUri: string,
-      runKey: string,
-    ): Promise<Refusal | Decided> => {
-      if (lineContract === undefined) throw new Error("a run with no contract for its lines");
-      const runId = proposalIdOf(tenant, runUri);
-      const asked = asCalled();
-      const { requester } = asked;
-      const dsor = dsorMover(requester);
-      const operation = `${lineContract.id}@${String(lineContract["version"])}`;
-      const { lines } = copy as { lines: RunLine[] };
-      // Every line's proposal first, so each line has a record of its own, one the checks never
-      //   reached too.
-      runPlans = [];
-      for (const [index, line] of lines.entries()) {
-        const id = `prop_${randomUUID()}`;
-        const exclusive = exclusiveOf(lineContract, line);
-        const draft: ProposalDraft = {
-          operation,
-          mode,
-          payload: line,
-          payload_hash: payloadHash(line),
-          resources: urisIn(line),
-          requester,
-          idempotency_key: lineKeyOf(runKey, line.invoice),
-          ...(exclusive === undefined ? {} : { exclusive_over: exclusive }),
-          run: runUri,
-        };
-        const cause = `${lineContract.id} called as line ${index + 1} of run ${runId}`;
-        const by = { mover: callerMover(requester), cause, correlation };
-        await stores.proposals.create(tenant, id, draft, by, lifetimeOf(registry, tenant));
-        runPlans.push({ index, id, line });
-      }
-      // The run is refused, so every line ends DENIED with it, each with the reason.
-      const denyAll = async (cause: string): Promise<void> => {
-        for (const plan of runPlans) {
-          const by = { mover: dsor, cause, correlation };
-          if (!(await stores.proposals.move(tenant, plan.id, "PROPOSED", "DENIED", by))) {
-            throw new Error(`the line ${plan.id} was no longer PROPOSED`);
-          }
-        }
-      };
-      // Each line's controls, in the order of the lines, for the run's record.
-      const evaluated: ControlOutcome[] = [];
-      for (const plan of runPlans) {
-        try {
-          plan.requires = await decideBeforeWork(
-            stores.invoices,
-            stores.reservations,
-            stores.slips,
-            stores.brakes,
-            stores.rates,
-            stores.controls,
-            stores.proposals,
-            { payments: stores.payments, holds: stores.holds },
-            plan.id,
-            { ...asked, contract: lineContract, copy: plan.line },
-            { seen: (bound) => (plan.bound = bound) },
-          );
-          evaluated.push(...(controlsOfRecord ?? []));
-          controlsOfRecord = undefined;
-        } catch (thrown) {
-          if (!isOutcome(thrown)) throw thrown;
-          await denyAll(`line ${plan.index + 1} of its run was refused: ${thrown.code}`);
-          const words = `line ${plan.index + 1} of ${JSON.stringify(contract.id)}: ${thrown.message}`;
-          return new Refusal(thrown.code, words, thrown.label);
-        }
-      }
-      if (evaluated.length > 0) controlsOfRecord = evaluated;
-      // What each line spends, and its vendor, as line ⑨ read them: the vendor of the invoice it
-      //   read, by its address. A line that passed its preconditions has both.
-      const reads: LineRead[] = runPlans.map((plan) => {
-        const spends = plan.bound?.spends;
-        const vendorId = Object.values(plan.bound?.invoices ?? {})[0]?.vendor_id;
-        if (spends === undefined || vendorId === undefined) {
-          throw new Error(`line ${plan.index + 1} of a run has no amount or no vendor`);
-        }
-        return { spends, vendor: formatUri({ tenant_id: tenant, entity: "vendor", id: vendorId }) };
-      });
-      // The day's limit, once, against the whole run.
-      try {
-        await checkRunDay({
-          operation: contract.id,
-          tenant,
-          slip: asked.slip?.id,
-          limits: limitsOf(asked.slip),
-          amounts: reads.map((read) => read.spends),
-          store: stores.reservations,
-          reserveFor: runId,
-          rates: readOnce(stores.rates),
-          policy: registry.moneyPolicies.get(tenant),
-          converted: (conversion) => {
-            const before = conversionOfRecord?.rates ?? {};
-            conversionOfRecord = { ...conversion, rates: { ...before, ...conversion.rates } };
-          },
-          unconvertible: (cause) => {
-            unconvertibleOfRecord = cause;
-          },
-          noted: (one) => {
-            evidence.converted.push(one);
-          },
-        });
-      } catch (thrown) {
-        if (!isOutcome(thrown)) throw thrown;
-        await denyAll(`its run was refused: ${thrown.code}`);
-        return thrown;
-      }
-      // Each line waits as its own checks say: for its approvals, or READY for its run.
-      for (const plan of runPlans) {
-        const asks = plan.requires;
-        const to = asks === undefined ? "READY" : "PENDING_APPROVAL";
-        const cause =
-          asks === undefined
-            ? "no control asks for an approval"
-            : `the control ${asks.map((r) => r.control).join(", ")} asks for an approval`;
-        const by = { mover: dsor, cause, correlation };
-        if (!(await stores.proposals.move(tenant, plan.id, "PROPOSED", to, by, asks))) {
-          throw new Error(`the line ${plan.id} was no longer PROPOSED`);
-        }
-      }
-      // The run waits for every approval its lines ask for, each once.
-      const waitsFor = new Map<string, Requirement>();
-      for (const plan of runPlans) {
-        for (const r of plan.requires ?? []) {
-          waitsFor.set(JSON.stringify([r.control, r.control_version]), r);
-        }
-      }
-      const totals = totalsOf(reads);
-      if (waitsFor.size > 0) return { requires: [...waitsFor.values()], totals };
-      // In execute mode the work starts now, for every line with its run.
-      if (mode === "execute") {
-        for (const plan of runPlans) {
-          const by = { mover: dsor, cause: "execute mode: the work starts", correlation };
-          if (!(await stores.proposals.move(tenant, plan.id, "READY", "EXECUTING", by))) {
-            throw new Error(`the line ${plan.id} was no longer READY`);
-          }
-        }
-      }
-      return { totals };
-    };
-    // NEW IN STEP 41: a run's check again, at its release, on live data: each line, in the order of
-    //   the lines, as its own release would check it, against what is true now; then the day's limit,
-    //   whose booking is found again; then the totals, added up again from the bills as they are now,
-    //   against the ones the approval bound; then the approvals against what the lines ask for now.
-    //   Any "no" voids the whole run (DSOR-APR-03a, DSOR-BAT-02a; step 41's README, claim C8).
-    const checkRunAgain = async (
-      stores: WorkStores,
-      loaded: Proposal,
-      target: Contract,
-      inClaim: boolean,
-      asker: { roles: readonly string[]; slip: Slip | undefined },
-    ): Promise<void> => {
-      const runId = proposalIdOf(tenant, loaded.uri);
-      const ofLines = registry.contracts.get(lineOperationOf(target) ?? "");
-      if (ofLines === undefined) throw new Error("a run with no contract for its lines");
-      const { lines } = loaded.payload as { lines: RunLine[] };
-      const kept = await stores.proposals.lines(tenant, loaded.uri);
-      runPlans = lines.map((line, index) => {
-        const found = kept.find((one) => one.invoice === line.invoice);
-        if (found === undefined)
-          throw new Error(`line ${index + 1} of run ${runId} has no proposal`);
-        return { index, id: found.id, line };
-      });
-      const { invoices, reservations, slips, brakes, rates, controls, proposals } = stores;
-      const { payments, holds } = stores;
-      const evaluated: ControlOutcome[] = [];
-      for (const plan of runPlans) {
-        const asked: Asked = {
-          contract: ofLines,
-          copy: plan.line,
-          own: undefined,
-          requester: loaded.requester,
-          roles: asker.roles,
-          slip: asker.slip,
-          ...decidedOnOf(ofLines, plan.line),
-          ...(inClaim ? {} : { booked: plan.id }),
-          release: true,
-        };
-        try {
-          plan.requires = await decideBeforeWork(
-            invoices,
-            reservations,
-            slips,
-            brakes,
-            rates,
-            controls,
-            proposals,
-            { payments, holds },
-            inClaim ? plan.id : undefined,
-            asked,
-            { seen: (bound) => (plan.bound = bound) },
-          );
-          evaluated.push(...(controlsOfRecord ?? []));
-          controlsOfRecord = undefined;
-        } catch (thrown) {
-          if (!(thrown instanceof Refusal)) throw thrown;
-          const words = `line ${plan.index + 1} of ${JSON.stringify(target.id)}: ${thrown.message}`;
-          throw new Refusal(thrown.code, words, thrown.label);
-        }
-      }
-      if (evaluated.length > 0) controlsOfRecord = evaluated;
-      const reads: LineRead[] = runPlans.map((plan) => {
-        const spends = plan.bound?.spends;
-        const vendorId = Object.values(plan.bound?.invoices ?? {})[0]?.vendor_id;
-        if (spends === undefined || vendorId === undefined) {
-          throw new Error(`line ${plan.index + 1} of a run has no amount or no vendor`);
-        }
-        return { spends, vendor: formatUri({ tenant_id: tenant, entity: "vendor", id: vendorId }) };
-      });
-      await checkRunDay({
-        operation: target.id,
-        tenant,
-        slip: asker.slip?.id,
-        limits: limitsOf(asker.slip),
-        amounts: reads.map((read) => read.spends),
-        store: reservations,
-        ...(inClaim ? { reserveFor: runId } : { booked: runId }),
-        rates: readOnce(rates),
-        policy: registry.moneyPolicies.get(tenant),
-      });
-      const now = totalsOf(reads);
-      const approved = { totals: loaded.totals, vendor_totals: loaded.vendor_totals };
-      if (payloadHash(now) !== payloadHash(approved)) {
-        const why = `run ${runId}'s totals, added up again from the bills as they are now, are not the ones it was approved with`;
-        throw new Refusal("STALE_STATE", why, "internal");
-      }
-      const waitsFor = new Map<string, Requirement>();
-      for (const plan of runPlans) {
-        for (const r of plan.requires ?? []) {
-          waitsFor.set(JSON.stringify([r.control, r.control_version]), r);
-        }
-      }
-      const given = await proposals.approvals(tenant, runId);
-      evidence.counted = await line(10, () =>
-        checkApprovals(loaded, [...waitsFor.values()], given, slips, tenant),
-      );
-    };
-    // A run's lines end as their run ends: COMMITTED, FAILED, or OUTCOME_UNKNOWN, each move with
-    //   its record (step 41's README, claim C3).
-    const closeLines = async (stores: WorkStores, outcome: Ended, by: Mover): Promise<void> => {
-      const ended = "value" in outcome;
-      const unknown = !ended && outcome.refused.code === "OUTCOME_UNKNOWN";
-      const to = ended ? "COMMITTED" : unknown ? "OUTCOME_UNKNOWN" : "FAILED";
-      for (const plan of runPlans) {
-        const move = { mover: by, cause: `its run ended ${to}`, correlation };
-        if (!(await stores.proposals.move(tenant, plan.id, "EXECUTING", to, move))) {
-          throw new Error(`the line ${plan.id} was no longer EXECUTING`);
-        }
-      }
-    };
-
     // NEW IN STEP 41: and, for a run, its lines, each drafted by the code with its own read.
     type Job = {
       handler: Handler | undefined;
