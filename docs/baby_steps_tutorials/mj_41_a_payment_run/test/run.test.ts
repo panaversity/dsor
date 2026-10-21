@@ -617,3 +617,21 @@ describe("step 41's review, M2: two runs over the same bills at once", () => {
     for (const answer of ended as Answer[]) expect(saidOf(answer)).not.toBe("INTERNAL_ERROR");
   });
 });
+
+// Found by step 41's review, M3: a run's approval bound no state: the run's contract binds nothing,
+//   so its approval kept no version, where one draft's keeps its invoice's and its vendor's
+//   (DSOR-APR-02a).
+describe("step 41's review, M3: a run's approval binds every line's state", () => {
+  it("DSOR-BAT-02a: M3: the approval of a run keeps the version of each line's invoice and vendor", async () => {
+    const w = ruleWorld();
+    const run = await approvedRunA(w);
+    const [approval] = await w.proposals.approvals("org_456", run.split("/").at(-1)!);
+    expect(approval!.bound_state.versions).toStrictEqual({
+      "dsor://org_456/invoice/INV-1002": 1,
+      "dsor://org_456/invoice/INV-1006": 1,
+      "dsor://org_456/invoice/INV-1008": 1,
+      "dsor://org_456/vendor/VENDOR-31": 1,
+      "dsor://org_456/vendor/VENDOR-44": 1,
+    });
+  });
+});
