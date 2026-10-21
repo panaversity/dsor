@@ -341,3 +341,41 @@ describe("step 41's review, M2: runs over the same bills at once, on the databas
     expect(said).not.toContain("INTERNAL_ERROR");
   });
 });
+
+// Found by step 41's review, M4: no test sent two runs over one waiting bill at once (U6), and none
+//   needed a line's own key in the database, proposals_one_attempt (U7).
+describe("step 41's review, M4: a waiting line's bill, held on the database", () => {
+  it("DSOR-BAT-01b: M4: two runs over INV-9412 at once: one waits for the CFO, the other hears CONFLICT, never an accident (U6)", async () => {
+    const answers = await Promise.all([
+      asIntake("payment.run", linesOf("INV-9412")),
+      asIntake("payment.run", linesOf("INV-9412", "INV-9411")),
+    ]);
+    const said = answers.map((a) => ("code" in a ? a.code : (a as { outcome: string }).outcome));
+    expect(said.sort()).toStrictEqual(["CONFLICT", "PENDING_APPROVAL"]);
+  });
+
+  it("DSOR-BAT-01b: M4: the database's own key keeps a second attempt at a waiting line's bill out of flight (U7)", async () => {
+    const answer = await asIntake("payment.run", linesOf("INV-9412"));
+    const run = (await proposals.get("org_456", idOf(answer)))!;
+    const [line] = await proposals.lines("org_456", run.uri);
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT set_config('dsor.tenant_id', 'org_456', true)");
+      const { rows } = await client.query<{ id: string }>(
+        `INSERT INTO dsor.proposals (tenant_id, id, operation, mode, state, payload, payload_hash,
+                                     resources, requester, idempotency_key, expires_at, exclusive_over)
+         SELECT tenant_id, 'prop_' || gen_random_uuid(), operation, mode, 'PROPOSED', payload,
+                payload_hash, resources, requester, 'second-attempt', expires_at, $2
+           FROM dsor.proposals WHERE id = $1 RETURNING id`,
+        [line!.id, "dsor://org_456/invoice/INV-9412"],
+      );
+      await expect(
+        client.query("UPDATE dsor.proposals SET state = 'READY' WHERE id = $1", [rows[0]!.id]),
+      ).rejects.toThrow(/proposals_one_attempt/);
+    } finally {
+      await client.query("ROLLBACK");
+      client.release();
+    }
+  });
+});

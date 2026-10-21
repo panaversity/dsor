@@ -9,8 +9,15 @@ import type { Invoice } from "../src/invoice.ts";
 import { money } from "../src/money.ts";
 import { handlersFor } from "../src/operations.ts";
 import { lineKeyOf, runProblems, totalsOf } from "../src/run.ts";
-import { AGENT, CFO, contract, keyed, SUPERVISOR, without } from "./helpers.ts";
-import { ruleWorld, ruleWorldOnTuesday, type RuleWorld } from "./rule-world.ts";
+import { ADMIN, AGENT, CFO, contract, keyed, SUPERVISOR, without } from "./helpers.ts";
+import {
+  ruleCall,
+  ruleWorld,
+  ruleWorldOnTuesday,
+  textOf,
+  version9,
+  type RuleWorld,
+} from "./rule-world.ts";
 
 /** A run's input: one line for each of these bills of org_456, each decided on version 1. */
 function lines(...ids: string[]): { lines: { invoice: string; expected_version: number }[] } {
@@ -633,5 +640,82 @@ describe("step 41's review, M3: a run's approval binds every line's state", () =
       "dsor://org_456/vendor/VENDOR-31": 1,
       "dsor://org_456/vendor/VENDOR-44": 1,
     });
+  });
+});
+
+// Found by step 41's review, M4: breaks that left every test green. Each clause now has a test that
+//   needs it.
+describe("step 41's review, M4: each clause has a test that needs it", () => {
+  it("DSOR-BAT-01b: M4: a line above the limit for one payment refuses the whole run, naming the line (U1)", async () => {
+    const w = ruleWorld();
+    bill(w, "INV-3401", "VENDOR-12", "60000.00");
+    const answer = await w.ask(keyed(AGENT), "payment.run", lines("INV-1002", "INV-3401"));
+    expect(answer).toMatchObject({
+      code: "LIMIT_EXCEEDED",
+      message:
+        'line 2 of "payment.run": "payment.create" would pass slip del_100\'s limit for one payment',
+    });
+    expect((await w.proposals.all()).map((p) => p.state)).toStrictEqual(Array(3).fill("DENIED"));
+  });
+
+  it("DSOR-APR-03c: M4: a rule switched on after the approval asks one line for another approver: the release voids the run (U2, U9)", async () => {
+    const w = await ruleWorldOnTuesday();
+    const run = await approvedRunA(w);
+    const rule = "dsor://org_456/rule/admin-above-30000";
+    const usd = (value: string) => ({ invoice: { open_amount: { value, currency: "USD" } } });
+    const text = {
+      ...textOf(version9()),
+      condition: 'dsor_exceeds(state.invoice.open_amount, dsor_money("30000", "USD"))',
+      effect: { require_approval: { role: "tenant_admin", quorum: 1 } },
+      authority: { system: "local", rule: "admin-above-30000" },
+      owner: "admin_100",
+      tests: [
+        { state: usd("30000.00"), expect: "ALLOW" },
+        { state: usd("30000.01"), expect: "REQUIRE_APPROVAL" },
+      ],
+    };
+    expect(await ruleCall(w, ADMIN, "rule.draft", { draft: text }, rule)).toMatchObject({
+      data: { version: 1 },
+    });
+    expect(await ruleCall(w, ADMIN, "rule.activate", { version: 1 }, rule)).toMatchObject({
+      data: { status: "active" },
+    });
+    const released = await w.ask(keyed(AGENT), "proposal.execute", { proposal: run });
+    expect(released).toMatchObject({
+      code: "APPROVAL_INVALIDATED",
+      message: expect.stringMatching(/APPROVAL_REQUIRED: admin-above-30000/),
+    });
+    expect(w.drafted).toStrictEqual([]);
+  });
+
+  it("DSOR-BAT-02a: M4: one vendor's lines in two currencies keep a total per vendor in each currency (U5)", async () => {
+    const w = await ruleWorldOnTuesday();
+    bill(w, "INV-3301", "VENDOR-44", "100.00", "GBP");
+    const answer = await w.ask(
+      { ...keyed(AGENT), mode: "propose_only" },
+      "payment.run",
+      lines("INV-1002", "INV-3301"),
+    );
+    const run = (await proposalAt(w, String((answer as { proposal: string }).proposal)))!;
+    expect(run.vendor_totals).toStrictEqual([
+      { vendor: "dsor://org_456/vendor/VENDOR-44", amount: { value: "100.00", currency: "GBP" } },
+      { vendor: "dsor://org_456/vendor/VENDOR-44", amount: { value: "8900.50", currency: "USD" } },
+    ]);
+    expect(run.totals).toStrictEqual([
+      { value: "100.00", currency: "GBP" },
+      { value: "8900.50", currency: "USD" },
+    ]);
+  });
+
+  it("DSOR-BAT-02a: M4: a bill moved to another vendor after the approval, its amount the same, voids the run: the totals per vendor are added up again (U21)", async () => {
+    const w = ruleWorld();
+    const run = await approvedRunA(w);
+    w.bills.find((b) => b.id === "INV-1006")!.vendor_id = "VENDOR-44";
+    const released = await w.ask(keyed(AGENT), "proposal.execute", { proposal: run });
+    expect(released).toMatchObject({
+      code: "APPROVAL_INVALIDATED",
+      message: expect.stringMatching(/totals/),
+    });
+    expect(w.drafted).toStrictEqual([]);
   });
 });
