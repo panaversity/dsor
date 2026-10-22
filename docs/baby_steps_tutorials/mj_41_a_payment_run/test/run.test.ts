@@ -719,3 +719,30 @@ describe("step 41's review, M4: each clause has a test that needs it", () => {
     expect(w.drafted).toStrictEqual([]);
   });
 });
+
+// Found by step 41's review, L1: memory's claim undid only the proposals an accident's call made, so
+//   after an accident at a release the run went back to APPROVED and its lines stayed EXECUTING,
+//   each holding its invoice.
+describe("step 41's review, L1: an accident at a release keeps nothing of it", () => {
+  it("step 41's decision D2: L1: an accident on a run's third line at its release leaves the run and every line as they waited", async () => {
+    const shipped = handlersFor();
+    const create = shipped["payment.create"]!;
+    let broken = false;
+    const code = {
+      ...shipped,
+      "payment.create": async (input: unknown, company: Parameters<typeof create>[1]) => {
+        if (broken && (input as { invoice: string }).invoice.endsWith("INV-1006")) {
+          throw new Error("a bug in the company's code");
+        }
+        return create(input, company);
+      },
+    };
+    const u = undefined;
+    const w = ruleWorld(u, u, u, u, u, u, u, u, u, code);
+    const run = await approvedRunA(w);
+    broken = true;
+    const released = await w.ask(keyed(AGENT), "proposal.execute", { proposal: run });
+    expect(released).toMatchObject({ code: "INTERNAL_ERROR" });
+    expect(await statesOf(w, run)).toStrictEqual(["APPROVED", "READY", "APPROVED", "READY"]);
+  });
+});
