@@ -413,3 +413,40 @@ describe("step 41's decision D12: a line moves with its run, on the database", (
     expect(await statesOf(idOf(answer))).toStrictEqual(Array(3).fill("COMMITTED"));
   });
 });
+
+// Found by step 41's review, L4: two of the trigger's rules of a run's totals had no test that
+//   needed them. The CHECKs proposals_run_of_company and proposals_totals_of_run stay untested: the
+//   trigger refuses every row they would, first, for every login.
+describe("step 41's review, L4: a run's totals, from its start", () => {
+  it("DSOR-BAT-02a: L4: dsor_runtime cannot move a run to wait without its totals", async () => {
+    const answer = await asIntake("payment.run", linesOf("INV-9411", "INV-9412"));
+    const run = (await proposals.get("org_456", idOf(answer)))!;
+    const sql = `WITH made AS (
+                   INSERT INTO dsor.proposals (tenant_id, id, operation, mode, state, payload,
+                     payload_hash, resources, requester, idempotency_key, expires_at, manifest_hash)
+                   SELECT tenant_id, 'prop_' || gen_random_uuid(), operation, mode, 'PROPOSED',
+                          payload, payload_hash, resources, requester, 'no-totals', expires_at,
+                          manifest_hash
+                     FROM dsor.proposals WHERE id = $1 RETURNING id)
+                 SELECT id FROM made`;
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT set_config('dsor.tenant_id', 'org_456', true)");
+      const { rows } = await client.query<{ id: string }>(sql, [run.uri.split("/").at(-1)]);
+      await expect(
+        client.query("UPDATE dsor.proposals SET state = 'READY' WHERE id = $1", [rows[0]!.id]),
+      ).rejects.toThrow(/a run that waits keeps its totals/);
+    } finally {
+      await client.query("ROLLBACK");
+      client.release();
+    }
+  });
+
+  it("DSOR-BAT-02a: L4: the owner cannot add a run whose totals are written before it waits", async () => {
+    const answer = await asIntake("payment.run", linesOf("INV-9411", "INV-9412"));
+    const id = idOf(answer);
+    const born = ownerRuns("born-with-totals", id) as { said: string };
+    expect(born.said).toMatch(/a run starts with no totals/);
+  });
+});

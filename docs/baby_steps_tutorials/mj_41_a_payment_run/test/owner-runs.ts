@@ -6,6 +6,8 @@
 // (found by step 41's own breaks, B12). The commands:
 // - unlink <line id>: the line's run set to none.
 // - refingerprint <run id>: the run's fingerprint changed.
+// - born-with-totals <run id>: a copy of the run added under a new id with its totals already
+//   written, which dsor_runtime holds no right to insert (found by step 41's review, L4).
 // Run by the tests as:  node test/owner-runs.ts unlink <id> | refingerprint <id>
 import pg from "pg";
 import { loadDotEnv, requireEnv } from "../src/postgres.ts";
@@ -22,6 +24,13 @@ const STATEMENTS: Record<string, string> = {
   unlink: "UPDATE dsor.proposals SET run = NULL WHERE id = $1",
   refingerprint: `UPDATE dsor.proposals
                      SET manifest_hash = 'sha256:' || repeat('0', 64) WHERE id = $1`,
+  "born-with-totals": `INSERT INTO dsor.proposals (tenant_id, id, operation, mode, state, payload,
+                         payload_hash, resources, requester, idempotency_key, expires_at,
+                         manifest_hash, totals, vendor_totals)
+                       SELECT tenant_id, 'prop_' || gen_random_uuid(), operation, mode, 'PROPOSED',
+                              payload, payload_hash, resources, requester, 'born-with-totals',
+                              expires_at, manifest_hash, totals, vendor_totals
+                         FROM dsor.proposals WHERE id = $1`,
 };
 
 try {
