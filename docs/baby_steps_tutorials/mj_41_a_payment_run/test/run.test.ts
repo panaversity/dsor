@@ -151,7 +151,9 @@ describe("C2: each line is its own proposal, with its own key and its own checks
     const run = String((first as { proposal: string }).proposal);
     const kept = await linesOf(w, run);
     expect(kept.map((p) => p.idempotency_key)).toStrictEqual(
-      RUN_A.lines.map((line) => lineKeyOf("k-week-42", line.invoice)),
+      RUN_A.lines.map((line) =>
+        lineKeyOf("org_456", "accounts-payable-fte", "k-week-42", line.invoice),
+      ),
     );
     expect(new Set(kept.map((p) => p.idempotency_key)).size).toBe(3);
     const again = await w.ask(sent, "payment.run", RUN_A);
@@ -159,11 +161,30 @@ describe("C2: each line is its own proposal, with its own key and its own checks
     expect(await w.proposals.all()).toHaveLength(4);
   });
 
-  it("DSOR-BAT-01b: C2: a line's key is a hash of the run's key and its invoice, so two runs, or two invoices, never share one", () => {
-    const one = lineKeyOf("k-week-42", "dsor://org_456/invoice/INV-1002");
+  // Changed by the learner's D11, after step 41's review, L2: the company and the caller too, as
+  //   the run's own claim is scoped, so two callers' runs with one key never share a line's key.
+  it("DSOR-BAT-01b: C2: a line's key is a hash of its company, its caller, the run's key, and its invoice: change any one, and the key changes", () => {
+    const INV = "dsor://org_456/invoice/INV-1002";
+    const one = lineKeyOf("org_456", "accounts-payable-fte", "k-week-42", INV);
     expect(one).toMatch(/^line_[0-9a-f]{64}$/);
-    expect(lineKeyOf("k-week-43", "dsor://org_456/invoice/INV-1002")).not.toBe(one);
-    expect(lineKeyOf("k-week-42", "dsor://org_456/invoice/INV-1009")).not.toBe(one);
+    expect(lineKeyOf("org_456", "accounts-payable-fte", "k-week-43", INV)).not.toBe(one);
+    expect(lineKeyOf("org_456", "accounts-payable-fte", "k-week-42", `${INV}0`)).not.toBe(one);
+    expect(lineKeyOf("org_456", "intake-fte", "k-week-42", INV)).not.toBe(one);
+    expect(lineKeyOf("org_789", "accounts-payable-fte", "k-week-42", INV)).not.toBe(one);
+  });
+
+  it("DSOR-BAT-01b: C2: two callers who send the same run with one key get different line keys", async () => {
+    /** The line keys of RUN_B, sent by this caller with the key k-same, in a world of its own. */
+    const keysOf = async (who: typeof AGENT): Promise<string[]> => {
+      const w = ruleWorld();
+      const answer = await w.ask(keyed(who, "k-same"), "payment.run", RUN_B);
+      const run = String((answer as { proposal: string }).proposal);
+      return (await linesOf(w, run)).map((p) => p.idempotency_key);
+    };
+    const agent = await keysOf(AGENT);
+    const person = await keysOf(SUPERVISOR);
+    expect(agent).toHaveLength(3);
+    expect(agent.filter((k) => person.includes(k))).toStrictEqual([]);
   });
 
   it("DSOR-BAT-01b: C2: each line's controls are its own: INV-1008's line waits for the CFO's rule, and the other two lines wait READY for their run", async () => {

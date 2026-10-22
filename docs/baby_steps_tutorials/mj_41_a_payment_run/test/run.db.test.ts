@@ -136,7 +136,7 @@ describe("C2 to C4: a run, proposed on the database", () => {
       expect(kept).toMatchObject({
         operation: "payment.create@1",
         run: run.uri,
-        idempotency_key: lineKeyOf(key, line.invoice),
+        idempotency_key: lineKeyOf("org_456", "intake-fte", key, line.invoice),
       });
     }
     expect(await statesOf(run.uri.split("/").at(-1)!)).toStrictEqual([
