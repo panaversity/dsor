@@ -901,7 +901,7 @@ export async function call(
           payload_hash: payloadHash(line),
           resources: urisIn(line),
           requester,
-          idempotency_key: lineKeyOf(runKey, line.invoice),
+          idempotency_key: lineKeyOf(tenant, caller.id, runKey, line.invoice),
           ...(exclusive === undefined ? {} : { exclusive_over: exclusive }),
           run: runUri,
         };

@@ -101,15 +101,22 @@ export function checkRunShape(contract: Contract, input: unknown): void {
 }
 
 /**
- * A line's own idempotency key, derived by DSoR from the run's key and the line's invoice, never
- * given by the caller: the same run sent again with the same key gives every line the same key
- * (DSOR-BAT-01b; step 41's README, decision D6). The two are hashed as one JSON list, so no run
- * key and invoice can be written to look like another pair.
+ * A line's own idempotency key, derived by DSoR, never given by the caller, from the run's company,
+ * its caller, its key, and the line's invoice: the scope of the run's own claim, and the line. The
+ * same run sent again by the same caller with the same key gives every line the same key; another
+ * caller, or another company, never shares one. The run's claim is what stops a run being drafted
+ * twice; the line's key is each line's own name on record (DSOR-BAT-01b; step 41's README,
+ * decisions D6 and D11). The four are hashed as one JSON list, so no set of them can be written to
+ * look like another.
  */
-export function lineKeyOf(runKey: string, invoice: string): string {
-  const digest = createHash("sha256")
-    .update(JSON.stringify([runKey, invoice]))
-    .digest("hex");
+export function lineKeyOf(
+  tenant: string,
+  principal: string,
+  runKey: string,
+  invoice: string,
+): string {
+  const scoped = JSON.stringify([tenant, principal, runKey, invoice]);
+  const digest = createHash("sha256").update(scoped).digest("hex");
   return `line_${digest}`;
 }
 
