@@ -997,15 +997,8 @@ export async function call(
       }
       const totals = totalsOf(reads);
       if (waitsFor.size > 0) return { requires: [...waitsFor.values()], totals };
-      // In execute mode the work starts now, for every line with its run.
-      if (mode === "execute") {
-        for (const plan of runPlans) {
-          const by = { mover: dsor, cause: "execute mode: the work starts", correlation };
-          if (!(await stores.proposals.move(tenant, plan.id, "READY", "EXECUTING", by))) {
-            throw new Error(`the line ${plan.id} was no longer READY`);
-          }
-        }
-      }
+      // In execute mode the lines start with the work, after their run: the database moves a line
+      //   only with its run (step 41's README, decision D12).
       return { totals };
     };
     // NEW IN STEP 41: a run's check again, at its release, on live data: each line, in the order of
@@ -2099,8 +2092,8 @@ export async function call(
             //   (decision 9).
             const steps: ProposalSteps = {
               open: (stores) =>
-                line(8, () =>
-                  openProposal(stores.proposals, opening, async (proposal) => {
+                line(8, async () => {
+                  const opened = await openProposal(stores.proposals, opening, async (proposal) => {
                     try {
                       const reserveFor = proposalIdOf(tenant, proposal);
                       // The work, if it runs, runs for this proposal.
@@ -2148,8 +2141,25 @@ export async function call(
                       if (isOutcome(thrown)) return thrown;
                       throw thrown;
                     }
-                  }),
-                ),
+                  });
+                  // NEW IN STEP 41: a run in execute mode is EXECUTING now, so its lines start, in
+                  //   line ⑧, outside the code's own savepoint: the database moves a line only with
+                  //   its run, and a refusal of the code ends them FAILED with it (step 41's README,
+                  //   decision D12).
+                  const started =
+                    lineContract !== undefined &&
+                    mode === "execute" &&
+                    opened.refused === undefined &&
+                    opened.pending === undefined;
+                  if (started) {
+                    const by = {
+                      mover: dsorMover(opening.draft.requester),
+                      cause: "execute mode: the work starts",
+                    };
+                    await moveLines(stores, opened.proposal, ["READY"], "EXECUTING", by);
+                  }
+                  return opened;
+                }),
               // And the reservation's end, with the proposal's: committed with
               //   COMMITTED, so it stays counted, and released with FAILED, so the day gets it back
               //   (DSOR-DEL-06c, DSOR-DEL-06d; step 24's README, decision 7).
@@ -2170,13 +2180,14 @@ export async function call(
             const work =
               lineContract === undefined
                 ? runCode
-                : (stores: WorkStores) =>
-                    runCode(stores, {
+                : (stores: WorkStores) => {
+                    return runCode(stores, {
                       handler: lineCode,
                       own: undefined,
                       input: copy,
                       lines: { operation: lineContract.id, plans: runPlans },
                     });
+                  };
             return {
               scope,
               claimed: await registry.claims.run(
