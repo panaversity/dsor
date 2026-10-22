@@ -379,3 +379,37 @@ describe("step 41's review, M4: a waiting line's bill, held on the database", ()
     }
   });
 });
+
+// The learner's D12, after step 41's review, L3: the database moves a line only with its run. As
+//   dsor_runtime, raw SQL could approve a waiting line, or start one, by itself.
+describe("step 41's decision D12: a line moves with its run, on the database", () => {
+  it("step 41's decision D12: dsor_runtime cannot approve a waiting line, nor start a READY one, while its run waits", async () => {
+    const answer = await asIntake("payment.run", linesOf("INV-9411", "INV-9412"));
+    const run = (await proposals.get("org_456", idOf(answer)))!;
+    const lines = await proposals.lines("org_456", run.uri);
+    const waiting = lines.find((l) => l.state === "PENDING_APPROVAL")!;
+    const ready = lines.find((l) => l.state === "READY")!;
+    await expect(
+      tryThenRollBack(
+        pool,
+        "UPDATE dsor.proposals SET state = 'APPROVED' WHERE id = $1",
+        "org_456",
+        [waiting.id],
+      ),
+    ).rejects.toThrow(/a line moves to APPROVED only with its run/);
+    await expect(
+      tryThenRollBack(
+        pool,
+        "UPDATE dsor.proposals SET state = 'EXECUTING' WHERE id = $1",
+        "org_456",
+        [ready.id],
+      ),
+    ).rejects.toThrow(/a line moves to EXECUTING only with its run/);
+  });
+
+  it("step 41's decision D12: a run that needs no one still drafts at once: its lines start after the run", async () => {
+    const answer = await asIntake("payment.run", linesOf("INV-9411", "INV-9413"));
+    expect(answer).toMatchObject({ outcome: "COMMITTED" });
+    expect(await statesOf(idOf(answer))).toStrictEqual(Array(3).fill("COMMITTED"));
+  });
+});
