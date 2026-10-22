@@ -401,6 +401,15 @@ export function memoryClaims(
             if (made === undefined) made = proposalUri(tenant, id);
             else others.push(proposalUri(tenant, id));
           },
+          // And every other proposal it moves, such as the lines a release starts, which an
+          //   accident puts back as they were, as the database's rollback does. Found by step 41's
+          //   review, L1: a run's lines stayed EXECUTING after an accident at its release.
+          move: async (tenant, id, from, to, by, requires, totals) => {
+            const moved = await proposals.move(tenant, id, from, to, by, requires, totals);
+            const uri = proposalUri(tenant, id);
+            if (moved && uri !== made && !others.includes(uri)) others.push(uri);
+            return moved;
+          },
         },
         reservations,
         slips,
@@ -502,7 +511,7 @@ export function memoryClaims(
       } catch (error) {
         // An accident keeps no claim, as the database rolls the claim back with the work.
         claims.delete(id);
-        for (const uri of made === undefined ? [] : [made, ...others]) {
+        for (const uri of made === undefined ? others : [made, ...others]) {
           if (!("undo" in proposals)) break;
           const undone = await (proposals as MemoryProposals).undo(uri, requestId);
           if (undone === "gone" && "forget" in reservations) {
