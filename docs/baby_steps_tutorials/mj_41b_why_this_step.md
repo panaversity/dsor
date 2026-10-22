@@ -153,26 +153,32 @@ Asked one at a time, in this session, after the problem above.
   and the answer names the new one. No event is written. *Downside:* the CFO learns only when she
   acts on the old one.
 
-## Found while checking the decisions, for the design
+## Found while checking the decisions, and settled (2026-10-22)
 
-Not decided yet; check each against the code and the specification before the first test.
+The learner decided three of them:
 
-- **The new run's own invoices.** The new run of 11 names invoices that the old run's lines hold.
-  So, inside the one transaction, the old proposal and its lines must be cancelled before the new
-  one's check for an attempt in flight, or the new one is refused with `CONFLICT` by its own
-  predecessor.
-- **A run's lines move with it.** Replacing a run cancels each of its lines too, and migration 045
-  must let a line move to `CANCELLED` with its run. A line is never replaced alone (step 41).
-- **The refusal is still recorded.** A refused replacement rolls its work back, and its decision is
-  still recorded before the answer (DSOR-EXE-02).
-- **Two replacements at once.** Two calls that name the same old proposal: only one may win. The
-  old proposal must be locked first, and the second hears `CONFLICT`.
-- **What "own requester" means for an agent.** The same agent, and also the same slip? DSOR-APR-11
-  binds a release to the agent's own slip.
-- **Where `supersedes` travels.** In the command's input, so it is part of the payload hash, or in
-  the request envelope. The specification's proposal keeps it beside the payload.
-- **Bad addresses.** A `supersedes` that names no proposal, one of another company, one already
-  cancelled, or a line of a run.
+- **D9. `supersedes` travels in the request envelope**, beside `mode` and `idempotency_key`: it
+  says how to treat the call, not what to pay. The payload stays the bills, so no input schema
+  changes, and the proposal keeps `supersedes` beside its payload. *Downside:* the idempotency
+  claim must compare it too, or the same key with another `supersedes` would replay silently.
+- **D10. For an agent, "own requester" is the same agent under the same slip**, as DSOR-APR-11
+  binds a release (step 31's `release.ts`). *Downside:* a new slip cannot replace work done under
+  the old one; tearing up the old slip cancels that work anyway (step 25).
+- **D11. On the database, a line moves to `CANCELLED` only with its run**, one rule more in the
+  trigger of migration 045's kind. *Downside:* one more rule, with its test and its break.
+
+The rest follow from rules already built, so they are the design's, not choices:
+
+- **Order inside the one transaction:** lock the old proposal; check it may be replaced (same
+  company, its requester, a state of D3, not a line); move it and its lines to `CANCELLED` and give
+  its booking back; then run the new command's checklist. So the new proposal's check for an
+  attempt in flight no longer sees the old one's invoices. Any refusal rolls all of it back (D6).
+- **Two replacements of one proposal at once:** the old proposal's lock makes the second wait, and
+  it then finds the old one `CANCELLED` and hears `CONFLICT`.
+- **The refusal is still recorded** before the answer (DSOR-EXE-02), as every refusal is.
+- **Bad addresses answer as `proposal.approve` does today:** no such proposal, or one of another
+  company, is `RESOURCE_NOT_FOUND`; another requester is `AUTHORIZATION_DENIED`; a state that may
+  not be replaced, or a line of a run, is `CONFLICT`.
 
 ## The learner's predictions (2026-10-22)
 
@@ -186,15 +192,17 @@ Asked as stories, before any design or code. A real run settles each one after t
 
 ## Next
 
-Copy step 41 into `mj_41b_a_new_run_replaces_a_waiting_one`, write the README's "The design,
-before any code" from the decisions above, settle "Found while checking the decisions", then build
-piece by piece, each piece's tests red first.
+Step 41 is copied into `mj_41b_replace_a_waiting_proposal`, its markers removed; its `pnpm check`
+passes, 2777 tests. Next: write that folder's README, "In plain words", "Why it matters", and "The
+design, before any code", from this document; then build piece by piece, each piece's tests red
+first.
 
 ## How to continue in a new session
 
 ```text
 Start step 41b of the DSoR baby-steps tutorial in learner mode, on branch mjunaidca/baby-steps.
-Read docs/baby_steps_tutorials/mj_41b_why_this_step.md first. The decisions D1 to D8 and the
-predictions P1 to P3 are made. Settle "Found while checking the decisions" with me, asking any
-choice that is mine, then copy step 41 and build piece by piece, tests red first.
+Read docs/baby_steps_tutorials/mj_41b_why_this_step.md first. The decisions D1 to D11 and the
+predictions P1 to P3 are made, and step 41 is copied into mj_41b_replace_a_waiting_proposal.
+Write its README's design from the document, then build piece by piece, tests red first. Ask me
+before any decision that is mine.
 ```
