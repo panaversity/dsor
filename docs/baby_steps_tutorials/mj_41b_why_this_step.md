@@ -174,16 +174,27 @@ Not decided yet; check each against the code and the specification before the fi
 - **Bad addresses.** A `supersedes` that names no proposal, one of another company, one already
   cancelled, or a line of a run.
 
-## Predictions to ask, once the design is settled
+## The learner's predictions (2026-10-22)
 
-Asked as stories, before any code. For example: "The run of 12 waits. The agent proposes the 11
-good lines and names the old run as the one it replaces. What does DSoR answer, what state is the
-old run in, and how much of the day's limit is booked after?"
+Asked as stories, before any design or code. A real run settles each one after the build.
+
+| | The story | The learner's answer |
+|---|---|---|
+| P1 | The 12-line run waits for cfo_100, booked 187,250.00 of the 200,000 USD day. The agent proposes the 11 good lines, 186,075.00 USD, with `supersedes` naming the old run. What does DSoR answer, and how much of the day is booked after? | The new run waits; 186,075.00 booked |
+| P2 | After P1, cfo_100 approves the old run with its fingerprint and totals. What does she hear, and what happens to the old run? | Refused, naming the new run; the old run stays `CANCELLED` |
+| P3 | The run of 12 is `APPROVED`. user_123, not the agent, proposes the 11 lines with `supersedes` naming it. What does he hear, and what state is the old run in after? | Refused; the old run is still `APPROVED` |
+
+## Next
+
+Copy step 41 into `mj_41b_a_new_run_replaces_a_waiting_one`, write the README's "The design,
+before any code" from the decisions above, settle "Found while checking the decisions", then build
+piece by piece, each piece's tests red first.
 
 ## How to continue in a new session
 
 ```text
 Start step 41b of the DSoR baby-steps tutorial in learner mode, on branch mjunaidca/baby-steps.
-Read docs/baby_steps_tutorials/mj_41b_why_this_step.md first. Show me the problem, then ask the
-questions in it one at a time and wait for my answer. Do not build anything before I decide.
+Read docs/baby_steps_tutorials/mj_41b_why_this_step.md first. The decisions D1 to D8 and the
+predictions P1 to P3 are made. Settle "Found while checking the decisions" with me, asking any
+choice that is mine, then copy step 41 and build piece by piece, tests red first.
 ```
