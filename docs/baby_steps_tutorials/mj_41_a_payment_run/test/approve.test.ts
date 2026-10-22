@@ -193,7 +193,8 @@ describe("C3: only the request with that fingerprint, only a waiting proposal, o
     const other = await drafted(w, "INV-1012");
     expect(await approves(w, CFO, uri, other.payload_hash)).toMatchObject({
       code: "APPROVAL_MISMATCH",
-      message: `the fingerprint is not the one of proposal ${id}'s request`,
+      // Changed in step 41: the message names the payload hash, as a run has a second fingerprint.
+      message: `the payload hash is not the one of proposal ${id}'s request`,
     });
     expect(await stateOf(w, id)).toStrictEqual({ state: "PENDING_APPROVAL", approvals: 0 });
   });

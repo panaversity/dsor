@@ -21,17 +21,33 @@ approval carries the list's *fingerprint*, a SHA-256 hash over its lines in thei
 *totals* she saw, per currency and per vendor. If one line changes, the fingerprint changes. If one
 bill's amount changes, the totals change. Either way, her approval no longer matches.
 
-**Words this step uses.** A *proposal* is DSoR's record of one command and its state (step 22). A
-*claim* is the hold DSoR takes on a request's idempotency key, and a command's work runs inside
-the claim's one database transaction (steps 20 and 36b). A *booking* is the amount a proposal
-takes from its slip's limit for one day (step 24). A *release* is `proposal.execute`, which runs a
-proposal that waited (step 31).
+**Words this step uses.**
+
+- A *proposal* is DSoR's record of one command and its state (step 22).
+- A *claim* is DSoR's note that a request's idempotency key is in use. A command's work runs inside
+  the claim's one database transaction (steps 20 and 36b).
+- A *booking* is the amount a proposal takes from its slip's limit for one day (step 24).
+- A *release* is `proposal.execute`, which runs a proposal that waited (step 31).
+- *Canonical JSON* is JSON written one fixed way: keys sorted, no spaces. The same value always
+  gives the same text (step 29).
+- A *payload hash* is the SHA-256 hash of a request's input in canonical JSON. Every proposal keeps
+  one, and every approval carries it back (step 29).
+- *In flight* means a proposal of an invoice that has not ended yet: it is proposed, waiting,
+  approved, or running (step 32).
+- *Lines ⑥, ⑧, ⑨, and ⑩* are steps of the checklist that every command runs
+  ([§21](../../../specs/dsor/03-execution.md#21-command-pipeline)). Line ⑥ checks the input and
+  computes its payload hash. Line ⑧ makes the proposal. Line ⑨ reads the bills and checks their
+  state. Line ⑩ applies the rules and the limits.
+
+In this step, *fingerprint* means a run's own: the payload hash of its list of lines, in their order.
+The rules call it the *manifest hash*. They say *counterparty* where this step says *vendor*.
 
 ## Why it matters
 
 A real run on 2026-10-20, on step 40c's own code, in a scratch copy. This week org_456 has 37
 issued bills, 430,845.50 USD in all, from VENDOR-44, VENDOR-12, and VENDOR-31. The bills
-INV-3001 to INV-3037 are made up for this run; the story's six bills are too few. Today the only
+INV-3001 to INV-3037 are made up for this run, by a script in the scratch copy that is not part of
+this step; the story's six bills are too few. The labels in the output are the script's. Today the only
 way to draft them is one call each, so `accounts-payable-fte` calls `payment.create` 37 times,
 under del_100, with its limits of 50,000 USD a payment and 200,000 USD a day:
 
@@ -50,7 +66,7 @@ accounts-payable-fte, under del_100 (50,000 a payment, 200,000 a day), drafts ea
 what the 37 calls ended as: {"COMMITTED":16,"PENDING_APPROVAL":3,"LIMIT_EXCEEDED":18}
 drafted or waiting: 198,950.50 USD of 430,845.50; the first refused: INV-3016
 left with no draft, by vendor: {"VENDOR-44":"107,800.00","VENDOR-12":"114,950.00","VENDOR-31":"9,145.00"}
-cfo_100's inbox: 3 separate approvals. One of them, as the proposal holds it:
+waiting for cfo_100: 3 separate proposals. One of them, as DSoR keeps it:
   {"operation":"payment.create@1","payload":{"invoice":"dsor://org_456/invoice/INV-3005","expected_version":1},"payload_hash":"sha256:1d63a6773a609…"}
   cfo_100 approves INV-3005: COMMITTED APPROVED
   cfo_100 approves INV-3008: COMMITTED APPROVED
@@ -68,8 +84,9 @@ Three things went wrong:
 3. **Nobody could ask "may I draft this list?"** DSoR had no list to check against the day's limit
    before anything was drafted. The week ended half done, and the agent found out at bill 16.
 
-**Common mistake:** approving a run by its total only. The CFO sees "430,845.50 USD", approves,
-and the agent then drafts a list with one bill swapped for another of the same amount. The total
+**Common mistake:** approving a run by its total only. The CFO sees "187,250.00 USD" for a run of
+12 lines, approves, and the agent then drafts a list with one bill swapped for another of the same
+amount. The total
 still matches. The fingerprint of the ordered lines is what catches the swap. The totals catch a
 changed amount. A run's approval needs both.
 
@@ -105,13 +122,13 @@ so neither applies yet.
 | Claim | What it says |
 |---|---|
 | C1 | `payment.run`'s contract declares `all_or_nothing` and at most 50 lines. A run of 51 lines, or one that names one bill twice, is refused before any bill is read |
-| C2 | Each line is its own `payment.create` proposal, tied to its run, with a key that DSoR derives from the run's key and the line's invoice. Each line passes its own checks at lines ⑨ and ⑩: the bill and its vendor, the version, one attempt at a time, the CFO's rule, and the limit for one payment. Each line's moves are recorded |
+| C2 | Each line is its own `payment.create` proposal, tied to its run, with a key that DSoR derives from the run's company, its caller, its key, and the line's invoice. Each line passes its own checks at lines ⑨ and ⑩: the bill and its vendor, the version, one attempt at a time, the CFO's rule, and the limit for one payment. Each line's moves are recorded |
 | C3 | All or nothing. A line that fails its check refuses the whole run before anything is drafted: the run and every line end `DENIED`, and the answer names the line. A run that passes drafts every line in one transaction, each with its `payment.created`, or none |
-| C4 | The day's limit is booked once, for the run's total, keyed by the run, in the run's transaction. A total that would pass the day's limit refuses the whole run |
+| C4 | The day's limit is booked once, for the run's total, keyed by the run, in the run's transaction. Each line is converted to the slip's currency as one draft's is, and no fraction is lost in the sum. A total that would pass the day's limit refuses the whole run |
 | C5 | The run's proposal keeps its fingerprint and its totals per currency and per vendor, which DSoR adds up from the bills it read. An approval of a run carries the payload hash, the fingerprint, and the totals. If any of the three differs, the approval is refused with `APPROVAL_MISMATCH`, and the run still waits |
 | C6 | A run waits for the CFO when any of its lines would. One approval of the run approves every line. A line is never approved or released alone |
 | C7 | While a run waits, each line holds its invoice: a single draft of that invoice is refused with `CONFLICT` |
-| C8 | At the release, each line is checked again, and the totals are added up again from the bills as they are now. Any difference voids the run and every line, `INVALIDATED`, and the booking is given back |
+| C8 | At the release, each line is checked again, and the totals are added up again from the bills as they are now. Any difference voids the run and every line, `INVALIDATED`, and the booking is given back. A rate sheet too old to convert an amount does not void the run: the release answers `FRESHNESS_UNSATISFIABLE`, and the run still waits to be released |
 | C9 | What it does not do: change a run that waits (step 41b); send the drafts to the bank, which stays one `payment.execute` per payment; let some lines through (DSOR-BAT-01c, DSOR-BAT-02c); or judge a run's total by a rule of its own |
 
 ### Decisions
@@ -132,15 +149,17 @@ so neither applies yet.
   the lines and the money she approved. DSoR compares both, and at the release it reads the bills and
   adds them up again. The other ways were the fingerprint only, which leaves no trace of the totals
   she saw, and amounts inside the fingerprint, which no person can check. *Downside:* her screen
-  must send the totals exactly as shown.
+  must send the totals exactly as shown. In this tutorial that screen is the story's, read from
+  DSoR's own store; no step builds one.
 - **D5. Each line is its own proposal** (the learner's): a `payment.create` proposal, tied to its
   run. It gets what a single draft has: its state, its record of each move, its `payment.created`,
   and its hold on its invoice. The other way was to keep the lines inside the run's proposal, where
   step 32's guard against two attempts at one invoice does not reach. *Downside:* a run of 37 lines
   makes 38 proposals, and the run must move its lines with it.
-- **D6. A line's key is derived from the run's key and the line's invoice** (the learner's). A run
-  sent again with the same key gives every line the same key, so nothing is drafted twice. A run that
-  names one invoice twice is refused. The other ways were the run's key and the line's position, and
+- **D6. A line's key is derived from the run's key and the line's invoice** (the learner's; D11
+  adds the run's company and its caller). A run sent again with the same key gives every line the
+  same key. What stops a second drafting is the run's own claim: a replay is answered from it, and
+  its lines are not made again. A run that names one invoice twice is refused. The other ways were the run's key and the line's position, and
   a key from the agent for each line. *Downside:* a line's key is a long hash, not a word a person
   reads.
 - **D7. A run waits for the CFO when any line would** (the learner's). A run asks exactly what its
@@ -150,6 +169,15 @@ so neither applies yet.
 - **D8. A new run that replaces a waiting one** (the learner's, moved to step 41b). Step 41 builds
   nothing for it. A run that waits holds its invoices until it is approved and released, or until it
   expires.
+- **D11. A line's key names the run's company and caller too** (the learner's, after the review's
+  L2). The key is the SHA-256 of `[company, caller, run key, invoice]` as one JSON list. Before, two
+  agents that used the same run key got the same line keys, and the key's comment said it kept them
+  apart. *Downside:* none found; the key is still a long hash.
+- **D12. The database moves a line only with its run** (the learner's, after the review's L3).
+  Migration 045 gives the proposals' trigger one rule more. A line leaves `PROPOSED` only while its
+  run is being proposed. A line becomes `APPROVED`, `EXECUTING`, or `COMMITTED` only once its run is.
+  Before, raw SQL as `dsor_runtime` could approve a waiting line by itself. *Downside:* a line's
+  moves start after its run's, at line ⑧, outside the work's savepoint, so the code orders them.
 
 ### Found while checking the design
 
@@ -173,7 +201,8 @@ so neither applies yet.
   canonical JSON that every proposal's `payload_hash` uses.
 - **A run needs the permission to draft**, `payment:create`, and its approval needs `payment:approve`,
   as one draft's does.
-- **A line waits for what its run waits for.** A line moves with its run: `PENDING_APPROVAL`,
+- **A line waits as its own checks ask, and moves only with its run.** A line whose rule asks
+  for the CFO waits `PENDING_APPROVAL`; another waits `READY`. Then each line moves with its run:
   `APPROVED`, `EXECUTING`, then `COMMITTED`, or `DENIED`, `INVALIDATED`, or `FAILED` together.
 
 ### The tests, by claim
@@ -199,7 +228,7 @@ Asked before the build, as stories. A real run settles each one after the build.
 | | The story | The learner's answer |
 |---|---|---|
 | P1 | `accounts-payable-fte` proposes the whole week as one run: 37 lines, 430,845.50 USD, under del_100. What does DSoR answer, and how many drafts exist after? | Refused, no drafts |
-| P2 | A run of 12 lines, 187,250.00 USD, waits for cfo_100. Her screen was wrong and showed 186,250.00. She approves with the right fingerprint and the totals she saw. What does DSoR answer, and what state is the run in after? | Mismatch, still waits |
+| P2 | A run of 12 lines, 187,250.00 USD, waits for cfo_100. The screen that showed her the run was wrong: it showed 186,250.00. She approves with the right fingerprint and the totals she saw. What does DSoR answer, and what state is the run in after? | Mismatch, still waits |
 | P3 | While that run waits, user_123 drafts INV-3008, one of its lines, alone with `payment.create`. What does user_123 hear, and how many drafts of INV-3008 exist after? | Refused, none |
 | P4 | cfo_100 approved the 12-line run. Before the release, the accounts team suspends VENDOR-31, the vendor of one line. The agent releases the run. What happens, and how many lines are drafted? | Whole run void, none |
 
@@ -226,13 +255,14 @@ Asked before the build, as stories. A real run settles each one after the build.
 | `src/run.ts` | **New.** Start-up's check of a run's contract; line ⑥'s check of its length and of a bill named twice; a line's derived key; the totals per currency and per vendor (C1, C2, C5) |
 | `src/pipeline.ts` | A run at lines ⑧ to ⑩: each line's proposal, its checks, the one booking of the total, the denial of the whole run; its work, which drafts every line in the claim's one transaction; its check again at the release; and its lines' moves with it (C2 to C4, C6 to C8) |
 | `src/approve.ts`, `inputs/ProposalApproveRequest.schema.json`, `examples/proposal.approve.json` | A run's approval carries its fingerprint and its totals, compared last; a line is never approved alone; the run approved moves its waiting lines (C5, C6) |
+| `migrations/045_lines_move_with_run.sql` | **New migration.** The trigger moves a line only with its run (D12) |
 | `src/proposals.ts`, `src/postgres.ts`, `migrations/044_payment_runs.sql`, `store.json` | **New migration.** A line's run and a run's fingerprint, written with the proposal; a run's totals, written once when it starts to wait; a run's lines, listed; the trigger's rules for each, and the map's privileges (C2, C5) |
 | `src/limits.ts` | The day's limit for a run: every line's amount converted as one draft's is, added up, and booked once, keyed by the run (C4) |
-| `src/claims.ts` | Memory's claim undoes every proposal an accident's call made, a run's lines too (C3) |
+| `src/claims.ts` | Memory's claim undoes every proposal an accident's call made or moved, a run's lines too; a claim takes a lock its call holds already without waiting (C3) |
 | `src/registry.ts`, `classifications.json` | Start-up runs the run's check; a drafted run's answer, its payments, is labelled |
 | `src/main.ts` | The story's scene of a payment run |
-| `test/run.test.ts`, `test/run.db.test.ts`, `test/owner-run-bills.ts`, `test/db.ts` | **New.** The claims in memory and on PostgreSQL; the owner's program that adds the runs' own bills |
-| `test/cross-tenant.test.ts`, `test/cross-tenant.db.test.ts`, `test/modes.test.ts`, `test/contract.test.ts`, `test/registry.test.ts`, `test/startup.test.ts`, `test/semantics.test.ts`, `test/classifications-file.test.ts`, `test/program.db.test.ts`, `test/audit.db.test.ts`, `test/catalogs.ts`, `test/store-map.test.ts` | The earlier tests that list every contract, every attack, and every privilege name the run. Each says "Changed in step 41" |
+| `test/run.test.ts`, `test/run.db.test.ts`, `test/owner-run-bills.ts`, `test/owner-runs.ts`, `test/db.ts` | **New.** The claims in memory and on PostgreSQL; the owner's programs that add the runs' own bills, and that try to change what a run keeps for good |
+| `test/cross-tenant.test.ts`, `test/cross-tenant.db.test.ts`, `test/modes.test.ts`, `test/contract.test.ts`, `test/registry.test.ts`, `test/startup.test.ts`, `test/semantics.test.ts`, `test/classifications-file.test.ts`, `test/program.db.test.ts`, `test/audit.db.test.ts`, `test/catalogs.ts`, `test/store-map.test.ts`, `test/approve.test.ts` | The earlier tests that list every contract, every attack, and every privilege name the run. Each says "Changed in step 41" |
 
 ```bash
 git diff --no-index ../mj_40c_one_bad_event_does_not_block/src src
@@ -242,17 +272,19 @@ git diff --no-index ../mj_40c_one_bad_event_does_not_block/migrations migrations
 
 ## Run it
 
-As in step 40c: a local PostgreSQL 17 and a new database of its own. Migration 044 is new.
+As in step 40c: a local PostgreSQL 17 and a new database of its own. Migrations 044 and 045 are
+new.
 
 ```bash
 pnpm install
 pnpm migrate
 pnpm test:db test/run.db.test.ts
-pnpm start          # the story; its last scene is a payment run
+pnpm start          # the story; near its end, a payment run
 ```
 
-`pnpm start` ends with the run's scene, in memory. In that world PAY-901 is the first payment
-drafted, of INV-1002, not the story's PAY-901 of INV-1008:
+Near its end, `pnpm start` shows the run's scene, in memory; the log's records come after it. In
+that world PAY-901 is the first payment drafted, of INV-1002, not the story's PAY-901 of INV-1008.
+The lines are listed in the order of their proposals' ids, so that order changes from run to run:
 
 ```text
 a payment run, in memory, in a world of its own:
@@ -374,8 +406,8 @@ docs/baby_steps_tutorials/mj_41_a_payment_run/README.md.
 3. cfo_100 approves a run. Why does her approval carry the totals as well as the fingerprint?
 4. A line of a waiting run waits `READY`, because no rule asks about it. Why can the agent not
    release that line alone?
-5. Between the approval and the release, INV-1006's open amount changes, and its version does not.
-   What does the release do, and how does it know?
+5. Between the approval and the release, the accounts team suspends VENDOR-31, the vendor of one
+   line. What does the release do, and how does it know?
 
 <details>
 <summary>Answers</summary>
@@ -390,8 +422,8 @@ docs/baby_steps_tutorials/mj_41_a_payment_run/README.md.
    (DSOR-BAT-02a, D4, P2).
 4. Its run is the unit the CFO approved. A line released alone would draft a list nobody approved,
    one line long (D2, D7).
-5. It voids the run and every line, `INVALIDATED`, and drafts nothing. It adds the totals up again
-   from the bills as they are now, and they no longer match the ones the approval bound (C8).
+5. It voids the run and every line, `INVALIDATED`, drafts nothing, and gives the booking back. It
+   checks each line again at the release, and that line's vendor is no longer approved (C8, P4).
 
 </details>
 
@@ -404,8 +436,8 @@ docs/baby_steps_tutorials/mj_41_a_payment_run/README.md.
   read, and writes its address itself.
 - **Memory undid one proposal after an accident.** A call has made one proposal until now, so
   memory's claim undid only the first. A run makes one for each line, so its lines stayed
-  `EXECUTING`, each holding its invoice. Memory now undoes every proposal the call made, as the
-  database's rollback does.
+  `EXECUTING`, each holding its invoice. Memory now undoes every proposal the call made or moved, as
+  the database's rollback does. It does not undo drafts: see "Left open on purpose".
 - **A fixed idempotency key in a database test replayed an earlier test run.** The database keeps
   every claim, so the second run of the test was answered with a run made before the database kept
   fingerprints. DSoR was right to replay; the test now makes a key of its own each run.
@@ -416,7 +448,44 @@ docs/baby_steps_tutorials/mj_41_a_payment_run/README.md.
 
 ### What the review found
 
-The review is running.
+A reviewer who had not seen the conversation read the step at commit `ea6a1a6`. Each finding was
+fixed with its test written first and seen red.
+
+| | What it found | The fix |
+|---|---|---|
+| H1 | A dry run (`validate_only`) of a run checked no line, and answered `ALLOW` | A dry run checks each line and the day's limit as the real run does, and books nothing |
+| H2 | A dry release of a run answered `INTERNAL_ERROR`: the code used a part before it was made | The run's parts come before the dry release |
+| H3 | The sum lost the fraction of an amount with six decimal places, so a converted total was wrong | The sum keeps every place |
+| M1 | A rate sheet too old at the release voided an approved run | The release answers `FRESHNESS_UNSATISFIABLE`, and the run still waits (C8) |
+| M2 | Two runs of the same bills, in opposite orders, at once, each waited for the other: PostgreSQL ended one as an accident, and memory waited for ever | A run takes its lines' locks in the order of their invoices |
+| M3 | A run's approval kept no version of its bills or vendors | It keeps each line's, read by the line's own contract |
+| M4 | Seven breaks left every test green: U1, U2, U5, U6, U7, U9, U21. U3 cannot be reached | A test for each; see the table below |
+| L1 | After an accident at the release, memory left the lines `EXECUTING` | Memory undoes every proposal the call moved too |
+| L2 | Two agents with the same run key got the same line keys | The learner's D11 |
+| L3 | Raw SQL as `dsor_runtime` could approve a waiting line by itself | The learner's D12, migration 045 |
+| L4 | Three rules of the trigger had no test | Two got one. The CHECKs `proposals_run_of_company` and `proposals_totals_of_run` cannot be reached, because the trigger refuses first |
+
+The review also found words that were wrong: "fingerprint" meant two hashes, some words were not
+defined, and eight sentences said what the code did not do. They are fixed above. The approval's
+message for a wrong payload hash now names the payload hash.
+
+The breaks from the review, run as the others were:
+
+| Break | What it changes | Unit tests that fail | Database tests that fail |
+|---|---|---|---|
+| U1 | A line's limit for one payment is not checked | 1 | 0 |
+| U2 | The release does not check the approval again | 4 | 1 |
+| U5 | The totals per vendor are kept by vendor only, not by vendor and currency | 3 | 0 |
+| U6 | A line takes no lock on its invoice | 1 | 1 |
+| U7 | A line names no invoice that only one attempt may hold | 0 | 1 |
+| U9 | The release checks the approval only against what the run stored | 1 | 0 |
+| U21 | The release compares the totals per currency, not per vendor | 1 | 0 |
+| D12 | Migration 045's rule is removed | 0 | 1 |
+| L4a | The trigger lets a run wait without its totals | 0 | 1 |
+| L4b | The trigger lets a run be added with its totals already written | 0 | 1 |
+
+U3, the release's day check removed, is not caught, and cannot be: the run's own booking is always
+found at the release, so the check never refuses there.
 
 ### Left open on purpose
 
@@ -428,13 +497,17 @@ The review is running.
   builds `per_item`.
 - **The specification has no place for totals per vendor.** `proposal.schema.json`'s `totals` is a
   list of amounts per currency. This tutorial adds `vendor_totals`, and the question goes to the
-  specification.
+  specification: open question 159.
 - **The run's decision record lists each line's controls in the order of the lines**, and does not
   name the line each came from. Each line's own proposal shows what its rule asked.
 - **No rule judges a run's total** (D7).
 - **The answer of a waiting run carries no fingerprint or totals**: `result-envelope.schema.json`
-  has no field for them, and the approver reads them from the run's proposal, never through the
-  agent.
+  has no field for them. An approver must never get them through the agent. No operation lets an
+  approver read a proposal yet (DSOR-APR-06a is not built), so the story reads DSoR's store
+  directly.
+- **Memory keeps the drafts a refused run's work wrote.** Memory has no transaction, so an accident
+  on a run's third line leaves the first two drafts in memory's list of payments. On PostgreSQL the
+  transaction rolls them back.
 
 ## The rules this step meets
 

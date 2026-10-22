@@ -117,7 +117,7 @@ async function bookingOf(run: string): Promise<Record<string, unknown>[]> {
 }
 
 describe("C2 to C4: a run, proposed on the database", () => {
-  it("DSOR-BAT-01b: C2: a run of three lines keeps four proposals: each line a payment.create proposal naming its run, with the key derived from the run's key and its invoice", async () => {
+  it("DSOR-BAT-01b: C2: a run of three lines keeps four proposals: each line a payment.create proposal naming its run, with the key derived from the run's company, caller, key, and the line's invoice", async () => {
     const input = linesOf("INV-9411", "INV-9412", "INV-9413");
     // A key of this test run's own: the database keeps every claim, so a fixed key would replay a
     //   run an earlier test run made.

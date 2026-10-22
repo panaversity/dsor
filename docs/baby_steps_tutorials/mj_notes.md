@@ -194,6 +194,12 @@ even a 640 USD invoice wait for the CFO for up to seven days, and "it's a proble
 the price of not guessing, and the fix is a fast new version and a short grace, not a softer rule.
 Still open: whether the rule's owner or the company should choose `on_stale` and the grace.
 
+### Where does a run keep its totals per vendor?
+
+Found while designing step 41 (2026-10-20). DSOR-BAT-02a binds a run's approval to its totals per
+currency and per counterparty, and `proposal.schema.json` has a field only for the first. Step 41
+keeps the second in `vendor_totals`, a field of its own. This is open question 159.
+
 ## Our builds, compared with another learner's
 
 Another learner builds the same steps on the branch `wania/dev-DSoR-in-baby-steps`
@@ -2308,6 +2314,35 @@ database's (D6).
 - **Left open:** `alert.list` does not show these alerts, and nothing escalates them; 100 stuck
   payments would use every try of a run; the log of tries only grows; memory keeps no tries; the
   owner can switch a trigger off; `dsor_runtime` can raise an alert with three tries of its own.
+
+### Step 41, a payment run, decided by the learner (2026-10-20 to 2026-10-22)
+
+Copied from step 40c. Claude Code showed the problem first: on step 40c's code, the agent drafted
+a week of 37 bills, 430,845.50 USD, one call each; the day's limit stopped it at bill 16, the order
+of the calls decided who was paid, and cfo_100 approved three single drafts without seeing the
+week. Then the learner decided, one question at a time: a run drafts and does not send (D1); all or
+nothing (D2); at most 50 lines (D3); the approval carries the fingerprint and the totals (D4); each
+line its own proposal (D5); a line's key derived from the run's key and its invoice (D6); a run
+waits for the CFO when any line would (D7). A run that replaces a waiting one (D8) is a second idea,
+DSOR-APR-12, so the learner moved it to step 41b.
+
+- **Found while checking the design:** every approval carries `payload_hash` (DSOR-APR-09), so a
+  run's carries it beside the fingerprint. The schema has no field for totals per vendor (open
+  question 159).
+- **Predictions, run for real:** all four right. A week over the day's limit is refused whole; a
+  wrong total is `APPROVAL_MISMATCH` and the run still waits; a bill of a waiting run cannot be
+  drafted alone; a vendor suspended before the release voids the whole run.
+- **The review:** three high findings. A dry run checked no line (H1); a dry release was an
+  accident (H2); the sum lost a six-place fraction (H3). A stale rate sheet voided an approved run
+  (M1); two runs of the same bills in opposite orders deadlocked (M2); a run's approval kept no
+  version (M3); seven breaks were green (M4). After L2 the learner scoped a line's key by company
+  and caller (D11); after L3 the learner had the database move a line only with its run (D12,
+  migration 045).
+- **Found along the way:** starting the lines inside the work put their moves inside the code's
+  savepoint, so a refusal rolled them back and the close failed; the lines now start after the
+  run, at line ⑧. "Fingerprint" meant two hashes; it now means only the run's.
+- **Left open:** a waiting run cannot be replaced (step 41b); no run lets some lines through;
+  memory keeps the drafts a refused run's work wrote; no operation lets the approver read a run.
 
 ## Still unknown
 

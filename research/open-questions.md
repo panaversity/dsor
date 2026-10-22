@@ -1071,3 +1071,8 @@ for a human. An agent may gather evidence; it does not settle these alone.
     reads the proposal behind each one before a send, so the check slows with an invoice's history:
     in step 40's database tests, about 56 old holds of INV-9001 took longer than a 50 ms bank. Should
     a released hold be removed, or marked released, so that the check reads only live holds?
+159. **Where does a batch keep its totals per counterparty?** DSOR-BAT-02a binds a batch's approval
+    to its totals per currency and per counterparty. `proposal.schema.json` has `manifest_hash`, and
+    `totals` as one amount per currency, and no field for the totals per counterparty. Step 41's
+    learner build keeps them in a field of its own, `vendor_totals`, one amount per vendor and
+    currency. Should the schema add such a field, and should the approval's input carry it?

@@ -144,7 +144,7 @@ describe("C2: each line is its own proposal, with its own key and its own checks
     expect(await w.proposals.all()).toHaveLength(4);
   });
 
-  it("DSOR-BAT-01b: C2: each line's key is derived from the run's key and its invoice, and the same run sent again with that key makes no new proposal", async () => {
+  it("DSOR-BAT-01b: C2: each line's key is derived from the run's company, caller, key, and the line's invoice, and the same run sent again with that key makes no new proposal", async () => {
     const w = ruleWorld();
     const sent = keyed(AGENT, "k-week-42");
     const first = await w.ask(sent, "payment.run", RUN_A);

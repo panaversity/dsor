@@ -121,8 +121,10 @@ async function mayApprove(input: unknown, look: OwnLook): Promise<void> {
   }
   // DSOR-APR-09: last, the fingerprint. The approver approves the request with this fingerprint,
   // and no other.
+  // Changed in step 41: the message names it the payload hash, because a run has a second
+  //   fingerprint, over its lines, and the approver must know which of the two did not match.
   if (payload_hash !== found.payload_hash) {
-    const why = `the fingerprint is not the one of proposal ${id}'s request`;
+    const why = `the payload hash is not the one of proposal ${id}'s request`;
     throw new Refusal("APPROVAL_MISMATCH", why, "internal");
   }
   // NEW IN STEP 41: and a run's approval binds its fingerprint and its totals too, each compared as
