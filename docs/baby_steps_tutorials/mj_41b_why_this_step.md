@@ -2,7 +2,7 @@
 
 This note keeps the context of step 41b before any design or code. A new session can start
 from it. It holds the problem, a real run of it, what the rules say, what is built today, and
-the questions for the learner. It decides nothing: every decision below is the learner's.
+the questions for the learner. Every decision in it is the learner's, asked one at a time.
 
 ## Where we are
 
@@ -117,6 +117,62 @@ trade-off of each option, and wait.
 6. **What carries over?** Nothing of the approval may carry over (§8). What of the booking of
    the day's limit: given back and booked again, or moved?
 7. **Who is told?** Does a CFO who was about to approve the old run learn that it was replaced?
+
+## The learner's decisions (2026-10-22)
+
+Asked one at a time, in this session, after the problem above.
+
+- **D1. Replace only.** The step builds DSOR-APR-12: a new proposal names the waiting one it
+  replaces. `proposal.cancel`, a withdrawal with nothing new, is not built. *Downside:* a run that
+  is simply not wanted still waits until it expires.
+- **D2. Any proposal** may be replaced: a single `payment.create` or a run. *Downside:* more cases
+  to test, such as a single draft replaced by a run.
+- **D3. Until it executes.** A proposal may be replaced while it is `READY`, `PENDING_APPROVAL`, or
+  `APPROVED`; never once it is `EXECUTING`, because from there the bank may already hold the
+  instruction, and never from a final state (DSOR-APR-01c). An approval is cancelled with its
+  proposal and never carries over (§8). *Downside:* the CFO's work on the old one is lost.
+  The learner asked how DSoR could cancel something affected by the outside world, such as a cheque
+  in transit. The answer: a proposal that waits has done nothing outside DSoR yet. A payment that
+  may be on its way is `EXECUTING` or `OUTCOME_UNKNOWN`, which the state picture never moves to
+  `CANCELLED`; steps 37 and 38 handle it. A change in the world while a proposal waits is caught by
+  the check again at the release (`INVALIDATED`, step 31).
+- **D4. A field on the new command.** The new command carries `supersedes`, the address of the old
+  proposal, and the new proposal keeps it, as `proposal.schema.json` has it. One call makes the new
+  one and cancels the old one. *Downside:* every command's input gains one optional field to check.
+- **D5. The old proposal's own requester only.** *Downside:* user_123 cannot fix a run the agent
+  made.
+- **D6. One transaction.** The new proposal and the old one's move to `CANCELLED` happen together,
+  or neither does. A refused replacement changes nothing: the old one still waits, with its lines,
+  its invoices, and its booking. *Downside:* a refused replacement leaves the old one in place.
+- **D7. The old booking is given back first.** Inside the one transaction, the old proposal's
+  booking of the day's limit is given back, then the new total is checked and booked. A refusal
+  rolls the old booking back. *Downside:* the order must be exact, and two replacements at once
+  must not both use the freed amount.
+- **D8. The record and the refusal tell.** The old proposal's move to `CANCELLED` is recorded with
+  its cause, the new proposal (DSOR-APR-01b). An approval or a release of the old one is refused,
+  and the answer names the new one. No event is written. *Downside:* the CFO learns only when she
+  acts on the old one.
+
+## Found while checking the decisions, for the design
+
+Not decided yet; check each against the code and the specification before the first test.
+
+- **The new run's own invoices.** The new run of 11 names invoices that the old run's lines hold.
+  So, inside the one transaction, the old proposal and its lines must be cancelled before the new
+  one's check for an attempt in flight, or the new one is refused with `CONFLICT` by its own
+  predecessor.
+- **A run's lines move with it.** Replacing a run cancels each of its lines too, and migration 045
+  must let a line move to `CANCELLED` with its run. A line is never replaced alone (step 41).
+- **The refusal is still recorded.** A refused replacement rolls its work back, and its decision is
+  still recorded before the answer (DSOR-EXE-02).
+- **Two replacements at once.** Two calls that name the same old proposal: only one may win. The
+  old proposal must be locked first, and the second hears `CONFLICT`.
+- **What "own requester" means for an agent.** The same agent, and also the same slip? DSOR-APR-11
+  binds a release to the agent's own slip.
+- **Where `supersedes` travels.** In the command's input, so it is part of the payload hash, or in
+  the request envelope. The specification's proposal keeps it beside the payload.
+- **Bad addresses.** A `supersedes` that names no proposal, one of another company, one already
+  cancelled, or a line of a run.
 
 ## Predictions to ask, once the design is settled
 
