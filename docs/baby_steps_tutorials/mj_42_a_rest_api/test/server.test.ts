@@ -2,8 +2,9 @@
 // request is answered by one call of call(), and the door has no answer of its own (step 42's
 // README, claims C1, C5, C6, and C7, decisions D4, D5, D6, D7, and A2).
 import type { Server } from "node:http";
+import { connect } from "node:net";
 import { Readable } from "node:stream";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Answer } from "../src/envelope.ts";
 import type { DecisionRecord } from "../src/log.ts";
 import { CAP, createDoor, listen, readBody } from "../src/server.ts";
@@ -136,6 +137,63 @@ describe("C5: the door has no answer of its own", () => {
     const pieces = await readBody(Readable.from([Buffer.from('{"a"'), Buffer.from(":1}")]));
     expect(pieces).toStrictEqual({ text: '{"a":1}' });
     expect(await readBody(Readable.from([]))).toBeUndefined();
+  });
+});
+
+describe("C5: no request can stop the door (the review's H1 and L2)", () => {
+  /** Sends raw text on a socket, and reads what comes back until the server closes it. */
+  function raw(base: string, text: string, cut = false): Promise<string> {
+    const { port } = new URL(base);
+    return new Promise((done) => {
+      const socket = connect(Number(port), "127.0.0.1");
+      let heard = "";
+      socket.on("data", (d) => (heard += d.toString()));
+      socket.on("close", () => done(heard));
+      socket.on("error", () => done(heard));
+      socket.write(text, () => {
+        if (cut) socket.destroy();
+      });
+    });
+  }
+
+  it("Step 42, A2: a request target that is no URL is answered by call(), recorded, and the door still answers the next", async () => {
+    const { world, base } = await doorOf();
+    const before = (await records(world)).length;
+    const heard = await raw(
+      base,
+      "GET http://a:99999/x HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer tok_d4e8\r\nDSoR-Tenant: org_456\r\nConnection: close\r\n\r\n",
+    );
+    expect(heard).toMatch(/^HTTP\/1\.1 404 /);
+    expect(heard).toContain('no operation named \\"GET http://a:99999/x\\"');
+    expect((await records(world)).length - before).toBe(1);
+    expect((await send(base, "GET", "/invoices/INV-1008", CFO)).status).toBe(200);
+  });
+
+  it("Step 42, A2: a body cut off mid-upload is recorded, and the door still answers the next", async () => {
+    const { world, base } = await doorOf();
+    const before = (await records(world)).length;
+    await raw(
+      base,
+      'POST /payments HTTP/1.1\r\nHost: 127.0.0.1\r\nDSoR-Tenant: org_456\r\nContent-Length: 100\r\n\r\n{"inv',
+      true,
+    );
+    await vi.waitFor(async () => expect((await records(world)).length - before).toBe(1));
+    expect((await records(world)).at(-1)?.result).toBe("AUTHENTICATION_REQUIRED");
+    expect((await send(base, "GET", "/invoices/INV-1008", CFO)).status).toBe(200);
+  });
+
+  it.each([
+    "/alerts/../invoices/INV-1008",
+    "/alerts/%2e%2e/invoices/INV-1008",
+    "//evil/invoices/INV-1008",
+  ])("Step 42, A2: %s is matched as it was sent: no route, never invoice.get", async (path) => {
+    const { base } = await doorOf();
+    const heard = await raw(
+      base,
+      `GET ${path} HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer tok_d4e8\r\nDSoR-Tenant: org_456\r\nConnection: close\r\n\r\n`,
+    );
+    expect(heard).toMatch(/^HTTP\/1\.1 404 /);
+    expect(heard).toContain(`no operation named \\"GET ${path}`);
   });
 });
 

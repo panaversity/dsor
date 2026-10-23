@@ -29,19 +29,26 @@ export function createDoor(
   if (problems.length > 0)
     throw new Error(`the routes refused to start:\n  ${problems.join("\n  ")}`);
   return createServer(async (req, res) => {
-    const request: HttpRequest = {
-      method: req.method ?? "",
-      url: req.url ?? "/",
-      // Every value of every header, so a header sent twice is never cut to one (decision D5).
-      headers: req.headersDistinct as Record<string, string[]>,
-      body: await readBody(req),
-    };
-    const { name, envelope, input } = translate(request, routes);
-    // call() never throws: every refusal is an answer, recorded before it is returned (step 04's
-    //   README, C7; DSOR-EXE-02).
-    const answer = await call(registry, log, envelope, name, input);
-    res.writeHead(statusOf(answer), { "content-type": "application/json; charset=utf-8" });
-    res.end(JSON.stringify(answer));
+    // Nothing a request does may stop the program: an error here would end every call in flight.
+    //   translate and readBody never throw, and call() never throws; this is the last guard, and it
+    //   only closes the one connection (the review's H1).
+    try {
+      const request: HttpRequest = {
+        method: req.method ?? "",
+        url: req.url ?? "/",
+        // Every value of every header, so a header sent twice is never cut to one (decision D5).
+        headers: req.headersDistinct as Record<string, string[]>,
+        body: await readBody(req),
+      };
+      const { name, envelope, input } = translate(request, routes);
+      // call() never throws: every refusal is an answer, recorded before it is returned (step 04's
+      //   README, C7; DSOR-EXE-02).
+      const answer = await call(registry, log, envelope, name, input);
+      res.writeHead(statusOf(answer), { "content-type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify(answer));
+    } catch {
+      res.destroy();
+    }
   });
 }
 
@@ -55,10 +62,16 @@ export async function readBody(
 ): Promise<HttpRequest["body"]> {
   const kept: Buffer[] = [];
   let size = 0;
-  for await (const chunk of stream) {
-    const piece = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
-    size += piece.length;
-    if (size <= cap) kept.push(piece);
+  // A body cut off before its end, by a lost connection or the server's own time limit, is
+  //   marked so, and still goes to call() (the review's H1).
+  try {
+    for await (const chunk of stream) {
+      const piece = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
+      size += piece.length;
+      if (size <= cap) kept.push(piece);
+    }
+  } catch {
+    return { aborted: true };
   }
   if (size > cap) return { over: true };
   if (size === 0) return undefined;

@@ -10,8 +10,8 @@ export type HttpRequest = {
   method: string;
   url: string;
   headers: Readonly<Record<string, readonly string[]>>;
-  // The body's text, or that it was over the cap, or none.
-  body?: { text: string } | { over: true };
+  // The body's text, or that it was over the cap, or cut off before its end, or none.
+  body?: { text: string } | { over: true } | { aborted: true };
 };
 
 /** What the door hands to call(). */
@@ -20,19 +20,29 @@ export type Translated = { name: string; envelope: Record<string, unknown>; inpu
 // What call() gets in place of a body over the cap. Every input schema is an object, so line ⑥
 //   refuses a text, after line ① (step 42's README, decision A2).
 export const OVER = "the request body was over 65536 bytes, so the door read none of it";
+// And in place of a body cut off before its end, as a phone that loses its signal mid-upload cuts
+//   it (the review's H1).
+export const ABORTED = "the request body was cut off before its end, so the door read none of it";
 
 /** The operation's name, the envelope, and the input of one HTTP request. */
 export function translate(request: HttpRequest, routes: readonly Route[] = ROUTES): Translated {
-  const url = new URL(request.url, "http://door");
-  const found = findRoute(request.method, url.pathname, routes);
+  // The path exactly as it was sent, up to the first ?. No URL parser: one rewrites /a/../b to /b
+  //   and throws on a target such as http://a:99999/x, and the door must neither pick a meaning
+  //   nor stop (the review's H1 and L2).
+  const cut = request.url.indexOf("?");
+  const path = cut === -1 ? request.url : request.url.slice(0, cut);
+  const found = findRoute(request.method, path, routes);
   // A request on no route keeps its method and path as the name. A name with a space matches no
   //   contract, so call() answers UNSUPPORTED_CAPABILITY, after line ① (decision A2).
-  const name = found?.route.operation ?? `${request.method} ${url.pathname}`;
+  const name = found?.route.operation ?? `${request.method} ${path}`;
   const envelope = envelopeOf(request.headers);
   const parts: unknown[] = [];
   const body = bodyOf(request.body);
   if (body !== undefined) parts.push(body);
-  const query = queryOf(url.searchParams, found?.route);
+  const query = queryOf(
+    new URLSearchParams(cut === -1 ? "" : request.url.slice(cut + 1)),
+    found?.route,
+  );
   if (query !== undefined) parts.push(query);
   if (found?.id !== undefined && found.route.id !== undefined) {
     // One fixed template, with the DSoR-Tenant header's text. A missing or doubled header leaves
@@ -69,6 +79,7 @@ function envelopeOf(headers: HttpRequest["headers"]): Record<string, unknown> {
 function bodyOf(body: HttpRequest["body"]): unknown {
   if (body === undefined) return undefined;
   if ("over" in body) return OVER;
+  if ("aborted" in body) return ABORTED;
   return body.text === "" ? undefined : jsonOrText(body.text);
 }
 
