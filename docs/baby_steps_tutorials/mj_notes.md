@@ -2441,8 +2441,14 @@ for the learner to review.
   cache. L3: a token could live until the year 3000.
 - **Found along the way:** a test shortcut (a flag that skipped the issuer check) nearly became a
   feature of `pnpm link-login`; two runs on one scratch database spoiled each other.
-- **Not done:** Managed Better Auth on the learner's Neon project (it needs their account). Open
-  questions 164 and 165.
+- **Then made real (2026-10-24):** the learner asked "have we done similar mistakes before?" Yes: the
+  database left Neon at step 20 (all ten branches in use) and never came back, and step 43 was called
+  done on a stand-in. With the Neon connector, Claude Code made the project `dsor-baby-steps`,
+  switched on Neon Auth with Better Auth, and pointed `issuers.json` at it; the learner signed
+  cfo_100 up and in (Neon wants an `Origin` header from a script), and her real token read INV-1008.
+  The first real call failed because the door ran where it could not reach Neon's keys: an outage
+  looked like a forgery (L7). Lesson: a step whose map names a real product is not done on a
+  stand-in; say "built against a stand-in" until the real run passes. Open questions 164 and 165.
 
 ## Still unknown
 

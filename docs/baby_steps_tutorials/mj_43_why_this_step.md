@@ -152,5 +152,7 @@ whether DSoR needs an audience of its own in a person's token (M2; open question
 ```text
 Step 43 is built: docs/baby_steps_tutorials/mj_43_real_logins_for_people/README.md. Its decisions
 are Claude Code's, for the learner to review with step 42's A3 and A4. The real Managed Better Auth
-is not connected: the README's "Run it with Managed Better Auth" lists the learner's steps.
+is connected since 2026-10-24: the learner's Neon project `dsor-baby-steps`, Neon Auth with Better
+Auth; cfo_100 signed in for real and read INV-1008 through the door (the README's "Run it with Managed
+Better Auth").
 ```
