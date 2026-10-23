@@ -156,3 +156,22 @@ is connected since 2026-10-24: the learner's Neon project `dsor-baby-steps`, Neo
 Auth; cfo_100 signed in for real and read INV-1008 through the door (the README's "Run it with Managed
 Better Auth").
 ```
+
+## Revised by the learner (2026-10-24)
+
+After the real run on Neon, the learner said: "I see really bad business and prod decisions on this
+step". Claude Code listed six, worst first. The learner chose to change four of them inside step 43,
+and #1 is proposed as a step of its own, 43b (people and their roles in a DSoR table, not in code).
+
+- **#2 Invitations instead of hand-linking**, decided one question at a time:
+  - **R1. An invitation code links a first sign-in (the learner's).** An admin invites a person; DSoR
+    answers with a one-time code, single use, valid 7 days; the person signs in and accepts with
+    their token and the code, and DSoR links that login. Not "match by email": anyone can sign up at
+    Neon Auth, and emails are not verified there, so a stranger could sign up as the CFO's email.
+    *Downside:* one more step for the person, and the code must reach them safely.
+  - **R2. Tenant admins invite, with guards (the learner's).** New permissions `login:invite` and
+    `login:unlink`, held only by `tenant_admin` in the shipped role table; people only, never an
+    agent; the inviter's own login can never accept their own invitation; every invitation, link, and
+    unlink is recorded with who did it. A second admin's confirmation for powerful people (a two-person
+    rule) is noted for step 43b. *Downside:* an admin with a second sign-in account could still
+    accept; the log shows it afterwards.
