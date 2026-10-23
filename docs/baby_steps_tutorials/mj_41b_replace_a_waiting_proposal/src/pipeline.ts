@@ -822,7 +822,14 @@ export async function call(
         // The bundle names the request the release decides from here on: the operation as the
         //   proposal keeps it, and the proposal (step 33's README, D8).
         evidence.decided = { operation: loaded.operation, contract: target, proposal: loaded.uri };
-        await mayRelease(loaded, target, releaser, () => proposals.isDue(tenant, id));
+        // Changed in step 41b: and the proposal that replaced it, which the refusal names (D8).
+        await mayRelease(
+          loaded,
+          target,
+          releaser,
+          () => proposals.isDue(tenant, id),
+          () => proposals.replacedBy(tenant, loaded.uri),
+        );
         // The company's code runs the stored request. DSoR's own work, a brake or a rule prepared
         //   in propose_only mode, is not released in this step: its own look at line ⑨ would
         //   run again first (step 31's README, decision D14).

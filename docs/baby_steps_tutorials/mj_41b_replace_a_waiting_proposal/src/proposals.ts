@@ -223,6 +223,10 @@ export type ProposalStore = {
   //   replacement. Held alone until the claim ends (step 25c's README, decision D13; step 41b's
   //   README, "Found while checking the design").
   holdEnding: (tenant: string) => Promise<void>;
+  // NEW IN STEP 41b: and the address of the proposal that replaced this one, or none. A refused
+  //   replacement ended DENIED, and replaced nothing, so it is never the answer (step 41b's README,
+  //   decision D8).
+  replacedBy: (tenant: string, uri: string) => Promise<string | undefined>;
   // And the company's alerts, in the order they were raised. The move to
   //   OUTCOME_UNKNOWN raises one and the move out of it closes it, both with the move's record, so
   //   every path raises it and no settlement leaves it open (DSOR-UNK-04b; step 38b's README,
@@ -381,6 +385,7 @@ export const NO_PROPOSALS: ProposalStore = Object.freeze({
   lines: async () => [],
   holdOver: async () => {},
   holdEnding: async () => {},
+  replacedBy: async () => undefined,
   // And no alert, and escalates none.
   alerts: async () => [],
   escalateDue: async (): Promise<never> => {
@@ -597,6 +602,15 @@ export function memoryProposals(now: () => number = Date.now): MemoryProposals {
     holdOver: async (): Promise<void> => {},
     // NEW IN STEP 41b: and no ending lock either, outside a claim.
     holdEnding: async (): Promise<void> => {},
+    // NEW IN STEP 41b: as the database's SELECT does it: this company, a proposal that names it in
+    //   supersedes and was not refused.
+    replacedBy: async (tenant: string, uri: string): Promise<string | undefined> => {
+      for (const row of rows.values()) {
+        if (row.tenant !== tenant || row.supersedes !== uri || row.state === "DENIED") continue;
+        return proposalUri(row.tenant, row.id);
+      }
+      return undefined;
+    },
     // As the database's SELECT does it: this company, a state in flight, and the
     //   record's address among the request's, in the order of their ids.
     inFlightOver: async (tenant: string, uri: string): Promise<InFlight[]> => {

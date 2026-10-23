@@ -633,3 +633,78 @@ describe("C6: the booking given back, used once", () => {
     expect(held).toHaveLength(1);
   });
 });
+
+/** What cfo_100's screen shows of a waiting run, from DSoR's own store. */
+async function shownOf(w: RuleWorld, uri: string) {
+  const run = (await proposalAt(w, uri))!;
+  return {
+    proposal: uri,
+    payload_hash: run.payload_hash,
+    manifest_hash: run.manifest_hash,
+    totals: run.totals,
+    vendor_totals: run.vendor_totals,
+  };
+}
+
+describe("C7: the refusal tells", () => {
+  it("step 41b's decision D8: C7: cfo_100 approves a replaced run with its fingerprint and its totals: CONFLICT, naming the new run, and the old run stays CANCELLED", async () => {
+    const w = ruleWorld();
+    const old = await waitingRun(w);
+    const shown = await shownOf(w, old);
+    const made = proposalOf(await w.ask(replacing(AGENT, old), "payment.run", RUN_A2));
+    const answer = await w.ask(keyed(CFO), "proposal.approve", shown);
+    expect(answer).toMatchObject({
+      code: "CONFLICT",
+      message: `proposal ${old.split("/").at(-1)} was replaced by proposal ${made}, so it is not approved`,
+    });
+    expect((await proposalAt(w, old))!.state).toBe("CANCELLED");
+    expect((await proposalAt(w, old))!.approvals).toBeUndefined();
+  });
+
+  it("step 41b's decision D8: C7: the agent releases a replaced APPROVED draft: CONFLICT, naming the new one, and nothing is drafted", async () => {
+    const w = ruleWorld();
+    const old = await waitingDraft(w);
+    const kept = (await proposalAt(w, old))!;
+    const approval = { proposal: old, payload_hash: kept.payload_hash };
+    expect(await w.ask(keyed(CFO), "proposal.approve", approval)).toMatchObject({
+      data: { state: "APPROVED" },
+    });
+    const made = proposalOf(
+      await w.ask(replacing(AGENT, old), "payment.create", draftOf("INV-1008")),
+    );
+    const answer = await w.ask(keyed(AGENT), "proposal.execute", { proposal: old });
+    expect(answer).toMatchObject({
+      code: "CONFLICT",
+      message: `proposal ${old.split("/").at(-1)} was replaced by proposal ${made}, so it is not released`,
+    });
+    expect(w.drafted).toStrictEqual([]);
+  });
+
+  it("step 41b's decision D8: C7: a proposal cancelled by a tear-up names no replacement, and a refused replacement names none either", async () => {
+    const w = ruleWorld();
+    const old = await waitingDraft(w);
+    w.vendors.find((v) => v.id === "VENDOR-44")!.status = "suspended";
+    expect(await replaceWithDraft(w, old)).toMatchObject({ code: "CONFLICT" });
+    w.vendors.find((v) => v.id === "VENDOR-44")!.status = "approved";
+    const tearUp = { slip: "dsor://org_456/delegation/del_100", reason: "VENDOR-44's bank changed" };
+    expect(await w.ask(keyed(SUPERVISOR), "delegation.revoke", tearUp)).toMatchObject({
+      outcome: "COMMITTED",
+    });
+    const kept = (await proposalAt(w, old))!;
+    const answer = await w.ask(keyed(CFO), "proposal.approve", {
+      proposal: old,
+      payload_hash: kept.payload_hash,
+    });
+    expect(answer).toMatchObject({
+      code: "CONFLICT",
+      message: `proposal ${old.split("/").at(-1)} is CANCELLED, and only a PENDING_APPROVAL proposal is approved`,
+    });
+  });
+
+  it("step 41b's decision D8: C7: a replacement writes no event: the outbox holds none for the old proposal", async () => {
+    const w = ruleWorld();
+    const old = await waitingDraft(w);
+    await w.ask(replacing(AGENT, old), "payment.create", draftOf("INV-1008"));
+    expect(await w.outbox.events("org_456")).toStrictEqual([]);
+  });
+});

@@ -2425,6 +2425,18 @@ function proposalsThrough(run: Runner): ProposalStore {
         );
         return rows.map(alertFrom).sort((a, b) => a.proposal.localeCompare(b.proposal));
       }),
+    // NEW IN STEP 41b: the proposal that replaced this one, not a refused attempt. DSoR's own WHERE,
+    //   the company first, with row-level security behind it (DSOR-TEN-01b).
+    replacedBy: async (tenant: string, uri: string): Promise<string | undefined> =>
+      run(tenant, async (client) => {
+        const { rows } = await client.query<{ id: string }>(
+          `SELECT id FROM dsor.proposals
+            WHERE tenant_id = $1 AND supersedes = $2 AND state <> 'DENIED' ORDER BY id`,
+          [tenant, uri],
+        );
+        if (rows.length > 1) throw new Error(`${rows.length} proposals replaced ${uri}, not 1`);
+        return rows[0] === undefined ? undefined : proposalUri(tenant, rows[0].id);
+      }),
     // NEW IN STEP 41b: the company's ending lock, as a tear-up's list and an approval take it.
     holdEnding: async (tenant: string): Promise<void> =>
       run(tenant, async (client) => {

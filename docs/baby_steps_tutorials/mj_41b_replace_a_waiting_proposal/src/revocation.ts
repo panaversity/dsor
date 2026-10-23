@@ -56,7 +56,8 @@ export type OwnLook = {
   // proposals and their approvals, read only, every contract, and the caller's permissions in this
   // company (step 29's README, decisions D2, D5, and D10).
   identity: Requester["identity_mode"];
-  proposals: Pick<ProposalStore, "get" | "approvals" | "isDue">;
+  // Changed in step 41b: and which proposal replaced one, read only (decision D8).
+  proposals: Pick<ProposalStore, "get" | "approvals" | "isDue" | "replacedBy">;
   contracts: ReadonlyMap<string, Contract>;
   permissions: ReadonlySet<string>;
 };
@@ -160,6 +161,8 @@ export function lookFor(
       get: (company, id) => proposals.get(company, id),
       approvals: (company, id) => proposals.approvals(company, id),
       isDue: (company, id) => proposals.isDue(company, id),
+      // NEW IN STEP 41b: read only, as the others.
+      replacedBy: (company, uri) => proposals.replacedBy(company, uri),
     },
     contracts,
     permissions,

@@ -76,6 +76,8 @@ export async function mayRelease(
   who: Releaser,
   // Whether the proposal's time has come, by the store's own clock.
   isDue: () => Promise<boolean>,
+  // NEW IN STEP 41b: and the proposal that replaced it, if one did.
+  replacedBy: () => Promise<string | undefined> = async () => undefined,
 ): Promise<void> {
   const { caller, slip, held } = who;
   const id = found.uri.slice(found.uri.lastIndexOf("/") + 1);
@@ -115,6 +117,13 @@ export async function mayRelease(
       `proposal ${id} still waits for an approval`,
       "internal",
     );
+  }
+  // NEW IN STEP 41b: a proposal that was replaced names the one that replaced it (step 41b's
+  //   README, decision D8).
+  const replaced = found.state === "CANCELLED" ? await replacedBy() : undefined;
+  if (replaced !== undefined) {
+    const why = `proposal ${id} was replaced by proposal ${replaced}, so it is not released`;
+    throw new Refusal("CONFLICT", why, "internal");
   }
   if (found.state !== "APPROVED" && found.state !== "READY") {
     const why = `proposal ${id} is ${found.state}, and only an APPROVED or a READY proposal is released`;

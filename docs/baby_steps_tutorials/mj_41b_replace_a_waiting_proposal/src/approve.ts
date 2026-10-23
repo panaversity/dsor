@@ -93,6 +93,14 @@ async function mayApprove(input: unknown, look: OwnLook): Promise<void> {
     const why = `proposal ${id} is a line of run ${proposalIdOf(tenant, found.run)}, and is approved only with its run`;
     throw new Refusal("CONFLICT", why, "internal");
   }
+  // NEW IN STEP 41b: a proposal that was replaced names the one that replaced it, so the approver
+  //   learns where the request went (step 41b's README, decision D8).
+  const replaced =
+    found.state === "CANCELLED" ? await look.proposals.replacedBy(tenant, found.uri) : undefined;
+  if (replaced !== undefined) {
+    const why = `proposal ${id} was replaced by proposal ${replaced}, so it is not approved`;
+    throw new Refusal("CONFLICT", why, "internal");
+  }
   if (found.state !== "PENDING_APPROVAL" || found.requires === undefined) {
     const why = `proposal ${id} is ${found.state}, and only a PENDING_APPROVAL proposal is approved`;
     throw new Refusal("CONFLICT", why, "internal");
