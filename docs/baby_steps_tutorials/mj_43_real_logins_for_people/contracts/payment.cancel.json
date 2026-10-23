@@ -1,0 +1,19 @@
+{
+  "id": "payment.cancel",
+  "version": 1,
+  "kind": "command",
+  "effect": "mutating",
+  "input": { "schema": "PaymentCancelRequest" },
+  "output": { "schema": "Payment" },
+  "authorization": { "permission": "payment:cancel", "approve_permission": "payment:approve" },
+  "tenancy": { "required": true },
+  "delegation": { "required": true },
+  "idempotency": { "required": true },
+  "concurrency": { "strategy": "optimistic" },
+  "bind": { "payment": "input.payment", "invoice": "state.payment.invoice_id" },
+  "execution": { "semantics": "atomic" },
+  "risk": { "level": "low" },
+  "preconditions": { "freshness": "current", "predicates": [] },
+  "controls": [],
+  "audit": { "level": "full" }
+}

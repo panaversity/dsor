@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:dsor:schema:1.3:event",
+  "title": "event",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+    },
+    "tenant": {
+      "$ref": "urn:dsor:schema:1.3:common#/$defs/tenantId"
+    },
+    "resource": {
+      "$ref": "urn:dsor:schema:1.3:common#/$defs/resourceUri"
+    },
+    "ordering_key": {
+      "type": [
+        "integer",
+        "string"
+      ]
+    },
+    "origin": {
+      "enum": [
+        "dsor",
+        "external"
+      ]
+    },
+    "at": {
+      "$ref": "urn:dsor:schema:1.3:common#/$defs/timestamp"
+    },
+    "classification": {
+      "$ref": "urn:dsor:schema:1.3:common#/$defs/classification"
+    },
+    "data": {
+      "type": "object"
+    },
+    "correlation": {
+      "$ref": "urn:dsor:schema:1.3:common#/$defs/correlation"
+    },
+    "extensions": {
+      "$ref": "urn:dsor:schema:1.3:common#/$defs/extensions"
+    }
+  },
+  "required": [
+    "event_id",
+    "type",
+    "tenant",
+    "resource",
+    "ordering_key",
+    "origin",
+    "at",
+    "classification",
+    "correlation"
+  ],
+  "additionalProperties": false
+}

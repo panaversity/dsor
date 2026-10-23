@@ -1,0 +1,13 @@
+{
+  "id": "alert.list",
+  "version": 1,
+  "kind": "query",
+  "effect": "read",
+  "input": { "schema": "AlertListRequest" },
+  "output": { "schema": "AlertPage" },
+  "authorization": { "permission": "alert:read" },
+  "tenancy": { "required": true },
+  "risk": { "level": "low" },
+  "audit": { "level": "standard" },
+  "extensions": { "org.panaversity.steps": { "no_agents": true } }
+}
