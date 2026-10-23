@@ -14,11 +14,16 @@ import { storeDifferences } from "./inspector.ts";
 import { readClassifications } from "./labels.ts";
 import { handlersFor } from "./operations.ts";
 import { readRoles } from "./permissions.ts";
+import { checkIssuers, readIssuers } from "./issuers.ts";
+import { realLogins } from "./logins.ts";
+import { logins } from "./principals.ts";
+import { remoteKeys } from "./tokens.ts";
 import {
   createDbBrakes,
   createDbClaims,
   createDbControls,
   createDbInvoices,
+  createDbLinks,
   createDbLog,
   createDbPayments,
   createDbSlips,
@@ -40,16 +45,17 @@ function refuse(message: string): never {
   process.exit(1);
 }
 
-loadDotEnv(["DSOR_DB_URL", "DSOR_HTTP_PORT"]);
+loadDotEnv(["DSOR_DB_URL", "DSOR_HTTP_PORT", "DSOR_ISSUERS_FILE"]);
 // No database named, no door: it never falls back to a log in memory (step 09's README, decision 15).
 try {
   requireEnv("DSOR_DB_URL");
 } catch (error) {
   refuse((error as Error).message);
 }
+// Changed in step 43: 0 picks a free port, as the test of the program does.
 const port = Number(process.env["DSOR_HTTP_PORT"] ?? "8042");
-if (!Number.isInteger(port) || port < 1 || port > 65535) {
-  refuse("DSOR_HTTP_PORT must be a port number, 1 to 65535");
+if (!Number.isInteger(port) || port < 0 || port > 65535) {
+  refuse("DSOR_HTTP_PORT must be a port number, 0 to 65535");
 }
 const pool = openPool(process.env["DSOR_DB_URL"] ?? "");
 
@@ -94,6 +100,17 @@ try {
   const { problems } = checkStore(readStore());
   if (problems.length > 0)
     refuse(`the map of the store refused to start:\n  ${problems.join("\n  ")}`);
+  // NEW IN STEP 43: real logins for people: each company's issuers, checked before any caller, and
+  //   DSoR's own links in dsor.logins. Agents and system logins keep step 05's table until step 44
+  //   (step 43's README, decisions D1, D3, and D8).
+  const issuers = checkIssuers(readIssuers(process.env["DSOR_ISSUERS_FILE"]), logins.values());
+  if (issuers.problems.length > 0) {
+    refuse(`the issuers refused to start:\n  ${issuers.problems.join("\n  ")}`);
+  }
+  registry = {
+    ...registry,
+    logins: realLogins(issuers.issuers, createDbLinks(pool), remoteKeys()),
+  };
 } catch (error) {
   refuse((error as Error).message);
 }
