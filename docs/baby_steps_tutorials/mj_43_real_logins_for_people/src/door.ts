@@ -66,6 +66,8 @@ const FIELDS: Readonly<Record<string, string>> = {
   "dsor-request-id": "request_id",
   "dsor-supersedes": "supersedes",
   "dsor-agent-asserted": "agent_asserted",
+  // Changed in step 43: and an invitation's code, for a person's first call (revision R1).
+  "dsor-invitation": "invitation",
 };
 
 // Authorization's bearer token, and each header of FIELDS as its field. A field one header gives

@@ -26,6 +26,9 @@ export type RequestEnvelope = {
   //   treat the call, not what to pay, so it travels here, beside the mode, and never in the input
   //   (DSOR-APR-12; step 41b's README, decision D9).
   supersedes?: unknown;
+  // NEW IN STEP 43: and an invitation's code, which a person's first call carries. Line ① redeems
+  //   it, linking that login to the person invited (step 43's README, revision R1).
+  invitation?: unknown;
 };
 
 // The three ways to call a command (§7.3). execute does it, propose_only prepares
@@ -66,9 +69,11 @@ const ENVELOPE_FIELDS = [
   "mode",
   "agent_asserted",
   "supersedes",
+  // And invitation (step 43's README, revision R1).
+  "invitation",
 ];
 
-/** Refuses an envelope that carries any field besides token, tenant, request_id, idempotency_key, mode, agent_asserted, and supersedes. */
+/** Refuses an envelope that carries any field besides token, tenant, request_id, idempotency_key, mode, agent_asserted, supersedes, and invitation. */
 export function checkEnvelopeFields(request: RequestEnvelope): void {
   // The envelope comes from outside the program, so it may not even be an object.
   if (typeof request !== "object" || request === null) return;
@@ -76,7 +81,7 @@ export function checkEnvelopeFields(request: RequestEnvelope): void {
   if (extra !== undefined) {
     // The name is the caller's text, so only a short piece of it is shown.
     const allowed =
-      "the request envelope may carry only token, tenant, request_id, idempotency_key, mode, agent_asserted, and supersedes";
+      "the request envelope may carry only token, tenant, request_id, idempotency_key, mode, agent_asserted, supersedes, and invitation";
     throw new Refusal("VALIDATION_FAILED", `${allowed}, not ${JSON.stringify(extra.slice(0, 60))}`);
   }
 }

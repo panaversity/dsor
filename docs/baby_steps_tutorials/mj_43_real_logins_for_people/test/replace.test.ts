@@ -188,8 +188,9 @@ describe("C2: the claim compares supersedes", () => {
     );
     expect(answer).toMatchObject({
       code: "VALIDATION_FAILED",
+      // Changed in step 43: and invitation (step 43's README, revision R1).
       message:
-        'the request envelope may carry only token, tenant, request_id, idempotency_key, mode, agent_asserted, and supersedes, not "replaces"',
+        'the request envelope may carry only token, tenant, request_id, idempotency_key, mode, agent_asserted, supersedes, and invitation, not "replaces"',
     });
   });
 });

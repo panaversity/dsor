@@ -334,7 +334,8 @@ export function extraField(field: string): string {
   // And mode (step 23's README, decision 4).
   // Changed in step 33: and agent_asserted (step 33's README, decision D10).
   // Changed in step 41b: and supersedes (step 41b's README, decision D9).
-  return `the request envelope may carry only token, tenant, request_id, idempotency_key, mode, agent_asserted, and supersedes, not "${field}"`;
+  // Changed in step 43: and invitation (step 43's README, revision R1).
+  return `the request envelope may carry only token, tenant, request_id, idempotency_key, mode, agent_asserted, supersedes, and invitation, not "${field}"`;
 }
 
 // The name under which a record keeps the company a caller claimed (step 10's decision 6).

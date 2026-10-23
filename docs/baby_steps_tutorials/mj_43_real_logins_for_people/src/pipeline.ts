@@ -288,9 +288,16 @@ export async function call(
     //   none (step 43's review, L6).
     //   The token is read first, outside that guard, so an envelope whose token throws is still
     //   answered as before, INTERNAL_ERROR (step 08's review).
+    //   Changed by the learner's R1: and, for a person's first call, the company the envelope names
+    //   and an invitation's code, read here once too.
     const token = request?.token;
+    //   Only a call that carries a code reads the company here: every other call reads it once, at
+    //   line ②, as since step 10. Found by step 10's test of an envelope whose company changes
+    //   between two reads.
+    const carries = typeof request === "object" && request !== null && "invitation" in request;
+    const first = carries ? { tenant: request.tenant, invitation: request.invitation } : {};
     const login = await Promise.resolve()
-      .then(() => registry.logins.find(token))
+      .then(() => registry.logins.find(token, first))
       .catch(() => undefined);
     const { caller, copy, key, named, supersedes } = line(1, () => {
       // The caller's own request id labels every answer, when DSoR can use it (step 05's

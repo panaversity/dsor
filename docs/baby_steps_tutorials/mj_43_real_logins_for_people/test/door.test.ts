@@ -110,6 +110,16 @@ describe("C3: the envelope, from the headers", () => {
   });
 });
 
+describe("C3, changed in step 43: the invitation's header", () => {
+  it("Step 43, R1: DSoR-Invitation gives the envelope's invitation, handed over as it came", () => {
+    const req = request("GET", "/invoices/INV-1008", {
+      ...CFO,
+      "dsor-invitation": ["Zq3k_example_code_22ch"],
+    });
+    expect(translate(req).envelope["invitation"]).toBe("Zq3k_example_code_22ch");
+  });
+});
+
 describe("C4: the input, from the path, the query string, and the body", () => {
   it("Step 42, A1: GET /invoices/INV-1008 builds org_456's address, and cfo_100 reads the bill", async () => {
     const req = request("GET", "/invoices/INV-1008", CFO);
