@@ -108,10 +108,11 @@ tutorial's decisions, below.
 | C2 | The routes. 18 routes, one for each operation a person or an app calls. Start-up refuses a table where a route names no operation, an operation has two routes, or an operation is neither on a route nor on the list of the four that stay inside |
 | C3 | The envelope. One header for each field: `Authorization: Bearer <token>` gives `token`, `Idempotency-Key` gives `idempotency_key`, and `DSoR-Tenant`, `DSoR-Mode`, `DSoR-Request-Id`, `DSoR-Supersedes`, `DSoR-Agent-Asserted` give the other five. Every value is handed over as it came. One header given twice is handed over as the list of its values. An `Authorization` that is not a bearer token, and any other header that starts with `dsor`, are handed over under their own names. `call()` refuses each of these |
 | C4 | The input. A command's body is its input. `GET /invoices/{id}` builds `dsor://<DSoR-Tenant>/invoice/<id>`. The two lists take `limit` and `cursor` from the query string; a `limit` of digits is handed over as a number, anything else as text. A body that is not JSON is handed over as its text. Two sources that name the same field are handed over as the list of both |
-| C5 | No answer of its own. A request on no route is handed to `call()` with `"<METHOD> <path>"` as the operation's name, the path exactly as it was sent. Of a body over 64 KiB, no more than 64 KiB is kept: the rest is read and thrown away, and `call()` gets a short text in its place; so does a body cut off before its end, and one that is not UTF-8. An `Expect` header Node does not know goes to `call()` too. So line ① always runs first, and every request leaves a record, with three exceptions Node keeps before the door sees anything: a request it cannot parse (400), headers over 16 KiB (431), and `CONNECT`, which it closes |
+| C5 | No answer of its own. A request on no route is handed to `call()` with `"<METHOD> <path>"` as the operation's name, the path exactly as it was sent. Of a body over 64 KiB, no more than 64 KiB is kept: the rest is read and thrown away, and `call()` gets a short text in its place; so does a body cut off before its end, and one that is not UTF-8. An `Expect` header Node does not know goes to `call()` too. So line ① always runs first, and every request leaves a record, with one exception the door makes, a foreign `Host` (C9), and three Node keeps before the door sees anything: a request it cannot parse (400), headers over 16 KiB (431), and `CONNECT`, which it closes |
 | C6 | The status. The body is always `call()`'s answer, unchanged. Its status comes from one table: one status for each code of §28, and for each result. A status that retry libraries repeat by themselves (408, 413, 429, 500, 502, 503, 504) is given only to a code whose retry class is `safe_same_key` or `after_delay`, with one exception, `INTERNAL_ERROR` (A3) |
 | C7 | Where it listens. Only `127.0.0.1`. Start-up refuses any other address while the logins are the fake table of step 05 |
 | C8 | The proof of DSOR-OPR-04b. For every route, six callers (cfo_100, user_123, the agent, admin_100, org_789's user_700, and nobody), and seven envelopes (none more, each mode, a request id, `supersedes`, `agent_asserted`): `call()` is asked exactly once, with exactly the request that was sent, and the door's response is exactly `call()`'s answer, with its status. On 12 of the 18 routes some case is let through. And the door's files import nothing that decides who may do what |
+| C9 | Only requests meant for this door. A request whose `Host` is not exactly `127.0.0.1` and the port it came in on, or that has no `Host`, or two, is refused with 421 and an error envelope of §28's shape, before anything else. `call()` is never asked, so it leaves no record: the one answer the door makes by itself (D8) |
 
 ### Decisions
 
@@ -140,6 +141,11 @@ understanding session.
   answers 400 before `call()`. *Downside:* more of our own code to test, such as a cut-off body.
 - **D7. Only `127.0.0.1`.** The fake logins are in a public file: `tok_d4e8` is cfo_100. Step 43
   lifts this. *Downside:* cfo_100's real phone cannot try it yet.
+- **D8. The door checks the `Host` header** (the learner's answer to Q1, 2026-10-23, after the
+  review's M4). A request meant for another name is refused with 421, before anything else, against
+  DNS rebinding. A check of the transport, not of who may do what, so DSOR-OPR-04b allows it.
+  *Downside:* the one answer the door makes by itself, against A2, and it leaves no record; and
+  `localhost:8042` is refused too, so a caller must name `127.0.0.1`.
 - **A1. An id goes in the path only when there is no body.** Only `GET /invoices/{id}` has one. The
   door builds the address with one fixed template and the `DSoR-Tenant` header's text; a missing or
   wrong header is refused by `call()` at line ②. Every command takes its whole input in its body, so
@@ -210,6 +216,7 @@ POST /rules/suspend        rule.suspend         POST /rules/retire         rule.
 | C6 | Every code of §28 has exactly one status; none with a retry class other than `safe_same_key` or `after_delay` gets a repeated status, except `INTERNAL_ERROR`; `OUTCOME_UNKNOWN` from a silent bank is 409, its body unchanged; a 401 carries `WWW-Authenticate: Bearer` |
 | C7 | Start-up on `0.0.0.0` or `::` is refused; on `127.0.0.1` it listens |
 | C8 | 756 cases, 18 routes by six callers by seven envelopes, through a spy around `call()`: exactly one ask, with exactly the request sent, and exactly its answer back; the list of routes with a case let through; every module the door's files name, dynamic imports too; every import from the envelope, the log, and the registry is of types only; `pnpm serve` makes the door only with `doorOver` |
+| C9 | A `Host` of `attacker.example:<port>`, `localhost:<port>`, `127.0.0.1:1`, `127.0.0.1` with no port, and no `Host` at all: each 421, an envelope that passes the schema, and no record; `127.0.0.1:<port>` reaches `call()` |
 
 ### The learner's predictions
 
@@ -325,6 +332,7 @@ against the final code, and the door's five unit test files were run against it:
 | B8 | Broken JSON answered 400 by the door | 1 test. **At first nothing caught it:** the translation was tested, and no test sent broken JSON through the real server. The test was added red against B8 |
 | B9 | `GET /invoices/{id}` builds the address with `org_456`, whatever the header says | 9 tests: the header's org_789, no header, and C8's cases of user_700 of org_789 |
 | B10 | `listen` takes any address | 4 tests, one for each address it must refuse |
+| B11 | The `Host` check switched off (built after the others, for D8) | 5 tests: every refused `Host`, and none at all |
 
 The review planted four more door checks, which the first proof of DSOR-OPR-04b missed (Think it
 through, M1). Against the final proof, `test/no-checks.test.ts`:
@@ -349,7 +357,7 @@ is not what `call()` would answer.
 | 3 | The copy | Step 41b copied, its markers removed |
 | 4 | Build, piece by piece | Six pieces, each with its tests written first and seen red: the design; the routes; the translation; the statuses; the server; the proof that the door adds no check; then `pnpm serve` over the database |
 | 5 | Break it | The breaks, for real, in a copy |
-| 6 | Review | A reviewer who had not seen the conversation; its findings fixed or recorded |
+| 6 | Review | A reviewer who had not seen the conversation; its findings fixed or recorded; M4 answered by the learner's D8, then built red first |
 
 To start it in a new session:
 
@@ -401,7 +409,7 @@ treated every HTTP caller as an attacker, and broke the code in a copy.
 | M1 | The proof missed four door checks: refusing org_789, refusing the agent in `execute` mode, dropping `supersedes`, refusing a run of two lines; and 10 routes had no caller DSoR let through. The door held the whole registry, so a check could read a store inline | Fixed: the door gets one function that asks `call()`; C8 checks, through a spy, that `call()` gets exactly the request and the door gives back exactly the answer, for six callers and seven envelopes. All four checks and B3 now fail it. 12 routes have a case let through |
 | M2 | The import test missed a dynamic `import()` and a second import from one file | Fixed: every module a file names is listed, and every import from the envelope, the log, and the registry must be of types only. Both bypasses fail it |
 | M3 | Node answered some requests itself: 417 for an `Expect` it does not know, 400 for a request it cannot parse, 431 for headers over 16 KiB; `CONNECT` was closed | 417 fixed: `call()` answers it. The other three are Node's, before the door sees a request; C5 now names them |
-| M4 | DNS rebinding defeats D7. The door does not check the `Host` header, so a web page whose name is made to point at 127.0.0.1 can call it, with the public `tok_d4e8` | **Not fixed: a question for the learner, Q1 below** |
+| M4 | DNS rebinding defeats D7. The door did not check the `Host` header, so a web page whose name is made to point at 127.0.0.1 could call it, with the public `tok_d4e8` | Asked as Q1; the learner chose (a), D8, built red first (C9) |
 | L1 | Two spellings of one field: `DSoR-Token`, `DSoR-Idempotency-Key`, and an `Authorization` with no scheme all counted | Fixed: one header for each field (C3) |
 | L2 | The URL parser rewrote paths: `/alerts/../invoices/INV-1008` became `invoice.get` | Fixed with H1: the path is matched as it was sent |
 | L3 | `DSoR_Mode`, with an underscore, was dropped, so a dry run ran for real | Fixed: any header that starts with `dsor` is handed over, and refused |
@@ -413,28 +421,28 @@ treated every HTTP caller as an attacker, and broke the code in a copy.
 | L9 | "Door" is not on the list of established analogies, and step 07's review once replaced it with "interface" | Kept: "front door" is the map's own name for Part 6, and "side door" is §39's. Here it names the HTTP server, not a picture of something else |
 | L10 | Check yourself 4 named admin_100 among C8's callers, who was not one | Now true: admin_100 is one of the six |
 
-### Q1. Should the door check the `Host` header? (the review's M4, for the learner)
+### Q1, answered: the door checks the `Host` header (the review's M4)
 
 **The problem.** The door listens only on 127.0.0.1 (D7), so no other computer can reach it. But a
 web page can. Say the developer opens `attacker.example` in a browser. That site makes its own name
 point at 127.0.0.1 a moment later ("DNS rebinding"). Its script then calls
-`http://attacker.example:8042/proposals/approve`, the browser sends it to this computer, and the
-door answers, since it never looks at `Host`. The token `tok_d4e8` is public, so the page can
-approve as cfo_100.
+`http://attacker.example:8042/proposals/approve`, the browser sends it to this computer, and a door
+that never looks at `Host` answers. The token `tok_d4e8` is public, so the page could approve as
+cfo_100.
 
-**The options:**
+**The options were:** (a) the door refuses a `Host` that is not its own address, with 421, a check of
+the transport; (b) the door hands `Host` to `call()`, so the checklist learns about HTTP; (c) wait for
+step 43's real logins, while any page could act as anyone.
 
-- **(a) The door refuses a request whose `Host` is not `127.0.0.1:<port>`**, with 421. A check of
-  the transport, not of who may do what, so DSOR-OPR-04b allows it. *Downside:* the one answer the
-  door would make by itself, against A2, and it leaves no record.
-- **(b) The door hands the `Host` to `call()`** as a field of the envelope, and the checklist checks
-  it against the address it serves. *Downside:* DSoR's checklist then learns about HTTP, and every
-  other interface must send the field too.
-- **(c) Record it and wait for step 43.** With real logins, a page has no token to send. *Downside:*
-  until then, any page the developer opens can act as anyone.
+**The learner chose (a), decision D8**, built red first. The real door, from `curl`:
 
-**Recommendation: (a).** It is the standard guard, it is about the wire and not the business, and
-it ends when step 43 ends the fake logins. Not built until the learner answers.
+```text
+1. cfo_100 reads INV-1008, Host 127.0.0.1:8042 (curl's own)
+   HTTP 200
+2. the same, as a rebinding page would send it: Host attacker.example:8042
+{"code":"VALIDATION_FAILED","message":"this door answers only requests for 127.0.0.1 and its own port, named in the Host header","retry":"never","correlation":{"request_id":"req_1c62a192-…"}}
+   HTTP 421
+```
 
 ### Left open on purpose
 

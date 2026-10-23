@@ -2416,8 +2416,9 @@ A real `curl` run on a scratch PostgreSQL: eight requests, eight decisions in `d
   because its cases were one company, no mode, and few callers who may; the door now gets only a
   function that asks `call()`, and a spy proves the request and the answer pass unchanged, 756 cases.
   M2, M3, L1 to L10 fixed or recorded.
-- **For the learner:** Q1, the review's M4: the door does not check `Host`, so DNS rebinding lets a
-  web page call it with the public `tok_d4e8`; and the review of A3 and A4.
+- **For the learner:** Q1, the review's M4: the door did not check `Host`, so DNS rebinding let a web
+  page call it with the public `tok_d4e8`. The learner chose a 421 for a foreign `Host` (D8), built
+  red first. Still open: the review of A3 and A4.
 - **Found along the way:** `fetch` will not send an `Expect` header; cfo_100 may not draft a
   payment, so line ⑤ refused her before line ⑥ saw the JSON. Open questions 162 and 163.
 

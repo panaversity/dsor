@@ -184,10 +184,10 @@ Then step 42 was built, reviewed, and broken on purpose; see its README, "Break 
 through". The review's M4 is a question for the learner:
 
 **Q1. Should the door check the `Host` header?** A web page can make its own name point at 127.0.0.1
-(DNS rebinding) and call the door with the public `tok_d4e8`. The options are in step 42's README:
-(a) the door refuses a `Host` that is not its own address, with 421, a transport check (recommended);
-(b) the door hands `Host` to `call()`; (c) wait for step 43's real logins. Not built until the learner
-answers.
+(DNS rebinding) and call the door with the public `tok_d4e8`. The options: (a) the door refuses a
+`Host` that is not its own address, with 421, a transport check; (b) the door hands `Host` to
+`call()`; (c) wait for step 43's real logins. **The learner chose (a), decision D8**, built red first:
+`Host: attacker.example:8042` now hears 421, and `call()` is never asked.
 
 ## The learner's predictions (2026-10-23)
 
@@ -213,6 +213,6 @@ Habit 2: the path and the membership were in view, the address inside the body w
 ## How to continue in a new session
 
 ```text
-Step 42 is built: docs/baby_steps_tutorials/mj_42_a_rest_api/README.md. The learner reviews A3 and
-A4 (Claude Code's) and answers Q1 (the Host header) before step 43.
+Step 42 is built: docs/baby_steps_tutorials/mj_42_a_rest_api/README.md. The learner answered Q1 with
+D8. Still for the learner: the review of A3 and A4 (Claude Code's) before step 43.
 ```
