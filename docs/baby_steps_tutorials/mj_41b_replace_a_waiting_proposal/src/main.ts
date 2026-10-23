@@ -2558,6 +2558,66 @@ console.log(
   `  the agent releases the run: ${"outcome" in releasedRun ? releasedRun.outcome : heard(releasedRun)}, ${runPayments?.map((p) => `${p.id} of ${p.invoice_id}`).join(", ") ?? "nothing"}`,
 );
 
+// NEW IN STEP 41b: a run replaced while it waits, in a world of its own. The agent proposes
+//   INV-1002, INV-1008, and INV-1006 as one run, which waits for cfo_100. INV-1006 turns out to be
+//   wrong. The agent proposes the two good bills as a new run, naming the old one in supersedes. The
+//   old run and its lines move to CANCELLED, its booking goes back, and the new run waits. cfo_100's
+//   approval of the old run is refused, naming the new one (DSOR-APR-12; step 41b's README, claims C4
+//   and C7).
+console.log("a run replaced while it waits, in memory, in a world of its own:");
+const swapKept = memoryProposals(() => Date.parse("2026-10-06T15:05:00Z"));
+const swapWorld = await connectorWorld(readConnectors(), createFakeBank(), [], swapKept);
+const swapLog = createLog();
+let swapKeys = 0;
+const swapCall = (who: RequestEnvelope, name: string, input: unknown): Promise<Answer> =>
+  call(swapWorld, swapLog, withKey(who, `swap-${++swapKeys}`), name, input);
+const linesOfBills = (...ids: string[]) => ({
+  lines: ids.map((id) => ({ invoice: `dsor://org_456/invoice/${id}`, expected_version: 1 })),
+});
+const firstRun = await swapCall(AGENT, "payment.run", linesOfBills("INV-1002", "INV-1008", "INV-1006"));
+const firstUri = String("proposal" in firstRun ? firstRun.proposal : "");
+const swappedKept = await swapKept.get("org_456", firstUri.split("/").at(-1) ?? "");
+if (swappedKept === undefined) throw new Error("the story's first run is not there");
+console.log(`  the agent proposes INV-1002, INV-1008, and INV-1006: ${waitHeard(firstRun)}`);
+const replacement = await call(
+  swapWorld,
+  swapLog,
+  { ...withKey(AGENT, `swap-${++swapKeys}`), supersedes: firstUri },
+  "payment.run",
+  linesOfBills("INV-1002", "INV-1008"),
+);
+const secondUri = String("proposal" in replacement ? replacement.proposal : "");
+console.log(`  INV-1006 is wrong; the agent proposes the other two, superseding the first: ${waitHeard(replacement)}`);
+const firstNow = await swapKept.get("org_456", firstUri.split("/").at(-1) ?? "");
+const firstLines = await swapKept.lines("org_456", firstUri);
+console.log(
+  `    the first run is ${firstNow?.state}, its lines ${firstLines.map((l) => l.state).join(", ")}: "${firstNow?.transitions.at(-1)?.cause}"`,
+);
+const oldScreen = {
+  proposal: swappedKept.uri,
+  payload_hash: swappedKept.payload_hash,
+  manifest_hash: swappedKept.manifest_hash,
+  totals: swappedKept.totals,
+  vendor_totals: swappedKept.vendor_totals,
+};
+console.log(
+  "  cfo_100 approves the first run, as her screen showed it:",
+  heard(await swapCall(CFO_100, "proposal.approve", oldScreen)),
+);
+const secondKept = await swapKept.get("org_456", secondUri.split("/").at(-1) ?? "");
+if (secondKept === undefined) throw new Error("the story's second run is not there");
+const newScreen = {
+  proposal: secondKept.uri,
+  payload_hash: secondKept.payload_hash,
+  manifest_hash: secondKept.manifest_hash,
+  totals: secondKept.totals,
+  vendor_totals: secondKept.vendor_totals,
+};
+console.log(
+  `  she approves the second run, ${secondKept.totals?.map((m) => `${m.value} ${m.currency}`).join(", ")}:`,
+  heard(await swapCall(CFO_100, "proposal.approve", newScreen)),
+);
+
 // Every call above left one record in the log before its answer was returned, the
 // refusals too. dsor_runtime reads one company at a time, and never a
 // record with no company (step 11's README, decisions 4 and 6). So the program reads the
