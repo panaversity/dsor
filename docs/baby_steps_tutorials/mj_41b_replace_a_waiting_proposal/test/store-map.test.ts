@@ -310,6 +310,9 @@ describe("the shipped map", () => {
             //   claim C5).
             "run",
             "manifest_hash",
+            // Changed in step 41b: and the proposal it replaces, written once (step 41b's README,
+            //   decision D4).
+            "supersedes",
           ],
           // Changed in step 29: and what a waiting proposal waits for, which the move to
           // PENDING_APPROVAL writes once (step 29's README, decision D4).
@@ -353,6 +356,8 @@ describe("the shipped map", () => {
             "request_id",
             // And the mode of the call (step 23's README, decision 13).
             "mode",
+            // Changed in step 41b: and what the call replaces (step 41b's README, decision D9).
+            "supersedes",
           ],
           UPDATE: ["answer"],
         },

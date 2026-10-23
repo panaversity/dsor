@@ -12,14 +12,19 @@ export async function endAttempts(pool: pg.Pool): Promise<void> {
     try {
       await client.query("BEGIN");
       await client.query("SELECT set_config('dsor.tenant_id', $1, true)", [tenant]);
-      await client.query(
-        `UPDATE dsor.proposals
-            SET state = CASE WHEN state IN ('EXECUTING', 'OUTCOME_UNKNOWN') THEN 'FAILED'
-                             ELSE 'CANCELLED' END
-          WHERE tenant_id = $1
-            AND state IN ('READY', 'PENDING_APPROVAL', 'APPROVED', 'EXECUTING', 'OUTCOME_UNKNOWN')`,
-        [tenant],
-      );
+      // Changed in step 41b: the proposals that are no line first, then the lines, because the
+      //   trigger moves a line to CANCELLED only once its run is (step 41b's README, decision D11).
+      for (const lines of [false, true]) {
+        await client.query(
+          `UPDATE dsor.proposals
+              SET state = CASE WHEN state IN ('EXECUTING', 'OUTCOME_UNKNOWN') THEN 'FAILED'
+                               ELSE 'CANCELLED' END
+            WHERE tenant_id = $1
+              AND state IN ('READY', 'PENDING_APPROVAL', 'APPROVED', 'EXECUTING', 'OUTCOME_UNKNOWN')
+              AND (run IS NOT NULL) = $2`,
+          [tenant, lines],
+        );
+      }
       await client.query("COMMIT");
     } catch (error) {
       await client.query("ROLLBACK");

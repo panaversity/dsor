@@ -262,7 +262,19 @@ async function tearUp(input: unknown, work: OwnStores): Promise<unknown> {
   };
   const by = { mover, cause: `slip ${id} was torn up`, correlation };
   let cancelled = 0;
-  for (const waiting of await stores.proposals.waiting(tenant, id)) {
+  // Changed in step 41b: every proposal that is no line first, in the order of their ids, then the
+  //   lines, because the database moves a line to CANCELLED only once its run is (step 41b's
+  //   README, decision D11). A line holds no booking, so its release gives back nothing.
+  const listed = await stores.proposals.waiting(tenant, id);
+  const lines = new Set<string>();
+  for (const waiting of listed) {
+    if ((await stores.proposals.get(tenant, waiting.id))?.run !== undefined) lines.add(waiting.id);
+  }
+  const ordered = [
+    ...listed.filter((one) => !lines.has(one.id)),
+    ...listed.filter((one) => lines.has(one.id)),
+  ];
+  for (const waiting of ordered) {
     // A move that finds the proposal moved on already changes nothing, so its reservation stays
     // and it is not counted. Changed in step 29: an approval takes the company's ending lock too,
     // as this list does, so a proposal approved a moment before is listed APPROVED, and cancelled

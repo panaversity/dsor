@@ -170,11 +170,12 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
       {
         object: "dsor.idempotency INSERT",
         // And the mode (step 23's README, decision 13).
-        held: "tenant_id principal operation idempotency_key payload_hash request_id mode",
+        // Changed in step 41b: and what the call replaces (step 41b's README, decision D9).
+        held: "tenant_id principal operation idempotency_key payload_hash request_id mode supersedes",
       },
       {
         object: "dsor.idempotency SELECT",
-        held: "tenant_id principal operation idempotency_key payload_hash request_id answer claimed_at mode",
+        held: "tenant_id principal operation idempotency_key payload_hash request_id answer claimed_at mode supersedes",
       },
       { object: "dsor.idempotency UPDATE", held: "answer" },
       // Step 36: the notes. Read every column, add a note through nine named columns, and write its
@@ -240,11 +241,12 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
         object: "dsor.proposals INSERT",
         // And, since step 32, the record its operation is exclusive over (step 32's README, D7).
         // And, since step 41, a line's run and a run's fingerprint (step 41's README, claim C5).
-        held: "tenant_id id operation mode state payload payload_hash resources requester idempotency_key expires_at exclusive_over run manifest_hash",
+        // Changed in step 41b: and the proposal it replaces (step 41b's README, decision D4).
+        held: "tenant_id id operation mode state payload payload_hash resources requester idempotency_key expires_at exclusive_over run manifest_hash supersedes",
       },
       {
         object: "dsor.proposals SELECT",
-        held: "tenant_id id operation mode state payload payload_hash resources requester idempotency_key created_at expires_at requires exclusive_over run manifest_hash totals vendor_totals",
+        held: "tenant_id id operation mode state payload payload_hash resources requester idempotency_key created_at expires_at requires exclusive_over run manifest_hash totals vendor_totals supersedes",
       },
       // And, since step 41, a run's totals, written once when it starts to wait.
       { object: "dsor.proposals UPDATE", held: "state requires totals vendor_totals" },

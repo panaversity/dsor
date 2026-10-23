@@ -110,7 +110,8 @@
             "idempotency_key",
             "payload_hash",
             "request_id",
-            "mode"
+            "mode",
+            "supersedes"
           ],
           "UPDATE": ["answer"]
         }
@@ -136,7 +137,8 @@
             "expires_at",
             "exclusive_over",
             "run",
-            "manifest_hash"
+            "manifest_hash",
+            "supersedes"
           ],
           "UPDATE": ["state", "requires", "totals", "vendor_totals"]
         }

@@ -90,6 +90,7 @@ import {
   refusalOf,
   usedForAnother,
   usedInAnotherMode,
+  usedToReplaceAnother,
   type ClaimScope,
   type ClaimStore,
   type Claimed,
@@ -1079,6 +1080,8 @@ function writable(time: Date | number): string | undefined {
 type ClaimRow = {
   payload_hash: string;
   mode: ProposalMode;
+  // NEW IN STEP 41b: and what its call replaced, or null.
+  supersedes: string | null;
   request_id: string;
   answer: unknown;
   unanswered: boolean;
@@ -1118,9 +1121,6 @@ export function createDbClaims(
       seal?: (stores: WorkStores, claimed: Claimed) => Promise<void>,
       supersedes?: string,
     ): Promise<Claimed> => {
-      // NEW IN STEP 41b: a replacement is not kept on the database before its column exists, so it
-      //   is an accident here, never a call that forgets what it replaced.
-      if (supersedes !== undefined) throw new Error("a replacement is not built on the database yet");
       // One transaction: the claim, the code's reads and writes, and the outcome. They commit
       // together, or none of them does (decision 6).
       // And the proposal, with the records of its moves (step 22's README,
@@ -1129,7 +1129,11 @@ export function createDbClaims(
       //   proposal, and the note first, and an accident after it undoes only what came after.
       const noted = { yes: false };
       let made: string | undefined;
-      let claimed: Claimed | { conflict: "request" } | { conflict: "mode"; first: ProposalMode };
+      let claimed:
+        | Claimed
+        | { conflict: "request" }
+        | { conflict: "mode"; first: ProposalMode }
+        | { conflict: "supersedes" };
       try {
         claimed = await inCompany(pool, scope.tenant, async (client) => {
           const ids = [scope.tenant, scope.principal, scope.operation, scope.key];
@@ -1138,14 +1142,16 @@ export function createDbClaims(
           // the row below. Never "look, then add": two requests could both look first (§22,
           // "Common mistake").
           // With the call's mode, which the claim keeps (step 23's README, decision 4).
+          // NEW IN STEP 41b: and what the call replaces, or null (step 41b's README, decision D9).
           const added = await client.query(
             `INSERT INTO dsor.idempotency
-             (tenant_id, principal, operation, idempotency_key, payload_hash, mode, request_id)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
+             (tenant_id, principal, operation, idempotency_key, payload_hash, mode, request_id,
+              supersedes)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
            ON CONFLICT (tenant_id, principal, operation, idempotency_key) DO NOTHING`,
-            [...ids, payloadHash, mode, requestId],
+            [...ids, payloadHash, mode, requestId, supersedes ?? null],
           );
-          if (added.rowCount === 0) return replay(client, ids, payloadHash, mode);
+          if (added.rowCount === 0) return replay(client, ids, payloadHash, mode, supersedes);
           if (added.rowCount !== 1)
             throw new Error(`the claim added ${added.rowCount} rows, not 1`);
           const stores = storesIn(client, scope.tenant, controls, noted);
@@ -1250,6 +1256,8 @@ export function createDbClaims(
       // decision 4).
       if ("conflict" in claimed) {
         if (claimed.conflict === "request") throw usedForAnother(scope.operation);
+        // NEW IN STEP 41b: and another supersedes.
+        if (claimed.conflict === "supersedes") throw usedToReplaceAnother(scope.operation);
         throw usedInAnotherMode(scope.operation, claimed.first);
       }
       return claimed;
@@ -2039,9 +2047,16 @@ async function replay(
   ids: string[],
   payloadHash: string,
   mode: ProposalMode,
-): Promise<Claimed | { conflict: "request" } | { conflict: "mode"; first: ProposalMode }> {
+  // NEW IN STEP 41b: and what the call replaces, compared after the mode.
+  supersedes: string | undefined,
+): Promise<
+  | Claimed
+  | { conflict: "request" }
+  | { conflict: "mode"; first: ProposalMode }
+  | { conflict: "supersedes" }
+> {
   const { rows } = await client.query<ClaimRow>(
-    `SELECT payload_hash, mode, request_id, answer, answer IS NULL AS unanswered
+    `SELECT payload_hash, mode, supersedes, request_id, answer, answer IS NULL AS unanswered
        FROM dsor.idempotency WHERE ${IN_SCOPE}`,
     ids,
   );
@@ -2063,6 +2078,7 @@ async function replay(
     );
     if (notes[0] === undefined) throw new Error("a claim was found with no outcome");
     if (found.mode !== mode) return { conflict: "mode", first: found.mode };
+    if (found.supersedes !== (supersedes ?? null)) return { conflict: "supersedes" };
     return {
       refused: unknownFromNote(),
       proposal: proposalUri(ids[0]!, notes[0].proposal_id),
@@ -2071,6 +2087,7 @@ async function replay(
   }
   if (found.payload_hash !== payloadHash) return { conflict: "request" };
   if (found.mode !== mode) return { conflict: "mode", first: found.mode };
+  if (found.supersedes !== (supersedes ?? null)) return { conflict: "supersedes" };
   const kept = found.answer as {
     value?: unknown;
     refused?: unknown;
@@ -2154,6 +2171,8 @@ type ProposalRow = {
   manifest_hash: string | null;
   totals: Money[] | null;
   vendor_totals: VendorTotal[] | null;
+  // NEW IN STEP 41b: and the proposal it replaces.
+  supersedes: string | null;
 };
 
 // One move's record, as pg gives it back.
@@ -2206,9 +2225,9 @@ function proposalsThrough(run: Runner): ProposalStore {
           // after created_at and within 720 hours of it (step 25c's README, decision D6).
           `INSERT INTO dsor.proposals (tenant_id, id, operation, mode, state, payload, payload_hash,
                                        resources, requester, idempotency_key, expires_at,
-                                       exclusive_over, run, manifest_hash)
+                                       exclusive_over, run, manifest_hash, supersedes)
            VALUES ($1, $2, $3, $9, 'PROPOSED', $4::jsonb, $5, $6::text[], $7::jsonb, $8,
-                   now() + $10::bigint * interval '1 millisecond', $11, $12, $13)`,
+                   now() + $10::bigint * interval '1 millisecond', $11, $12, $13, $14)`,
           [
             tenant,
             id,
@@ -2226,6 +2245,8 @@ function proposalsThrough(run: Runner): ProposalStore {
             // A line's run, or a run's fingerprint (migration 044).
             draft.run ?? null,
             draft.manifest_hash ?? null,
+            // NEW IN STEP 41b: the proposal it replaces, or none (migration 046).
+            draft.supersedes ?? null,
           ],
         );
         if (rowCount !== 1)
@@ -2268,7 +2289,7 @@ function proposalsThrough(run: Runner): ProposalStore {
         const { rows } = await client.query<ProposalRow>(
           `SELECT tenant_id, id, operation, mode, state, payload, payload_hash, resources, requester,
                   idempotency_key, created_at, expires_at, requires, run, manifest_hash, totals,
-                  vendor_totals
+                  vendor_totals, supersedes
              FROM dsor.proposals WHERE tenant_id = $1 AND id = $2`,
           [tenant, id],
         );
@@ -2630,6 +2651,8 @@ function proposalOf(row: ProposalRow, moves: MoveRow[], approvals: string[]): Pr
     ...(row.manifest_hash === null ? {} : { manifest_hash: row.manifest_hash }),
     ...(row.totals === null ? {} : { totals: row.totals }),
     ...(row.vendor_totals === null ? {} : { vendor_totals: row.vendor_totals }),
+    // NEW IN STEP 41b: and the proposal it replaces, when it names one.
+    ...(row.supersedes === null ? {} : { supersedes: row.supersedes }),
     // And its approvals, once it has one.
     ...(approvals.length === 0 ? {} : { approvals }),
     payload: row.payload,

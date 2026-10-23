@@ -251,6 +251,9 @@ const CLAIM_COLUMNS = [
   "answer",
   "claimed_at",
   "mode",
+  // Changed in step 41b: and what the call replaced, which migration 046 adds, last (step 41b's
+  //   README, decision D9).
+  "supersedes",
 ];
 
 // Dsor.proposals, as migration 015 makes it. dsor_runtime reads every column, adds
@@ -284,6 +287,9 @@ const PROPOSAL_COLUMNS = [
   "manifest_hash",
   "totals",
   "vendor_totals",
+  // Changed in step 41b: and the proposal it replaces, written with it, which migration 046 adds
+  //   last (step 41b's README, decision D4).
+  "supersedes",
 ];
 
 // Dsor.brakes, as migration 019 makes it. dsor_runtime reads every column, adds a

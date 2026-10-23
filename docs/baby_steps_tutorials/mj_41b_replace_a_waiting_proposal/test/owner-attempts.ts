@@ -24,14 +24,22 @@ try {
     await client.query("BEGIN");
     // The owner holds BYPASSRLS, so no policy filters these statements. The proposals' trigger
     // still checks each move.
-    const proposals = await client.query(
-      `UPDATE dsor.proposals
-          SET state = CASE WHEN state IN ('EXECUTING', 'OUTCOME_UNKNOWN') THEN 'FAILED'
-                           ELSE 'CANCELLED' END
-        WHERE state IN ('READY', 'PENDING_APPROVAL', 'APPROVED', 'EXECUTING', 'OUTCOME_UNKNOWN')`,
-    );
+    // Changed in step 41b: the proposals that are no line first, then the lines, because the
+    //   trigger moves a line to CANCELLED only once its run is (step 41b's README, decision D11).
+    const ended = async (lines: boolean): Promise<number> =>
+      (
+        await client.query(
+          `UPDATE dsor.proposals
+              SET state = CASE WHEN state IN ('EXECUTING', 'OUTCOME_UNKNOWN') THEN 'FAILED'
+                               ELSE 'CANCELLED' END
+            WHERE state IN ('READY', 'PENDING_APPROVAL', 'APPROVED', 'EXECUTING', 'OUTCOME_UNKNOWN')
+              AND (run IS NOT NULL) = $1`,
+          [lines],
+        )
+      ).rowCount ?? 0;
+    const proposals = (await ended(false)) + (await ended(true));
     await client.query("COMMIT");
-    const result = { proposals: proposals.rowCount };
+    const result = { proposals };
     process.stdout.write(redact(JSON.stringify(result), { "<owner URL>": owner }));
   } catch (error) {
     await client.query("ROLLBACK");
