@@ -45,7 +45,7 @@ function refuse(message: string): never {
   process.exit(1);
 }
 
-loadDotEnv(["DSOR_DB_URL", "DSOR_HTTP_PORT", "DSOR_ISSUERS_FILE"]);
+loadDotEnv(["DSOR_DB_URL", "DSOR_HTTP_PORT", "DSOR_ISSUERS_FILE", "DSOR_STAND_IN"]);
 // No database named, no door: it never falls back to a log in memory (step 09's README, decision 15).
 try {
   requireEnv("DSOR_DB_URL");
@@ -107,6 +107,20 @@ try {
   if (issuers.problems.length > 0) {
     refuse(`the issuers refused to start:\n  ${issuers.problems.join("\n  ")}`);
   }
+  // A stand-in on this computer is plain http, and anyone here who can sign in through it is anyone.
+  //   So pnpm serve trusts one only when DSOR_STAND_IN=on says so, to learn with (the review's H1).
+  const standIns = [...new Set([...issuers.issuers.values()].flat().map((i) => i.issuer))].filter(
+    (address) => address.startsWith("http:"),
+  );
+  if (standIns.length > 0 && process.env["DSOR_STAND_IN"] !== "on") {
+    const why =
+      "is plain http on this computer: a stand-in, through which anyone here could sign in";
+    refuse(
+      `issuers.json names ${standIns.join(", ")}, which ${why}. Set DSOR_STAND_IN=on to learn with it`,
+    );
+  }
+  if (standIns.length > 0)
+    console.log(`DSOR_STAND_IN=on: trusting ${standIns.join(", ")}, to learn only`);
   registry = {
     ...registry,
     logins: realLogins(issuers.issuers, createDbLinks(pool), remoteKeys()),

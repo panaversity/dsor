@@ -11,6 +11,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 const STEP = fileURLToPath(new URL("..", import.meta.url));
 const running: ChildProcess[] = [];
 
+let issuerOut = "";
+
 /** Starts one of the step's programs, and waits for the line that says where it listens. */
 function start(program: string, env: Record<string, string>): Promise<string> {
   return new Promise((done, fail) => {
@@ -22,6 +24,7 @@ function start(program: string, env: Record<string, string>): Promise<string> {
     let out = "";
     child.stdout.on("data", (d) => {
       out += d.toString();
+      if (program === "dev-issuer.ts") issuerOut = out;
       const found = /listens on (http:\/\/127\.0\.0\.1:\d+)/.exec(out);
       if (found?.[1] !== undefined) done(found[1]);
     });
@@ -32,6 +35,14 @@ function start(program: string, env: Record<string, string>): Promise<string> {
 
 let issuer: string;
 let door: string;
+let issuersFile: string;
+
+/** cfo_100's sign-in code, which the stand-in prints in its own terminal only (the review's H1). */
+function codeOf(email: string): string {
+  const found = new RegExp(`${email.replace(".", "\\.")}\\s+(\\d{6})`).exec(issuerOut);
+  if (found?.[1] === undefined) throw new Error(`no code for ${email} in: ${issuerOut}`);
+  return found[1];
+}
 beforeAll(async () => {
   issuer = await start("dev-issuer.ts", { DSOR_DEV_ISSUER_PORT: "0" });
   const one = [{ issuer, audience: issuer, jwks: `${issuer}/.well-known/jwks.json` }];
@@ -47,7 +58,12 @@ beforeAll(async () => {
     },
   );
   expect(link.status).toBe(0);
-  door = await start("serve.ts", { DSOR_HTTP_PORT: "0", DSOR_ISSUERS_FILE: file });
+  issuersFile = file;
+  door = await start("serve.ts", {
+    DSOR_HTTP_PORT: "0",
+    DSOR_ISSUERS_FILE: file,
+    DSOR_STAND_IN: "on",
+  });
 }, 60_000);
 afterAll(() => {
   for (const child of running) child.kill("SIGINT");
@@ -62,8 +78,9 @@ async function invoice(token: string): Promise<{ status: number; principal?: str
 }
 
 describe("C8: pnpm serve takes real logins for people", () => {
-  it("Step 43, D9: cfo_100 signs in at the stand-in, and pnpm serve answers her as cfo_100", async () => {
-    const signed = await fetch(`${issuer}/token?email=cfo@org456.example`);
+  it("Step 43, D9: cfo_100 signs in at the stand-in with her code, and pnpm serve answers her as cfo_100", async () => {
+    const code = codeOf("cfo@org456.example");
+    const signed = await fetch(`${issuer}/token?email=cfo@org456.example&code=${code}`);
     const { token } = (await signed.json()) as { token: string };
     expect(await invoice(token)).toStrictEqual({ status: 200, principal: "cfo_100" });
   });
@@ -73,7 +90,36 @@ describe("C8: pnpm serve takes real logins for people", () => {
   });
 
   it("Step 43, D9: the stand-in signs in only the story's people", async () => {
-    const response = await fetch(`${issuer}/token?email=someone@else.example`);
-    expect(response.status).toBe(404);
+    const response = await fetch(`${issuer}/token?email=someone@else.example&code=000000`);
+    expect(response.status).toBe(401);
+  });
+
+  it.each([
+    ["no code", ""],
+    ["a wrong code", "&code=123456"],
+    ["user_123's code", "&code=USER"],
+  ])(
+    "Step 43, D9: cfo_100 with %s gets no token: anyone on this computer is not anyone (the review's H1)",
+    async (_kind, part) => {
+      const code = part === "&code=USER" ? `&code=${codeOf("user123@org456.example")}` : part;
+      const response = await fetch(`${issuer}/token?email=cfo@org456.example${code}`);
+      expect(response.status).toBe(401);
+    },
+  );
+
+  it("Step 43, D9: pnpm serve refuses to start with the stand-in as an issuer unless DSOR_STAND_IN=on says so", () => {
+    const run = spawnSync(process.execPath, [join(STEP, "src", "serve.ts")], {
+      cwd: STEP,
+      env: {
+        ...process.env,
+        DSOR_HTTP_PORT: "0",
+        DSOR_ISSUERS_FILE: issuersFile,
+        DSOR_STAND_IN: "",
+      },
+      encoding: "utf8",
+      timeout: 30_000,
+    });
+    expect(run.status).toBe(1);
+    expect(run.stderr).toContain("is plain http on this computer: a stand-in");
   });
 });
