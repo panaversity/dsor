@@ -125,7 +125,7 @@ titled by the rule yet; this step adds those titles.
 | C1 | `supersedes` travels in the request envelope, beside `mode` and `idempotency_key`. Line ① checks that it is a proposal's address. Only a command that runs the company's code takes it: a query, a release, and DSoR's own work refuse it. The new proposal keeps it beside its payload, written once. The payload and its hash are the bills only |
 | C2 | The claim keeps `supersedes` beside the fingerprint and the mode. The same key with another `supersedes`, or with none, is `IDEMPOTENCY_CONFLICT`. The same key with the same request replays |
 | C3 | Who and when. The old proposal must be the company's: else `TENANT_MISMATCH`. It must be there: else `RESOURCE_NOT_FOUND`. It must have been asked for by this caller: a person by the same person, an agent by the same agent under the same slip; else `AUTHORIZATION_DENIED`. It must not be a line of a run, nor DSoR's own work, and it must be `READY`, `PENDING_APPROVAL`, or `APPROVED`; else `CONFLICT` |
-| C4 | One transaction, in this order: the company's ending lock, and the new request's bills' locks; for a run, its lines' proposals; then, as one part a refusal undoes, the checks of C3; the old proposal and each of its lines move to `CANCELLED`, each move recorded with the new proposal as its cause; the old booking is given back; then the new command's whole checklist. The new one then waits, or runs, as its own checks say. Any proposal: a single `payment.create` or a run, either way |
+| C4 | One transaction, in this order: the company's ending lock, and the new request's bills' locks; for a run, its lines' proposals; then, as one part a refusal undoes, the checks of C3; the old proposal and each of its lines move to `CANCELLED`, each move recorded with the new proposal as its cause; the old booking is given back; then the new command's whole checklist. The new one then waits: `READY`, or for its approval. It never runs in the call that replaces; it runs at its release (D12). Any proposal: a single `payment.create` or a run, either way |
 | C5 | A refused replacement changes nothing of the old proposal: it still waits, with its lines, its invoices, and its booking. The new proposal ends `DENIED`, the claim keeps the refusal, and the refusal is recorded before the answer |
 | C6 | The old booking is given back before the new total is booked, so the new one may use that room. Two replacements of one proposal at once: one wins, the other hears `CONFLICT`, and the freed room is used once |
 | C7 | An approval or a release of a replaced proposal is refused with `CONFLICT`, and the answer names the new proposal. No event is written |
@@ -171,6 +171,13 @@ The learner's decisions, 2026-10-22, each asked one at a time.
   tearing up the old slip cancels that work anyway (step 25).
 - **D11. On the database, a line moves to `CANCELLED` only with its run**, one rule more in the
   trigger of migration 045's kind. *Downside:* one more rule, with its test and its break.
+- **D12. A replacement never runs at once** (the learner's answer to Q1, 2026-10-23, after the
+  review's H1). A command with `supersedes` makes its proposal and stops: `READY`, or waiting for
+  its approval, in either mode. The company's code runs only when it is released. So no code can
+  refuse in the call that replaces, and a refused replacement is always a refusal of its checks,
+  which changes nothing (D6). The other ways were to let the replacement stand when the code
+  refuses, or to undo it after the code too. *Downside:* a replacement that needs no one costs one
+  more call, its release.
 
 ### What follows from rules already built
 
@@ -237,7 +244,7 @@ Checking the design against the code and the rules found six points. None change
 | C1 | A `supersedes` that is not a proposal's address is refused at line ①; another company's is `TENANT_MISMATCH`; on a query, a release, or DSoR's own command it is refused; the new proposal keeps it, and its payload hash is the bills' |
 | C2 | The same key with another `supersedes`, or none, is `IDEMPOTENCY_CONFLICT`; the same key and the same request replays and makes nothing new |
 | C3 | No such proposal; another requester; another agent; the same agent under another slip; a line of a run; DSoR's own work; each state that may not be replaced: each refused with its code, and the old one unchanged |
-| C4 | A run replaced by a run, a draft by a draft, a draft by a run, and a run by a draft: the old one and its lines `CANCELLED`, each record naming the new one; its booking given back; the new one waits or runs; replacing an `APPROVED` run cancels its approval too |
+| C4 | A run replaced by a run, a draft by a draft, a draft by a run, and a run by a draft: the old one and its lines `CANCELLED`, each record naming the new one; its booking given back; the new one waits or runs; replacing an `APPROVED` run cancels its approval too; a replacement that needs no one waits `READY`, the code is not called, the same key replays `READY`, and its release drafts it (D12) |
 | C5 | A new run with a suspended vendor, and one over the day's limit, are refused: the old run still waits with its lines, and its booking is held; the new one is `DENIED`; the record of the refusal is written |
 | C6 | 150,000 booked, the new 135,000 fits once the old is given back; two replacements of one run at once on PostgreSQL: one wins, one hears `CONFLICT`, and the day holds one booking |
 | C7 | cfo_100 approves the replaced run: `CONFLICT`, naming the new one; the agent releases a replaced `APPROVED` run: the same; no event |
@@ -356,10 +363,11 @@ All three were right.
 
 ### The breaks
 
-Each break was run for real, on 2026-10-23, in a copy of this step on a new database: change one
-thing, migrate, run `test/replace.test.ts` and `test/replace.db.test.ts`, and count the tests that
-fail. A break is caught when at least one fails. With no break, none fails. The last column says
-whether the break also stops `tsc --noEmit`: a break that leaves a name unused does.
+Each break was run for real, on 2026-10-23, on the final code, in a copy of this step on a new
+database: change one thing, migrate, run `test/replace.test.ts` and `test/supersede.test.ts`, then
+`test/replace.db.test.ts`, and count the tests that fail. A break is caught when at least one fails.
+With no break, none fails. The last column says whether the break also stops `tsc --noEmit`: a break
+that leaves a name unused does.
 
 | Break | What it changes | Unit tests that fail | Database tests that fail | Typecheck fails |
 |---|---|---|---|---|
@@ -368,17 +376,21 @@ whether the break also stops `tsc --noEmit`: a break that leaves a name unused d
 | B3 | An agent may replace work done under another slip | 1 | 0 | yes |
 | B4 | A line of a run may be replaced alone | 1 | 0 | yes |
 | B5 | Any state may be replaced, not only the three of D3 | 12 | 2 | no |
-| B6 | The old proposal's lines are not cancelled with it | 10 | 4 | no |
-| B7 | The old booking is not given back | 7 | 2 | no |
+| B6 | The old proposal's lines are not cancelled with it | 13 | 5 | no |
+| B7 | The old booking is not given back | 8 | 2 | no |
 | B8 | A refused replacement keeps the old one cancelled: no savepoint | 3 | 3 | yes |
-| B9 | The old one is cancelled after the new command's checks, not before | 14 | 4 | no |
+| B9 | The old one is cancelled after the new command's checks, not before | 18 | 5 | no |
 | B10 | The approval and the release of a replaced proposal do not name the new one | 2 | 2 | yes |
 | B11 | Migration 046: a line may move to `CANCELLED` without its run | 0 | 1 | no |
-| B12 | A dry run ignores `supersedes` | 6 | 1 | yes |
-| B13 | The new proposal does not keep `supersedes` | 17 | 4 | no |
+| B12 | A dry run ignores `supersedes` | 7 | 1 | yes |
+| B13 | The new proposal does not keep `supersedes` | 20 | all 20 | no |
 
-Ten more, beyond the design's list, for the parts the list did not reach and for the review's
-findings:
+B13's database count is all of them: the first tests fail on what they check, and the break leaves a
+run `EXECUTING` beside lines still `READY`, which the owner's clean-up between tests cannot end, so
+every later test's set-up fails too.
+
+Twelve more, beyond the design's list, for the parts the list did not reach, for the review's
+findings, and for D12:
 
 | Break | What it changes | Unit tests that fail | Database tests that fail | Typecheck fails |
 |---|---|---|---|---|
@@ -387,31 +399,33 @@ findings:
 | B16 | A tear-up cancels in the order of the ids, lines before their run | 1 | 1 | yes |
 | B17 | Migration 046: the trigger lets `supersedes` change | 0 | 1 | no |
 | B18 | Another company's address in `supersedes` is not refused | 1 | 0 | no |
-| B19 | A move that finds the old proposal moved on is not refused | 0, then 1 | 0 | yes |
+| B19 | A move that finds the old proposal moved on is not refused | 1 | 0 | yes |
 | B20 | A single draft's replacement takes the new bill's lock last (review, M1) | 0 | 1 | no |
 | B21 | One person may replace another person's direct request (review, M5) | 1 | 0 | no |
 | B22 | Line ① does not check that the address names a proposal (review, L2) | 1 | 0 | no |
 | B23 | A refused run's lines do not name the line that refused (review, L5) | 1 | 0 | yes |
+| B24 | A replacement runs at once, as before D12 | 6 | 1 | no |
+| B25 | The database's replay refuses a kept `READY` for a replacement in `execute` mode | 0 | 1 | no |
 
 **B19 first left every test green**, but for the typecheck. Its only test was the database race of
 a release and a replacement, eight rounds, and none landed between the replacement's look and its
-move. So `test/supersede.test.ts` now gives the cancel a store whose move finds the proposal moved,
+move. So `test/supersede.test.ts` gives the cancel a store whose move finds the proposal moved,
 every time: with B19 one test fails, without it both pass.
 
-B11, B17, and B20 are rules of the database or of its locks, so only the database tests catch them.
-B20's test needs its 30 rounds: 12 rounds did not hit the deadlock.
+B11, B17, B20, and B25 are rules of the database, of its locks, or of its claim, so only the
+database tests catch them. B20's test needs its 30 rounds: 12 rounds did not hit the deadlock.
 
 ## Build it yourself with Claude Code
 
 | # | Move | What was done |
 |---|---|---|
 | 1 | Understand | The problem, shown with a real run of step 41's code: one wrong line holds a run of 12 |
-| 2 | Decide | Eleven decisions by the learner, D1 to D11, asked one at a time |
+| 2 | Decide | Eleven decisions by the learner, D1 to D11, asked one at a time; D12 after the review |
 | 3 | Predict | P1 to P3, asked as stories before any code |
 | 4 | The copy | Step 41 copied, its markers removed |
 | 5 | Build, piece by piece | Seven pieces, each with its tests written first and seen red: the design; `supersedes` in the envelope; who and when; the replacement in one transaction; the refusal that names the new one; the dry run; the database; then the story's scene |
 | 6 | Break it | P1 to P3, then the breaks, for real |
-| 7 | Review | A reviewer who had not seen the conversation; its findings fixed, red first, and one question for the learner |
+| 7 | Review | A reviewer who had not seen the conversation; its findings fixed, red first; H1 answered by the learner's D12, then built red first |
 
 To start it in a new session:
 
@@ -460,7 +474,8 @@ docs/baby_steps_tutorials/mj_41b_why_this_step.md.
   owner does; this machine's scratch owner is a superuser. `store.db` passed alone: its planted
   catalog changed during the run. `bank.db`'s D7 failed alone too on that database, and passed twice
   on a fresh one, for step 41's code and for this step's: open question 158, the holds left by
-  earlier runs.
+  earlier runs. On the final code, on a fresh database, 723 of 724 pass; the one that fails is
+  `DSOR-AUD-04a`, for the superuser owner.
 - **Two owners of the tests' database ended runs and lines in one statement.** `test/attempts.ts`
   and `test/owner-attempts.ts` ended every proposal in flight with one `UPDATE`. D11's rule refused a
   line whose run came later in that statement. Each now ends the proposals that are no line first.
@@ -477,7 +492,7 @@ its test written first and seen red, except H1, which needs the learner.
 
 | | What it found | The fix |
 |---|---|---|
-| H1 | In `execute` mode, a new command that needs no approval runs the company's code at once. A refusal there undoes the code's writes, and leaves the old proposal `CANCELLED`, its booking given back, while the caller hears "refused". C5 and D6 say a refused replacement changes nothing | **Open: a question for the learner**, Q1 in [`../mj_41b_why_this_step.md`](../mj_41b_why_this_step.md) |
+| H1 | In `execute` mode, a new command that needs no approval runs the company's code at once. A refusal there undoes the code's writes, and leaves the old proposal `CANCELLED`, its booking given back, while the caller hears "refused". C5 and D6 say a refused replacement changes nothing | The learner's D12, the answer to Q1 in [`../mj_41b_why_this_step.md`](../mj_41b_why_this_step.md): a replacement never runs at once, so the code runs only at a release, a call of its own. Five tests were red first; the database's replay of such a call was red too, `INTERNAL_ERROR`, until its check of the kept answer allowed `READY` for a replacement |
 | M1 | On the database, a single draft's replacement gave back the old booking, which locks the day's total, before it took the new bill's lock. A plain draft of the same bill took them the other way round: a deadlock, `INTERNAL_ERROR` | The replacement takes the new bill's lock first, as a run does. A test of 30 rounds saw `INTERNAL_ERROR` before the fix, and none after |
 | M2 | A release takes no ending lock, so only the move's check of the state keeps a release and a replacement apart. No test showed it, and a comment said every mover takes the lock | A database race of a release and a replacement, 8 rounds; a unit test where the move finds the proposal moved, every time (break B19); the comment corrected |
 | M3 | The tests of two replacements at once used new runs that shared a bill, so the bill's lock kept them apart, and the lock of C6 was never needed | New runs that share no bill; the loser's words say it found the old one `CANCELLED` |
@@ -498,7 +513,9 @@ stay as guards.
 
 ### Left open on purpose
 
-- **H1 waits for the learner** (Q1).
+- **A release of a replacement can still be refused by the code**, as any release can. That is a
+  call of its own: the new proposal ends `FAILED`, and the replacement, made in an earlier call,
+  stands. The agent proposes again, without `supersedes`.
 - **No `proposal.cancel`** (D1). The review found that the agent can still withdraw a waiting run in
   two calls: replace it with a small proposal in `propose_only` mode, and let that one expire.
 - **No event tells the CFO** that a proposal was replaced (D8). She learns it when she acts on it.
@@ -508,8 +525,8 @@ stay as guards.
 - **A release's refusal names the replacing proposal** to any person who may release the old one,
   though the new one may be of an operation they cannot read. Only its address leaves.
 - **The specification is silent** on who may supersede, on where a command names what it replaces,
-  and on whether one transaction is needed. These go to `research/open-questions.md` at the
-  hand-over.
+  on whether one transaction is needed, and on whether the new proposal may run at once: open
+  questions 160 and 161.
 
 ## The rules this step meets
 
@@ -520,7 +537,6 @@ stay as guards.
 The dry run of a replacement is tested by DSOR-OPR-05's title: `test/replace.test.ts` and
 `test/replace.db.test.ts`, C9. Who may replace, one transaction, the booking given back first, the
 refusal that names the new one, and a line cancelled only with its run are this tutorial's rules:
-those tests are titled by step 41b's decisions D3 to D11.
+those tests are titled by step 41b's decisions D3 to D12.
 
-**Next:** the learner's answer to Q1. Then Part 6, "Real front doors", which starts with step 42, a
-REST API.
+**Next:** Part 6, "Real front doors", which starts with step 42, a REST API.

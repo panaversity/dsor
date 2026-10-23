@@ -190,10 +190,13 @@ Asked as stories, before any design or code. A real run settles each one after t
 | P2 | After P1, cfo_100 approves the old run with its fingerprint and totals. What does she hear, and what happens to the old run? | Refused, naming the new run; the old run stays `CANCELLED` |
 | P3 | The run of 12 is `APPROVED`. user_123, not the agent, proposes the 11 lines with `supersedes` naming it. What does he hear, and what state is the old run in after? | Refused; the old run is still `APPROVED` |
 
-## Questions waiting for the learner (2026-10-23)
+## Questions for the learner, answered (2026-10-23)
 
-Found by the hostile review of the build, finding H1. The build stops here until the learner
-answers.
+Found by the hostile review of the build, finding H1. The build stopped here until the learner
+answered.
+
+**The learner's answer: (c), decision D12.** A new command with `supersedes` never runs at once; it
+waits `READY` or for its approval. Built red first on 2026-10-23.
 
 ### Q1. The company's code refuses after a replacement passed its checks. Does the old one stay cancelled?
 
@@ -245,17 +248,13 @@ nothing changes, with the least new code. (a) is the smallest change, but it mak
 
 ## Next
 
-Pieces 1 to 9 are built, each committed and pushed: the README's design; `supersedes` in the
-envelope; who and when; the replacement in one transaction; the refusal that names the new one; the
-dry run; the database, migration 046; the story's scene; the review's fixes M1 to M5 and L1 to L5.
-The predictions P1 to P3 ran for real, and all three were right. The breaks run in copies.
-Waiting: the learner's answer to Q1. Then: build the answer, red first; then the hand-over
-(`docs/status.md`, `rules-met.md`, `mj_notes.md`, open questions).
+Step 41b is built: pieces 1 to 9, D12 after the review, the breaks, and the hand-over
+(`docs/status.md`, `rules-met.md`, `mj_notes.md`, open questions 160 and 161). Next is Part 6, step
+42, a REST API.
 
 ## How to continue in a new session
 
 ```text
-Continue step 41b of the DSoR baby-steps tutorial, on branch mjunaidca/baby-steps. Read
-docs/baby_steps_tutorials/mj_41b_why_this_step.md first, then the step's README. Pieces 1 to 9 are
-built. My answer to Q1 is: <a, b, or c>. Build it, tests red first, then do the hand-over.
+Step 41b is finished. Read docs/baby_steps_tutorials/mj_41b_replace_a_waiting_proposal/README.md
+for what it built and what it left open.
 ```

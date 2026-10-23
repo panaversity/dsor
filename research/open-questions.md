@@ -1076,3 +1076,22 @@ for a human. An agent may gather evidence; it does not settle these alone.
     `totals` as one amount per currency, and no field for the totals per counterparty. Step 41's
     learner build keeps them in a field of its own, `vendor_totals`, one amount per vendor and
     currency. Should the schema add such a field, and should the approval's input carry it?
+
+160. **Where does a command name the proposal it supersedes, and who may supersede one?**
+    DSOR-APR-12 says "a change is a new proposal that names the one it supersedes", and
+    `proposal.schema.json` has `supersedes`. No input schema, and no part of the request envelope,
+    says where the new command carries it, and §26.1 does not say who may supersede a proposal, in
+    which states, or whether an approval of the old one counts for the new one (§8 says it never does
+    for a batch). Step 41b's learner build carries it in the request envelope, beside the mode; lets
+    only the old proposal's own requester supersede it (an agent under the same slip, as DSOR-APR-11
+    binds a release), while it is `READY`, `PENDING_APPROVAL`, or `APPROVED`; and carries no approval
+    over. Should the specification name the field's place, the caller, and the states?
+161. **Must a supersession be atomic, and may the new proposal run at once?** DSOR-APR-12 moves the
+    superseded proposal to `CANCELLED`, but does not say that this and the new proposal happen in one
+    transaction, what happens to the old proposal's reservation, or what a refused replacement
+    leaves behind. Step 41b's learner build does all of it in one transaction: the old reservation is
+    given back first, the new command is checked from the start, and any refusal undoes the
+    replacement. Its review found that a new command that runs at once could be refused by the
+    company's code after the old one was cancelled, so the learner decided that a replacement never
+    runs at once: it waits `READY` or for its approval. Should the specification require the
+    atomicity, and say whether a superseding command may execute in the same call?

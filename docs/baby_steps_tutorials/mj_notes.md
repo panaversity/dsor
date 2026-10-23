@@ -2344,6 +2344,35 @@ DSOR-APR-12, so the learner moved it to step 41b.
 - **Left open:** a waiting run cannot be replaced (step 41b); no run lets some lines through;
   memory keeps the drafts a refused run's work wrote; no operation lets the approver read a run.
 
+### Step 41b, replace a waiting proposal, decided by the learner (2026-10-22 to 2026-10-23)
+
+The learner's own extra step, split off from step 41's D8 because DSOR-APR-12 holds for every
+proposal. On step 41's code, one wrong line held a waiting run of 12 for a week, and nobody could say
+"stop". The learner decided: replace only, no `proposal.cancel` (D1); any proposal, a draft or a run
+(D2); until it executes (D3); a field on the new command (D4) that travels in the request envelope
+(D9); the old proposal's own requester, an agent under the same slip (D5, D10); one transaction (D6);
+the old booking given back first (D7); the record and the refusal tell (D8); a line cancelled only
+with its run, on the database (D11).
+
+- **Found while checking the design:** another company's address answers `TENANT_MISMATCH`, as
+  `proposal.approve` does; only the company's code is replaced, and only by it; the lock is the
+  company's ending lock; "rolls it back" needs a savepoint, with a run's lines made before it; D11
+  changes the tear-up's order; a dry run of a replacement answers as the real one would.
+- **Predictions, run for real:** all three right.
+- **The review:** one high finding. In `execute` mode a new command that needs no one ran the
+  company's code at once, and a refusal there left the old proposal cancelled while the caller heard
+  "refused" (H1). The learner answered Q1 with (c): a replacement never runs at once (D12). Also a
+  deadlock on the database between a replacement and a plain draft of one bill (M1), untested
+  guards (M2, M5), tests that did not need the lock or the freed booking (M3, M4), and smaller gaps.
+- **Breaks:** 25, each run in a copy on a new database; all caught. B19 first left every test green
+  but the typecheck: the race test never landed between the look and the move, so a unit test gives
+  the cancel a store that moved on.
+- **Found along the way:** this Mac has no `pg_ctlcluster` and nothing on port 5434, so the build ran
+  on a scratch PostgreSQL 17 of its own; there the owner is a superuser, and `DSOR-AUD-04a` fails
+  for every step. Two sweeps that migrated at once collided on `dsor_runtime`'s password.
+- **Left open:** no `proposal.cancel`, though a run can be withdrawn in two calls; no event tells the
+  CFO; memory's undo of a booking is not locked. Open questions 160 and 161.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.
