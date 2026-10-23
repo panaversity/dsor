@@ -191,6 +191,19 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
         held: "proposal_id tenant_id operation payload_hash principal claim_operation idempotency_key connector security_context written_at outcome ended_at",
       },
       { object: "dsor.intents UPDATE", held: "outcome" },
+      // Changed in step 43, the learner's R1 and R7: the invitations. Read every column, add one
+      //   through six, and end it through the three that accept or cancel it; never its end date,
+      //   which the database sets (migration 048).
+      { object: "dsor.invitations", held: "SELECT" },
+      {
+        object: "dsor.invitations INSERT",
+        held: "tenant_id id principal_id code_hash invited_by reason",
+      },
+      {
+        object: "dsor.invitations SELECT",
+        held: "tenant_id id principal_id code_hash invited_by reason created_at expires_at accepted_issuer accepted_subject accepted_at cancelled_by cancelled_at",
+      },
+      { object: "dsor.invitations UPDATE", held: "accepted_issuer accepted_subject cancelled_by" },
       // The day's totals. Read every column, add a total through named columns,
       // and change only what it has used (step 24's README, decision 13).
       { object: "dsor.limit_counters", held: "SELECT" },
@@ -199,8 +212,15 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
       { object: "dsor.limit_counters UPDATE", held: "used" },
       // Changed in step 43: the links of logins to principals, read only, every column (step 43's
       //   README, decision D5).
+      //   Changed by the learner's R1 and R7: add a link through four columns, and end one through
+      //   unlinked_by (migration 048).
       { object: "dsor.logins", held: "SELECT" },
-      { object: "dsor.logins SELECT", held: "issuer subject principal_id linked_at" },
+      { object: "dsor.logins INSERT", held: "issuer subject principal_id invitation_id" },
+      {
+        object: "dsor.logins SELECT",
+        held: "issuer subject principal_id linked_at id invitation_id unlinked_by unlinked_at",
+      },
+      { object: "dsor.logins UPDATE", held: "unlinked_by" },
       // The notices to each rule's owner. Read every column, and add a notice through seven.
       // Nothing on at, which the database fills, and no change or removal (step 28b's README,
       // decision D5).

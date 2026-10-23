@@ -23,7 +23,7 @@ import {
   createDbClaims,
   createDbControls,
   createDbInvoices,
-  createDbLinks,
+  createDbBook,
   createDbLog,
   createDbPayments,
   createDbSlips,
@@ -123,7 +123,7 @@ try {
     console.log(`DSOR_STAND_IN=on: trusting ${standIns.join(", ")}, to learn only`);
   registry = {
     ...registry,
-    logins: realLogins(issuers.issuers, createDbLinks(pool), remoteKeys()),
+    logins: realLogins(issuers.issuers, createDbBook(pool), remoteKeys()),
   };
 } catch (error) {
   refuse((error as Error).message);

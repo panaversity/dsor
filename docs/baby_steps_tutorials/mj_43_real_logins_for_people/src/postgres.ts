@@ -57,7 +57,8 @@ import {
   type StaleMark,
 } from "./rulebook.ts";
 import type { Control } from "./controls.ts";
-import { NO_BOOK, type LinkStore } from "./logins.ts";
+import { hashOf, newCode, type BookBy, type Invitation, type LoginBook } from "./logins.ts";
+import type { Login } from "./tokens.ts";
 import type { FoundSlip, SlipStore } from "./slips.ts";
 import { Refusal, type Requirement } from "./envelope.ts";
 import { approvalOf, stillOpen, type Approval, type Approving, type Offer } from "./approvals.ts";
@@ -1315,8 +1316,9 @@ function storesIn(
     // And the outbox, through the claim's own connection, so an event commits with
     //   its change (DSOR-EVT-01a; step 40's README, decision D1).
     outbox: outboxIn(client),
-    // NEW IN STEP 43: and the book of links and invitations; none until migration 048's book.
-    logins: NO_BOOK,
+    // NEW IN STEP 43: and the book of links and invitations, so login.invite and login.unlink write
+    //   in the claim's transaction, with their record (the learner's R2 and R7).
+    logins: bookThrough(client, run),
     // And the claim's own connection, so the record is written in its
     //   transaction (decision D1).
     transaction: client,
@@ -2681,17 +2683,92 @@ function proposalOf(row: ProposalRow, moves: MoveRow[], approvals: string[]): Pr
 }
 
 // NEW IN STEP 43: DSoR's table of links on PostgreSQL. Read at line ①, before any company is known,
-//   so the table has no company column and no row-level security; dsor_runtime may only read it
-//   (migration 047; step 43's README, claim C8, decision D5).
-/** The links of logins to principals, in dsor.logins. */
-export function createDbLinks(pool: pg.Pool): LinkStore {
+//   so the table has no company column and no row-level security (migration 047; step 43's README,
+//   claim C8, decision D5).
+// Changed by the learner's R1, R2, and R7 (migration 048): and the invitations, a company's rows.
+//   A code's first login is linked in one transaction of the company the call names: the invitation
+//   is accepted, and the link added, both or neither. dsor_runtime may add a link only through an
+//   invitation it accepted, and end one once; the database checks both.
+/** The book of links and invitations, in dsor.logins and dsor.invitations. */
+export function createDbBook(pool: pg.Pool): LoginBook {
+  return bookThrough(pool, onPool(pool));
+}
+
+// The same statements, through a runner: on the pool, or inside a claim, where login.invite and
+//   login.unlink write in the claim's own transaction. A link is read on the pool: no company.
+function bookThrough(reader: pg.Pool | pg.ClientBase, run: Runner): LoginBook {
   return Object.freeze({
     principalOf: async (issuer: string, subject: string): Promise<string | undefined> => {
-      const { rows } = await pool.query<{ principal_id: string }>(
-        "SELECT principal_id FROM dsor.logins WHERE issuer = $1 AND subject = $2",
+      const { rows } = await reader.query<{ principal_id: string }>(
+        `SELECT principal_id FROM dsor.logins
+          WHERE issuer = $1 AND subject = $2 AND unlinked_at IS NULL`,
         [issuer, subject],
       );
       return rows[0]?.principal_id;
     },
+    redeem: async (tenant: string, code: string, login: Login): Promise<string | undefined> =>
+      run(tenant, async (client) => {
+        await client.query("SAVEPOINT redeem");
+        // Open, unexpired, and this company's: a second login with the same code waits here for
+        //   the first, then finds it accepted.
+        const accepted = await client.query<{ id: string; principal_id: string }>(
+          `UPDATE dsor.invitations SET accepted_issuer = $3, accepted_subject = $4
+            WHERE tenant_id = $1 AND code_hash = $2 AND accepted_at IS NULL
+              AND cancelled_at IS NULL AND expires_at > now()
+          RETURNING id, principal_id`,
+          [tenant, hashOf(code), login.issuer, login.subject],
+        );
+        const invitation = accepted.rows[0];
+        if (invitation === undefined) return undefined;
+        // A login linked meanwhile, by another code, stays as it is, and this code stays open.
+        const linked = await client.query(
+          `INSERT INTO dsor.logins (issuer, subject, principal_id, invitation_id)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (issuer, subject) WHERE unlinked_at IS NULL DO NOTHING
+           RETURNING id`,
+          [login.issuer, login.subject, invitation.principal_id, invitation.id],
+        );
+        if (linked.rowCount !== 1) {
+          await client.query("ROLLBACK TO SAVEPOINT redeem");
+          return undefined;
+        }
+        await client.query("RELEASE SAVEPOINT redeem");
+        return invitation.principal_id;
+      }),
+    invite: async (tenant: string, person: string, by: BookBy) =>
+      run(tenant, async (client) => {
+        const code = newCode();
+        const id = `inv_${randomUUID()}`;
+        const { rows } = await client.query<{ expires_at: Date }>(
+          `INSERT INTO dsor.invitations (tenant_id, id, principal_id, code_hash, invited_by, reason)
+           VALUES ($1, $2, $3, $4, $5, $6) RETURNING expires_at`,
+          [tenant, id, person, hashOf(code), by.person, by.reason],
+        );
+        const expires = (rows[0] as { expires_at: Date }).expires_at;
+        const invitation: Invitation = {
+          tenant,
+          id,
+          person,
+          invited_by: by.person,
+          reason: by.reason,
+          expires_at: expires.toISOString(),
+        };
+        return { invitation, code };
+      }),
+    // Every live link of the person, whatever the issuer, and their open invitations here.
+    unlink: async (tenant: string, person: string, by: BookBy) =>
+      run(tenant, async (client) => {
+        const logins = await client.query(
+          "UPDATE dsor.logins SET unlinked_by = $2 WHERE principal_id = $1 AND unlinked_at IS NULL",
+          [person, by.person],
+        );
+        const invitations = await client.query(
+          `UPDATE dsor.invitations SET cancelled_by = $3
+            WHERE tenant_id = $1 AND principal_id = $2
+              AND accepted_at IS NULL AND cancelled_at IS NULL`,
+          [tenant, person, by.person],
+        );
+        return { logins: logins.rowCount ?? 0, invitations: invitations.rowCount ?? 0 };
+      }),
   });
 }

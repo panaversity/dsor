@@ -10,7 +10,8 @@ import { createServer } from "node:http";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 
 // The story's people, by the email they sign in with, and their user id here. The ids are the
-//   sign-in service's, not DSoR's principals: pnpm link-login links each one (decision D5).
+//   sign-in service's, not DSoR's principals: an invitation links each one (decision D5; changed by
+//   the learner's R1).
 const USERS: ReadonlyMap<string, string> = new Map([
   ["cfo@org456.example", "ba_8c1f"],
   ["user123@org456.example", "ba_2c91"],

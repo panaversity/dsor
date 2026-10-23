@@ -15,6 +15,8 @@ import {
   ALERTS_STAY,
   AUDIT_CHAIN_TRIGGER,
   INTENT_TRIGGER,
+  INVITATION_TRIGGER,
+  LOGIN_TRIGGERS,
   OUTBOX_TRIGGER,
   OUTBOX_KEEP_TRIGGER,
   OUTBOX_STAMP_TRIGGER,
@@ -365,7 +367,10 @@ describe("C8 and C11: the version in a read, and the triggers in the catalog", (
       EVENT_CHANGE_TRIGGER,
       // And, since step 36, the guard on a note's end (step 36's README, decision D1).
       INTENT_TRIGGER,
+      // Changed in step 43, the learner's R1 and R7: the guards of the invitations and of the links (migration 048).
+      INVITATION_TRIGGER,
       INVOICE_TRIGGER,
+      ...LOGIN_TRIGGERS,
       // Changed in step 40: and the guard on an event's mark (step 40's README, decision D2).
       // Changed in step 40b: and the guards that keep each event and stamp it (step 40b's README,
       //   decision D9), around the guard on an event's mark, in the order of their text.

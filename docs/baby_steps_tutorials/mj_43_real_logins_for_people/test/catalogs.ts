@@ -66,6 +66,41 @@ export const ALERTS_STAY =
   "CREATE TRIGGER alerts_stay BEFORE TRUNCATE ON dsor.alerts FOR EACH STATEMENT EXECUTE FUNCTION dsor.alerts_stay()";
 export const PROPOSAL_ALERT =
   "CREATE TRIGGER proposals_alert AFTER UPDATE OF state ON dsor.proposals FOR EACH ROW EXECUTE FUNCTION dsor.proposal_alerts()";
+// Step 43, the learner's R1 and R7: the invitations and the links, as migration 048 leaves them.
+const INVITATION_COLUMNS = [
+  "tenant_id",
+  "id",
+  "principal_id",
+  "code_hash",
+  "invited_by",
+  "reason",
+  "created_at",
+  "expires_at",
+  "accepted_issuer",
+  "accepted_subject",
+  "accepted_at",
+  "cancelled_by",
+  "cancelled_at",
+];
+const INVITATION_WRITTEN = ["tenant_id", "id", "principal_id", "code_hash", "invited_by", "reason"];
+const INVITATION_ENDS = ["accepted_issuer", "accepted_subject", "cancelled_by"];
+export const INVITATION_TRIGGER =
+  "CREATE TRIGGER invitations_move BEFORE UPDATE ON dsor.invitations FOR EACH ROW EXECUTE FUNCTION dsor.invitation_moves()";
+const LOGIN_COLUMNS = [
+  "issuer",
+  "subject",
+  "principal_id",
+  "linked_at",
+  "id",
+  "invitation_id",
+  "unlinked_by",
+  "unlinked_at",
+];
+const LOGIN_WRITTEN = ["issuer", "subject", "principal_id", "invitation_id"];
+export const LOGIN_TRIGGERS: string[] = [
+  "CREATE TRIGGER logins_end BEFORE UPDATE ON dsor.logins FOR EACH ROW EXECUTE FUNCTION dsor.login_ends()",
+  "CREATE TRIGGER logins_link BEFORE INSERT ON dsor.logins FOR EACH ROW EXECUTE FUNCTION dsor.login_links()",
+];
 export const INTENT_TRIGGER =
   "CREATE TRIGGER intents_end BEFORE UPDATE ON dsor.intents FOR EACH ROW EXECUTE FUNCTION dsor.intent_ends()";
 // Step 40: the outbox's guard, which lets an event be marked sent once and changes nothing else.
@@ -595,6 +630,22 @@ export function today(): Catalog {
         rules: [],
         triggers: [INTENT_TRIGGER],
       },
+      // Step 43, the learner's R1 and R7: the invitations, behind the company's lock, each
+      //   accepted or cancelled once (migration 048).
+      {
+        name: "dsor.invitations",
+        kind: "table",
+        held: ["SELECT"],
+        columns: INVITATION_COLUMNS.map((name) => {
+          const filled = name === "created_at" || name === "expires_at";
+          if (INVITATION_ENDS.includes(name)) return { name, held: ["SELECT", "UPDATE"], filled };
+          const held = INVITATION_WRITTEN.includes(name) ? ["SELECT", "INSERT"] : ["SELECT"];
+          return { name, held, filled };
+        }),
+        rowSecurity: { enabled: true, forced: true },
+        rules: [],
+        triggers: [INVITATION_TRIGGER],
+      },
       // The day's totals, behind the company's lock.
       {
         name: "dsor.limit_counters",
@@ -610,20 +661,23 @@ export function today(): Catalog {
         triggers: [],
       },
       // Changed in step 43: the links of logins to principals, which migration 047 makes. No company
-      //   column, so no row-level security; dsor_runtime reads every column and writes none, and
-      //   linked_at has a default (step 43's README, decision D5).
+      //   column, so no row-level security; linked_at has a default (step 43's README, decision D5).
+      //   Changed by the learner's R1 and R7 (migration 048): dsor_runtime adds a link through four
+      //   columns and ends one through unlinked_by; the id has a default, and the two guards are
+      //   named.
       {
         name: "dsor.logins",
         kind: "table",
         held: ["SELECT"],
-        columns: ["issuer", "subject", "principal_id", "linked_at"].map((name) => ({
-          name,
-          held: ["SELECT"],
-          filled: name === "linked_at",
-        })),
+        columns: LOGIN_COLUMNS.map((name) => {
+          const filled = name === "linked_at" || name === "id";
+          if (name === "unlinked_by") return { name, held: ["SELECT", "UPDATE"], filled };
+          const held = LOGIN_WRITTEN.includes(name) ? ["SELECT", "INSERT"] : ["SELECT"];
+          return { name, held, filled };
+        }),
         rowSecurity: { enabled: false, forced: false },
         rules: [],
-        triggers: [],
+        triggers: [...LOGIN_TRIGGERS],
       },
       {
         name: "dsor.migrations",

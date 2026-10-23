@@ -8,7 +8,7 @@
   "scripts": {
     "start": "node src/main.ts",
     "serve": "node src/serve.ts",
-    "link-login": "node src/link-login.ts",
+    "invite": "node src/invite.ts",
     "dev-issuer": "node src/dev-issuer.ts",
     "migrate": "node src/migrate.ts",
     "test": "vitest run",

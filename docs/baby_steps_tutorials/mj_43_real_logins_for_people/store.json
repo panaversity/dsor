@@ -345,12 +345,34 @@
         "CREATE TRIGGER event_alerts_stay BEFORE TRUNCATE ON dsor.event_alerts FOR EACH STATEMENT EXECUTE FUNCTION dsor.event_alerts_stay()"
       ]
     },
+    "dsor.invitations": {
+      "kind": "control-moved",
+      "tenant": "tenant_id",
+      "runtime": {
+        "table": ["SELECT"],
+        "columns": {
+          "INSERT": ["tenant_id", "id", "principal_id", "code_hash", "invited_by", "reason"],
+          "UPDATE": ["accepted_issuer", "accepted_subject", "cancelled_by"]
+        }
+      },
+      "triggers": [
+        "CREATE TRIGGER invitations_move BEFORE UPDATE ON dsor.invitations FOR EACH ROW EXECUTE FUNCTION dsor.invitation_moves()"
+      ]
+    },
     "dsor.logins": {
-      "kind": "shared-read",
+      "kind": "shared-moved",
       "tenant": null,
       "runtime": {
-        "table": ["SELECT"]
-      }
+        "table": ["SELECT"],
+        "columns": {
+          "INSERT": ["issuer", "subject", "principal_id", "invitation_id"],
+          "UPDATE": ["unlinked_by"]
+        }
+      },
+      "triggers": [
+        "CREATE TRIGGER logins_end BEFORE UPDATE ON dsor.logins FOR EACH ROW EXECUTE FUNCTION dsor.login_ends()",
+        "CREATE TRIGGER logins_link BEFORE INSERT ON dsor.logins FOR EACH ROW EXECUTE FUNCTION dsor.login_links()"
+      ]
     },
     "dsor.audit_heads": {
       "kind": "bookkeeping",

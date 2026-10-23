@@ -103,7 +103,7 @@ keys at `<Neon Auth URL>/.well-known/jwks.json`; `iss` and `aud` the origin of t
 | C5 | Where logins are real, the fake tokens of people are refused; agents and DSoR's own system logins keep theirs until step 44 |
 | C6 | cfo_100 approves INV-1008 with her own signed token; the fake `tok_d4e8` cannot (DSOR-APR-05a) |
 | C7 | Fail closed: keys that cannot be fetched refuse every token, once the keys DSoR kept are older than ten minutes; a key the issuer stops publishing counts for those ten minutes, and not after |
-| C8 | On PostgreSQL, `dsor.logins` holds the links; the program may only read it, and `pnpm link-login`, as the owner, adds one. `pnpm serve` uses real logins for people |
+| C8 | On PostgreSQL, `dsor.logins` holds the links. Changed by R1 and R3: the program adds a link only through an invitation that login accepted, and the database checks it; `pnpm invite`, as the owner, starts the first one. `pnpm serve` uses real logins for people |
 
 ### Decisions
 
@@ -180,6 +180,13 @@ proposed as a step of its own, 43b. The whole conversation is in
   (migration 048). The links gain who linked them and by which invitation, and when they ended; a login
   ended may be invited again. *Downside:* a link is one login for the whole of DSoR, so an unlink in one
   company ends it in every company of that person.
+- **The database holds the line, not only the program (R1, R7).** `dsor_runtime` may now add a link,
+  so a trigger checks that each new link names an invitation this very login accepted, for this
+  person, in the company the transaction set; another ends a link once and keeps it. The links are
+  history: an ended link stays, with who ended it and when. *Downside:* a program that is broken into
+  can still invite a person and accept its own code; the record of both stays.
+- **Found while building (Claude Code):** a code was redeemed in any company the call named, even one
+  that does not trust the token's issuer. It is now redeemed only where that issuer is trusted.
 
 ### The tests, by claim
 
@@ -192,7 +199,7 @@ proposed as a step of its own, 43b. The whole conversation is in
 | C5 | Under real logins, `tok_d4e8` is refused; `tok_7f3a`, the agent, still works |
 | C6 | cfo_100's real token approves the agent's INV-1008; `tok_d4e8` is refused |
 | C7 | Keys that cannot be fetched refuse every token; with the shipped cache, a key rotated away still counts for ten minutes and not after |
-| C8 | On PostgreSQL: a link added by `pnpm link-login` is read; `dsor_runtime` cannot add or change one; the door over real logins answers cfo_100 |
+| C8 | On PostgreSQL: a code links a new login once, and two logins racing for one code get one link; an expired code, another company's code, and a cancelled one link nothing; `dsor_runtime` cannot add a link with no accepted invitation, move one, delete one, or take back its end; `pnpm invite` prints a code once and refuses a person of no company; the door over real logins answers cfo_100 after her first call with her code |
 
 ### The breaks
 
@@ -215,13 +222,14 @@ proposed as a step of its own, 43b. The whole conversation is in
 | `src/tokens.ts` | **New.** A signed token, checked with `jose` against its issuer's published keys (C2, C7) |
 | `src/logins.ts` | **New.** Where a call's login comes from: step 05's table, or real logins for people, with DSoR's own links and the cut to the issuer's companies (C3 to C5) |
 | `src/pipeline.ts`, `src/registry.ts`, `src/principals.ts` | Line ① asks the world's login source first; the registry holds it, step 05's table unless the world gives real logins (D8) |
-| `migrations/047_logins.sql`, `store.json`, `src/store.ts`, `src/postgres.ts` | **New migration.** `dsor.logins`, which `dsor_runtime` may only read, and a new kind of table for it, `shared-read` (C8) |
-| `src/link-login.ts` | **New program**, `pnpm link-login`: the owner links a login to a person |
+| `migrations/047_logins.sql`, `migrations/048_invitations.sql`, `store.json`, `src/store.ts`, `src/postgres.ts` | **New migrations.** `dsor.logins`, the links, and `dsor.invitations`, a company's invitations, with the guards that a link comes only from an accepted invitation and ends once; a new kind of table for the links, `shared-moved` (C8, R1, R7) |
+| `src/invite.ts` | **New program**, `pnpm invite`: the owner invites a company's first administrator, and the code is printed once (R3). It replaces `pnpm link-login` |
+| `src/invitations.ts`, `contracts/login.*.json`, `inputs/Login*Request.schema.json`, `examples/login.*.json` | **New.** `login.invite` and `login.unlink`, DSoR's own commands (R2, R7) |
 | `src/dev-issuer.ts` | **New program**, `pnpm dev-issuer`: the stand-in for Managed Better Auth (D9) |
 | `src/serve.ts` | `pnpm serve` takes real logins for people, checking `issuers.json` at start-up |
 | `package.json` | `jose` 6.2.12, the one new dependency: it checks signatures and fetches the issuer's keys (D2) |
 | `test/issuers.test.ts`, `test/tokens.test.ts`, `test/logins.test.ts`, `test/issuer.ts`, `test/logins.db.test.ts`, `test/serve.db.test.ts` | **New.** The claims, with a real issuer on 127.0.0.1 |
-| `test/catalogs.ts`, `test/store-map.test.ts`, `test/audit.db.test.ts`, `test/permissions.test.ts`, `test/registry.test.ts` | The earlier lists of tables, kinds, privileges, and a registry's fields name `dsor.logins`, `shared-read`, and `logins`. Each says "Changed in step 43" |
+| `test/catalogs.ts`, `test/store-map.test.ts`, `test/audit.db.test.ts`, `test/permissions.test.ts`, `test/registry.test.ts` | The earlier lists of tables, kinds, privileges, and a registry's fields name `dsor.logins`, `dsor.invitations`, `shared-moved`, `logins`, and the two new commands. Each says "Changed in step 43" |
 
 ```bash
 git diff --no-index ../mj_42_a_rest_api/src src
@@ -230,7 +238,7 @@ git diff --no-index ../mj_42_a_rest_api/test test
 
 ## Run it
 
-As in step 42: a local PostgreSQL 17 and a new database of its own. Migration 047 is new. There are
+As in step 42: a local PostgreSQL 17 and a new database of its own. Migrations 047 and 048 are new. There are
 two ways to sign people in. `issuers.json` names the real Managed Better Auth of the learner's Neon
 project, and "Run it with Managed Better Auth" below shows that run. `issuers.stand-in.json` names the
 stand-in, for a computer with no Neon account; this section shows that run.
@@ -239,7 +247,7 @@ stand-in, for a computer with no Neon account; this section shows that run.
 pnpm install
 pnpm migrate
 pnpm dev-issuer                    # terminal 1: the stand-in, on 127.0.0.1:8043; it prints each person's code
-DSOR_ISSUERS_FILE=issuers.stand-in.json pnpm link-login http://127.0.0.1:8043 ba_8c1f cfo_100
+DSOR_ISSUERS_FILE=issuers.stand-in.json pnpm invite org_456 cfo_100 "the first CFO"   # prints her code once
 DSOR_ISSUERS_FILE=issuers.stand-in.json DSOR_STAND_IN=on pnpm serve   # terminal 2: the door, on 127.0.0.1:8042
 ```
 
@@ -256,7 +264,14 @@ for her:
 curl 'http://127.0.0.1:8043/token?email=cfo@org456.example&code=<her code>'
 ```
 
-A real run on 2026-10-23, on a new database. Run 5 is a token the script signed with a key of its
+Her first call to the door carries the invitation's code once, beside her token; after that, her
+token alone is enough:
+
+```bash
+curl -H "Authorization: Bearer <her token>" -H 'DSoR-Tenant: org_456' -H 'DSoR-Invitation: <the code pnpm invite printed>' http://127.0.0.1:8042/invoices/INV-1008
+```
+
+A real run on 2026-10-23, on a new database, from before the learner's revisions: the owner linked cfo_100 with `pnpm link-login`, which R3 has since replaced by `pnpm invite`. Run 5 is a token the script signed with a key of its
 own: the same issuer, the same `kid`, cfo_100's user id, and `role: CFO`. Run 6 names an issuer on
 port 8044 that `issuers.json` does not list.
 
@@ -294,8 +309,8 @@ invoice.get@1|DENY|AUTHENTICATION_REQUIRED|(nobody)
 proposal.approve@1|ALLOW|ok|cfo_100
 ```
 
-Run 7 is refused because `pnpm link-login` linked only cfo_100. Link user_123's login (`ba_2c91`)
-the same way, and his calls pass.
+Run 7 is refused because only cfo_100 was linked. Today, invite user_123 with `pnpm invite`, or
+admin_100 with `login.invite`, and his first call with the code links him.
 
 ### Run it with Managed Better Auth
 
@@ -316,7 +331,7 @@ a token forged in Neon's name, with Neon's real kid, signed with another key: re
 ```
 
 cfo_100's real token, decoded by the sign-in script: `iss` and `aud` are both the origin, as
-`issuers.json` says, and `sub` is her Neon user id. The owner linked it:
+`issuers.json` says, and `sub` is her Neon user id. The owner linked it, before R3 replaced `pnpm link-login`:
 
 ```text
 $ pnpm link-login https://ep-mute-hall-b5uk82zn.neonauth.c-7.us-east-2.aws.neon.tech f829c014-ea14-4a01-ad06-fdeeed83e24b cfo_100
@@ -349,7 +364,8 @@ Then `pnpm serve`, with no stand-in, and the learner's own call:
    curl -b jar -H "$O" "$A/token"          # {"token":"<her JWT, 15 minutes>"}
    ```
 
-4. `pnpm link-login <origin> <her user id, the token's sub> cfo_100`, then `pnpm serve`.
+4. `pnpm invite org_456 cfo_100 "<why>"`, then `pnpm serve`. Her first call carries the code it
+   printed, in the header `DSoR-Invitation`; nobody types her user id.
 
 **Found on the way:** the first real call was refused too. The door had been started where it could
 not reach Neon, so it could not fetch Neon's keys, and a token DSoR cannot check is no login (C7).

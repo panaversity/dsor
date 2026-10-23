@@ -92,6 +92,8 @@ describe("the shipped map", () => {
       "dsor.outbox",
       "dsor.outbox_tries",
       "dsor.event_alerts",
+      // Changed in step 43, the learner's R1: and dsor.invitations (migration 048).
+      "dsor.invitations",
       // Changed in step 43: and dsor.logins, the links of logins to principals (step 43's README, D5).
       "dsor.logins",
       // Changed in step 39: and dsor.audit_heads, a twentieth (step 39's README, decision D8).
@@ -584,7 +586,7 @@ describe("C7: the map itself is checked", () => {
       // 19b's control-written a sixth.
       // And step 22's control-moved.
       // And step 40c's append-only-watched.
-      'store.json: dsor.migrations has the kind "ledger", which is not business, business-written, append-only, append-only-chained, append-only-watched, control-read, control-written, control-claimed, control-moved, shared-read, or bookkeeping',
+      'store.json: dsor.migrations has the kind "ledger", which is not business, business-written, append-only, append-only-chained, append-only-watched, control-read, control-written, control-claimed, control-moved, shared-moved, or bookkeeping',
     ]);
   });
 

@@ -1,6 +1,7 @@
 // Step 43: the programs themselves. pnpm dev-issuer, the stand-in for Managed Better Auth, signs a
-// token; pnpm link-login links it; pnpm serve, over the database, takes it, and refuses the fake
-// tokens of people (step 43's README, claims C5 and C8, decisions D1, D8, and D9).
+// token; pnpm invite invites cfo_100, and her first call with the code links her login; pnpm serve,
+// over the database, takes it, and refuses the fake tokens of people (step 43's README, claims C5
+// and C8, decisions D1, D8, and D9; changed by the learner's R1 and R3).
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -36,6 +37,8 @@ function start(program: string, env: Record<string, string>): Promise<string> {
 let issuer: string;
 let door: string;
 let issuersFile: string;
+// cfo_100's invitation code, which pnpm invite prints once.
+let invitation: string;
 
 /** cfo_100's sign-in code, which the stand-in prints in its own terminal only (the review's H1). */
 function codeOf(email: string): string {
@@ -50,16 +53,17 @@ beforeAll(async () => {
   ];
   const file = join(mkdtempSync(join(tmpdir(), "dsor43-")), "issuers.json");
   writeFileSync(file, JSON.stringify({ org_456: one, org_789: one }));
-  const link = spawnSync(
+  const invited = spawnSync(
     process.execPath,
-    [join(STEP, "src", "link-login.ts"), issuer, "ba_8c1f", "cfo_100"],
+    [join(STEP, "src", "invite.ts"), "org_456", "cfo_100", "the serve test"],
     {
       cwd: STEP,
       env: { ...process.env, DSOR_ISSUERS_FILE: file },
       encoding: "utf8",
     },
   );
-  expect(link.status).toBe(0);
+  expect(invited.status).toBe(0);
+  invitation = /code: (\S+)/.exec(invited.stdout)?.[1] ?? "";
   issuersFile = file;
   door = await start("serve.ts", {
     DSOR_HTTP_PORT: "0",
@@ -71,20 +75,34 @@ afterAll(() => {
   for (const child of running) child.kill("SIGINT");
 });
 
-async function invoice(token: string): Promise<{ status: number; principal?: string }> {
-  const response = await fetch(`${door}/invoices/INV-1008`, {
-    headers: { authorization: `Bearer ${token}`, "dsor-tenant": "org_456" },
-  });
+async function invoice(
+  token: string,
+  code?: string,
+): Promise<{ status: number; principal?: string }> {
+  const headers: Record<string, string> = {
+    authorization: `Bearer ${token}`,
+    "dsor-tenant": "org_456",
+    ...(code === undefined ? {} : { "dsor-invitation": code }),
+  };
+  const response = await fetch(`${door}/invoices/INV-1008`, { headers });
   const body = (await response.json()) as { correlation: { principal_id?: string } };
   return { status: response.status, principal: body.correlation.principal_id };
 }
 
 describe("C8: pnpm serve takes real logins for people", () => {
-  it("Step 43, D9: cfo_100 signs in at the stand-in with her code, and pnpm serve answers her as cfo_100", async () => {
+  it("Step 43, R1: cfo_100 signs in at the stand-in, sends her invitation once, and pnpm serve answers her as cfo_100", async () => {
     const code = codeOf("cfo@org456.example");
     const signed = await fetch(`${issuer}/token?email=cfo@org456.example&code=${code}`);
     const { token } = (await signed.json()) as { token: string };
+    expect(await invoice(token, invitation)).toStrictEqual({ status: 200, principal: "cfo_100" });
     expect(await invoice(token)).toStrictEqual({ status: 200, principal: "cfo_100" });
+  });
+
+  it("Step 43, R1: user_123, signed in at the stand-in but never invited, is no caller", async () => {
+    const code = codeOf("user123@org456.example");
+    const signed = await fetch(`${issuer}/token?email=user123@org456.example&code=${code}`);
+    const { token } = (await signed.json()) as { token: string };
+    expect(await invoice(token)).toStrictEqual({ status: 401, principal: undefined });
   });
 
   it("Step 43, D1: pnpm serve refuses tok_d4e8, the CFO's fake token, from the public file", async () => {
