@@ -21,7 +21,7 @@ let a: TestIssuer;
 let issuersFile: string;
 beforeAll(async () => {
   a = await startIssuer();
-  const one = [{ issuer: a.issuer, audience: a.audience, jwks: a.jwks }];
+  const one = [{ issuer: a.issuer, audience: a.audience, jwks: a.jwks, dedicated_to_dsor: true }];
   issuersFile = join(mkdtempSync(join(tmpdir(), "dsor43-")), "issuers.json");
   writeFileSync(issuersFile, JSON.stringify({ org_456: one, org_789: one }));
 });

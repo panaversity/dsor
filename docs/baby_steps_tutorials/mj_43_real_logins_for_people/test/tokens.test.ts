@@ -150,6 +150,38 @@ describe("C7: how long a key and a token count (the review's M1 and L3)", () => 
   });
 });
 
+describe("R4: each issuer's own algorithms and age", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("Step 43, R4: an issuer that names RS256, as Entra ID signs, has its RS256 tokens accepted", async () => {
+    const rs = await startIssuer("RS256");
+    const only = new Map([
+      [
+        "org_456",
+        [{ issuer: rs.issuer, audience: rs.audience, jwks: rs.jwks, algorithms: ["RS256"] }],
+      ],
+    ]);
+    expect(await checkedLogin(await rs.sign("entra_user"), only, remoteKeys())).toStrictEqual({
+      issuer: rs.issuer,
+      subject: "entra_user",
+    });
+    await rs.close();
+  });
+
+  it("Step 43, R4: an issuer allowed 60 minutes accepts a token 30 minutes old; Neon's 15 would not", async () => {
+    const hour = new Map([
+      ["org_456", [{ issuer: a.issuer, audience: a.audience, jwks: a.jwks, max_age: "60m" }]],
+    ]);
+    const token = await a.sign("ba_8c1f", { exp: seconds() + 3600 });
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 30 * 60_000);
+    expect(await checkedLogin(token, hour, keys)).not.toBeUndefined();
+    expect(await checkedLogin(token, issuers, keys)).toBeUndefined();
+  });
+});
+
 describe("C7: fail closed", () => {
   it("Step 43, D7: when the issuer's keys cannot be fetched, a good token is refused", async () => {
     const b = await startIssuer();

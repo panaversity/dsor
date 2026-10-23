@@ -5,8 +5,43 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { Principal } from "./principals.ts";
 
-/** One sign-in service: who signs its tokens, whom they are for, and where its public keys are. */
-export type Issuer = { issuer: string; audience: string; jwks: string };
+/**
+ * One sign-in service: who signs its tokens, whom they are for, and where its public keys are. And,
+ * after start-up, the algorithms it signs with and how old a token may be.
+ */
+export type Issuer = {
+  issuer: string;
+  audience: string;
+  jwks: string;
+  // Changed by the learner's R4 and R6, 2026-10-24: stated as a sign-in service only DSoR uses, and
+  //   its own algorithms and the most age of a token. Left out, they are Neon's (step 43's README).
+  dedicated_to_dsor?: true;
+  algorithms?: readonly string[];
+  max_age?: string;
+};
+
+// The algorithms an issuer may name: each one signs with a private key and checks with a public one.
+//   Never a shared secret (HS…), which DSoR would have to hold, and never none (decision R4).
+const ASYMMETRIC = [
+  "EdDSA",
+  "ES256",
+  "ES384",
+  "ES512",
+  "RS256",
+  "RS384",
+  "RS512",
+  "PS256",
+  "PS384",
+  "PS512",
+];
+// not copied: the specification sets no form for a token's age; this tutorial's own, as jose reads
+//   it, at most 24 hours (decision R4).
+const AGE = /^(\d{1,5})(s|m|h)$/;
+const SECONDS = { s: 1, m: 60, h: 3600 } as const;
+
+// What an issuer that names no algorithms and no age gets: Managed Better Auth's (decision D4).
+const NEON_ALGORITHMS = ["EdDSA"];
+const NEON_MAX_AGE = "15m";
 
 /** Each company's issuers. */
 export type Issuers = ReadonlyMap<string, readonly Issuer[]>;
@@ -20,7 +55,8 @@ export function readIssuers(path: string = SHIPPED): IssuersSource {
   return { file: "issuers.json", text: readFileSync(path, "utf8") };
 }
 
-const FIELDS = ["issuer", "audience", "jwks"] as const;
+const ADDRESSES = ["issuer", "audience", "jwks"] as const;
+const FIELDS: readonly string[] = [...ADDRESSES, "dedicated_to_dsor", "algorithms", "max_age"];
 
 /**
  * The issuers in the file, and every problem with it: a company where people log in that names no
@@ -63,15 +99,21 @@ export function checkIssuers(
       const where = `${file}: ${tenant}, issuer ${i + 1}`;
       const fields =
         typeof entry === "object" && entry !== null ? (entry as Record<string, unknown>) : {};
-      const extra = Object.keys(fields).find((f) => !(FIELDS as readonly string[]).includes(f));
+      const extra = Object.keys(fields).find((f) => !FIELDS.includes(f));
       if (extra !== undefined) {
-        const only = "an issuer has only issuer, audience, and jwks";
+        const only =
+          "an issuer has only issuer, audience, jwks, dedicated_to_dsor, algorithms, and max_age";
         problems.push(`${where}: ${only}, not ${JSON.stringify(extra.slice(0, 60))}`);
         return;
       }
-      const bad = FIELDS.find((f) => !isTrustedAddress(fields[f]));
+      const bad = ADDRESSES.find((f) => !isTrustedAddress(fields[f]));
       if (bad !== undefined) {
         problems.push(`${where}: ${bad} must be an https address, or http on 127.0.0.1`);
+        return;
+      }
+      const rule = ruleProblem(fields);
+      if (rule !== undefined) {
+        problems.push(`${where}: ${rule}`);
         return;
       }
       const issuer = fields as Issuer;
@@ -79,7 +121,14 @@ export function checkIssuers(
         problems.push(`${file}: ${tenant} names ${issuer.issuer} twice`);
         return;
       }
-      kept.push({ issuer: issuer.issuer, audience: issuer.audience, jwks: issuer.jwks });
+      kept.push({
+        issuer: issuer.issuer,
+        audience: issuer.audience,
+        jwks: issuer.jwks,
+        dedicated_to_dsor: true,
+        algorithms: [...(issuer.algorithms ?? NEON_ALGORITHMS)],
+        max_age: issuer.max_age ?? NEON_MAX_AGE,
+      });
     });
     if (kept.length === list.length && kept.length > 0) issuers.set(tenant, kept);
     else if (kept.length !== list.length) refused.add(tenant);
@@ -90,8 +139,8 @@ export function checkIssuers(
     for (const issuer of list) {
       const seen = first.get(issuer.issuer);
       if (seen === undefined) first.set(issuer.issuer, { tenant, issuer });
-      else if (seen.issuer.audience !== issuer.audience || seen.issuer.jwks !== issuer.jwks) {
-        const why = `has another audience or keys in ${tenant} than in ${seen.tenant}`;
+      else if (JSON.stringify(seen.issuer) !== JSON.stringify(issuer)) {
+        const why = `is set differently in ${tenant} than in ${seen.tenant}`;
         problems.push(`${file}: ${issuer.issuer} ${why}`);
       }
     }
@@ -112,4 +161,34 @@ function isTrustedAddress(value: unknown): boolean {
   const url = new URL(value);
   if (url.username !== "" || url.password !== "") return false;
   return url.protocol === "https:" || (url.protocol === "http:" && url.hostname === "127.0.0.1");
+}
+
+// What is wrong with an issuer's own rules, or nothing: stated as dedicated to DSoR, and algorithms
+//   and an age DSoR may accept (decisions R4 and R6).
+function ruleProblem(fields: Record<string, unknown>): string | undefined {
+  if (fields["dedicated_to_dsor"] !== true) {
+    const why = "a sign-in service shared with another app makes that app's tokens DSoR tokens";
+    return `dedicated_to_dsor must be true: ${why}`;
+  }
+  const algorithms = fields["algorithms"];
+  if (algorithms !== undefined) {
+    if (!Array.isArray(algorithms) || algorithms.length === 0) {
+      return "algorithms must name at least one algorithm";
+    }
+    if (!algorithms.every((a) => typeof a === "string" && ASYMMETRIC.includes(a))) {
+      const names = `${ASYMMETRIC.slice(0, -1).join(", ")}, or ${ASYMMETRIC.at(-1)}`;
+      return `algorithms may name only ${names}: never a shared secret, never none`;
+    }
+  }
+  const age = fields["max_age"];
+  if (age !== undefined) {
+    const found = typeof age === "string" ? AGE.exec(age) : null;
+    const unit = found?.[2] as keyof typeof SECONDS | undefined;
+    const seconds =
+      found === null || unit === undefined ? Infinity : Number(found[1]) * SECONDS[unit];
+    if (seconds <= 0 || seconds > 86_400) {
+      return "max_age must be a number of seconds, minutes, or hours, such as 15m, and at most 24h";
+    }
+  }
+  return undefined;
 }

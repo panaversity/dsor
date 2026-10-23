@@ -45,7 +45,9 @@ function codeOf(email: string): string {
 }
 beforeAll(async () => {
   issuer = await start("dev-issuer.ts", { DSOR_DEV_ISSUER_PORT: "0" });
-  const one = [{ issuer, audience: issuer, jwks: `${issuer}/.well-known/jwks.json` }];
+  const one = [
+    { issuer, audience: issuer, jwks: `${issuer}/.well-known/jwks.json`, dedicated_to_dsor: true },
+  ];
   const file = join(mkdtempSync(join(tmpdir(), "dsor43-")), "issuers.json");
   writeFileSync(file, JSON.stringify({ org_456: one, org_789: one }));
   const link = spawnSync(

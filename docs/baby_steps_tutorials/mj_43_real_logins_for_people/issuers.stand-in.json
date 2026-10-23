@@ -3,6 +3,7 @@
     {
       "issuer": "http://127.0.0.1:8043",
       "audience": "http://127.0.0.1:8043",
+      "dedicated_to_dsor": true,
       "jwks": "http://127.0.0.1:8043/.well-known/jwks.json"
     }
   ],
@@ -10,6 +11,7 @@
     {
       "issuer": "http://127.0.0.1:8043",
       "audience": "http://127.0.0.1:8043",
+      "dedicated_to_dsor": true,
       "jwks": "http://127.0.0.1:8043/.well-known/jwks.json"
     }
   ]

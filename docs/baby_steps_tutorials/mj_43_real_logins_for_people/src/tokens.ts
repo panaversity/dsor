@@ -65,11 +65,12 @@ export async function checkedLogin(
     const { payload } = await jwtVerify(token, keys(issuer.jwks), {
       issuer: issuer.issuer,
       audience: issuer.audience,
-      algorithms: ["EdDSA"],
-      // And an iat, and an age of fifteen minutes at most, as Managed Better Auth's tokens live, so
-      //   a token whose exp says the year 3000 still ends (the review's L3).
+      // Changed by the learner's R4: the issuer's own algorithms and age, Neon's when it names none
+      //   (EdDSA and 15 minutes). An iat is always required, so a token whose exp says the year 3000
+      //   still ends (the review's L3).
+      algorithms: [...(issuer.algorithms ?? ["EdDSA"])],
       requiredClaims: ["sub", "exp", "iat"],
-      maxTokenAge: "15m",
+      maxTokenAge: issuer.max_age ?? "15m",
       clockTolerance: 5,
       currentDate: new Date(now()),
     });
