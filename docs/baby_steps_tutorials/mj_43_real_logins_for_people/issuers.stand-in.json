@@ -1,0 +1,16 @@
+{
+  "org_456": [
+    {
+      "issuer": "http://127.0.0.1:8043",
+      "audience": "http://127.0.0.1:8043",
+      "jwks": "http://127.0.0.1:8043/.well-known/jwks.json"
+    }
+  ],
+  "org_789": [
+    {
+      "issuer": "http://127.0.0.1:8043",
+      "audience": "http://127.0.0.1:8043",
+      "jwks": "http://127.0.0.1:8043/.well-known/jwks.json"
+    }
+  ]
+}

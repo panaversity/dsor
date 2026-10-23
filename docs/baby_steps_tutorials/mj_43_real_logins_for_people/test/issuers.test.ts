@@ -1,5 +1,6 @@
 // Step 43: each company names the sign-in services it trusts, in issuers.json, checked at start-up
 // (DSOR-IDN-04a; step 43's README, claim C1, decision D3).
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { checkIssuers, readIssuers } from "../src/issuers.ts";
 import { logins } from "../src/principals.ts";
@@ -7,6 +8,14 @@ import { logins } from "../src/principals.ts";
 const people = [...logins.values()];
 const DEV = "http://127.0.0.1:8043";
 const ONE = { issuer: DEV, audience: DEV, jwks: `${DEV}/.well-known/jwks.json` };
+// The learner's project dsor-baby-steps on Neon: its Auth URL's origin is the issuer and the
+//   audience, and its keys are under the Auth URL (Neon's documentation, 2026-10-23).
+const NEON_ORIGIN = "https://ep-mute-hall-b5uk82zn.neonauth.c-7.us-east-2.aws.neon.tech";
+const NEON = {
+  issuer: NEON_ORIGIN,
+  audience: NEON_ORIGIN,
+  jwks: `${NEON_ORIGIN}/neondb/auth/.well-known/jwks.json`,
+};
 
 /** The problems of a file with this content. */
 function problemsOf(data: unknown): string[] {
@@ -14,10 +23,17 @@ function problemsOf(data: unknown): string[] {
 }
 
 describe("C1: issuers.json, checked at start-up", () => {
-  it("DSOR-IDN-04a: the shipped file passes, and names the stand-in for org_456 and org_789", () => {
+  it("DSOR-IDN-04a: the shipped file passes, and names the learner's Managed Better Auth on Neon for org_456 and org_789", () => {
     const { issuers, problems } = checkIssuers(readIssuers(), people);
     expect(problems).toStrictEqual([]);
     expect([...issuers.keys()].sort()).toStrictEqual(["org_456", "org_789"]);
+    expect(issuers.get("org_456")).toStrictEqual([NEON]);
+  });
+
+  it("Step 43, D9: issuers.stand-in.json passes too, and names the stand-in on this computer", () => {
+    const file = fileURLToPath(new URL("../issuers.stand-in.json", import.meta.url));
+    const { issuers, problems } = checkIssuers(readIssuers(file), people);
+    expect(problems).toStrictEqual([]);
     expect(issuers.get("org_456")).toStrictEqual([ONE]);
   });
 

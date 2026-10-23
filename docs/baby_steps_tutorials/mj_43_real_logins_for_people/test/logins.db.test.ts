@@ -67,12 +67,22 @@ describe("C8: the links on PostgreSQL", () => {
       ["https://auth.example.com", "ba_x", "cfo_100"],
       "https://auth.example.com is no issuer in issuers.json",
     ],
-    [["http://127.0.0.1:8043", "ba_x", "cfo_999"], "cfo_999 is no person DSoR knows"],
     [
-      ["http://127.0.0.1:8043", "ba_x", "accounts-payable-fte"],
+      ["https://ep-mute-hall-b5uk82zn.neonauth.c-7.us-east-2.aws.neon.tech", "ba_x", "cfo_999"],
+      "cfo_999 is no person DSoR knows",
+    ],
+    [
+      [
+        "https://ep-mute-hall-b5uk82zn.neonauth.c-7.us-east-2.aws.neon.tech",
+        "ba_x",
+        "accounts-payable-fte",
+      ],
       "accounts-payable-fte is no person DSoR knows",
     ],
-    [["http://127.0.0.1:8043", ""], "use: pnpm link-login <issuer> <subject> <principal>"],
+    [
+      ["https://ep-mute-hall-b5uk82zn.neonauth.c-7.us-east-2.aws.neon.tech", ""],
+      "use: pnpm link-login <issuer> <subject> <principal>",
+    ],
   ])(
     "Step 43, D5: pnpm link-login %j is refused, with the shipped issuers.json",
     (words, message) => {
