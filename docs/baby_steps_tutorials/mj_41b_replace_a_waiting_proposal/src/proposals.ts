@@ -122,6 +122,10 @@ export type ProposalDraft = {
   //   41's README, decisions D4 and D5). Written once, with the proposal.
   run?: string;
   manifest_hash?: string;
+  // NEW IN STEP 41b: and the address of the waiting proposal this one replaces, from the call's
+  //   envelope: proposal.schema.json's supersedes. Written once, with the proposal, beside its
+  //   payload, never inside it (DSOR-APR-12; step 41b's README, decisions D4 and D9).
+  supersedes?: string;
 };
 
 /** One move, as a proposal's history shows it: proposal.schema.json's transitions. */

@@ -3,6 +3,7 @@
 // that labels the call. DSOR-SRC-02a in specs/dsor/02-security.md, section 11, and
 // DSOR-COR-01b in specs/dsor/03-execution.md, section 32.
 import { Refusal } from "./envelope.ts";
+import { parseUri } from "./uri.ts";
 
 /**
  * What travels beside the arguments: who is calling, in which company, and which call
@@ -21,6 +22,10 @@ export type RequestEnvelope = {
   idempotency_key?: unknown;
   mode?: unknown;
   agent_asserted?: unknown;
+  // NEW IN STEP 41b: and the address of the waiting proposal this call replaces. It says how to
+  //   treat the call, not what to pay, so it travels here, beside the mode, and never in the input
+  //   (DSOR-APR-12; step 41b's README, decision D9).
+  supersedes?: unknown;
 };
 
 // The three ways to call a command (§7.3). execute does it, propose_only prepares
@@ -52,6 +57,7 @@ const CONTROL = /\p{Cc}/u;
 // And idempotency_key (step 20's README, decision 1).
 // And mode.
 // And agent_asserted (step 33's README, decision D10).
+// NEW IN STEP 41b: and supersedes.
 const ENVELOPE_FIELDS = [
   "token",
   "tenant",
@@ -59,9 +65,10 @@ const ENVELOPE_FIELDS = [
   "idempotency_key",
   "mode",
   "agent_asserted",
+  "supersedes",
 ];
 
-/** Refuses an envelope that carries any field besides token, tenant, request_id, idempotency_key, mode, and agent_asserted. */
+/** Refuses an envelope that carries any field besides token, tenant, request_id, idempotency_key, mode, agent_asserted, and supersedes. */
 export function checkEnvelopeFields(request: RequestEnvelope): void {
   // The envelope comes from outside the program, so it may not even be an object.
   if (typeof request !== "object" || request === null) return;
@@ -69,7 +76,7 @@ export function checkEnvelopeFields(request: RequestEnvelope): void {
   if (extra !== undefined) {
     // The name is the caller's text, so only a short piece of it is shown.
     const allowed =
-      "the request envelope may carry only token, tenant, request_id, idempotency_key, mode, and agent_asserted";
+      "the request envelope may carry only token, tenant, request_id, idempotency_key, mode, agent_asserted, and supersedes";
     throw new Refusal("VALIDATION_FAILED", `${allowed}, not ${JSON.stringify(extra.slice(0, 60))}`);
   }
 }
@@ -127,4 +134,32 @@ export function checkRequestId(request: RequestEnvelope): void {
     const rule = "text of 1 to 128 characters, well-formed, with no control characters";
     throw new Refusal("VALIDATION_FAILED", `a request_id must be ${rule}`);
   }
+}
+
+// not copied: prop_ and a random UUID is this tutorial's form of a proposal's id (step 22's README,
+// decision 10), as proposals.ts checks it.
+const PROPOSAL_ID = /^prop_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/**
+ * NEW IN STEP 41b: the address of the proposal the call replaces, read once, or none. Text that is
+ * not a proposal's address, of any company, is refused here. Whose company it names is checked with
+ * the input's addresses, after line ⑥, as every other address is (step 41b's README, decision D9).
+ */
+export function checkedSupersedes(request: RequestEnvelope): string | undefined {
+  // The envelope comes from outside the program, so it may even be null.
+  const sent = request?.supersedes;
+  if (sent === undefined) return undefined;
+  const refused = new Refusal(
+    "VALIDATION_FAILED",
+    "supersedes must be the address of a proposal, such as dsor://org_456/proposal/prop_…",
+  );
+  if (typeof sent !== "string") throw refused;
+  let parts: ReturnType<typeof parseUri>;
+  try {
+    parts = parseUri(sent);
+  } catch {
+    throw refused;
+  }
+  if (parts.entity !== "proposal" || !PROPOSAL_ID.test(parts.id)) throw refused;
+  return sent;
 }

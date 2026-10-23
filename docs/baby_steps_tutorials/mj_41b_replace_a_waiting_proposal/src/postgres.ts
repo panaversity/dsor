@@ -1116,7 +1116,11 @@ export function createDbClaims(
       work: (stores: WorkStores) => Promise<unknown>,
       steps?: ProposalSteps,
       seal?: (stores: WorkStores, claimed: Claimed) => Promise<void>,
+      supersedes?: string,
     ): Promise<Claimed> => {
+      // NEW IN STEP 41b: a replacement is not kept on the database before its column exists, so it
+      //   is an accident here, never a call that forgets what it replaced.
+      if (supersedes !== undefined) throw new Error("a replacement is not built on the database yet");
       // One transaction: the claim, the code's reads and writes, and the outcome. They commit
       // together, or none of them does (decision 6).
       // And the proposal, with the records of its moves (step 22's README,

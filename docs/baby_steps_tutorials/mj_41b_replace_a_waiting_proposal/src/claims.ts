@@ -146,6 +146,9 @@ export type ClaimStore = {
     // Line ⑪ for the first call, run inside the claim after its outcome is kept
     //   and before it commits. If it throws, nothing of the claim is kept (decisions D1 to D3).
     seal?: (stores: WorkStores, claimed: Claimed) => Promise<void>,
+    // NEW IN STEP 41b: and the proposal the call replaces, which the claim keeps beside the
+    //   fingerprint and the mode, and compares as it compares them (step 41b's README, D9).
+    supersedes?: string,
   ) => Promise<Claimed>;
 };
 
@@ -190,6 +193,15 @@ export function usedForAnother(operation: string): Refusal {
 export function usedInAnotherMode(operation: string, first: ProposalMode): Refusal {
   const used = `the idempotency_key was used for ${JSON.stringify(operation)} in ${first} mode`;
   return new Refusal("IDEMPOTENCY_CONFLICT", `${used}, and a key keeps its mode`, "public");
+}
+
+// NEW IN STEP 41b: a key keeps what its first call replaced, or that it replaced nothing. Sent
+//   again with another supersedes, the same input is another request: it would cancel another
+//   proposal, or none. So it is refused, as another mode is (step 41b's README, decision D9).
+/** The refusal of a key sent again with another supersedes, or with one where it had none. */
+export function usedToReplaceAnother(operation: string): Refusal {
+  const used = `the idempotency_key was used for ${JSON.stringify(operation)} with another supersedes`;
+  return new Refusal("IDEMPOTENCY_CONFLICT", `${used}, and a key keeps what it replaces`, "public");
 }
 
 /**
@@ -281,6 +293,8 @@ type Kept = Outcome & { proposal?: string; denied?: true; sealed?: true };
 type MemoryClaim = {
   payloadHash: string;
   mode: ProposalMode;
+  // NEW IN STEP 41b: and what the first call replaced, if anything.
+  supersedes: string | undefined;
   requestId: string;
   outcome: Promise<Kept>;
 };
@@ -343,6 +357,7 @@ export function memoryClaims(
     work: (stores: WorkStores) => Promise<unknown>,
     steps?: ProposalSteps,
     seal?: (stores: WorkStores, claimed: Claimed) => Promise<void>,
+    supersedes?: string,
   ): Promise<Claimed> => {
     const id = JSON.stringify([scope.tenant, scope.principal, scope.operation, scope.key]);
     const held = claims.get(id);
@@ -498,7 +513,7 @@ export function memoryClaims(
         }
         return { ...kept, sealed: true };
       });
-      claims.set(id, { payloadHash, mode, requestId, outcome });
+      claims.set(id, { payloadHash, mode, supersedes, requestId, outcome });
       // The claim's locks are given back once its work has ended, either way.
       void outcome.then(
         () => held.forEach((free) => free()),
@@ -529,12 +544,16 @@ export function memoryClaims(
       (outcome) => outcome,
       () => undefined,
     );
-    if (ended === undefined) return run(scope, payloadHash, mode, requestId, work, steps, seal);
+    if (ended === undefined) {
+      return run(scope, payloadHash, mode, requestId, work, steps, seal, supersedes);
+    }
     // The fingerprint is compared only now, after the wait: a claim that failed was never a
     // claim (DSOR-IDM-01c, DSOR-IDM-01d).
     if (held.payloadHash !== payloadHash) throw usedForAnother(scope.operation);
     // And then the mode.
     if (held.mode !== mode) throw usedInAnotherMode(scope.operation, held.mode);
+    // NEW IN STEP 41b: and then what it replaces.
+    if (held.supersedes !== supersedes) throw usedToReplaceAnother(scope.operation);
     return { ...fresh(ended), replay_of: held.requestId };
   };
   return Object.freeze({ run, reservations, rates, proposals, intents, holds });

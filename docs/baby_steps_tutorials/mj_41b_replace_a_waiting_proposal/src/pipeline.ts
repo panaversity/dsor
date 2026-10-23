@@ -114,6 +114,7 @@ import {
 import {
   checkedKey,
   checkedMode,
+  checkedSupersedes,
   checkEnvelopeFields,
   checkRequestId,
   usableRequestId,
@@ -278,7 +279,7 @@ export async function call(
     //   token and DSoR's own table only (DSOR-IDN-01, DSOR-SRC-02a). Then any principal the
     //   arguments name must be the caller (DSOR-SRC-02b), and the request id must be usable
     //   (step 05's README, decisions 6 and 7; step 07's README, decision 8).
-    const { caller, copy, key, named } = line(1, () => {
+    const { caller, copy, key, named, supersedes } = line(1, () => {
       // The caller's own request id labels every answer, when DSoR can use it (step 05's
       // README, decisions 6 and 7). It is read inside the try, so an envelope whose
       // request_id cannot be read gets an answer, not a throw. Found by step 07's review,
@@ -304,6 +305,9 @@ export async function call(
       // And nothing in the envelope that DSoR does not read (step 10's
       // README, decision 11).
       checkEnvelopeFields(request);
+      // NEW IN STEP 41b: and the proposal the call replaces, when the envelope names one: a
+      //   proposal's address, read once (DSOR-APR-12; step 41b's README, decision D9).
+      const supersedes = checkedSupersedes(request);
       // And what the agent says about itself, checked for its shape and read once,
       //   last, into the notebook of evidence. Nothing but the record and the bundle is given it:
       //   no slip, permission, fingerprint, condition, limit, or mask reads it (DSOR-AUD-06,
@@ -312,7 +316,7 @@ export async function call(
       // Once line ① has passed, a command's record names the mode: execute, when
       // none is named (step 23's README, decision 10).
       modeOfRecord = named ?? "execute";
-      return { caller: found, copy, key, named };
+      return { caller: found, copy, key, named, supersedes };
     });
 
     // ② Resolve tenant. The company comes from the envelope, and DSoR checks
@@ -344,6 +348,11 @@ export async function call(
     // and 11). A command named with no mode runs in execute mode, the default of §7.3.
     if (contract["kind"] === "query" && named !== undefined) {
       const why = `${JSON.stringify(contract.id)} is a query, which takes no mode`;
+      throw new Refusal("VALIDATION_FAILED", why);
+    }
+    // NEW IN STEP 41b: and nothing to replace, for the same reason: a query makes no proposal.
+    if (contract["kind"] === "query" && supersedes !== undefined) {
+      const why = `${JSON.stringify(contract.id)} is a query, which takes no supersedes`;
       throw new Refusal("VALIDATION_FAILED", why);
     }
     const mode: Mode = named ?? "execute";
@@ -457,6 +466,10 @@ export async function call(
     // "is it built", so a foreign URI is never answered as "not built yet" (step 10's
     // README, decision 4).
     checkUrisInTenant(copy, tenant);
+    // NEW IN STEP 41b: and the proposal the envelope replaces, with the same check, so another
+    //   company's address is refused as one in the input is (step 41b's README, "Found while
+    //   checking the design").
+    if (supersedes !== undefined) checkUrisInTenant(supersedes, tenant);
     // A release runs now, so it takes no propose_only mode: a release prepared
     //   would wait for another release (step 31's README, decision D13). A dry run is allowed.
     //   After the check of the URIs' company, so an attempt on another company is refused as one.
@@ -485,6 +498,14 @@ export async function call(
     // And a release, which runs the code of the proposal it loads.
     if (!handler && !own && !ownRead && !releases(contract) && lineCode === undefined) {
       throw new Refusal("UNSUPPORTED_CAPABILITY", `${preview(name)} is not built yet`);
+    }
+    // NEW IN STEP 41b: only a new request of the company's code replaces a proposal. A release
+    //   makes no new request, and DSoR's own work is never released (step 31's README, D14), so
+    //   neither takes supersedes (step 41b's README, "Found while checking the design").
+    const replaces = handler !== undefined || lineCode !== undefined;
+    if (supersedes !== undefined && (!replaces || releases(contract) || own !== undefined)) {
+      const why = `${JSON.stringify(contract.id)} makes no new request of the company's code, so it takes no supersedes`;
+      throw new Refusal("VALIDATION_FAILED", why);
     }
     // A command's code runs. Step 04's decision 1 refused every command
     // here, because its success needs a proposal. Step 17 let it run with an answer of its own
@@ -2077,6 +2098,8 @@ export async function call(
                 ...(exclusiveOf(contract, copy) === undefined
                   ? {}
                   : { exclusive_over: exclusiveOf(contract, copy)! }),
+                // NEW IN STEP 41b: and the proposal it replaces, beside the payload (D9).
+                ...(supersedes === undefined ? {} : { supersedes }),
               },
               correlation,
               // The company's READY lifetime. Start-up refused a registry without
@@ -2198,6 +2221,8 @@ export async function call(
                 work,
                 steps,
                 (stores, claimed) => sealWith(scope, stores, claimed),
+                // NEW IN STEP 41b: the claim keeps what the call replaces, and compares it (D9).
+                supersedes,
               ),
             };
           });
