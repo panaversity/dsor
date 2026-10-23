@@ -33,6 +33,8 @@ export function remoteKeys(options: { cacheMaxAge?: number } = {}): KeySets {
 }
 
 // Three parts of base64url, separated by dots. A longer text is no token Managed Better Auth gives.
+// not copied: the specification sets no pattern for a token; this is the compact form of a JWT
+//   (RFC 7519), checked before jose reads it (step 43's README, decision D4).
 const JWT = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*$/;
 const LONGEST = 8192;
 
