@@ -7,7 +7,7 @@ import { Readable } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Answer } from "../src/envelope.ts";
 import type { DecisionRecord } from "../src/log.ts";
-import { CAP, createDoor, listen, readBody } from "../src/server.ts";
+import { CAP, doorOver, listen, readBody } from "../src/server.ts";
 import { ROUTES } from "../src/routes.ts";
 import { ruleWorldOnTuesday, type RuleWorld } from "./rule-world.ts";
 
@@ -23,7 +23,7 @@ afterEach(async () => {
 /** A world in memory, and its door, listening on a free port of 127.0.0.1. */
 async function doorOf(w?: RuleWorld) {
   const world = w ?? (await ruleWorldOnTuesday());
-  const server = createDoor(world.registry, world.log);
+  const server = doorOver(world.registry, world.log);
   open.push(server);
   const port = await listen(server, "127.0.0.1", 0);
   return { world, base: `http://127.0.0.1:${port}` };
@@ -251,7 +251,7 @@ describe("C7: only this computer", () => {
     "Step 42, D7: start-up on %s is refused while the logins are the fake table",
     async (host) => {
       const w = await ruleWorldOnTuesday();
-      const server = createDoor(w.registry, w.log);
+      const server = doorOver(w.registry, w.log);
       open.push(server);
       await expect(listen(server, host, 0)).rejects.toThrow(
         `the door listens only on 127.0.0.1 while the logins are step 05's fake table, not on ${host}`,
@@ -271,7 +271,7 @@ describe("C7: only this computer", () => {
       ...ROUTES,
       { method: "POST" as const, path: "/x", operation: "proposal.cancel" },
     ];
-    expect(() => createDoor(w.registry, w.log, routes)).toThrow(
+    expect(() => doorOver(w.registry, w.log, routes)).toThrow(
       'the routes refused to start:\n  POST /x names "proposal.cancel", which no contract has',
     );
   });

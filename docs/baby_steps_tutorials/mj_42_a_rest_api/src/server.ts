@@ -5,6 +5,7 @@
 //   (DSOR-OPR-04a, DSOR-OPR-04b; step 42's README, claims C1, C5, C6, and C7, decisions D6 and D7).
 import { createServer, type Server } from "node:http";
 import { translate, type HttpRequest } from "./door.ts";
+import type { Answer } from "./envelope.ts";
 import type { DecisionLog } from "./log.ts";
 import { call } from "./pipeline.ts";
 import type { Registry } from "./registry.ts";
@@ -19,13 +20,37 @@ export const CAP = 65536;
 //   cfo_100, in a public file. Step 43 lifts this (step 42's README, decision D7).
 const ONLY_HOST = "127.0.0.1";
 
-/** The door over this registry and this log. A table of routes that does not fit the contracts stops it here. */
-export function createDoor(
+/** The one thing the door may do: ask the checklist, with what the request held, and wait. */
+export type Ask = (
+  envelope: Record<string, unknown>,
+  name: string,
+  input: unknown,
+) => Promise<Answer>;
+
+/** The door over this registry and this log: it asks call(), and nothing else. */
+export function doorOver(
   registry: Registry,
   log: DecisionLog,
   routes: readonly Route[] = ROUTES,
 ): Server {
-  const problems = routeProblems(registry.contracts, routes);
+  return createDoor(
+    (envelope, name, input) => call(registry, log, envelope, name, input),
+    registry.contracts,
+    routes,
+  );
+}
+
+/**
+ * A door that answers each request with one ask. It gets no registry, so it can reach no store
+ * and no rule; the contracts are only the names its routes are checked against (the review's M1).
+ * A table of routes that does not fit them stops it here.
+ */
+export function createDoor(
+  ask: Ask,
+  operations: ReadonlyMap<string, unknown>,
+  routes: readonly Route[] = ROUTES,
+): Server {
+  const problems = routeProblems(operations, routes);
   if (problems.length > 0)
     throw new Error(`the routes refused to start:\n  ${problems.join("\n  ")}`);
   return createServer(async (req, res) => {
@@ -43,7 +68,7 @@ export function createDoor(
       const { name, envelope, input } = translate(request, routes);
       // call() never throws: every refusal is an answer, recorded before it is returned (step 04's
       //   README, C7; DSOR-EXE-02).
-      const answer = await call(registry, log, envelope, name, input);
+      const answer = await ask(envelope, name, input);
       res.writeHead(statusOf(answer), { "content-type": "application/json; charset=utf-8" });
       res.end(JSON.stringify(answer));
     } catch {

@@ -31,7 +31,7 @@ import {
 import { buildRegistry, readContracts, type Registry } from "./registry.ts";
 import { ownWorkFor } from "./revocation.ts";
 import { checkRules } from "./rulebook.ts";
-import { createDoor, listen } from "./server.ts";
+import { doorOver, listen } from "./server.ts";
 import { checkStore, readStore } from "./store.ts";
 
 /** Stops the program with this message, before any request is answered. */
@@ -118,7 +118,7 @@ try {
 
 // The door: its routes checked against the contracts, then 127.0.0.1 only (decisions D2 and D7).
 try {
-  const server = createDoor(registry, createDbLog(pool));
+  const server = doorOver(registry, createDbLog(pool));
   const bound = await listen(server, "127.0.0.1", port);
   console.log(`DSoR's door listens on http://127.0.0.1:${bound}`);
   process.once("SIGINT", () => {

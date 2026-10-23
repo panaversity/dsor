@@ -4,11 +4,11 @@
 import { afterAll, describe, expect, it } from "vitest";
 import type { Answer } from "../src/envelope.ts";
 import { createDbLog } from "../src/postgres.ts";
-import { createDoor, listen } from "../src/server.ts";
+import { doorOver, listen } from "../src/server.ts";
 import { dbRegistry, newPool, ownerRowsFor, rowsFor } from "./db.ts";
 
 const pool = newPool();
-const server = createDoor(dbRegistry(pool), createDbLog(pool));
+const server = doorOver(dbRegistry(pool), createDbLog(pool));
 const port = await listen(server, "127.0.0.1", 0);
 afterAll(async () => {
   await new Promise((done) => server.close(done));
