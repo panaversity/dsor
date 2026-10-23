@@ -214,5 +214,6 @@ Habit 2: the path and the membership were in view, the address inside the body w
 
 ```text
 Step 42 is built: docs/baby_steps_tutorials/mj_42_a_rest_api/README.md. The learner answered Q1 with
-D8. Still for the learner: the review of A3 and A4 (Claude Code's) before step 43.
+D8. On 2026-10-23 the learner said "make all assumptions and complete 42 and 43", so A3 and A4
+(Claude Code's) stand for now; they are to be discussed with step 43's decisions.
 ```

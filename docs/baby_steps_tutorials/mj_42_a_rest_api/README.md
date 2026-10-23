@@ -468,5 +468,5 @@ step 43's real logins, while any page could act as anyone.
 The routes, the translation, the statuses, and the address the door listens on are this tutorial's
 decisions: those tests are titled by step 42's decisions D1 to D7 and A1 to A3.
 
-**Next:** step 43, real logins for people: Managed Better Auth replaces the fake `tok_…` table, and
-the door may then listen beyond `127.0.0.1`.
+**Next:** step 43, real logins for people: Managed Better Auth replaces the fake `tok_…` logins of
+people. Agents keep theirs until step 44, so the door stays on `127.0.0.1` until then.
