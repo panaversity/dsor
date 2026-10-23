@@ -1,0 +1,202 @@
+// Step 42: the door as a real HTTP server, on Node's own node:http, called with fetch. Every
+// request is answered by one call of call(), and the door has no answer of its own (step 42's
+// README, claims C1, C5, C6, and C7, decisions D4, D5, D6, D7, and A2).
+import type { Server } from "node:http";
+import { Readable } from "node:stream";
+import { afterEach, describe, expect, it } from "vitest";
+import type { Answer } from "../src/envelope.ts";
+import type { DecisionRecord } from "../src/log.ts";
+import { CAP, createDoor, listen, readBody } from "../src/server.ts";
+import { ROUTES } from "../src/routes.ts";
+import { ruleWorldOnTuesday, type RuleWorld } from "./rule-world.ts";
+
+const CFO = { authorization: "Bearer tok_d4e8", "dsor-tenant": "org_456" };
+const SUPERVISOR = { authorization: "Bearer tok_2c91", "dsor-tenant": "org_456" };
+const NOBODY = { "dsor-tenant": "org_456" };
+
+const open: Server[] = [];
+afterEach(async () => {
+  await Promise.all(open.splice(0).map((s) => new Promise((done) => s.close(done))));
+});
+
+/** A world in memory, and its door, listening on a free port of 127.0.0.1. */
+async function doorOf(w?: RuleWorld) {
+  const world = w ?? (await ruleWorldOnTuesday());
+  const server = createDoor(world.registry, world.log);
+  open.push(server);
+  const port = await listen(server, "127.0.0.1", 0);
+  return { world, base: `http://127.0.0.1:${port}` };
+}
+
+/** Sends one request, and reads its status and its body as JSON. */
+async function send(
+  base: string,
+  method: string,
+  path: string,
+  headers: Record<string, string> = {},
+  body?: string,
+): Promise<{ status: number; answer: Answer }> {
+  const response = await fetch(base + path, { method, headers, body });
+  return { status: response.status, answer: (await response.json()) as Answer };
+}
+
+async function records(w: RuleWorld): Promise<DecisionRecord[]> {
+  return w.log.records();
+}
+
+describe("C1: every request is answered by one call of call()", () => {
+  it.each(ROUTES.map((r) => [`${r.method} ${r.path}`, r] as const))(
+    "DSOR-OPR-04a: %s reaches call() once, with the operation its row names",
+    async (_row, route) => {
+      const { world, base } = await doorOf();
+      const before = (await records(world)).length;
+      const path = route.path.replace("{id}", "INV-1008");
+      const body = route.method === "POST" ? "{}" : undefined;
+      await send(base, route.method, path, { ...CFO, "idempotency-key": "k-1" }, body);
+      const after = await records(world);
+      expect(after.length - before).toBe(1);
+      expect(String(after.at(-1)?.operation)).toMatch(new RegExp(`^${route.operation}@`));
+    },
+  );
+});
+
+describe("C5: the door has no answer of its own", () => {
+  it("Step 42, A2: an unknown route is answered by call(): 404 UNSUPPORTED_CAPABILITY for cfo_100, recorded", async () => {
+    const { world, base } = await doorOf();
+    const before = (await records(world)).length;
+    const { status, answer } = await send(base, "DELETE", "/payments/PAY-901", CFO);
+    expect([status, answer]).toMatchObject([
+      404,
+      { code: "UNSUPPORTED_CAPABILITY", message: 'no operation named "DELETE /payments/PAY-901"' },
+    ]);
+    expect((await records(world)).length - before).toBe(1);
+  });
+
+  it("Step 42, A2: an unknown route with no login is 401: line ① runs first, and it is recorded", async () => {
+    const { world, base } = await doorOf();
+    const before = (await records(world)).length;
+    const { status, answer } = await send(base, "GET", "/admin", NOBODY);
+    expect([status, answer]).toMatchObject([401, { code: "AUTHENTICATION_REQUIRED" }]);
+    expect((await records(world)).length - before).toBe(1);
+  });
+
+  it("Step 42, A2: the four system jobs have no route: POST /proposals/expire_due is an unknown route", async () => {
+    const { base } = await doorOf();
+    const { status, answer } = await send(base, "POST", "/proposals/expire_due", CFO, "{}");
+    expect([status, answer]).toMatchObject([404, { code: "UNSUPPORTED_CAPABILITY" }]);
+  });
+
+  it("Step 42, A2: a body of 1 MiB is 422 for user_123 and 401 for nobody, each recorded", async () => {
+    const { world, base } = await doorOf();
+    const big = JSON.stringify({
+      invoice: "dsor://org_456/invoice/INV-1008",
+      pad: "x".repeat(1 << 20),
+    });
+    const before = (await records(world)).length;
+    const keyed = { ...SUPERVISOR, "idempotency-key": "pay-big-body" };
+    const supervisor = await send(base, "POST", "/payments", keyed, big);
+    const nobody = await send(base, "POST", "/payments", NOBODY, big);
+    expect([supervisor.status, supervisor.answer]).toMatchObject([
+      422,
+      { code: "VALIDATION_FAILED" },
+    ]);
+    expect([nobody.status, nobody.answer]).toMatchObject([
+      401,
+      { code: "AUTHENTICATION_REQUIRED" },
+    ]);
+    expect((await records(world)).length - before).toBe(2);
+  });
+
+  it("Step 42, A2: the door keeps no more than 64 KiB of a body: exactly the cap is read, one byte more is not", async () => {
+    const exactly = await readBody(Readable.from([Buffer.alloc(CAP, "a")]));
+    expect(exactly).toStrictEqual({ text: "a".repeat(CAP) });
+    const over = await readBody(Readable.from([Buffer.alloc(CAP, "a"), Buffer.from("b")]));
+    expect(over).toStrictEqual({ over: true });
+  });
+
+  it("Step 42, A2: a body sent in pieces is joined, and an empty one is no body", async () => {
+    const pieces = await readBody(Readable.from([Buffer.from('{"a"'), Buffer.from(":1}")]));
+    expect(pieces).toStrictEqual({ text: '{"a":1}' });
+    expect(await readBody(Readable.from([]))).toBeUndefined();
+  });
+});
+
+describe("C6: the status, and the body unchanged", () => {
+  it("Step 42, D4: cfo_100 reads INV-1008: 200, and the body is call()'s answer", async () => {
+    const { base } = await doorOf();
+    const { status, answer } = await send(base, "GET", "/invoices/INV-1008", CFO);
+    expect(status).toBe(200);
+    expect(answer).toMatchObject({ data: { id: "INV-1008", amount: { value: "31400.00" } } });
+  });
+
+  it("Step 42, D4: the agent's INV-1008 waits for the CFO: 202 PENDING_APPROVAL", async () => {
+    const { base } = await doorOf();
+    const agent = {
+      authorization: "Bearer tok_7f3a",
+      "dsor-tenant": "org_456",
+      "idempotency-key": "pay-1008",
+    };
+    const body = JSON.stringify({
+      invoice: "dsor://org_456/invoice/INV-1008",
+      expected_version: 1,
+    });
+    const { status, answer } = await send(base, "POST", "/payments", agent, body);
+    expect([status, answer]).toMatchObject([202, { outcome: "PENDING_APPROVAL" }]);
+  });
+
+  it("Step 42, D4: a silent bank's OUTCOME_UNKNOWN is 409, never a status a library repeats, and its body is unchanged", async () => {
+    const { world, base } = await doorOf();
+    const draft = await send(
+      base,
+      "POST",
+      "/payments",
+      { ...SUPERVISOR, "idempotency-key": "pay-1002" },
+      JSON.stringify({ invoice: "dsor://org_456/invoice/INV-1002", expected_version: 1 }),
+    );
+    const payment = `dsor://org_456/payment/${(draft.answer as { data: { id: string } }).data.id}`;
+    world.bank.mode = "silent";
+    const sent = await send(
+      base,
+      "POST",
+      "/payments/execute",
+      { ...SUPERVISOR, "idempotency-key": "send-1002" },
+      JSON.stringify({ invoice: "dsor://org_456/invoice/INV-1002", payment, expected_version: 1 }),
+    );
+    world.bank.mode = "good";
+    expect([sent.status, sent.answer]).toMatchObject([
+      409,
+      { code: "OUTCOME_UNKNOWN", retry: "after_reconciliation" },
+    ]);
+  });
+});
+
+describe("C7: only this computer", () => {
+  it.each(["0.0.0.0", "::", "localhost", "192.168.1.20"])(
+    "Step 42, D7: start-up on %s is refused while the logins are the fake table",
+    async (host) => {
+      const w = await ruleWorldOnTuesday();
+      const server = createDoor(w.registry, w.log);
+      open.push(server);
+      await expect(listen(server, host, 0)).rejects.toThrow(
+        `the door listens only on 127.0.0.1 while the logins are step 05's fake table, not on ${host}`,
+      );
+      expect(server.listening).toBe(false);
+    },
+  );
+
+  it("Step 42, D7: on 127.0.0.1 it listens, on the port it was given or a free one", async () => {
+    const { base } = await doorOf();
+    expect(base).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+  });
+
+  it("Step 42, D2: a door whose table of routes is wrong does not start", async () => {
+    const w = await ruleWorldOnTuesday();
+    const routes = [
+      ...ROUTES,
+      { method: "POST" as const, path: "/x", operation: "proposal.cancel" },
+    ];
+    expect(() => createDoor(w.registry, w.log, routes)).toThrow(
+      'the routes refused to start:\n  POST /x names "proposal.cancel", which no contract has',
+    );
+  });
+});

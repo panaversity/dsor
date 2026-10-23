@@ -3,7 +3,7 @@
 //   handed over as it came, and anything odd is left for the checklist to refuse, after line ① has
 //   asked who calls (DSOR-OPR-04b, DSOR-IDN-01; step 42's README, claims C3 to C5, decisions D3,
 //   D5, A1, and A2).
-import { findRoute, type Route } from "./routes.ts";
+import { findRoute, ROUTES, type Route } from "./routes.ts";
 
 /** What the server read of one request: headers in lower case, each with all its values. */
 export type HttpRequest = {
@@ -22,9 +22,9 @@ export type Translated = { name: string; envelope: Record<string, unknown>; inpu
 export const OVER = "the request body was over 65536 bytes, so the door read none of it";
 
 /** The operation's name, the envelope, and the input of one HTTP request. */
-export function translate(request: HttpRequest): Translated {
+export function translate(request: HttpRequest, routes: readonly Route[] = ROUTES): Translated {
   const url = new URL(request.url, "http://door");
-  const found = findRoute(request.method, url.pathname);
+  const found = findRoute(request.method, url.pathname, routes);
   // A request on no route keeps its method and path as the name. A name with a space matches no
   //   contract, so call() answers UNSUPPORTED_CAPABILITY, after line ① (decision A2).
   const name = found?.route.operation ?? `${request.method} ${url.pathname}`;
