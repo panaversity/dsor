@@ -130,17 +130,80 @@ trade-off of each option, and wait.
    catalog?
 7. **Where it listens.** Only `127.0.0.1` until real logins arrive in step 43, or any address?
 
-## The learner's decisions
+## The learner's decisions (2026-10-23)
 
-Not asked yet.
+Asked one at a time with AskUserQuestion, after the five parts. The learner took the recommended
+option each time.
 
-## The learner's predictions
+- **D1. The 18 operations for people get a route.** Every operation a person or an app calls. The
+  four that only DSoR's own system logins call stay inside the program: `proposal.expire_due`,
+  `alert.escalate_due`, `rule.check_authority` (`dsor-scheduler`), and `rate.load` (`dsor-rates`).
+  *Downside:* 18 routes to test, and a list to keep in step with the contracts.
+- **D2. Resource routes**, as §39's example: `GET` for the queries (`GET /invoices/{id}`), `POST`
+  for the commands (`POST /payments`, `POST /proposals/{id}/approve`). The door holds a table from
+  route to operation name, and start-up checks it against the contracts: each route names a
+  contract, and no contract has two routes. Not `POST /operations/{name}`, which reads as the
+  generic invoke DSOR-OPR-03a forbids on a surface an agent can reach. *Downside:* 18 rows to
+  write, and start-up must refuse a table that drifts.
+- **D3. The envelope rides in headers; the body is the input only.** `Authorization: Bearer
+  <token>`, `Idempotency-Key`, and `DSoR-Tenant`, `DSoR-Mode`, `DSoR-Request-Id`,
+  `DSoR-Supersedes`, `DSoR-Agent-Asserted`. The envelope stays beside the input, as since step 05;
+  step 43 changes only what the `Authorization` header means. *Downside:* `agent_asserted` is JSON
+  inside a header, and some proxies drop headers they do not know.
+- **D4. Statuses mapped by retry class.** The body is always the §28 envelope. One status for each
+  code, from a fixed table; a status that HTTP libraries retry by themselves (408, 429, 500, 502,
+  503, 504) only for a code whose retry class is `safe_same_key` or `after_delay`. So
+  `OUTCOME_UNKNOWN` and `RESOURCE_HELD` are 409, and `READY` and `PENDING_APPROVAL` are 202.
+  *Downside:* a table to keep in step with §28, and a test that every code has exactly one status.
+- **D5. The door hands over everything it can.** It refuses only what it cannot hand over: a body
+  over its size cap (413), and a route with no operation (404). Broken JSON, a header sent twice,
+  or an unknown `DSoR-*` header go to `call()` as they are, so line ① asks who calls first
+  (DSOR-IDN-01) and line ⑥ refuses, recorded. *Downside:* odd values reach `call()`, and its checks
+  must hold for them.
+- **D6. Node's own `node:http`.** No new dependency, and no framework that parses the body or
+  answers 400 before `call()`. *Downside:* more of our own code to test, such as a slow or cut-off
+  body.
+- **D7. Only `127.0.0.1`.** While the fake logins exist (`tok_d4e8` is cfo_100, in a public file),
+  start-up refuses any other address. Step 43 lifts this. *Downside:* cfo_100's real phone cannot
+  try it yet.
 
-Not asked yet.
+## Still to settle in the design (Phase A)
+
+Found while asking; not decided. Each follows from a decision above, or is the build's to propose.
+
+- **The 18 rows of D2.** The exact route of each operation, such as `POST /proposals/{id}/approve`
+  against `POST /approvals`, and how a path's `{id}` becomes the input's address.
+- **The 413 of D5.** The size cap, and the envelope a 404 or a 413 carries, since `call()` never
+  ran for it and nothing is recorded.
+- **D4's whole table.** The status of each code of §28, `BATCH_PARTIAL` included.
+- **How DSOR-OPR-04b is tested.** A test that the door holds no check of its own: for example, every
+  route, with each envelope, answers exactly what `call()` answers.
+
+## The learner's predictions (2026-10-23)
+
+Asked as gut calls with "how sure", before each explanation, and each settled at once by a real
+run on step 41b's code: in memory from a scratch script, or in a scratch copy of the step without
+its `.env`. Every door in these runs is a sketch in the scratchpad, not DSoR code.
+
+| | The story | The learner's answer | The real run |
+|---|---|---|---|
+| P1 | A door that only translates. cfo_100's phone sends `GET /invoices/INV-1008` with no token | DSoR refuses, recorded (guessing) | Right: `AUTHENTICATION_REQUIRED`, one record, DENY |
+| P2 | A side door reads the store with the company of an `X-Tenant` header. user_700 of org_789 names org_456 | Refused, recorded (sure) | Missed: user_700 reads INV-1008, 31,400.00 USD; 0 records. Only the door that calls `call()` refuses and records |
+| P3 | The door lets only a CFO approve. Two rules ask for a CFO and a tenant administrator; cfo_100, then admin_100, approve INV-1008 | APPROVED (sure) | Missed: the door answers 403 to admin_100, `call()` never runs, INV-1008 stays `PENDING_APPROVAL`; 1 record for 2 tries |
+| P3' | Re-check: a door answers 401 itself to a request with no `Authorization` header. The agent's `POST /payments` forgets it | A DENY record | Missed: two real HTTP servers; the door that checks first leaves 0 records, the thin door leaves 1, DENY |
+| P4 | A thin door takes the company from the path. user_700 sends `POST /org_789/payments` with org_456's INV-1008 in the body | A draft in org_789 (sure) | Missed: `TENANT_MISMATCH`, recorded; step 10's check of every address in the input (`src/tenants.ts:85`) |
+| P5 | The door maps `OUTCOME_UNKNOWN` to 503; a library retries 503 with a new key each time. Transfers of PAY-901? | One (sure) | Right: try 2 hears `RESOURCE_HELD` (step 37); one transfer. With the same key, every try replays `OUTCOME_UNKNOWN`; one transfer |
+
+**The idea behind the misses of P2, P3, and P3'.** Asked which idea led there, the learner chose all
+four offered: every request reaches DSoR; only DSoR's rules count; every refusal is recorded; "the
+door calls `call()`". The one root: DSoR's guarantees hold for the calls that reach `call()`, and a
+door is code that runs before it. DSoR is blind to every line a door runs first. P4's miss is
+Habit 2: the path and the membership were in view, the address inside the body was not.
 
 ## How to continue in a new session
 
 ```text
-Step 42 is being understood, not built. Read docs/baby_steps_tutorials/mj_42_why_this_step.md
-for the problem, the run, the rules, and the learner's decisions so far.
+Step 42 is understood and decided, not built. Read docs/baby_steps_tutorials/mj_42_why_this_step.md
+for the problem, the run, the rules, the learner's predictions, and decisions D1 to D7. Build
+only when the learner says go: copy step 41b, then Phase A from "Still to settle in the design".
 ```
