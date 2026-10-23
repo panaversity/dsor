@@ -40,7 +40,8 @@ const LONGEST = 8192;
 
 /**
  * Who signed in, when the token is a signed token of a configured issuer, signed with a key it
- * publishes, with EdDSA, for its audience, not expired (5 seconds for clocks), with a subject. Else
+ * publishes, with EdDSA, for its audience, not expired and at most 15 minutes old (5 seconds for
+ * clocks), with a subject. Else
  * none. It never throws: every reason a token fails is the same "no login" (decision D7).
  */
 export async function checkedLogin(
@@ -65,7 +66,10 @@ export async function checkedLogin(
       issuer: issuer.issuer,
       audience: issuer.audience,
       algorithms: ["EdDSA"],
-      requiredClaims: ["sub", "exp"],
+      // And an iat, and an age of fifteen minutes at most, as Managed Better Auth's tokens live, so
+      //   a token whose exp says the year 3000 still ends (the review's L3).
+      requiredClaims: ["sub", "exp", "iat"],
+      maxTokenAge: "15m",
       clockTolerance: 5,
       currentDate: new Date(now()),
     });

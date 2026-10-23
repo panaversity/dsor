@@ -3,7 +3,7 @@
 // time are right. Anything else is no login at all (DSOR-IDN-01, DSOR-IDN-04a; step 43's README,
 // claims C2 and C7, decisions D4 and D7).
 import { createHmac } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { Issuers } from "../src/issuers.ts";
 import { checkedLogin, remoteKeys } from "../src/tokens.ts";
 import { startIssuer, type TestIssuer } from "./issuer.ts";
@@ -110,6 +110,44 @@ describe("C2: what a token must be", () => {
       expect(await checkedLogin(token, issuers, keys)).toBeUndefined();
     },
   );
+});
+
+describe("C7: how long a key and a token count (the review's M1 and L3)", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("Step 43, D2: with the shipped cache, a key the issuer stops publishing still counts for ten minutes, and not after", async () => {
+    const b = await startIssuer();
+    const only = new Map([["org_456", [{ issuer: b.issuer, audience: b.audience, jwks: b.jwks }]]]);
+    const shipped = remoteKeys();
+    const old = await b.sign("ba_8c1f");
+    expect(await checkedLogin(old, only, shipped)).not.toBeUndefined();
+    await b.rotate();
+    // Within ten minutes the kept keys still hold the old one.
+    expect(await checkedLogin(old, only, shipped)).not.toBeUndefined();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 601_000);
+    expect(await checkedLogin(old, only, shipped)).toBeUndefined();
+    await b.close();
+  });
+
+  it("Step 43, D4: a token is no older than fifteen minutes, whatever its exp says", async () => {
+    const forever = await a.sign("ba_8c1f", { exp: Date.parse("3000-01-01T00:00:00Z") / 1000 });
+    expect(await checkedLogin(forever, issuers, keys)).not.toBeUndefined();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 16 * 60_000);
+    expect(await checkedLogin(forever, issuers, keys)).toBeUndefined();
+  });
+
+  it("Step 43, D4: a token issued a day from now, or with no iat, is refused", async () => {
+    const tomorrow = await a.sign("ba_8c1f", { iat: seconds() + 86_400 });
+    expect(await checkedLogin(tomorrow, issuers, keys)).toBeUndefined();
+    const head = part({ alg: "EdDSA", kid: "key-1", typ: "JWT" });
+    const body = part({ iss: a.issuer, aud: a.audience, sub: "ba_8c1f", exp: seconds() + 900 });
+    // No iat, and no valid signature either: the check of the claims is what the B-test below needs.
+    expect(await checkedLogin(`${head}.${body}.x`, issuers, keys)).toBeUndefined();
+  });
 });
 
 describe("C7: fail closed", () => {

@@ -61,7 +61,7 @@ export async function startIssuer(alg = "EdDSA"): Promise<TestIssuer> {
     sign: async (subject, claims = {}, header = {}) => {
       const jwt = new SignJWT({ email: `${subject ?? "nobody"}@example.com`, ...claims })
         .setProtectedHeader({ alg: header.alg ?? alg, kid: header.kid ?? key.kid, typ: "JWT" })
-        .setIssuedAt();
+        .setIssuedAt(typeof claims.iat === "number" ? claims.iat : undefined);
       if (!("exp" in claims)) jwt.setExpirationTime("15m");
       if (subject !== undefined) jwt.setSubject(subject);
       if (!("iss" in claims)) jwt.setIssuer(origin);
