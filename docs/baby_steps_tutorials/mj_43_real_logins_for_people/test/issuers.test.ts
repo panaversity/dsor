@@ -73,6 +73,13 @@ describe("C1: issuers.json, checked at start-up", () => {
     ]);
   });
 
+  it("Step 43, D3: an issuer two companies name must have the same audience and keys in both", () => {
+    const other = { ...ONE, audience: "https://another-app.example" };
+    expect(problemsOf({ org_456: [ONE], org_789: [other] })).toStrictEqual([
+      `issuers.json: ${DEV} has another audience or keys in org_789 than in org_456`,
+    ]);
+  });
+
   it("Step 43, D3: a file that is not JSON, or not one list for each company, is refused", () => {
     expect(checkIssuers({ file: "issuers.json", text: "{" }, people).problems[0]).toMatch(
       /^issuers\.json is not JSON/,

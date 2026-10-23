@@ -84,6 +84,18 @@ export function checkIssuers(
     if (kept.length === list.length && kept.length > 0) issuers.set(tenant, kept);
     else if (kept.length !== list.length) refused.add(tenant);
   }
+  // One issuer, one meaning: the token check finds an issuer by its name alone (tokens.ts).
+  const first = new Map<string, { tenant: string; issuer: Issuer }>();
+  for (const [tenant, list] of issuers) {
+    for (const issuer of list) {
+      const seen = first.get(issuer.issuer);
+      if (seen === undefined) first.set(issuer.issuer, { tenant, issuer });
+      else if (seen.issuer.audience !== issuer.audience || seen.issuer.jwks !== issuer.jwks) {
+        const why = `has another audience or keys in ${tenant} than in ${seen.tenant}`;
+        problems.push(`${file}: ${issuer.issuer} ${why}`);
+      }
+    }
+  }
   for (const tenant of [...working].sort()) {
     // A company whose list was refused is named once, for its list, not again here.
     if (!issuers.has(tenant) && !refused.has(tenant)) {
