@@ -199,13 +199,16 @@ export function realLogins(
       try {
         id = await links.principalOf(login.issuer, login.subject);
         // Changed by the learner's R1: a login with no link, whose call carries a code, joins by
-        //   it, in the company the call names. A linked login never redeems a code (R2).
+        //   it, in the company the call names, when that company trusts the token's issuer. A
+        //   linked login never redeems a code (R2). Found while building R2: without the trust
+        //   check, any configured issuer's login could take another company's invitation.
         const { tenant, invitation } = first;
         if (
           id === undefined &&
           "redeem" in links &&
           typeof tenant === "string" &&
-          typeof invitation === "string"
+          typeof invitation === "string" &&
+          (issuers.get(tenant) ?? []).some((i) => i.issuer === login.issuer)
         ) {
           id = await links.redeem(tenant, invitation, login);
         }

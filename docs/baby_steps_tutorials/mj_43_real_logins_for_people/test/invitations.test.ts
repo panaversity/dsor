@@ -8,6 +8,7 @@ import { call } from "../src/pipeline.ts";
 import type { Registry } from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import { remoteKeys } from "../src/tokens.ts";
+import { keyed } from "./helpers.ts";
 import { startIssuer, type TestIssuer } from "./issuer.ts";
 import { ruleWorldOnTuesday, type RuleWorld } from "./rule-world.ts";
 
@@ -99,6 +100,32 @@ describe("R1: the first call with the code links the login", () => {
       code: "AUTHENTICATION_REQUIRED",
     });
     expect((await book.invitations())[0]?.accepted_by).toBeUndefined();
+  });
+
+  it("Step 43, R1: a code sent in a company that does not trust the token's issuer links nothing", async () => {
+    const other = await startIssuer();
+    try {
+      const w: RuleWorld = await ruleWorldOnTuesday();
+      // org_789 trusts the second issuer only; org_456 trusts the first.
+      const issuers = new Map([
+        ["org_456", [{ issuer: a.issuer, audience: a.audience, jwks: a.jwks }]],
+        ["org_789", [{ issuer: other.issuer, audience: other.audience, jwks: other.jwks }]],
+      ]);
+      const book: MemoryLoginBook = memoryLoginBook([]);
+      const registry: Registry = { ...w.registry, logins: realLogins(issuers, book, remoteKeys()) };
+      const { code } = await book.invite("org_789", "user_700", BY);
+      const answer = await call(
+        registry,
+        w.log,
+        keyed({ token: await a.sign("ba_stranger"), tenant: "org_789", invitation: code }),
+        "invoice.get",
+        { invoice: "dsor://org_789/invoice/INV-2002" },
+      );
+      expect(answer).toMatchObject({ code: "AUTHENTICATION_REQUIRED" });
+      expect((await book.invitations())[0]?.accepted_by).toBeUndefined();
+    } finally {
+      await other.close();
+    }
   });
 
   it("Step 43, R2: a login linked already never accepts a code: an admin's own login stays the admin, and the invitation stays open", async () => {
