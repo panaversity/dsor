@@ -132,9 +132,25 @@ branch, put its URL in `issuers.json`, sign up cfo_100, and run `pnpm link-login
 
 Not asked: the learner chose to build first.
 
+## Built, reviewed, and changed by the review (2026-10-23)
+
+Step 43 is built in five pieces, red first; see its README. The breaks B1 to B8 ran in a copy; B2
+found a test that proved jose, not the rule, and a new test closes it. The hostile review changed two
+decisions, both still Claude Code's:
+
+- **D9 changed (H1):** the stand-in gave anyone on this computer, the agent too, cfo_100's token with
+  no password. Now each person signs in with a code the stand-in prints in its own terminal, and
+  `pnpm serve` trusts a stand-in only with `DSOR_STAND_IN=on`.
+- **D4 changed (L3):** a token also needs an `iat`, and is at most 15 minutes old.
+
+**For the learner to decide, with D1 to D10:** whether an outage of the keys or of the links should
+answer a retryable code instead of `AUTHENTICATION_REQUIRED` (the review's L7, against D7); and
+whether DSoR needs an audience of its own in a person's token (M2; open question 164).
+
 ## How to continue in a new session
 
 ```text
 Step 43 is built: docs/baby_steps_tutorials/mj_43_real_logins_for_people/README.md. Its decisions
-are Claude Code's, for the learner to review.
+are Claude Code's, for the learner to review with step 42's A3 and A4. The real Managed Better Auth
+is not connected: the README's "Run it with Managed Better Auth" lists the learner's steps.
 ```

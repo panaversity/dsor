@@ -1111,3 +1111,15 @@ for a human. An agent may gather evidence; it does not settle these alone.
     `Host` header against DNS rebinding. Step 42's learner build hands everything it can to the
     pipeline, so it is recorded, and Node keeps the 400 and the 431. Should §39 say which transport
     refusals an interface may make by itself, and whether they leave evidence?
+164. **May DSoR use a role or scope that a configured issuer puts in a token?** DSOR-IDN-04a accepts
+    role and scope assertions "only from a token issuer or role source configured as authoritative
+    for the active tenant", so a configured issuer's `role` claim seems allowed. Step 43's learner
+    build reads no claim but the issuer and the subject, and takes every role from DSoR's own table,
+    because Managed Better Auth's `role` is one value for the whole sign-in service, not per company.
+    Should the specification say when an issuer's roles may count, and how a role in one company is
+    kept from counting in another? And should a token for people carry DSoR's own audience
+    (DSOR-RP-02b names it for the OAuth binding only)?
+165. **How long may DSoR keep an issuer's published keys?** A key the issuer stops publishing still
+    checks a token for as long as DSoR keeps the keys it fetched. Step 43's learner build keeps them
+    ten minutes, `jose`'s default, and fetches again at once for a key name it lacks. §44 bounds the
+    staleness of the role source and of reads, not of keys. Should it bound this too?

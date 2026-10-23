@@ -2422,6 +2422,28 @@ A real `curl` run on a scratch PostgreSQL: eight requests, eight decisions in `d
 - **Found along the way:** `fetch` will not send an `Expect` header; cfo_100 may not draft a
   payment, so line ⑤ refused her before line ⑥ saw the JSON. Open questions 162 and 163.
 
+### Steps 42 and 43, completed with every assumption Claude Code's (2026-10-23)
+
+The learner said "for now make all assumptions and complete 42 and 43 as well, then we discuss the
+details". So step 42's A3 and A4 stand, and every decision of step 43 is Claude Code's, D1 to D10,
+for the learner to review.
+
+- **Step 43 in one line:** a person's signed token, checked against the keys its issuer publishes,
+  then DSoR's own link from the login to a principal, who keeps only the companies that trust that
+  issuer. Agents keep fake tokens until step 44.
+- **The run:** on step 42's code, a stranger approved INV-1008 with `tok_d4e8` from the public file,
+  and the log blamed cfo_100; on step 43's, that token, a token forged with another key, and a token
+  of an unknown issuer are each refused at line ①, and cfo_100 approves with her own.
+- **Breaks:** eight; B2 (any algorithm) first passed every test, because jose refuses `none` and
+  HS256 against an Ed25519 key by itself.
+- **The review:** one high finding, H1: the shipped stand-in gave anyone on this computer, the agent
+  too, cfo_100's token. Now a code per person, and `DSOR_STAND_IN=on`. M1: C7 overclaimed the key
+  cache. L3: a token could live until the year 3000.
+- **Found along the way:** a test shortcut (a flag that skipped the issuer check) nearly became a
+  feature of `pnpm link-login`; two runs on one scratch database spoiled each other.
+- **Not done:** Managed Better Auth on the learner's Neon project (it needs their account). Open
+  questions 164 and 165.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.
