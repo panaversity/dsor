@@ -136,6 +136,7 @@ import { checkFreshness, checkPreconditions } from "./preconditions.ts";
 import { lookFor, type OwnWork } from "./revocation.ts";
 import { NO_SLIPS, type Slip, type SlipStore } from "./slips.ts";
 import { suspendThenRefuse } from "./suspensions.ts";
+import { mayReplace } from "./supersede.ts";
 import { activeTenant, checkNamedTenants, checkUrisInTenant } from "./tenants.ts";
 import { formatUri, isTenantId, parseUri } from "./uri.ts";
 
@@ -844,6 +845,18 @@ export async function call(
     //   not fit, refuses the whole run before anything is drafted: the run and every line end DENIED.
     //   Otherwise each line waits as its own checks say, and the run waits for every approval its
     //   lines ask for (DSOR-BAT-01b, DSOR-BAT-02b; step 41's README, decisions D2, D5, D6, and D7).
+    // NEW IN STEP 41b: the replacement's look, inside the new command's claim, before its own
+    //   checks: the proposal the envelope names, read in the claim's store, and who may replace it,
+    //   and when (DSOR-APR-12; step 41b's README, claim C3). A refusal here is a "no" before any
+    //   work: the new proposal ends DENIED, as a refusal of lines ⑨ and ⑩ ends it.
+    const lookAtOld = async (stores: WorkStores): Promise<void> => {
+      if (supersedes === undefined) return;
+      const old = await stores.proposals.get(tenant, proposalIdOf(tenant, supersedes));
+      const companyCode = (operation: string): boolean =>
+        registry.handlers.has(operation) ||
+        batchOf(registry.contracts.get(operation) ?? {}) !== undefined;
+      mayReplace(old, supersedes, tenant, { caller, slip: found?.slip }, companyCode);
+    };
     type LinePlan = {
       index: number;
       id: string;
@@ -940,6 +953,14 @@ export async function call(
           }
         }
       };
+      // NEW IN STEP 41b: the proposal the run replaces, once every line has its record.
+      try {
+        await lookAtOld(stores);
+      } catch (thrown) {
+        if (!isOutcome(thrown)) throw thrown;
+        await denyAll(`its run was refused: ${thrown.code}`);
+        return thrown;
+      }
       // Each line's controls, in the order of the lines, for the run's record.
       const evaluated: ControlOutcome[] = [];
       for (const plan of runPlans) {
@@ -2144,6 +2165,8 @@ export async function call(
                         }
                         return decided;
                       }
+                      // NEW IN STEP 41b: the proposal it replaces, before its own checks.
+                      await lookAtOld(stores);
                       const requires = await decideBeforeWork(
                         invoices,
                         reservations,
