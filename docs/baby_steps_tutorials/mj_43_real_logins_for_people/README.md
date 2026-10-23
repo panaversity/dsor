@@ -136,7 +136,7 @@ Claude Code's, 2026-10-23, for the learner to review.
   publishes its keys and signs 15-minute tokens for the story's people, in Neon's shape, so the step
   runs without a Neon account. Each person signs in with a code it prints in its own terminal, new at
   each start, so another program on this computer, the agent included, cannot ask for cfo_100's
-  token. The shipped `issuers.json` names it, and `pnpm serve` trusts it only with `DSOR_STAND_IN=on`
+  token. `issuers.stand-in.json` names it, and `pnpm serve` trusts it only with `DSOR_STAND_IN=on`
   (both after the review's H1). *Downside:* while the stand-in is stopped, another program could take
   its port and publish keys of its own; only a real sign-in service closes that.
 - **D10. Not in this step (Claude Code):** an agent's real token (step 44), acting for a person (step
@@ -174,7 +174,7 @@ Claude Code's, 2026-10-23, for the learner to review.
 
 | File | What changed |
 | --- | --- |
-| `issuers.json`, `src/issuers.ts` | **New.** Each company's issuers, checked at start-up (C1) |
+| `issuers.json`, `issuers.stand-in.json`, `src/issuers.ts` | **New.** Each company's issuers, checked at start-up: the learner's Managed Better Auth on Neon, or the stand-in (C1) |
 | `src/tokens.ts` | **New.** A signed token, checked with `jose` against its issuer's published keys (C2, C7) |
 | `src/logins.ts` | **New.** Where a call's login comes from: step 05's table, or real logins for people, with DSoR's own links and the cut to the issuer's companies (C3 to C5) |
 | `src/pipeline.ts`, `src/registry.ts`, `src/principals.ts` | Line ① asks the world's login source first; the registry holds it, step 05's table unless the world gives real logins (D8) |
@@ -193,14 +193,17 @@ git diff --no-index ../mj_42_a_rest_api/test test
 
 ## Run it
 
-As in step 42: a local PostgreSQL 17 and a new database of its own. Migration 047 is new.
+As in step 42: a local PostgreSQL 17 and a new database of its own. Migration 047 is new. There are
+two ways to sign people in. `issuers.json` names the real Managed Better Auth of the learner's Neon
+project, and "Run it with Managed Better Auth" below shows that run. `issuers.stand-in.json` names the
+stand-in, for a computer with no Neon account; this section shows that run.
 
 ```bash
 pnpm install
 pnpm migrate
 pnpm dev-issuer                    # terminal 1: the stand-in, on 127.0.0.1:8043; it prints each person's code
-pnpm link-login http://127.0.0.1:8043 ba_8c1f cfo_100
-DSOR_STAND_IN=on pnpm serve        # terminal 2: the door, on 127.0.0.1:8042
+DSOR_ISSUERS_FILE=issuers.stand-in.json pnpm link-login http://127.0.0.1:8043 ba_8c1f cfo_100
+DSOR_ISSUERS_FILE=issuers.stand-in.json DSOR_STAND_IN=on pnpm serve   # terminal 2: the door, on 127.0.0.1:8042
 ```
 
 Without `DSOR_STAND_IN=on`, `pnpm serve` refuses to start:
@@ -259,20 +262,62 @@ the same way, and his calls pass.
 
 ### Run it with Managed Better Auth
 
-These steps need your Neon account, so they are yours to do. Claude Code did not do them.
+This is the run the map asks for. On 2026-10-23, through the Neon connector and at the learner's word,
+Claude Code made a Neon project of the tutorial's own, `dsor-baby-steps` (`mute-resonance-85282066`),
+and switched on Neon Auth with Better Auth on its `main` branch. Its Auth URL is
+`https://ep-mute-hall-b5uk82zn.neonauth.c-7.us-east-2.aws.neon.tech/neondb/auth`, and `issuers.json`
+names its origin as the issuer and the audience of both companies. The learner then signed cfo_100 up
+and in, with a password only the learner typed; Claude Code never saw it, nor her token.
 
-1. In the Neon console, switch on **Neon Auth** for your project's branch, and copy its **Auth URL**,
-   for example `https://ep-quiet-sun-123.neonauth.us-east-2.aws.neon.tech/neondb/auth`.
-2. In `issuers.json`, for `org_456` (and `org_789`), set `issuer` and `audience` to the URL's
-   **origin**, `https://ep-quiet-sun-123.neonauth.us-east-2.aws.neon.tech`, and `jwks` to
-   `<Auth URL>/.well-known/jwks.json`. Start-up refuses an address that is not `https`.
-3. Sign cfo_100 up in your app, get her token with `authClient.token()`, and read her user id: the
-   token's `sub`, or `neon_auth.user.id` in the database.
-4. `pnpm link-login https://ep-quiet-sun-123.neonauth.us-east-2.aws.neon.tech <her user id> cfo_100`.
-5. `pnpm serve`, and call it with `Authorization: Bearer <her token>`.
+What the sign-in service publishes, fetched by step 43's own code:
 
-Check a real token's `aud` first: Neon's documentation shows it as the origin, and its Node example
-does not check it. If yours differs, the audience in `issuers.json` must match it.
+```text
+issuers.json: passes
+org_456 trusts: https://ep-mute-hall-b5uk82zn.neonauth.c-7.us-east-2.aws.neon.tech
+Neon publishes: OKP Ed25519 EdDSA kid 2ad301c6-71ce-4905-ad7a-5ab6738ed0ab
+a token forged in Neon's name, with Neon's real kid, signed with another key: refused: no login
+```
+
+cfo_100's real token, decoded by the sign-in script: `iss` and `aud` are both the origin, as
+`issuers.json` says, and `sub` is her Neon user id. The owner linked it:
+
+```text
+$ pnpm link-login https://ep-mute-hall-b5uk82zn.neonauth.c-7.us-east-2.aws.neon.tech f829c014-ea14-4a01-ad06-fdeeed83e24b cfo_100
+linked f829c014-ea14-4a01-ad06-fdeeed83e24b of https://ep-mute-hall-b5uk82zn.neonauth.c-7.us-east-2.aws.neon.tech to cfo_100
+```
+
+Then `pnpm serve`, with no stand-in, and the learner's own call:
+
+```text
+1. cfo_100 reads INV-1008 with her Neon token:
+{"data":{"tenant_id":"org_456","id":"INV-1008","vendor_id":"VENDOR-44","amount":{"value":"31400.00","currency":"USD"},"open_amount":{"value":"31400.00","currency":"USD"},"status":"issued","version":1},"classification":"confidential",…,"correlation":{"request_id":"req_9957295c-…","principal_id":"cfo_100"}}
+   HTTP 200
+2. a stranger with tok_d4e8, from the public file:
+{"code":"AUTHENTICATION_REQUIRED","message":"log in first: the call has no login token that DSoR gave","retry":"never",…}
+   HTTP 401
+```
+
+**To do it with your own Neon project:**
+
+1. Switch on Neon Auth for a branch (the console, or the Neon connector), and read its Auth URL.
+2. In `issuers.json`, set `issuer` and `audience` to the Auth URL's origin, and `jwks` to
+   `<Auth URL>/.well-known/jwks.json`.
+3. Sign a person up and in. From a script, Neon's sign-in service wants an `Origin` header, as a
+   browser sends one, or it answers `MISSING_ORIGIN`:
+
+   ```bash
+   A='<Auth URL>'; O='Origin: http://localhost:3000'
+   curl -X POST "$A/sign-up/email" -H "$O" -H 'Content-Type: application/json' -d '{"email":"…","password":"…","name":"CFO 100"}'
+   curl -c jar -X POST "$A/sign-in/email" -H "$O" -H 'Content-Type: application/json' -d '{"email":"…","password":"…"}'
+   curl -b jar -H "$O" "$A/token"          # {"token":"<her JWT, 15 minutes>"}
+   ```
+
+4. `pnpm link-login <origin> <her user id, the token's sub> cfo_100`, then `pnpm serve`.
+
+**Found on the way:** the first real call was refused too. The door had been started where it could
+not reach Neon, so it could not fetch Neon's keys, and a token DSoR cannot check is no login (C7).
+cfo_100 heard "log in first", exactly as a forger does: the review's L7, seen for real. Started where
+it can reach Neon, the same door let her in.
 
 ## Break it
 
@@ -329,8 +374,10 @@ and broke the code in a copy.
 
 ### Left open on purpose
 
-- **The real Managed Better Auth is not connected.** It needs the learner's Neon account; "Run it
-  with Managed Better Auth" lists the steps.
+- **Only cfo_100 is linked on Neon.** The other people sign in through the stand-in in this
+  README; each needs a Neon sign-up and a `pnpm link-login` to sign in for real.
+- **An outage looks like a forgery** (L7), now seen for real: a door that cannot reach Neon tells
+  cfo_100 to log in.
 - **Agents still use the fake table**, so the door stays on 127.0.0.1 (step 44).
 - **A stopped stand-in's port** can be taken by another program on this computer, which could then
   publish keys of its own. `DSOR_STAND_IN=on` makes trusting a stand-in a choice; Neon closes it.
