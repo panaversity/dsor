@@ -2,7 +2,7 @@
 // is looked up in DSoR's own table of links, and the principal keeps only the companies whose issuer
 // signed it. Nothing else in the token decides anything (DSOR-IDN-01, DSOR-IDN-04a, DSOR-IDN-04b,
 // DSOR-APR-05a; step 43's README, claims C3 to C6, decisions D1, D5, D6, and D8).
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { Answer } from "../src/envelope.ts";
 import { FAKE_LOGINS, memoryLinks, realLogins } from "../src/logins.ts";
 import { call } from "../src/pipeline.ts";
@@ -176,6 +176,50 @@ describe("C5: the fake tokens of people are gone where logins are real", () => {
       INV_1008,
     );
     expect(answer).toMatchObject({ correlation: { principal_id: "cfo_100" } });
+  });
+});
+
+describe("C3: no login, nothing else (the review's L6 and L9)", () => {
+  it("DSOR-IDN-01: a forged token under real logins never reaches the company's code", async () => {
+    const { w, registry } = await realWorld();
+    const stranger = await startIssuer();
+    const forged = await stranger.sign(
+      "ba_8c1f",
+      { iss: a.issuer, aud: a.audience },
+      { kid: "key-1" },
+    );
+    const spy = vi.fn(() => ({ id: "INV-1008" }));
+    const watched = {
+      ...registry,
+      handlers: new Map([...registry.handlers, ["invoice.get", spy]]),
+    };
+    const answer = await ask(
+      watched,
+      w,
+      { token: forged, tenant: "org_456" },
+      "invoice.get",
+      INV_1008,
+    );
+    expect(answer).toMatchObject({ code: "AUTHENTICATION_REQUIRED" });
+    expect(spy).not.toHaveBeenCalled();
+    await stranger.close();
+  });
+
+  it("DSOR-IDN-01: a login source that throws gives no caller: line ① refuses, with the caller's own request id", async () => {
+    const { w, registry } = await realWorld();
+    const broken = {
+      ...registry,
+      logins: {
+        find: async (): Promise<undefined> => {
+          throw new Error("the table of links is down");
+        },
+      },
+    };
+    const who = { token: "anything", tenant: "org_456", request_id: "req_from_the_phone" };
+    expect(await ask(broken, w, who, "invoice.get", INV_1008)).toMatchObject({
+      code: "AUTHENTICATION_REQUIRED",
+      correlation: { request_id: "req_from_the_phone" },
+    });
   });
 });
 

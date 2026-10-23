@@ -284,7 +284,11 @@ export async function call(
     //   signed token checked against its issuer's keys and DSoR's own links. It never throws; a
     //   call with no caller is refused just below, at line ①, before any other check (DSOR-IDN-01;
     //   step 43's README, decisions D7 and D8).
-    const login = await registry.logins.find(request?.token);
+    //   A source that throws anyway gives no caller, so line ① refuses it as it refuses any call with
+    //   none (step 43's review, L6).
+    const login = await Promise.resolve()
+      .then(() => registry.logins.find(request?.token))
+      .catch(() => undefined);
     const { caller, copy, key, named, supersedes } = line(1, () => {
       // The caller's own request id labels every answer, when DSoR can use it (step 05's
       // README, decisions 6 and 7). It is read inside the try, so an envelope whose

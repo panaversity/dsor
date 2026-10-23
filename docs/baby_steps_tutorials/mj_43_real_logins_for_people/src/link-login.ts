@@ -19,6 +19,9 @@ const [issuer, subject, principal, ...more] = process.argv.slice(2);
 if (!issuer || !subject || !principal || more.length > 0) {
   refuse("use: pnpm link-login <issuer> <subject> <principal>");
 }
+// The issuers file .env names, as pnpm serve reads it, so the two never check different files
+//   (step 43's review, L5).
+loadDotEnv(["DSOR_MIGRATION_URL", "DSOR_ISSUERS_FILE"]);
 const people = [...logins.values()];
 const { issuers, problems } = checkIssuers(readIssuers(process.env["DSOR_ISSUERS_FILE"]), people);
 if (problems.length > 0) refuse(`the issuers refused to start:\n  ${problems.join("\n  ")}`);
@@ -30,7 +33,6 @@ if (!people.some((p) => p.id === principal && p.type === "human")) {
   refuse(`${principal} is no person DSoR knows`);
 }
 
-loadDotEnv(["DSOR_MIGRATION_URL"]);
 const owner = new pg.Pool({ connectionString: requireEnv("DSOR_MIGRATION_URL"), max: 1 });
 try {
   // Kept as it is when the login is linked already: a link never moves to another person.
