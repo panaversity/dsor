@@ -286,8 +286,11 @@ export async function call(
     //   step 43's README, decisions D7 and D8).
     //   A source that throws anyway gives no caller, so line ① refuses it as it refuses any call with
     //   none (step 43's review, L6).
+    //   The token is read first, outside that guard, so an envelope whose token throws is still
+    //   answered as before, INTERNAL_ERROR (step 08's review).
+    const token = request?.token;
     const login = await Promise.resolve()
-      .then(() => registry.logins.find(request?.token))
+      .then(() => registry.logins.find(token))
       .catch(() => undefined);
     const { caller, copy, key, named, supersedes } = line(1, () => {
       // The caller's own request id labels every answer, when DSoR can use it (step 05's
