@@ -2373,6 +2373,33 @@ with its run, on the database (D11).
 - **Left open:** no `proposal.cancel`, though a run can be withdrawn in two calls; no event tells the
   CFO; memory's undo of a booking is not locked. Open questions 160 and 161.
 
+### Understanding step 42, a REST API, decided by the learner (2026-10-23)
+
+The first step of Part 6. Before any code, a real run on step 41b's code showed the problem: `call()`
+is a function, so nothing outside the program reaches DSoR (`ECONNREFUSED`), and the quick way to
+add a door, a handler that reads the store itself, gave another company's caller INV-1008's
+31,400.00 USD with no record. Five parts: the missing door; one checklist behind every door
+(DSOR-OPR-04a); a door with no rules of its own (DSOR-OPR-04b); the envelope on the wire; DSoR's
+answer as an HTTP status. Each prediction ran at once, through sketch doors in the scratchpad, two
+of them real HTTP servers.
+
+- **The habit found:** "DSoR sees every request". Three misses on one root (a side door, a door's
+  own approval check, a door's own 401): DSoR's guarantees hold only for the calls that reach
+  `call()`, and every line a door runs first is a place where DSoR is blind. Asked which idea led
+  there, the learner picked all four offered. One picture (three doors, the blind zone marked)
+  came after the third miss, at the learner's choice. A fourth miss was Habit 2: the company in the
+  path was in view, the address in the body was not (step 10's check refused it).
+- **What helped:** running the learner's answer as one door and the right answer as another, side
+  by side, with the log's count beside each.
+- **The decisions, all recommended:** D1 the 18 operations for people get routes; D2 resource
+  routes, checked at start-up against the contracts; D3 the envelope in headers, the body is the
+  input; D4 statuses by retry class, so `OUTCOME_UNKNOWN` never gets a status a library retries;
+  D5 the door hands over everything it can (only 413 and 404 its own); D6 `node:http`; D7 only
+  `127.0.0.1` while the fake logins exist.
+- **Design questions for Phase A:** the 18 routes and how a path's id becomes an address; the size
+  cap and the envelope of a 404 or 413 that `call()` never saw; the status of each §28 code; how a
+  test proves the door holds no check of its own.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.
