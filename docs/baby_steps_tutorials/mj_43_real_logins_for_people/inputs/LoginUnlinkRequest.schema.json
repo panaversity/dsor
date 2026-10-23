@@ -15,9 +15,6 @@
       "description": "Why, in the administrator's own words, for the people who read the log."
     }
   },
-  "required": [
-    "person",
-    "reason"
-  ],
+  "required": ["person", "reason"],
   "additionalProperties": false
 }

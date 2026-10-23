@@ -22,7 +22,10 @@ async function mustBePersonOfCompany(input: unknown, look: OwnLook): Promise<voi
   const found = entity === "person" ? principalNamed(person) : undefined;
   const member = found?.memberships.some((m) => m.tenant_id === look.tenant) ?? false;
   if (found === undefined || found.type !== "human" || !member) {
-    throw new Refusal("RESOURCE_NOT_FOUND", `no person ${JSON.stringify(person)} in ${look.tenant}`);
+    throw new Refusal(
+      "RESOURCE_NOT_FOUND",
+      `no person ${JSON.stringify(person)} in ${look.tenant}`,
+    );
   }
 }
 
@@ -43,7 +46,10 @@ async function invite(input: unknown, work: OwnStores): Promise<unknown> {
 async function unlink(input: unknown, work: OwnStores): Promise<unknown> {
   const { reason } = input as PersonInput;
   const person = idOf(input);
-  const ended = await work.stores.logins.unlink(work.tenant, person, { person: work.caller.id, reason });
+  const ended = await work.stores.logins.unlink(work.tenant, person, {
+    person: work.caller.id,
+    reason,
+  });
   return { person, ...ended };
 }
 
