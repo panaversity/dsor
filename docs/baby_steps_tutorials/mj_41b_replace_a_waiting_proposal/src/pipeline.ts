@@ -136,7 +136,7 @@ import { checkFreshness, checkPreconditions } from "./preconditions.ts";
 import { lookFor, type OwnWork } from "./revocation.ts";
 import { NO_SLIPS, type Slip, type SlipStore } from "./slips.ts";
 import { suspendThenRefuse } from "./suspensions.ts";
-import { cancelReplaced, mayReplace } from "./supersede.ts";
+import { asIfReplaced, cancelReplaced, mayReplace } from "./supersede.ts";
 import { activeTenant, checkNamedTenants, checkUrisInTenant } from "./tenants.ts";
 import { formatUri, isTenantId, parseUri } from "./uri.ts";
 
@@ -858,13 +858,18 @@ export async function call(
     //   move naming the new proposal, and its booking goes back to the day (claim C4). A refusal is a
     //   "no" before any work: the new proposal ends DENIED, as a refusal of lines ⑨ and ⑩ ends it
     //   (DSOR-APR-12; step 41b's README, decisions D3, D5, D7, D8, and D10).
-    const replaceOld = async (stores: WorkStores, made: string): Promise<void> => {
-      if (supersedes === undefined) return;
-      const old = await stores.proposals.get(tenant, proposalIdOf(tenant, supersedes));
+    // The look itself, in whichever store the call reads: the claim's, or, in a dry run, the claim
+    //   store's, outside any claim.
+    const lookAtOld = async (proposals: ProposalStore, uri: string): Promise<Proposal> => {
+      const old = await proposals.get(tenant, proposalIdOf(tenant, uri));
       const companyCode = (operation: string): boolean =>
         registry.handlers.has(operation) ||
         batchOf(registry.contracts.get(operation) ?? {}) !== undefined;
-      const waiting = mayReplace(old, supersedes, tenant, { caller, slip: found?.slip }, companyCode);
+      return mayReplace(old, uri, tenant, { caller, slip: found?.slip }, companyCode);
+    };
+    const replaceOld = async (stores: WorkStores, made: string): Promise<void> => {
+      if (supersedes === undefined) return;
+      const waiting = await lookAtOld(stores.proposals, supersedes);
       const mover = callerMover(requesterOf(caller, under, tenant, new Date().toISOString()));
       await cancelReplaced(stores, tenant, waiting, made, { mover, correlation });
     };
@@ -1175,7 +1180,12 @@ export async function call(
     //   and no booking, then the day's limit against the run's total, which it checks and does not
     //   book. It answers what every line asks for. Found by step 41's review, H1: the dry run checked
     //   the run's own contract, which binds nothing, and said ALLOW to every run (DSOR-OPR-05).
-    const dryRun = async (): Promise<Requirement[] | undefined> => {
+    // Changed in step 41b: with the proposals and the bookings it reads, as a replacement would
+    //   leave them (claim C9).
+    const dryRun = async (
+      proposals: ProposalStore,
+      reservations: ReservationStore,
+    ): Promise<Requirement[] | undefined> => {
       if (lineContract === undefined) throw new Error("a run with no contract for its lines");
       const asked = asCalled();
       const { lines } = copy as { lines: RunLine[] };
@@ -1187,12 +1197,12 @@ export async function call(
         try {
           const asks = await decideBeforeWork(
             registry.invoices,
-            registry.claims.reservations,
+            reservations,
             registry.delegations,
             registry.brakes,
             registry.claims.rates,
             registry.controls,
-            registry.claims.proposals,
+            proposals,
             outside,
             undefined,
             { ...asked, contract: lineContract, copy: line },
@@ -1212,7 +1222,7 @@ export async function call(
         slip: asked.slip?.id,
         limits: limitsOf(asked.slip),
         amounts: reads.map((read) => read.spends),
-        store: registry.claims.reservations,
+        store: reservations,
         rates: readOnce(registry.claims.rates),
         policy: registry.moneyPolicies.get(tenant),
       });
@@ -1384,13 +1394,26 @@ export async function call(
     if (mode === "validate_only") {
       let requires: Requirement[] | undefined;
       try {
+        // NEW IN STEP 41b: a dry run of a replacement looks at the old proposal as the real call
+        //   does, then checks the new command as if the old one were cancelled: its proposals out
+        //   of what is in flight, its booking given back. It changes nothing (DSOR-OPR-05,
+        //   DSOR-OPR-06; step 41b's README, claim C9).
+        const { proposals, reservations } =
+          supersedes === undefined
+            ? { proposals: registry.claims.proposals, reservations: registry.claims.reservations }
+            : await asIfReplaced(
+                registry.claims.proposals,
+                registry.claims.reservations,
+                tenant,
+                await lookAtOld(registry.claims.proposals, supersedes),
+              );
         // A run's own dry run, line by line, then its total.
         requires =
           lineContract !== undefined
-            ? await dryRun()
+            ? await dryRun(proposals, reservations)
             : await decideBeforeWork(
                 registry.invoices,
-                registry.claims.reservations,
+                reservations,
                 registry.delegations,
                 registry.brakes,
                 // And the claim store's rates, outside any claim.
@@ -1398,7 +1421,7 @@ export async function call(
                 // And the world's rules, outside any claim.
                 registry.controls,
                 // And the proposals, outside any claim.
-                registry.claims.proposals,
+                proposals,
                 // And the payments and the holds, outside any claim, so a dry run hears RESOURCE_HELD
                 //   as the real call would (DSOR-OPR-06). The payment is read without its lock: a dry run
                 //   waits for no send. Found by step 37's review, F4: it waited for the bank's answer.

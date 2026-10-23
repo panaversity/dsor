@@ -1963,14 +1963,20 @@ function reservationsThrough(run: Runner): ReservationStore {
         await client.query("RELEASE SAVEPOINT reserve");
         return true;
       }),
-    fits: async (tenant, delegation, amount, limit) =>
+    // Changed in step 41b: less the held booking of the proposal a replacement would give back
+    //   first, of the same slip, day, and currency (claim C9).
+    fits: async (tenant, delegation, amount, limit, freeing) =>
       run(tenant, async (client) => {
         if (!comparable(amount, limit)) return false;
         const { rows } = await client.query<{ fits: boolean }>(
           `SELECT coalesce((SELECT used FROM dsor.limit_counters
                              WHERE tenant_id = $1 AND delegation = $2 AND day = ${TODAY}
-                               AND currency = $3), 0) + $4::numeric <= $5::numeric AS fits`,
-          [tenant, delegation, amount.currency, amount.value, limit.value],
+                               AND currency = $3), 0)
+                - coalesce((SELECT amount_value FROM dsor.reservations
+                             WHERE tenant_id = $1 AND proposal_id = $6 AND delegation = $2
+                               AND day = ${TODAY} AND amount_currency = $3 AND state = 'held'), 0)
+                + $4::numeric <= $5::numeric AS fits`,
+          [tenant, delegation, amount.currency, amount.value, limit.value, freeing ?? null],
         );
         return rows[0]!.fits;
       }),

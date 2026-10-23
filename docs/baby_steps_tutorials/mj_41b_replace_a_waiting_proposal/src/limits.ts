@@ -141,7 +141,16 @@ export type ReservationStore = {
     limit: Money,
   ) => Promise<boolean>;
   /** Whether the amount would fit under the limit today. Reserves nothing: for a dry run. */
-  fits: (tenant: string, delegation: string, amount: Money, limit: Money) => Promise<boolean>;
+  // NEW IN STEP 41b: and, for a dry run of a replacement, the proposal whose booking the real call
+  //   would give back first: a held booking of the same slip, day, and currency counts as free
+  //   (step 41b's README, claim C9).
+  fits: (
+    tenant: string,
+    delegation: string,
+    amount: Money,
+    limit: Money,
+    freeing?: string,
+  ) => Promise<boolean>;
   /** The proposal ended COMMITTED: its reservation stays counted. Nothing, when it holds none. */
   commit: (tenant: string, proposal: string) => Promise<void>;
   /** The proposal ended FAILED: its amount goes back to the day. Nothing, when it holds none. */
@@ -205,6 +214,7 @@ export function memoryReservations(now: () => number = Date.now): MemoryReservat
       delegation: string,
       amount: Money,
       limit: Money,
+      freeing?: string,
     ): Promise<boolean> => {
       const spent = millionths(amount.value);
       const allowed = millionths(limit.value);
@@ -212,7 +222,17 @@ export function memoryReservations(now: () => number = Date.now): MemoryReservat
         return false;
       }
       const used = totals.get(totalOf(tenant, delegation, today(), amount.currency)) ?? 0n;
-      return used + spent <= allowed;
+      // NEW IN STEP 41b: the booking the real call would give back first, as the database's
+      //   subquery finds it.
+      const freed = freeing === undefined ? undefined : kept.get(keyOf(tenant, freeing));
+      const free =
+        freed?.state === "held" &&
+        freed.delegation === delegation &&
+        freed.day === today() &&
+        freed.amount.currency === amount.currency
+          ? freed.spent
+          : 0n;
+      return used - free + spent <= allowed;
     },
     commit: async (tenant: string, proposal: string): Promise<void> => {
       const reservation = kept.get(keyOf(tenant, proposal));

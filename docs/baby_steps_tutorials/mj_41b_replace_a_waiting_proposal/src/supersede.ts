@@ -4,10 +4,17 @@
 //   replace it and whether it still waits (this file's mayReplace), then cancels it, with its lines
 //   and its booking, and only then checks the new command from the start.
 import type { WorkStores } from "./claims.ts";
+import type { ReservationStore } from "./limits.ts";
 import { Refusal, type Correlation } from "./envelope.ts";
 import type { Mover } from "./log.ts";
 import { actsAsAgent, type Principal } from "./principals.ts";
-import { isProposalOf, proposalIdOf, type Proposal, type State } from "./proposals.ts";
+import {
+  isProposalOf,
+  proposalIdOf,
+  type Proposal,
+  type ProposalStore,
+  type State,
+} from "./proposals.ts";
 import { preview } from "./registry.ts";
 import type { Slip } from "./slips.ts";
 
@@ -109,4 +116,32 @@ export async function cancelReplaced(
   // The old booking goes back before the new command books, so the new one may use its room
   //   (decision D7). A run's booking is the run's; its lines hold none.
   await stores.reservations.release(tenant, id);
+}
+
+/**
+ * For a dry run of a replacement: the stores a dry run reads, as they would be once the old
+ * proposal were cancelled. Its proposal and its lines are left out of what is in flight over a
+ * bill, and its booking counts as given back. Nothing is changed: a dry run writes nothing
+ * (DSOR-OPR-05, DSOR-OPR-06; step 41b's README, claim C9).
+ */
+export async function asIfReplaced(
+  proposals: ProposalStore,
+  reservations: ReservationStore,
+  tenant: string,
+  old: Proposal,
+): Promise<{ proposals: ProposalStore; reservations: ReservationStore }> {
+  const id = proposalIdOf(tenant, old.uri);
+  const gone = new Set([id, ...(await proposals.lines(tenant, old.uri)).map((line) => line.id)]);
+  return {
+    proposals: {
+      ...proposals,
+      inFlightOver: async (company, uri) =>
+        (await proposals.inFlightOver(company, uri)).filter((other) => !gone.has(other.id)),
+    },
+    reservations: {
+      ...reservations,
+      fits: (company, delegation, amount, limit) =>
+        reservations.fits(company, delegation, amount, limit, id),
+    },
+  };
 }

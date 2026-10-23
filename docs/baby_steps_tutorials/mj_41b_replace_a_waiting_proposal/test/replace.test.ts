@@ -708,3 +708,60 @@ describe("C7: the refusal tells", () => {
     expect(await w.outbox.events("org_456")).toStrictEqual([]);
   });
 });
+
+/** This caller's dry run, with no key, that replaces the proposal at `uri`. */
+function dryReplacing(who: RequestEnvelope, uri: string): RequestEnvelope {
+  return { ...who, mode: "validate_only", supersedes: uri } as RequestEnvelope;
+}
+
+describe("C9: a dry run of a replacement answers as the real call would", () => {
+  it("DSOR-OPR-05: C9: a dry run of a replacement the real call allows says so, as if the old run were cancelled, and changes nothing", async () => {
+    const w = ruleWorld();
+    const old = await waitingRun(w);
+    const before = await w.proposals.all();
+    const bookings = await w.reservations.all();
+    const answer = await w.ask(dryReplacing(AGENT, old), "payment.run", RUN_A2);
+    expect(answer).toMatchObject({ outcome: "VALIDATED", decision: "REQUIRE_APPROVAL" });
+    expect(await w.proposals.all()).toStrictEqual(before);
+    expect(await w.reservations.all()).toStrictEqual(bookings);
+    // Without supersedes, the same dry run hears the old run's hold on its bills.
+    const plain = await w.ask({ ...AGENT, mode: "validate_only" } as RequestEnvelope, "payment.run", RUN_A2);
+    expect(plain).toMatchObject({ code: "CONFLICT" });
+  });
+
+  it("DSOR-OPR-05: C9: a dry run of one draft that replaces a waiting draft of its bill says so", async () => {
+    const w = ruleWorld();
+    const old = await waitingDraft(w);
+    const answer = await w.ask(dryReplacing(AGENT, old), "payment.create", draftOf("INV-1008"));
+    expect(answer).toMatchObject({ outcome: "VALIDATED", decision: "REQUIRE_APPROVAL" });
+    expect((await proposalAt(w, old))!.state).toBe("PENDING_APPROVAL");
+  });
+
+  it("step 41b's decision D7: C9: the dry run counts the old booking as given back: 135,000 of other bills fits where 150,000 waits", async () => {
+    const w = ruleWorld();
+    for (const id of ["INV-3301", "INV-3302", "INV-3303"]) bill(w, id, "VENDOR-12", "45000.00");
+    bill(w, "INV-3304", "VENDOR-12", "15000.00");
+    const old = await waitingRun(w, linesOf("INV-3301", "INV-3302", "INV-3303", "INV-3304"));
+    for (const id of ["INV-3311", "INV-3312", "INV-3313"]) bill(w, id, "VENDOR-12", "45000.00");
+    const others = linesOf("INV-3311", "INV-3312", "INV-3313");
+    const answer = await w.ask(dryReplacing(AGENT, old), "payment.run", others);
+    expect(answer).toMatchObject({ outcome: "VALIDATED" });
+    const plain = await w.ask({ ...AGENT, mode: "validate_only" } as RequestEnvelope, "payment.run", others);
+    expect(plain).toMatchObject({ code: "LIMIT_EXCEEDED" });
+    expect(await w.reservations.used("org_456", "del_100", "USD")).toBe("150000.00");
+  });
+
+  it.each([
+    ["user_123, for the agent's run", SUPERVISOR, "PENDING_APPROVAL", "AUTHORIZATION_DENIED"],
+    ["the agent, for an EXECUTING draft", AGENT, "EXECUTING", "CONFLICT"],
+  ])(
+    "DSOR-OPR-05: C9: a dry run of a replacement the real call refuses is refused with the same code: %s",
+    async (_who, who, state, code) => {
+      const w = ruleWorld();
+      const old = await planted(w, state);
+      const answer = await w.ask(dryReplacing(who, old), "payment.create", draftOf("INV-1002"));
+      expect(answer).toMatchObject({ code });
+      expect((await proposalAt(w, old))!.state).toBe(state);
+    },
+  );
+});
