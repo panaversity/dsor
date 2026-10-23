@@ -2,7 +2,7 @@
   "name": "@dsor-steps/mj-41b-replace-a-waiting-proposal",
   "version": "0.0.0",
   "private": true,
-  "description": "Step 41, learner build: a payment run, many drafts proposed as one list, approved once with its fingerprint and totals, and drafted all or none (DSOR-BAT-01a, DSOR-BAT-01b, DSOR-BAT-02a, DSOR-BAT-02b)",
+  "description": "Step 41b, learner build: a new proposal replaces a waiting one, named in supersedes; the old one and its lines move to CANCELLED with their booking in one transaction, or nothing changes (DSOR-APR-12)",
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
