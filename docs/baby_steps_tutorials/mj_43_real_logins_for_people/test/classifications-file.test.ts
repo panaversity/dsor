@@ -81,6 +81,14 @@ const LABELS = {
   },
   AlertEscalation: { tenant_id: "internal", escalated: "EscalatedAlert[]", to: "internal" },
   EscalatedAlert: { proposal: "internal", raised_at: "internal" },
+  // Changed in step 43: login.invite and login.unlink, DSoR's own commands (step 43's README, revisions R2 and R7). The code is confidential: it lets one login in.
+  Invitation: {
+    invitation: "internal",
+    person: "internal",
+    code: "confidential",
+    expires_at: "internal",
+  },
+  LoginsEnded: { person: "internal", logins: "internal", invitations: "internal" },
   ProposalExpiry: { tenant_id: "internal", expired: "internal" },
   // The sheet that rate.load wrote, and how many currencies it holds (step 26's
   // README, decision L2).

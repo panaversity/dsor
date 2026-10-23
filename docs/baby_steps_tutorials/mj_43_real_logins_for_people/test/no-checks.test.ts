@@ -64,6 +64,9 @@ function inputOf(operation: string, s: Setup): Record<string, unknown> {
     "proposal.execute": { proposal: s.proposal },
     "delegation.revoke": { slip: "dsor://org_456/delegation/del_100", reason: "a step 42 test" },
     "control.suspend": { target: AGENT_TARGET, reason: "a step 42 test" },
+    // Changed in step 43: the two commands of logins (step 43's README, revisions R2 and R7).
+    "login.invite": { person: "dsor://org_456/person/cfo_100", reason: "a step 43 test" },
+    "login.unlink": { person: "dsor://org_456/person/cfo_100", reason: "a step 43 test" },
     "control.lift": { target: AGENT_TARGET, reason: "a step 42 test" },
     "rule.draft": { rule: RULE, draft: {}, reason: "a step 42 test" },
     "rule.activate": { rule: RULE, version: 8, reason: "a step 42 test" },

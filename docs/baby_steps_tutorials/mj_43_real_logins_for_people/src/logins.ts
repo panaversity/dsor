@@ -83,8 +83,23 @@ export function hashOf(code: string): string {
   return createHash("sha256").update(code).digest("hex");
 }
 
-/** The book in memory, for the unit tests, and what a test reads of it. */
-export type MemoryLoginBook = LoginBook & { invitations: () => Promise<Invitation[]> };
+/** The book in memory, for the unit tests, what a test reads of it, and a link a test sets up. */
+export type MemoryLoginBook = LoginBook & {
+  invitations: () => Promise<Invitation[]>;
+  link: (link: Link) => Promise<void>;
+};
+
+/** No book: no login is linked, and nobody can be invited. Step 05's worlds have none. */
+export const NO_BOOK: LoginBook = Object.freeze({
+  principalOf: async () => undefined,
+  redeem: async () => undefined,
+  invite: async (): Promise<never> => {
+    throw new Error("this world keeps no invitations");
+  },
+  unlink: async (): Promise<never> => {
+    throw new Error("this world keeps no links");
+  },
+});
 
 /** A book of links and invitations in memory, with these links to start, and its own clock. */
 export function memoryLoginBook(
@@ -142,6 +157,9 @@ export function memoryLoginBook(
     },
     invitations: async () =>
       kept.map(({ hash: _h, expires: _e, ...rest }) => structuredClone(rest)),
+    link: async (link: Link) => {
+      links.push({ ...link, ended: false });
+    },
   });
 }
 

@@ -114,5 +114,16 @@
   "ApprovalAsked": {
     "role": "internal",
     "quorum": "internal"
+  },
+  "Invitation": {
+    "invitation": "internal",
+    "person": "internal",
+    "code": "confidential",
+    "expires_at": "internal"
+  },
+  "LoginsEnded": {
+    "person": "internal",
+    "logins": "internal",
+    "invitations": "internal"
   }
 }

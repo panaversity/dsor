@@ -43,6 +43,9 @@ export const ROUTES: readonly Route[] = [
   { method: "POST", path: "/rules/activate", operation: "rule.activate" },
   { method: "POST", path: "/rules/suspend", operation: "rule.suspend" },
   { method: "POST", path: "/rules/retire", operation: "rule.retire" },
+  // NEW IN STEP 43: and the two commands of the learner's R2 and R7, for a tenant administrator.
+  { method: "POST", path: "/invitations", operation: "login.invite" },
+  { method: "POST", path: "/logins/unlink", operation: "login.unlink" },
 ];
 
 // The four operations only DSoR's own system logins call. They stay inside the program, run by

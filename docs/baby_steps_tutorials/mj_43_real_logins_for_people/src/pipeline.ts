@@ -1,5 +1,6 @@
 // The checklist every call goes through. DSOR-EXE-01a in specs/dsor/03-execution.md,
 // section 21, and DSOR-OPR-04a in specs/dsor/01-model.md, section 7.
+import { NO_BOOK } from "./logins.ts";
 import { ownReadOf } from "./alert-list.ts";
 import { heldBy, heldRefusal, holdsOf, NO_HOLDS, type HoldStore } from "./holds.ts";
 import { NO_INTENTS } from "./intents.ts";
@@ -1367,6 +1368,8 @@ export async function call(
         try {
           const { loaded, target } = await gate(registry.claims.proposals, released);
           const outside: WorkStores = {
+            // Changed in step 43: and no book: a dry run of a release invites nobody.
+            logins: NO_BOOK,
             invoices: registry.invoices,
             reservations: registry.claims.reservations,
             slips: registry.delegations,
@@ -2002,6 +2005,8 @@ export async function call(
       if (contract["kind"] === "query" && key === undefined) {
         // A query makes no proposal, so its stores hold none to write (decision 7).
         returned = await runCode({
+          // Changed in step 43: and no book: a query invites nobody.
+          logins: NO_BOOK,
           invoices: registry.invoices,
           payments: registry.payments,
           proposals: NO_PROPOSALS,

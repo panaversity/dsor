@@ -57,7 +57,7 @@ import {
   type StaleMark,
 } from "./rulebook.ts";
 import type { Control } from "./controls.ts";
-import type { LinkStore } from "./logins.ts";
+import { NO_BOOK, type LinkStore } from "./logins.ts";
 import type { FoundSlip, SlipStore } from "./slips.ts";
 import { Refusal, type Requirement } from "./envelope.ts";
 import { approvalOf, stillOpen, type Approval, type Approving, type Offer } from "./approvals.ts";
@@ -1315,6 +1315,8 @@ function storesIn(
     // And the outbox, through the claim's own connection, so an event commits with
     //   its change (DSOR-EVT-01a; step 40's README, decision D1).
     outbox: outboxIn(client),
+    // NEW IN STEP 43: and the book of links and invitations; none until migration 048's book.
+    logins: NO_BOOK,
     // And the claim's own connection, so the record is written in its
     //   transaction (decision D1).
     transaction: client,

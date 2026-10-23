@@ -8,6 +8,7 @@
 // under the slip that waits for an approval moves to CANCELLED, and its reservation is released,
 // in the same transaction (DSOR-DEL-04a, DSOR-DEL-04c, and DSOR-DEL-06d in
 // specs/dsor/02-security.md, section 13).
+import { invitationWorkFor } from "./invitations.ts";
 import type { EventWriter } from "./events.ts";
 import type { Alerting } from "./alerts.ts";
 import { escalationWorkFor } from "./escalation.ts";
@@ -116,6 +117,8 @@ export function ownWorkFor(): Record<string, OwnWork> {
     ...reconcileWorkFor(),
     // And the escalation sweep (step 38b's README, decision D3).
     ...escalationWorkFor(),
+    // NEW IN STEP 43: and the invitations and unlinks of logins (step 43's README, R2 and R7).
+    ...invitationWorkFor(),
   };
 }
 

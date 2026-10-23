@@ -55,7 +55,8 @@ describe("reading the contracts folder", () => {
   //   decision D3).
   // Changed in step 38c: twenty-one, with alert.list (step 38c's README).
   // Changed in step 41: twenty-two, with payment.run (step 41's README, claim C1).
-  it("the shipped folder holds the twenty-two contracts", () => {
+  // Changed in step 43: login.invite and login.unlink, DSoR's own commands (step 43's README, revisions R2 and R7): twenty-four.
+  it("the shipped folder holds the twenty-four contracts", () => {
     expect(shipped.map((s) => s.file)).toEqual([
       "alert.escalate_due.json",
       "alert.list.json",
@@ -65,6 +66,9 @@ describe("reading the contracts folder", () => {
       "invoice.get.json",
       "invoice.issue.json",
       "invoice.list.json",
+      // Changed in step 43: login.invite and login.unlink, DSoR's own commands (step 43's README, revisions R2 and R7).
+      "login.invite.json",
+      "login.unlink.json",
       "payment.cancel.json",
       "payment.create.json",
       "payment.execute.json",

@@ -118,6 +118,9 @@ describe("C1: every command declares its semantics in its contract", () => {
       ["control.suspend", "atomic"],
       ["delegation.revoke", "atomic"],
       ["invoice.issue", "atomic"],
+      // Changed in step 43: login.invite and login.unlink, DSoR's own commands (step 43's README, revisions R2 and R7), atomic too.
+      ["login.invite", "atomic"],
+      ["login.unlink", "atomic"],
       ["payment.cancel", "atomic"],
       ["payment.create", "compensatable"],
       // Changed in step 35: payment.execute, which no one can undo once the bank has sent it.

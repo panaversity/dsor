@@ -355,9 +355,12 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
     [
       "admin_100",
       "tok_a100",
+      // Changed in step 43: login.invite and login.unlink, DSoR's own commands (step 43's README, revisions R2 and R7).
       [
         "control:suspend",
         "delegation:revoke",
+        "login:invite",
+        "login:unlink",
         "payment:approve",
         "proposal:approve",
         "rule:draft",

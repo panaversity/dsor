@@ -29,7 +29,9 @@
     "rule:draft",
     "rule:manage",
     "proposal:approve",
-    "payment:approve"
+    "payment:approve",
+    "login:invite",
+    "login:unlink"
   ],
   "scheduler": ["proposal:expire", "rule:check", "payment:reconcile", "alert:escalate"],
   "rate_loader": ["rate:load"]

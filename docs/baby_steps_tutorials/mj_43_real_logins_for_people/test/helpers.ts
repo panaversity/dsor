@@ -166,6 +166,9 @@ export const STARTING_ROLES: Record<string, string[]> = {
     "rule:manage",
     "proposal:approve",
     "payment:approve",
+    // Changed in step 43: login.invite and login.unlink, DSoR's own commands (step 43's README, revisions R2 and R7): a tenant administrator invites and unlinks people.
+    "login:invite",
+    "login:unlink",
   ],
   // And, since step 28b, sweeps the policies the rules cite (step 28b's README, decision D4).
   // Changed in step 38b: and alert:escalate (step 38b's README, decision D3).

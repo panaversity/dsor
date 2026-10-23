@@ -29,6 +29,7 @@ import type { Contract } from "./registry.ts";
 import { NO_RATES, type RateStore } from "./rates.ts";
 import { NO_CONTROLS, type ControlStore } from "./rulebook.ts";
 import { NO_SLIPS, type SlipStore } from "./slips.ts";
+import { NO_BOOK, type LoginBook } from "./logins.ts";
 
 /**
  * The scope of one claim: the company, the caller, the operation, and the key. One key text in
@@ -75,6 +76,9 @@ export type WorkStores = {
   // And the outbox, where DSoR writes the event of a change in the change's own
   //   transaction (DSOR-EVT-01a; step 40's README, decision D1).
   outbox: OutboxWriter;
+  // NEW IN STEP 43: and DSoR's book of links and invitations, so login.invite and login.unlink write
+  //   in the claim's transaction, with their record (step 43's README, revisions R2 and R7).
+  logins: LoginBook;
   // And the claim's transaction itself, so the record commits with the work.
   transaction?: ClaimTransaction;
   // And a part of the work that a refusal undoes alone, while the claim keeps the
@@ -328,6 +332,8 @@ export function memoryClaims(
   holds: HoldStore = memoryHolds(),
   // And this outbox, in memory unless the test gives one it reads.
   outbox: OutboxWriter = memoryOutbox(),
+  // NEW IN STEP 43: and this book of links and invitations, none unless the test gives one.
+  logins: LoginBook = NO_BOOK,
 ): ClaimStore {
   // Each claim by its scope, written as one text.
   const claims = new Map<string, MemoryClaim>();
@@ -484,6 +490,7 @@ export function memoryClaims(
         intents,
         holds,
         outbox,
+        logins,
         // Memory has no transaction to commit, and keeps the note as it is written. From here
         //   on the claim is kept, as the database's is once its checkpoint commits.
         checkpoint: async () => {

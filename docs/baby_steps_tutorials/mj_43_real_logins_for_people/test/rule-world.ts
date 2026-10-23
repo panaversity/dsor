@@ -1,6 +1,7 @@
 // What step 28's tests share: a world in memory whose company keeps its rules in a store. Not a
 // test file itself. The registry and the claims are given the same store, as with the brakes, so
 // a change that a command makes is the change that line ⑩ reads (step 28's README, decision D5).
+import { memoryLoginBook, type MemoryLoginBook } from "../src/logins.ts";
 import { readAlerts, type AlertsSource } from "../src/alerts.ts";
 import { memoryHolds, type MemoryHolds } from "../src/holds.ts";
 import { memoryIntents, type MemoryIntents } from "../src/intents.ts";
@@ -106,6 +107,9 @@ export type RuleWorld = {
   holds: MemoryHolds;
   // And the outbox, which a test reads and sends (step 40's README, decision D11).
   outbox: MemoryOutbox;
+  // Changed in step 43: and the book of links and invitations, which login.invite and login.unlink
+  //   write, and a world of real logins reads (step 43's README, revisions R1, R2, and R7).
+  book: MemoryLoginBook;
 };
 
 /** A world in memory: the story's slips, del_100 with step 24's limits, and these rules. */
@@ -158,6 +162,7 @@ export function ruleWorld(
   const brakes = memoryBrakes();
   const intents = memoryIntents();
   const holds = memoryHolds();
+  const book = memoryLoginBook([]);
   const rules = memoryControls(controls);
   const given = around(rules);
   const registry = buildRegistry(
@@ -183,6 +188,7 @@ export function ruleWorld(
       intents,
       holds,
       outbox,
+      book,
     ),
     ownWorkFor(),
     brakes,
@@ -222,6 +228,7 @@ export function ruleWorld(
     intents,
     holds,
     outbox,
+    book,
   };
 }
 
