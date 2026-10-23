@@ -80,7 +80,7 @@ import { NO_PAYMENTS, unlocked, type PaymentStore } from "./payment.ts";
 import { checkResultSize } from "./pages.ts";
 import { checkPermission, effectivePermissions, permissionsOf } from "./permissions.ts";
 import { clearanceOf, maskRefusal, show } from "./masking.ts";
-import { callerIds, checkNamedPrincipals, whoIsCalling } from "./principals.ts";
+import { callerIds, callerOf, checkNamedPrincipals } from "./principals.ts";
 import {
   callerMover,
   closeProposal,
@@ -280,13 +280,18 @@ export async function call(
     //   token and DSoR's own table only (DSOR-IDN-01, DSOR-SRC-02a). Then any principal the
     //   arguments name must be the caller (DSOR-SRC-02b), and the request id must be usable
     //   (step 05's README, decisions 6 and 7; step 07's README, decision 8).
+    // NEW IN STEP 43: the login is found first, from the world's source: step 05's table, or a
+    //   signed token checked against its issuer's keys and DSoR's own links. It never throws; a
+    //   call with no caller is refused just below, at line ①, before any other check (DSOR-IDN-01;
+    //   step 43's README, decisions D7 and D8).
+    const login = await registry.logins.find(request?.token);
     const { caller, copy, key, named, supersedes } = line(1, () => {
       // The caller's own request id labels every answer, when DSoR can use it (step 05's
       // README, decisions 6 and 7). It is read inside the try, so an envelope whose
       // request_id cannot be read gets an answer, not a throw. Found by step 07's review,
       // and fixed from step 05 on.
       correlation = { request_id: usableRequestId(request) ?? correlation.request_id };
-      const found = whoIsCalling(request);
+      const found = callerOf(login);
       correlation = { ...correlation, ...callerIds(found) };
       // One copy of the input, made here, once, after the login is found. Every check from
       // here on, and the operation's code, reads this copy. So no check can see a value that

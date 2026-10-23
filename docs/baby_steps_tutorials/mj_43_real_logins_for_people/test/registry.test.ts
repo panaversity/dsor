@@ -1,6 +1,7 @@
 // The registry at start-up, and calls by name, by step 03's claims (C1 to C7 in step 03's
 // README). From step 04, call answers with an envelope instead of throwing.
 import { memoryClaims } from "../src/claims.ts";
+import { FAKE_LOGINS } from "../src/logins.ts";
 import { describe, expect, it, vi } from "vitest";
 import type { ErrorEnvelope } from "../src/envelope.ts";
 import { memoryInvoices, NO_STORE } from "../src/invoice.ts";
@@ -154,6 +155,8 @@ describe("C1: nothing can be called without a contract", () => {
       alerts: new Map(),
       // Changed in step 38c: and no read of DSoR's own store.
       reads: new Map(),
+      // Changed in step 43: and step 05's table of logins.
+      logins: FAKE_LOGINS,
     };
     // The refusal is an envelope, not a throw.
     expect(await call(handMade, log, AGENT, "invoice.delete", {})).toMatchObject({

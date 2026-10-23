@@ -159,13 +159,18 @@ export function whoIsCalling(request: RequestEnvelope): Principal {
   const token = request?.token;
   // Only text is looked up. A Map never turns its key into text, so ["tok_7f3a"] finds
   // nobody, and neither does "toString".
-  const caller = typeof token === "string" ? logins.get(token) : undefined;
-  // One message for every case, so a refusal never tells a caller which tokens exist.
-  if (caller === undefined) {
+  return callerOf(typeof token === "string" ? logins.get(token) : undefined);
+}
+
+/** The caller a login source found, or the refusal of a call with none (step 43's README, D7). */
+export function callerOf(found: Principal | undefined): Principal {
+  // One message for every case, so a refusal never tells a caller which tokens exist, nor why a
+  //   signed token failed (step 43's README, decision D7).
+  if (found === undefined) {
     const message = "log in first: the call has no login token that DSoR gave";
     throw new Refusal("AUTHENTICATION_REQUIRED", message);
   }
-  return caller;
+  return found;
 }
 
 /** The ids that name the caller in an answer's correlation (step 05's README, decision 9). */

@@ -5,6 +5,7 @@ import { NO_PAYMENTS } from "../src/payment.ts";
 import type { ClassificationSource } from "../src/labels.ts";
 import { checkRoles, permissionsOf } from "../src/permissions.ts";
 import { logins, whoIsCalling, type Membership, type Principal } from "../src/principals.ts";
+import { FAKE_LOGINS } from "../src/logins.ts";
 import { call } from "../src/pipeline.ts";
 import {
   buildRegistry,
@@ -688,6 +689,8 @@ describe("C4: an operation nobody was granted is denied to everyone", () => {
         alerts: registry.alerts,
         // Changed in step 38c: and the shared registry's own reads.
         reads: registry.reads,
+        // Changed in step 43: and step 05's table of logins.
+        logins: FAKE_LOGINS,
       };
       expect(
         await call(handMade, log, SUPERVISOR, "invoice.get", {
