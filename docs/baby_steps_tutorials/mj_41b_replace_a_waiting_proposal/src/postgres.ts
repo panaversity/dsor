@@ -1334,6 +1334,22 @@ function storesIn(
     // one inside the claim's transaction, with its record (step 28's README, decisions D14 and
     // D15).
     controls: controls === "database" ? controlsThrough(run) : controls,
+    // NEW IN STEP 41b: a part of the claim's work that a refusal undoes alone: a savepoint. A
+    //   refusal rolls back to it and is thrown on, so the claim keeps the refusal and the rest of
+    //   its transaction. An accident is thrown on, and rolls back everything (step 41b's README,
+    //   decision D6).
+    undoable: async <T>(body: () => Promise<T>): Promise<T> => {
+      await client.query("SAVEPOINT replace");
+      let done: T;
+      try {
+        done = await body();
+      } catch (thrown) {
+        if (isOutcome(thrown)) await client.query("ROLLBACK TO SAVEPOINT replace");
+        throw thrown;
+      }
+      await client.query("RELEASE SAVEPOINT replace");
+      return done;
+    },
   };
 }
 
@@ -2408,6 +2424,13 @@ function proposalsThrough(run: Runner): ProposalStore {
           [tenant, to, afterMs],
         );
         return rows.map(alertFrom).sort((a, b) => a.proposal.localeCompare(b.proposal));
+      }),
+    // NEW IN STEP 41b: the company's ending lock, as a tear-up's list and an approval take it.
+    holdEnding: async (tenant: string): Promise<void> =>
+      run(tenant, async (client) => {
+        await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+          endingKey(tenant),
+        ]);
       }),
     holdOver: async (tenant: string, operation: string, uri: string): Promise<void> =>
       run(tenant, async (client) => {

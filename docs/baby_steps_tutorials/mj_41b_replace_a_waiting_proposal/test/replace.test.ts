@@ -6,6 +6,9 @@ import { describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { payloadHash } from "../src/canonical.ts";
 import type { Answer } from "../src/envelope.ts";
+import type { Invoice } from "../src/invoice.ts";
+import { money } from "../src/money.ts";
+import { handlersFor } from "../src/operations.ts";
 import { proposalUri, urisIn, type Requester, type State } from "../src/proposals.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import { AGENT, CFO, FIRM_IN_456, keyed, SUPERVISOR } from "./helpers.ts";
@@ -377,4 +380,256 @@ describe("C3: who may replace a proposal, and when", () => {
       await deniedNaming(w, answer, old);
     },
   );
+});
+
+/** A run's input: one line for each of these bills of org_456, each decided on version 1. */
+function linesOf(...ids: string[]): { lines: { invoice: string; expected_version: number }[] } {
+  return { lines: ids.map(draftOf) };
+}
+
+/** A bill of org_456, issued, version 1, added to the world's invoices. */
+function bill(w: RuleWorld, id: string, vendor: string, value: string): void {
+  const amount = money(value, "USD");
+  const fields = { vendor_id: vendor, amount, open_amount: amount, status: "issued" };
+  w.bills.push({ tenant_id: "org_456", id, ...fields, version: 1 } as Invoice);
+}
+
+/** The run's lines, each with its state and the cause of its last move, in the order of their ids. */
+async function linesAt(w: RuleWorld, run: string) {
+  const all = (await w.proposals.all()).filter((p) => p.run === run);
+  return all.map((p) => ({ state: p.state, cause: p.transitions.at(-1)!.cause }));
+}
+
+/** The booking of one proposal, by its address. */
+async function bookingOf(w: RuleWorld, uri: string) {
+  return (await w.reservations.all()).find((r) => r.proposal === uri.split("/").at(-1));
+}
+
+// The story's run that waits for cfo_100: INV-1002 8,900.50, INV-1008 31,400.00, and INV-1006
+//   640.00 USD, 40,940.50 in all.
+const RUN_A = linesOf("INV-1002", "INV-1008", "INV-1006");
+// Run A without INV-1006, which turned out to be wrong: 40,300.50 USD.
+const RUN_A2 = linesOf("INV-1002", "INV-1008");
+
+/** The agent's run A, waiting for cfo_100: its address. */
+async function waitingRun(w: RuleWorld, input = RUN_A): Promise<string> {
+  const answer = await w.ask(keyed(AGENT), "payment.run", input);
+  expect(answer).toMatchObject({ outcome: "PENDING_APPROVAL" });
+  return proposalOf(answer);
+}
+
+describe("C4: the replacement, in one transaction", () => {
+  it("DSOR-APR-12: C4: a waiting run replaced by a new run: the old run and every line CANCELLED, each move naming the new run, and the new run waits", async () => {
+    const w = ruleWorld();
+    const old = await waitingRun(w);
+    const answer = await w.ask(replacing(AGENT, old), "payment.run", RUN_A2);
+    expect(answer).toMatchObject({ outcome: "PENDING_APPROVAL" });
+    const made = proposalOf(answer);
+    const kept = (await proposalAt(w, old))!;
+    expect(kept.state).toBe("CANCELLED");
+    expect(kept.transitions.at(-1)).toMatchObject({
+      from: "PENDING_APPROVAL",
+      to: "CANCELLED",
+      actor: "accounts-payable-fte",
+      cause: `replaced by proposal ${made}`,
+    });
+    expect(await linesAt(w, old)).toStrictEqual(
+      Array(3).fill({ state: "CANCELLED", cause: `its run was replaced by proposal ${made}` }),
+    );
+    expect((await proposalAt(w, made))!.supersedes).toBe(old);
+    expect((await linesAt(w, made)).map((l) => l.state).sort()).toStrictEqual([
+      "PENDING_APPROVAL",
+      "READY",
+    ]);
+  });
+
+  it("step 41b's decision D7: C4: the old run's booking is given back, and the new run's total is booked", async () => {
+    const w = ruleWorld();
+    const old = await waitingRun(w);
+    const made = proposalOf(await w.ask(replacing(AGENT, old), "payment.run", RUN_A2));
+    expect(await bookingOf(w, old)).toMatchObject({ state: "released" });
+    expect(await bookingOf(w, made)).toMatchObject({
+      state: "held",
+      amount: { value: "40300.50", currency: "USD" },
+    });
+    expect(await w.reservations.used("org_456", "del_100", "USD")).toBe("40300.50");
+  });
+
+  it("step 41b's decision D2: C4: a waiting draft replaced by a draft of the same bill: the old one CANCELLED, the new one waits, and one booking is held", async () => {
+    const w = ruleWorld();
+    const old = await waitingDraft(w);
+    const answer = await w.ask(replacing(AGENT, old), "payment.create", draftOf("INV-1008"));
+    expect(answer).toMatchObject({ outcome: "PENDING_APPROVAL" });
+    expect((await proposalAt(w, old))!.state).toBe("CANCELLED");
+    expect(await w.reservations.used("org_456", "del_100", "USD")).toBe("31400.00");
+  });
+
+  it("step 41b's decision D2: C4: a waiting draft replaced by a run that holds its bill", async () => {
+    const w = ruleWorld();
+    const old = await waitingDraft(w);
+    const answer = await w.ask(replacing(AGENT, old), "payment.run", RUN_A2);
+    expect(answer).toMatchObject({ outcome: "PENDING_APPROVAL" });
+    expect((await proposalAt(w, old))!.state).toBe("CANCELLED");
+    expect(await w.reservations.used("org_456", "del_100", "USD")).toBe("40300.50");
+  });
+
+  it("step 41b's decision D2: C4: a waiting run replaced by one draft that needs no one: the draft is made at once, and the run and its lines are CANCELLED", async () => {
+    const w = ruleWorld();
+    const old = await waitingRun(w);
+    const answer = await w.ask(replacing(AGENT, old), "payment.create", draftOf("INV-1002"));
+    expect(answer).toMatchObject({ outcome: "COMMITTED" });
+    expect(w.drafted.map((p) => p.invoice_id)).toStrictEqual(["INV-1002"]);
+    expect((await proposalAt(w, old))!.state).toBe("CANCELLED");
+    expect((await linesAt(w, old)).map((l) => l.state)).toStrictEqual(Array(3).fill("CANCELLED"));
+    expect(await w.reservations.used("org_456", "del_100", "USD")).toBe("8900.50");
+  });
+
+  it("step 41b's decision D3: C4: an APPROVED run is replaced too: its approval is cancelled with it, and the new run waits for cfo_100 again", async () => {
+    const w = ruleWorld();
+    const old = await waitingRun(w);
+    const run = (await proposalAt(w, old))!;
+    const shown = {
+      proposal: old,
+      payload_hash: run.payload_hash,
+      manifest_hash: run.manifest_hash,
+      totals: run.totals,
+      vendor_totals: run.vendor_totals,
+    };
+    expect(await w.ask(keyed(CFO), "proposal.approve", shown)).toMatchObject({
+      data: { state: "APPROVED" },
+    });
+    const answer = await w.ask(replacing(AGENT, old), "payment.run", RUN_A2);
+    expect(answer).toMatchObject({ outcome: "PENDING_APPROVAL" });
+    expect((await proposalAt(w, old))!.state).toBe("CANCELLED");
+    expect((await linesAt(w, old)).map((l) => l.state)).toStrictEqual(Array(3).fill("CANCELLED"));
+    expect((await proposalAt(w, proposalOf(answer)))!.approvals).toBeUndefined();
+  });
+
+  it("step 41b's decision D3: C4: a READY proposal, made in propose_only mode, is replaced by another that waits READY", async () => {
+    const w = ruleWorld();
+    const first = await w.ask(
+      { ...keyed(AGENT), mode: "propose_only" } as RequestEnvelope,
+      "payment.create",
+      draftOf("INV-1002"),
+    );
+    expect(first).toMatchObject({ outcome: "READY" });
+    const old = proposalOf(first);
+    const answer = await w.ask(
+      { ...replacing(AGENT, old), mode: "propose_only" } as RequestEnvelope,
+      "payment.create",
+      draftOf("INV-1009"),
+    );
+    expect(answer).toMatchObject({ outcome: "READY" });
+    expect((await proposalAt(w, old))!.state).toBe("CANCELLED");
+    expect(await bookingOf(w, old)).toMatchObject({ state: "released" });
+  });
+});
+
+describe("C5: a refused replacement changes nothing of the old proposal", () => {
+  it("step 41b's decision D6: C5: a new run with a suspended vendor is refused: the old run still waits with its lines and its booking, the new run and its lines end DENIED, and the refusal is recorded", async () => {
+    const w = ruleWorld();
+    const old = await waitingRun(w);
+    const before = await linesAt(w, old);
+    w.vendors.find((v) => v.id === "VENDOR-31")!.status = "suspended";
+    const answer = await w.ask(replacing(AGENT, old), "payment.run", linesOf("INV-1002", "INV-1006"));
+    expect(answer).toMatchObject({ code: "CONFLICT", message: expect.stringMatching(/^line 2 of "payment\.run": /) });
+    expect((await proposalAt(w, old))!.state).toBe("PENDING_APPROVAL");
+    expect(await linesAt(w, old)).toStrictEqual(before);
+    expect(await bookingOf(w, old)).toMatchObject({ state: "held" });
+    expect(await w.reservations.used("org_456", "del_100", "USD")).toBe("40940.50");
+    const made = proposalOf(answer);
+    expect((await proposalAt(w, made))!).toMatchObject({ state: "DENIED", supersedes: old });
+    expect((await linesAt(w, made)).map((l) => l.state)).toStrictEqual(["DENIED", "DENIED"]);
+    expect((await w.log.records()).at(-1)).toMatchObject({
+      operation: "payment.run@1",
+      authorization: "DENY",
+      result: "CONFLICT",
+      extensions: { "org.panaversity.steps": { proposal: made } },
+    });
+  });
+
+  it("step 41b's decision D7: C5: a new run over the day's limit, once the old booking is given back, is refused: the old booking is held again", async () => {
+    const w = ruleWorld();
+    const old = await waitingRun(w);
+    for (const id of ["INV-3201", "INV-3202", "INV-3203"]) {
+      bill(w, id, "VENDOR-12", "42500.00");
+      expect(await w.draft(id)).toMatchObject({ outcome: "PENDING_APPROVAL" });
+    }
+    expect(await w.reservations.used("org_456", "del_100", "USD")).toBe("168440.50");
+    bill(w, "INV-3204", "VENDOR-12", "45000.00");
+    const answer = await w.ask(replacing(AGENT, old), "payment.run", linesOf("INV-1008", "INV-3204"));
+    expect(answer).toMatchObject({ code: "LIMIT_EXCEEDED" });
+    expect((await proposalAt(w, old))!.state).toBe("PENDING_APPROVAL");
+    expect(await bookingOf(w, old)).toMatchObject({ state: "held" });
+    expect(await w.reservations.used("org_456", "del_100", "USD")).toBe("168440.50");
+  });
+
+  it("step 41b's decision D6: C5: a refused new draft leaves the old draft waiting, and a later draft of its bill alone still hears CONFLICT", async () => {
+    const w = ruleWorld();
+    const old = await waitingDraft(w);
+    w.vendors.find((v) => v.id === "VENDOR-44")!.status = "suspended";
+    const answer = await w.ask(replacing(AGENT, old), "payment.create", draftOf("INV-1002"));
+    expect(answer).toMatchObject({ code: "CONFLICT" });
+    expect((await proposalAt(w, old))!.state).toBe("PENDING_APPROVAL");
+    w.vendors.find((v) => v.id === "VENDOR-44")!.status = "approved";
+    expect(await w.draft("INV-1008", SUPERVISOR)).toMatchObject({ code: "CONFLICT" });
+  });
+});
+
+describe("C5: an accident keeps nothing of a replacement", () => {
+  // Memory has no transaction, so its claim undoes what an accident left, as the database's
+  //   rollback does: the old run's moves, and its booking, given back a moment before.
+  it("step 41b's decision D6: C5: an accident in the new draft's work leaves the old run waiting, with its lines and its booking", async () => {
+    const broken = {
+      ...handlersFor(),
+      "payment.create": async (): Promise<never> => {
+        throw new Error("a bug in the company's code");
+      },
+    };
+    const u = undefined;
+    const w = ruleWorld(u, u, u, u, u, u, u, u, u, broken);
+    const old = await waitingRun(w);
+    const before = await linesAt(w, old);
+    const answer = await w.ask(replacing(AGENT, old), "payment.create", draftOf("INV-1009"));
+    expect(answer).toMatchObject({ code: "INTERNAL_ERROR" });
+    expect((await proposalAt(w, old))!.state).toBe("PENDING_APPROVAL");
+    expect(await linesAt(w, old)).toStrictEqual(before);
+    expect(await bookingOf(w, old)).toMatchObject({ state: "held" });
+    expect(await w.reservations.used("org_456", "del_100", "USD")).toBe("40940.50");
+    expect((await w.proposals.all()).filter((p) => p.supersedes !== undefined)).toStrictEqual([]);
+  });
+});
+
+describe("C6: the booking given back, used once", () => {
+  it("step 41b's decision D7: C6: a run of 150,000 waits; its replacement of 135,000 fits only because the old booking is given back first", async () => {
+    const w = ruleWorld();
+    for (const id of ["INV-3301", "INV-3302", "INV-3303"]) bill(w, id, "VENDOR-12", "45000.00");
+    bill(w, "INV-3304", "VENDOR-12", "15000.00");
+    const old = await waitingRun(w, linesOf("INV-3301", "INV-3302", "INV-3303", "INV-3304"));
+    expect(await w.reservations.used("org_456", "del_100", "USD")).toBe("150000.00");
+    const answer = await w.ask(
+      replacing(AGENT, old),
+      "payment.run",
+      linesOf("INV-3301", "INV-3302", "INV-3303"),
+    );
+    expect(answer).toMatchObject({ outcome: "PENDING_APPROVAL" });
+    expect(await w.reservations.used("org_456", "del_100", "USD")).toBe("135000.00");
+  });
+
+  it("step 41b's decision D7: C6: two replacements of one run at once: one wins, the other hears CONFLICT, and the day holds one booking", async () => {
+    const w = ruleWorld();
+    const old = await waitingRun(w);
+    const both = await Promise.all([
+      w.ask(replacing(AGENT, old), "payment.run", RUN_A2),
+      w.ask(replacing(AGENT, old), "payment.run", linesOf("INV-1008", "INV-1006")),
+    ]);
+    const said = both.map(saidOf).sort();
+    expect(said).toStrictEqual(["CONFLICT", "PENDING_APPROVAL"]);
+    const lost = both.find((a) => "code" in a)!;
+    expect(lost).toMatchObject({
+      message: `proposal ${old.split("/").at(-1)} is CANCELLED, and only a READY, PENDING_APPROVAL, or APPROVED proposal is replaced`,
+    });
+    const held = (await w.reservations.all()).filter((r) => r.state === "held");
+    expect(held).toHaveLength(1);
+  });
 });

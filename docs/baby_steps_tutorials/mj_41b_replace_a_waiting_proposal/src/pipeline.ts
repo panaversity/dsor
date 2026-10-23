@@ -136,7 +136,7 @@ import { checkFreshness, checkPreconditions } from "./preconditions.ts";
 import { lookFor, type OwnWork } from "./revocation.ts";
 import { NO_SLIPS, type Slip, type SlipStore } from "./slips.ts";
 import { suspendThenRefuse } from "./suspensions.ts";
-import { mayReplace } from "./supersede.ts";
+import { cancelReplaced, mayReplace } from "./supersede.ts";
 import { activeTenant, checkNamedTenants, checkUrisInTenant } from "./tenants.ts";
 import { formatUri, isTenantId, parseUri } from "./uri.ts";
 
@@ -845,18 +845,28 @@ export async function call(
     //   not fit, refuses the whole run before anything is drafted: the run and every line end DENIED.
     //   Otherwise each line waits as its own checks say, and the run waits for every approval its
     //   lines ask for (DSOR-BAT-01b, DSOR-BAT-02b; step 41's README, decisions D2, D5, D6, and D7).
-    // NEW IN STEP 41b: the replacement's look, inside the new command's claim, before its own
-    //   checks: the proposal the envelope names, read in the claim's store, and who may replace it,
-    //   and when (DSOR-APR-12; step 41b's README, claim C3). A refusal here is a "no" before any
-    //   work: the new proposal ends DENIED, as a refusal of lines ⑨ and ⑩ ends it.
-    const lookAtOld = async (stores: WorkStores): Promise<void> => {
+    // NEW IN STEP 41b: the replacement, inside the new command's claim, before its own checks.
+    //   First the look: the proposal the envelope names, read in the claim's store, and who may
+    //   replace it, and when (claim C3). Then the old proposal and its lines move to CANCELLED, each
+    //   move naming the new proposal, and its booking goes back to the day (claim C4). A refusal is a
+    //   "no" before any work: the new proposal ends DENIED, as a refusal of lines ⑨ and ⑩ ends it
+    //   (DSOR-APR-12; step 41b's README, decisions D3, D5, D7, D8, and D10).
+    const replaceOld = async (stores: WorkStores, made: string): Promise<void> => {
       if (supersedes === undefined) return;
       const old = await stores.proposals.get(tenant, proposalIdOf(tenant, supersedes));
       const companyCode = (operation: string): boolean =>
         registry.handlers.has(operation) ||
         batchOf(registry.contracts.get(operation) ?? {}) !== undefined;
-      mayReplace(old, supersedes, tenant, { caller, slip: found?.slip }, companyCode);
+      const waiting = mayReplace(old, supersedes, tenant, { caller, slip: found?.slip }, companyCode);
+      const mover = callerMover(requesterOf(caller, under, tenant, new Date().toISOString()));
+      await cancelReplaced(stores, tenant, waiting, made, { mover, correlation });
     };
+    // NEW IN STEP 41b: the replacement and the new command's checks, as one part that a refusal
+    //   undoes alone, so a refused replacement leaves the old one waiting, with its lines and its
+    //   booking, while the claim keeps the refusal (decision D6). A call that replaces nothing needs
+    //   no such part.
+    const guarded = <T,>(stores: WorkStores, part: () => Promise<T>): Promise<T> =>
+      supersedes === undefined ? part() : stores.undoable(part);
     type LinePlan = {
       index: number;
       id: string;
@@ -953,68 +963,71 @@ export async function call(
           }
         }
       };
-      // NEW IN STEP 41b: the proposal the run replaces, once every line has its record.
-      try {
-        await lookAtOld(stores);
-      } catch (thrown) {
-        if (!isOutcome(thrown)) throw thrown;
-        await denyAll(`its run was refused: ${thrown.code}`);
-        return thrown;
-      }
+      // Changed in step 41b: the checks are one part, which a refusal undoes alone: first the
+      //   proposal the run replaces, once every line has its record, then each line, then the day.
+      //   So a refused run leaves the proposal it would replace waiting, and every line ends DENIED
+      //   (step 41b's README, decisions D6 and D7).
+      // Why a line refused, for every line's DENIED.
+      let deniedFor: string | undefined;
       // Each line's controls, in the order of the lines, for the run's record.
       const evaluated: ControlOutcome[] = [];
-      for (const plan of runPlans) {
-        try {
-          plan.requires = await decideBeforeWork(
-            stores.invoices,
-            stores.reservations,
-            stores.slips,
-            stores.brakes,
-            stores.rates,
-            stores.controls,
-            stores.proposals,
-            { payments: stores.payments, holds: stores.holds },
-            plan.id,
-            { ...asked, contract: lineContract, copy: plan.line },
-            { seen: (bound) => (plan.bound = bound) },
-          );
-          evaluated.push(...(controlsOfRecord ?? []));
-          controlsOfRecord = undefined;
-        } catch (thrown) {
-          if (!isOutcome(thrown)) throw thrown;
-          await denyAll(`line ${plan.index + 1} of its run was refused: ${thrown.code}`);
-          return lineRefusal(plan.index, contract.id, thrown);
-        }
-      }
-      if (evaluated.length > 0) controlsOfRecord = evaluated;
-      // What each line spends, and its vendor, as line ⑨ read them.
-      const reads = runPlans.map((plan) => lineReadOf(plan.bound, plan.index));
-      // The day's limit, once, against the whole run.
+      let reads: LineRead[];
       try {
-        await checkRunDay({
-          operation: contract.id,
-          tenant,
-          slip: asked.slip?.id,
-          limits: limitsOf(asked.slip),
-          amounts: reads.map((read) => read.spends),
-          store: stores.reservations,
-          reserveFor: runId,
-          rates: readOnce(stores.rates),
-          policy: registry.moneyPolicies.get(tenant),
-          converted: (conversion) => {
-            const before = conversionOfRecord?.rates ?? {};
-            conversionOfRecord = { ...conversion, rates: { ...before, ...conversion.rates } };
-          },
-          unconvertible: (cause) => {
-            unconvertibleOfRecord = cause;
-          },
-          noted: (one) => {
-            evidence.converted.push(one);
-          },
+        reads = await guarded(stores, async () => {
+          await replaceOld(stores, runUri);
+          for (const plan of runPlans) {
+            try {
+              plan.requires = await decideBeforeWork(
+                stores.invoices,
+                stores.reservations,
+                stores.slips,
+                stores.brakes,
+                stores.rates,
+                stores.controls,
+                stores.proposals,
+                { payments: stores.payments, holds: stores.holds },
+                plan.id,
+                { ...asked, contract: lineContract, copy: plan.line },
+                { seen: (bound) => (plan.bound = bound) },
+              );
+              evaluated.push(...(controlsOfRecord ?? []));
+              controlsOfRecord = undefined;
+            } catch (thrown) {
+              if (!isOutcome(thrown)) throw thrown;
+              deniedFor = `line ${plan.index + 1} of its run was refused: ${thrown.code}`;
+              throw lineRefusal(plan.index, contract.id, thrown);
+            }
+          }
+          if (evaluated.length > 0) controlsOfRecord = evaluated;
+          // What each line spends, and its vendor, as line ⑨ read them.
+          const read = runPlans.map((plan) => lineReadOf(plan.bound, plan.index));
+          // The day's limit, once, against the whole run.
+          await checkRunDay({
+            operation: contract.id,
+            tenant,
+            slip: asked.slip?.id,
+            limits: limitsOf(asked.slip),
+            amounts: read.map((one) => one.spends),
+            store: stores.reservations,
+            reserveFor: runId,
+            rates: readOnce(stores.rates),
+            policy: registry.moneyPolicies.get(tenant),
+            converted: (conversion) => {
+              const before = conversionOfRecord?.rates ?? {};
+              conversionOfRecord = { ...conversion, rates: { ...before, ...conversion.rates } };
+            },
+            unconvertible: (cause) => {
+              unconvertibleOfRecord = cause;
+            },
+            noted: (one) => {
+              evidence.converted.push(one);
+            },
+          });
+          return read;
         });
       } catch (thrown) {
         if (!isOutcome(thrown)) throw thrown;
-        await denyAll(`its run was refused: ${thrown.code}`);
+        await denyAll(deniedFor ?? `its run was refused: ${thrown.code}`);
         return thrown;
       }
       // Each line waits as its own checks say: for its approvals, or READY for its run.
@@ -1309,7 +1322,7 @@ export async function call(
       if (mode === "validate_only") {
         try {
           const { loaded, target } = await gate(registry.claims.proposals, released);
-          const outside = {
+          const outside: WorkStores = {
             invoices: registry.invoices,
             reservations: registry.claims.reservations,
             slips: registry.delegations,
@@ -1326,6 +1339,8 @@ export async function call(
             // And writes no event.
             outbox: NO_OUTBOX,
             checkpoint: async () => {},
+            // NEW IN STEP 41b: and nothing to undo.
+            undoable: (part) => part(),
           };
           try {
             await checkAgain(outside, loaded, target, false);
@@ -1948,6 +1963,8 @@ export async function call(
           // And no event to write.
           outbox: NO_OUTBOX,
           checkpoint: async () => {},
+          // NEW IN STEP 41b: and nothing to undo.
+          undoable: (part) => part(),
         });
       } else {
         // A seal that ran, and whose work was not kept, undoes what it set for the
@@ -2157,6 +2174,12 @@ export async function call(
                       //   So the tear-up cancels a prepared draft, never leaves it READY (step 25c's
                       //   README, decision D12).
                       await holdSlip(caller, contract, under?.delegation, slips, tenant);
+                      // NEW IN STEP 41b: and, for a replacement, the company's ending lock, after the
+                      //   brake's and the slip's, as a tear-up takes them. So the old proposal waits
+                      //   for no other mover while it is replaced, and a second replacement of it
+                      //   waits for this one (step 41b's README, "What follows from rules already
+                      //   built").
+                      if (supersedes !== undefined) await proposals.holdEnding(tenant);
                       // A run decides each of its lines, and its total.
                       if (lineContract !== undefined) {
                         const decided = await decideRun(stores, proposal, scope.key);
@@ -2165,19 +2188,22 @@ export async function call(
                         }
                         return decided;
                       }
-                      // NEW IN STEP 41b: the proposal it replaces, before its own checks.
-                      await lookAtOld(stores);
-                      const requires = await decideBeforeWork(
-                        invoices,
-                        reservations,
-                        slips,
-                        brakes,
-                        rates,
-                        controls,
-                        proposals,
-                        { payments: stores.payments, holds: stores.holds },
-                        reserveFor,
-                      );
+                      // Changed in step 41b: the proposal it replaces first, then its own checks,
+                      //   as one part that a refusal undoes alone (decision D6).
+                      const requires = await guarded(stores, async () => {
+                        await replaceOld(stores, proposal);
+                        return await decideBeforeWork(
+                          invoices,
+                          reservations,
+                          slips,
+                          brakes,
+                          rates,
+                          controls,
+                          proposals,
+                          { payments: stores.payments, holds: stores.holds },
+                          reserveFor,
+                        );
+                      });
                       // When the work will run, its bundle is checked first
                       //   (step 33's README, D17).
                       if (requires === undefined && mode === "execute") presealed(proposal);

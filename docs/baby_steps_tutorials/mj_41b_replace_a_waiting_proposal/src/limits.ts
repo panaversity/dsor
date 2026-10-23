@@ -158,6 +158,9 @@ export type MemoryReservations = ReservationStore & {
   //   accident in a call that made the proposal, as the database's rollback undoes the reservation
   //   with it (step 32's README, decision D14; step 32's review, finding M1).
   forget: (tenant: string, proposal: string) => Promise<void>;
+  // NEW IN STEP 41b: and the undo of a booking given back: it counts in its day's total again, as
+  //   the database's rollback takes the give-back away (step 41b's README, decision D7).
+  restore: (tenant: string, proposal: string) => Promise<void>;
 };
 
 /** Reservations in memory, for the unit tests. The day is today in UTC, by this clock. */
@@ -238,6 +241,17 @@ export function memoryReservations(now: () => number = Date.now): MemoryReservat
         totals.set(total, (totals.get(total) ?? 0n) - spent);
       }
       kept.delete(keyOf(tenant, proposal));
+    },
+    // No limit is checked: the amount was counted until this claim gave it back a moment ago.
+    //   Memory has no lock on the day's total, so a call in between could book that room too;
+    //   the database's row lock keeps it until the claim ends (step 41b's README, "Left open").
+    restore: async (tenant: string, proposal: string): Promise<void> => {
+      const reservation = kept.get(keyOf(tenant, proposal));
+      if (reservation?.state !== "released") return;
+      const { delegation, day, amount, spent } = reservation;
+      const total = totalOf(tenant, delegation, day, amount.currency);
+      totals.set(total, (totals.get(total) ?? 0n) + spent);
+      reservation.state = "held";
     },
     used: async (tenant: string, delegation: string, currency: string): Promise<string> => {
       const used = totals.get(totalOf(tenant, delegation, today(), currency)) ?? 0n;

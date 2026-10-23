@@ -218,6 +218,11 @@ export type ProposalStore = {
   // And the lock of one operation over one record, held alone until the claim
   //   ends, so two attempts over one invoice look one after the other (step 32's README, D7).
   holdOver: (tenant: string, operation: string, uri: string) => Promise<void>;
+  // NEW IN STEP 41b: and the company's ending lock, which every mover of a waiting proposal takes
+  //   before it moves one or gives its booking back: a tear-up, the sweep, an approval, and now a
+  //   replacement. Held alone until the claim ends (step 25c's README, decision D13; step 41b's
+  //   README, "Found while checking the design").
+  holdEnding: (tenant: string) => Promise<void>;
   // And the company's alerts, in the order they were raised. The move to
   //   OUTCOME_UNKNOWN raises one and the move out of it closes it, both with the move's record, so
   //   every path raises it and no settlement leaves it open (DSOR-UNK-04b; step 38b's README,
@@ -375,6 +380,7 @@ export const NO_PROPOSALS: ProposalStore = Object.freeze({
   // And no run's lines.
   lines: async () => [],
   holdOver: async () => {},
+  holdEnding: async () => {},
   // And no alert, and escalates none.
   alerts: async () => [],
   escalateDue: async (): Promise<never> => {
@@ -589,6 +595,8 @@ export function memoryProposals(now: () => number = Date.now): MemoryProposals {
     // Outside a claim, as in a dry run, no lock is held. Memory's claims hold the
     //   lock themselves, until the claim ends (src/claims.ts).
     holdOver: async (): Promise<void> => {},
+    // NEW IN STEP 41b: and no ending lock either, outside a claim.
+    holdEnding: async (): Promise<void> => {},
     // As the database's SELECT does it: this company, a state in flight, and the
     //   record's address among the request's, in the order of their ids.
     inFlightOver: async (tenant: string, uri: string): Promise<InFlight[]> => {

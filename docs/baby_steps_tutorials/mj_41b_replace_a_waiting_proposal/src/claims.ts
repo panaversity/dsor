@@ -77,6 +77,11 @@ export type WorkStores = {
   outbox: OutboxWriter;
   // And the claim's transaction itself, so the record commits with the work.
   transaction?: ClaimTransaction;
+  // NEW IN STEP 41b: and a part of the work that a refusal undoes alone, while the claim keeps the
+  //   refusal: on the database a savepoint, in memory an undo of the moves and bookings made inside
+  //   it. A replacement cancels the old proposal inside one, so a refused new command leaves the old
+  //   one waiting (step 41b's README, decisions D6 and D7).
+  undoable: <T>(body: () => Promise<T>) => Promise<T>;
 };
 
 /** How the code's work ended: with its value, or with the refusal it gave. */
@@ -402,6 +407,28 @@ export function memoryClaims(
         await before;
         held.push(free);
       };
+      // NEW IN STEP 41b: what this call made, and the bookings it gave back, which an accident
+      //   undoes as the database's rollback does: a replaced proposal's booking is held again.
+      const createdHere = new Set<string>();
+      const releasedHere: string[] = [];
+      // And, while an undoable part runs, what it moved, gave back, and booked, which a refusal
+      //   inside it undoes, as the database's ROLLBACK TO SAVEPOINT does (step 41b's README, D6).
+      let inside: { moved: Set<string>; released: string[]; reserved: string[] } | undefined;
+      const undoInside = async (
+        tenant: string,
+        done: { moved: Set<string>; released: string[]; reserved: string[] },
+      ): Promise<void> => {
+        if (!("undo" in proposals) || !("restore" in reservations)) {
+          throw new Error("memory can undo a part of a claim only in its own stores");
+        }
+        for (const uri of done.moved) {
+          // A proposal this call made goes only with the whole claim: its first record stays.
+          if (createdHere.has(uri)) throw new Error(`an undoable part moved its own proposal ${uri}`);
+          await (proposals as MemoryProposals).undo(uri, requestId);
+        }
+        for (const id of done.released) await (reservations as MemoryReservations).restore(tenant, id);
+        for (const id of done.reserved) await (reservations as MemoryReservations).forget(tenant, id);
+      };
       const stores: WorkStores = {
         invoices,
         payments,
@@ -411,10 +438,13 @@ export function memoryClaims(
         proposals: {
           ...proposals,
           holdOver,
+          // NEW IN STEP 41b: the company's ending lock, one of this claim's locks.
+          holdEnding: (tenant) => holdOver(tenant, "dsor.ending", tenant),
           create: async (tenant, id, draft, by, lifetime) => {
             await proposals.create(tenant, id, draft, by, lifetime);
             if (made === undefined) made = proposalUri(tenant, id);
             else others.push(proposalUri(tenant, id));
+            createdHere.add(proposalUri(tenant, id));
           },
           // And every other proposal it moves, such as the lines a release starts, which an
           //   accident puts back as they were, as the database's rollback does. Found by step 41's
@@ -423,10 +453,27 @@ export function memoryClaims(
             const moved = await proposals.move(tenant, id, from, to, by, requires, totals);
             const uri = proposalUri(tenant, id);
             if (moved && uri !== made && !others.includes(uri)) others.push(uri);
+            if (moved) inside?.moved.add(uri);
             return moved;
           },
         },
-        reservations,
+        // NEW IN STEP 41b: and the bookings it makes and gives back, noted for an undo.
+        reservations: {
+          ...reservations,
+          reserve: async (tenant, proposal, delegation, amount, limit) => {
+            const had = await reservations.get(tenant, proposal);
+            const fits = await reservations.reserve(tenant, proposal, delegation, amount, limit);
+            if (fits && had === undefined) inside?.reserved.push(proposal);
+            return fits;
+          },
+          release: async (tenant, proposal) => {
+            const had = await reservations.get(tenant, proposal);
+            await reservations.release(tenant, proposal);
+            if (had?.state !== "held") return;
+            releasedHere.push(proposal);
+            inside?.released.push(proposal);
+          },
+        },
         slips,
         brakes,
         rates,
@@ -442,6 +489,19 @@ export function memoryClaims(
           //   advisory locks: from here a second attempt over the record finds this one in flight,
           //   and hears CONFLICT, rather than waiting for the bank. Found by step 37's review, F1.
           held.splice(0).forEach((free) => free());
+        },
+        undoable: async <T>(part: () => Promise<T>): Promise<T> => {
+          if (inside !== undefined) throw new Error("an undoable part inside another");
+          const done = { moved: new Set<string>(), released: [] as string[], reserved: [] as string[] };
+          inside = done;
+          try {
+            return await part();
+          } catch (thrown) {
+            if (isOutcome(thrown)) await undoInside(scope.tenant, done);
+            throw thrown;
+          } finally {
+            inside = undefined;
+          }
         },
       };
       // Set when an accident after the checkpoint made the outcome unknown: nobody seals that one.
@@ -526,6 +586,13 @@ export function memoryClaims(
       } catch (error) {
         // An accident keeps no claim, as the database rolls the claim back with the work.
         claims.delete(id);
+        // NEW IN STEP 41b: and every booking it gave back is held again, such as a replaced
+        //   proposal's.
+        if ("restore" in reservations) {
+          for (const given of releasedHere) {
+            await (reservations as MemoryReservations).restore(scope.tenant, given);
+          }
+        }
         for (const uri of made === undefined ? others : [made, ...others]) {
           if (!("undo" in proposals)) break;
           const undone = await (proposals as MemoryProposals).undo(uri, requestId);

@@ -3,7 +3,9 @@
 //   proposal in its envelope's supersedes. Inside the new command's claim, DSoR checks who may
 //   replace it and whether it still waits (this file's mayReplace), then cancels it, with its lines
 //   and its booking, and only then checks the new command from the start.
-import { Refusal } from "./envelope.ts";
+import type { WorkStores } from "./claims.ts";
+import { Refusal, type Correlation } from "./envelope.ts";
+import type { Mover } from "./log.ts";
 import { actsAsAgent, type Principal } from "./principals.ts";
 import { isProposalOf, proposalIdOf, type Proposal, type State } from "./proposals.ts";
 import { preview } from "./registry.ts";
@@ -71,4 +73,40 @@ export function mayReplace(
     throw new Refusal("CONFLICT", why, "internal");
   }
   return found;
+}
+
+/** Who cancels the old proposal, and in which call: the caller, through their own call. */
+export type CancelBy = { mover: Mover; correlation: Correlation };
+
+/**
+ * The old proposal and every line of it that still waits move to CANCELLED, the run first, each
+ * move recorded with the new proposal as its cause. Then its booking goes back to the day. A move
+ * that finds the old proposal moved on already is a CONFLICT: another call moved it a moment ago
+ * (step 41b's README, decisions D6 to D8, and claim C4).
+ */
+export async function cancelReplaced(
+  stores: Pick<WorkStores, "proposals" | "reservations">,
+  tenant: string,
+  old: Proposal,
+  made: string,
+  by: CancelBy,
+): Promise<void> {
+  const id = proposalIdOf(tenant, old.uri);
+  const move = { ...by, cause: `replaced by proposal ${made}` };
+  if (!(await stores.proposals.move(tenant, id, old.state, "CANCELLED", move))) {
+    const why = `proposal ${id} moved on while it was being replaced`;
+    throw new Refusal("CONFLICT", why, "internal");
+  }
+  // The run first, then its lines: the database moves a line to CANCELLED only with its run
+  //   (decision D11).
+  const withRun = { ...by, cause: `its run was replaced by proposal ${made}` };
+  for (const line of await stores.proposals.lines(tenant, old.uri)) {
+    if (!REPLACEABLE.includes(line.state)) continue;
+    if (!(await stores.proposals.move(tenant, line.id, line.state, "CANCELLED", withRun))) {
+      throw new Error(`the line ${line.id} moved while its run was replaced`);
+    }
+  }
+  // The old booking goes back before the new command books, so the new one may use its room
+  //   (decision D7). A run's booking is the run's; its lines hold none.
+  await stores.reservations.release(tenant, id);
 }
