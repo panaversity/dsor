@@ -1195,7 +1195,8 @@ export function createDbClaims(
           // In propose_only mode the proposal waits READY, and the work never runs.
           // The claim keeps that as its answer, so a replay names the same waiting proposal (step
           // 23's README, decision 12).
-          if (mode === "propose_only") {
+          // NEW IN STEP 41b: and for a replacement, in either mode (step 41b's README, decision D12).
+          if (mode === "propose_only" || supersedes !== undefined) {
             if (proposal === undefined) throw new Error("a propose_only claim made no proposal");
             await keepAnswer(client, ids, `{"ready":true,"proposal":${keptText(proposal)}}`);
             return sealed({ ready: true, proposal });
@@ -2109,7 +2110,8 @@ async function replay(
   // and gives no answer. Found by step 23's review: an execute call heard a planted READY.
   // A refusal fits both modes, since lines ⑨ and ⑩ can deny a propose_only call.
   // Found by step 24's review: its replay gave INTERNAL_ERROR (decision 17).
-  const proposing = found.mode === "propose_only";
+  // Changed in step 41b: a replacement waits too, in either mode (decision D12).
+  const proposing = found.mode === "propose_only" || found.supersedes !== null;
   if (("ready" in kept && !proposing) || ("value" in kept && proposing)) {
     throw new Error("a claim holds an answer that does not fit its mode");
   }

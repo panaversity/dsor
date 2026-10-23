@@ -854,6 +854,12 @@ export async function call(
     //   not fit, refuses the whole run before anything is drafted: the run and every line end DENIED.
     //   Otherwise each line waits as its own checks say, and the run waits for every approval its
     //   lines ask for (DSOR-BAT-01b, DSOR-BAT-02b; step 41's README, decisions D2, D5, D6, and D7).
+    // NEW IN STEP 41b: whether the call's work runs now. Not in propose_only mode, and never for a
+    //   replacement: it makes its proposal and stops, READY or waiting for its approval, and its
+    //   code runs only at its release. So the code cannot refuse in the call that replaces, and a
+    //   refused replacement is always a refusal of its checks, which changes nothing (step 41b's
+    //   README, decision D12, the learner's answer to Q1; found by step 41b's review, H1).
+    const runsNow = mode === "execute" && supersedes === undefined;
     // NEW IN STEP 41b: the replacement, inside the new command's claim, before its own checks.
     //   First the look: the proposal the envelope names, read in the claim's store, and who may
     //   replace it, and when (claim C3). Then the old proposal and its lines move to CANCELLED, each
@@ -2216,7 +2222,7 @@ export async function call(
                       if (lineContract !== undefined) {
                         const decided = await decideRun(stores, proposal, scope.key);
                         if (!("code" in decided) && decided.requires === undefined) {
-                          if (mode === "execute") presealed(proposal);
+                          if (runsNow) presealed(proposal);
                         }
                         return decided;
                       }
@@ -2246,7 +2252,7 @@ export async function call(
                       });
                       // When the work will run, its bundle is checked first
                       //   (step 33's README, D17).
-                      if (requires === undefined && mode === "execute") presealed(proposal);
+                      if (requires === undefined && runsNow) presealed(proposal);
                       // A control's approval stops the proposal at PENDING_APPROVAL.
                       return requires === undefined ? undefined : { requires };
                     } catch (thrown) {
@@ -2260,7 +2266,7 @@ export async function call(
                   //   decision D12).
                   const started =
                     lineContract !== undefined &&
-                    mode === "execute" &&
+                    runsNow &&
                     opened.refused === undefined &&
                     opened.pending === undefined;
                   if (started) {

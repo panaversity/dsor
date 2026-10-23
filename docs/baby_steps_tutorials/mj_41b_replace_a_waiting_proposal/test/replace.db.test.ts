@@ -237,16 +237,25 @@ describe("C4 to C6: the replacement, in one transaction, on the database", () =>
     expect(await usedToday()).toBe("40940.50");
   });
 
-  it("step 41b's decision D6: C5: an accident in the new draft's work rolls everything back: the old run still waits, with its booking", async () => {
-    const broken = registryWith({
-      ...handlersFor(),
-      "payment.create": async (): Promise<never> => {
-        throw new Error("a bug in the company's code");
+  // Changed by the learner's D12: no company code runs in the call that replaces, so the accident
+  //   is the rulebook's store, which line ⑩ reads after the old run was cancelled.
+  it("step 41b's decision D6: C5: an accident after the old run was cancelled rolls everything back: the old run still waits, with its booking", async () => {
+    const rules = memoryControls(readControls());
+    const broken = dbRegistry(
+      pool,
+      storyDirectories(),
+      handlersFor(),
+      ownWorkFor(),
+      readLifetimes(),
+      {
+        ...rules,
+        inForce: async () => {
+          throw new Error("the rulebook's store broke");
+        },
       },
-    });
+    );
     const old = await waitingRun();
     const before = await statesOf(old);
-    // INV-9411 needs no one, so the broken code runs at once, once the old run lets go of it.
     const answer = await asIntake(
       "payment.create",
       draftOf("INV-9411"),
@@ -453,8 +462,12 @@ describe("step 41b's review, M1 and M2: a replacement at the same moment as othe
         const booking = await bookingOf(old);
         if (state === "COMMITTED") expect(booking).toMatchObject([{ state: "committed" }]);
         else expect(state).toBe("CANCELLED");
-        // Exactly one of the two went through.
-        expect(said.filter((one) => one === "COMMITTED")).toHaveLength(1);
+        // Exactly one of the two went through: the release paid, or the replacement waits READY
+        //   (changed by the learner's D12).
+        expect([
+          ["COMMITTED", "CONFLICT"],
+          ["CONFLICT", "READY"],
+        ]).toContainEqual(said.sort());
       }
     },
   );
@@ -531,5 +544,30 @@ describe("step 41b's review, L4 and L5: the smaller gaps, on the database", () =
     expect(answer).toMatchObject({ code: "CONFLICT" });
     expect((await proposals.get("org_456", idOf(old)))!.state).toBe("PENDING_APPROVAL");
     expect(await bookingOf(old)).toStrictEqual([{ value: "31400.00", state: "held" }]);
+  });
+});
+
+// The learner's D12, the answer to Q1 (c): a replacement never runs at once, on the database too.
+describe("step 41b's decision D12: a replacement never runs at once, on the database", () => {
+  it("step 41b's decision D12: a draft that needs no one, replacing a waiting run, waits READY and drafts nothing; the same key replays READY; its release drafts it", async () => {
+    const old = await waitingRun();
+    const key = `k-41b-d12-${randomUUID()}`;
+    const sent = { idempotency_key: key, supersedes: old };
+    const answer = await asIntake("payment.create", draftOf("INV-9411"), sent);
+    expect(answer).toMatchObject({ outcome: "READY" });
+    expect((await proposals.get("org_456", idOf(uriOf(answer))))!).toMatchObject({
+      state: "READY",
+      mode: "execute",
+    });
+    const { rows } = await tryThenRollBack(
+      pool,
+      "SELECT count(*)::int AS n FROM app.payments WHERE invoice_id = 'INV-9411'",
+      "org_456",
+    );
+    expect(rows[0]?.["n"]).toBe(0);
+    const again = await asIntake("payment.create", draftOf("INV-9411"), sent);
+    expect(again).toMatchObject({ outcome: "READY", proposal: uriOf(answer) });
+    const released = await asIntake("proposal.execute", { proposal: uriOf(answer) });
+    expect(released).toMatchObject({ outcome: "COMMITTED" });
   });
 });

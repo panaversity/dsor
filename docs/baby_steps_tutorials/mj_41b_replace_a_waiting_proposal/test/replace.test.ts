@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { payloadHash } from "../src/canonical.ts";
-import type { Answer } from "../src/envelope.ts";
+import { Refusal, type Answer } from "../src/envelope.ts";
 import type { Invoice } from "../src/invoice.ts";
 import { money } from "../src/money.ts";
 import { handlersFor } from "../src/operations.ts";
@@ -494,12 +494,14 @@ describe("C4: the replacement, in one transaction", () => {
     expect(await w.reservations.used("org_456", "del_100", "USD")).toBe("40300.50");
   });
 
-  it("step 41b's decision D2: C4: a waiting run replaced by one draft that needs no one: the draft is made at once, and the run and its lines are CANCELLED", async () => {
+  // Changed by the learner's D12 (Q1, answer c): the draft waits READY, and only its release
+  //   drafts it.
+  it("step 41b's decision D2: C4: a waiting run replaced by one draft that needs no one: the run and its lines are CANCELLED, and the draft waits READY", async () => {
     const w = ruleWorld();
     const old = await waitingRun(w);
     const answer = await w.ask(replacing(AGENT, old), "payment.create", draftOf("INV-1002"));
-    expect(answer).toMatchObject({ outcome: "COMMITTED" });
-    expect(w.drafted.map((p) => p.invoice_id)).toStrictEqual(["INV-1002"]);
+    expect(answer).toMatchObject({ outcome: "READY" });
+    expect(w.drafted).toStrictEqual([]);
     expect((await proposalAt(w, old))!.state).toBe("CANCELLED");
     expect((await linesAt(w, old)).map((l) => l.state)).toStrictEqual(Array(3).fill("CANCELLED"));
     expect(await w.reservations.used("org_456", "del_100", "USD")).toBe("8900.50");
@@ -611,17 +613,21 @@ describe("C5: a refused replacement changes nothing of the old proposal", () => 
 describe("C5: an accident keeps nothing of a replacement", () => {
   // Memory has no transaction, so its claim undoes what an accident left, as the database's
   //   rollback does: the old run's moves, and its booking, given back a moment before.
-  it("step 41b's decision D6: C5: an accident in the new draft's work leaves the old run waiting, with its lines and its booking", async () => {
-    const broken = {
-      ...handlersFor(),
-      "payment.create": async (): Promise<never> => {
-        throw new Error("a bug in the company's code");
-      },
-    };
+  // Changed by the learner's D12: no company code runs in the call that replaces, so the accident
+  //   is the rulebook's store, which line ⑩ reads after the old run was cancelled.
+  it("step 41b's decision D6: C5: an accident after the old run was cancelled leaves it waiting, with its lines and its booking", async () => {
+    const broken = { on: false };
     const u = undefined;
-    const w = ruleWorld(u, u, u, u, u, u, u, u, u, broken);
+    const w = ruleWorld(u, u, u, u, (rules) => ({
+      ...rules,
+      inForce: async (tenant: string, operation?: string) => {
+        if (broken.on) throw new Error("the rulebook's store broke");
+        return rules.inForce(tenant, operation);
+      },
+    }));
     const old = await waitingRun(w);
     const before = await linesAt(w, old);
+    broken.on = true;
     const answer = await w.ask(replacing(AGENT, old), "payment.create", draftOf("INV-1009"));
     expect(answer).toMatchObject({ code: "INTERNAL_ERROR" });
     expect((await proposalAt(w, old))!.state).toBe("PENDING_APPROVAL");
@@ -658,7 +664,8 @@ describe("C6: the booking given back, used once", () => {
       w.ask(replacing(AGENT, old), "payment.run", linesOf("INV-1006")),
     ]);
     const said = both.map(saidOf).sort();
-    expect(said).toStrictEqual(["COMMITTED", "CONFLICT"]);
+    // Changed by the learner's D12: the winner waits READY.
+    expect(said).toStrictEqual(["CONFLICT", "READY"]);
     const lost = both.find((a) => "code" in a)!;
     expect(lost).toMatchObject({
       message: `proposal ${old.split("/").at(-1)} is CANCELLED, and only a READY, PENDING_APPROVAL, or APPROVED proposal is replaced`,
@@ -937,5 +944,106 @@ describe("step 41b's review, L5: the smaller gaps", () => {
     const old = await planted(w, "READY", { operation: "control.suspend@1" });
     const answer = await w.ask(dryReplacing(AGENT, old), "payment.create", draftOf("INV-1002"));
     expect(answer).toMatchObject({ code: "CONFLICT" });
+  });
+});
+
+// The learner's D12, the answer to Q1 (c), 2026-10-23: a command that replaces never runs at once.
+//   It makes its proposal and stops: READY, or waiting for its approval. The company's code runs
+//   only when it is released. So no code can refuse in the call that replaces, and a refused
+//   replacement is always a refusal of its checks, which changes nothing (D6). Found by step 41b's
+//   review, H1.
+describe("step 41b's decision D12: a replacement never runs at once", () => {
+  it("step 41b's decision D12: the company's code is not called in the call that replaces; the release runs it", async () => {
+    const calls: string[] = [];
+    const shipped = handlersFor();
+    const counting = {
+      ...shipped,
+      "payment.create": async (
+        input: unknown,
+        company: Parameters<NonNullable<(typeof shipped)["payment.create"]>>[1],
+      ) => {
+        calls.push((input as { invoice: string }).invoice.split("/").at(-1)!);
+        return shipped["payment.create"]!(input, company);
+      },
+    };
+    const u = undefined;
+    const w = ruleWorld(u, u, u, u, u, u, u, u, u, counting);
+    const old = await waitingDraft(w);
+    const answer = await w.ask(replacing(AGENT, old), "payment.create", draftOf("INV-1002"));
+    expect(answer).toMatchObject({ outcome: "READY" });
+    expect(calls).toStrictEqual([]);
+    expect((await proposalAt(w, proposalOf(answer)))!).toMatchObject({
+      state: "READY",
+      mode: "execute",
+    });
+    const released = await w.ask(keyed(AGENT), "proposal.execute", {
+      proposal: proposalOf(answer),
+    });
+    expect(released).toMatchObject({ outcome: "COMMITTED" });
+    expect(calls).toStrictEqual(["INV-1002"]);
+    expect(w.drafted.map((p) => p.invoice_id)).toStrictEqual(["INV-1002"]);
+  });
+
+  it("step 41b's decision D12: H1: the code refuses at the release, a call of its own: the new proposal ends FAILED, and the replacement made a moment before stands", async () => {
+    const refusing = {
+      ...handlersFor(),
+      "payment.create": async (): Promise<never> => {
+        throw new Refusal("CONFLICT", "the accounts system refuses INV-1002 now", "internal");
+      },
+    };
+    const u = undefined;
+    const w = ruleWorld(u, u, u, u, u, u, u, u, u, refusing);
+    const old = await waitingRun(w);
+    const answer = await w.ask(replacing(AGENT, old), "payment.create", draftOf("INV-1002"));
+    expect(answer).toMatchObject({ outcome: "READY" });
+    expect((await proposalAt(w, old))!.state).toBe("CANCELLED");
+    const released = await w.ask(keyed(AGENT), "proposal.execute", {
+      proposal: proposalOf(answer),
+    });
+    expect(released).toMatchObject({ code: "CONFLICT" });
+    expect((await proposalAt(w, proposalOf(answer)))!.state).toBe("FAILED");
+  });
+
+  it("step 41b's decision D12: a run that needs no one, replacing a waiting run, waits READY with its lines, and its release drafts every line", async () => {
+    const w = ruleWorld();
+    const old = await waitingRun(w);
+    const answer = await w.ask(
+      replacing(AGENT, old),
+      "payment.run",
+      linesOf("INV-1002", "INV-1006"),
+    );
+    expect(answer).toMatchObject({ outcome: "READY" });
+    const made = proposalOf(answer);
+    expect((await linesAt(w, made)).map((l) => l.state)).toStrictEqual(["READY", "READY"]);
+    expect(w.drafted).toStrictEqual([]);
+    const released = await w.ask(keyed(AGENT), "proposal.execute", { proposal: made });
+    expect(released).toMatchObject({ outcome: "COMMITTED" });
+    expect(w.drafted.map((p) => p.invoice_id).sort()).toStrictEqual(["INV-1002", "INV-1006"]);
+  });
+
+  it("step 41b's decision D12: a replacement that needs the CFO waits for her, as before", async () => {
+    const w = ruleWorld();
+    const old = await waitingDraft(w);
+    const answer = await w.ask(replacing(AGENT, old), "payment.create", draftOf("INV-1008"));
+    expect(answer).toMatchObject({ outcome: "PENDING_APPROVAL" });
+  });
+
+  it("step 41b's decision D12: a dry run of a replacement that needs no one says ALLOW, as a call in propose_only mode's does", async () => {
+    const w = ruleWorld();
+    const old = await waitingRun(w);
+    const answer = await w.ask(dryReplacing(AGENT, old), "payment.create", draftOf("INV-1002"));
+    expect(answer).toMatchObject({ outcome: "VALIDATED", decision: "ALLOW" });
+  });
+});
+
+describe("step 41b's decision D12: the same key, sent again", () => {
+  it("step 41b's decision D12: a replacement's key sent again replays READY, and nothing is drafted", async () => {
+    const w = ruleWorld();
+    const old = await waitingRun(w);
+    const sent = replacing(AGENT, old, "k-d12-replay");
+    const first = await w.ask(sent, "payment.create", draftOf("INV-1002"));
+    const again = await w.ask(sent, "payment.create", draftOf("INV-1002"));
+    expect(again).toMatchObject({ outcome: "READY", proposal: proposalOf(first) });
+    expect(w.drafted).toStrictEqual([]);
   });
 });

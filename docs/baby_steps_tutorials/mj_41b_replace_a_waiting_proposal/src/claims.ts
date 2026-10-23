@@ -530,7 +530,8 @@ export function memoryClaims(
           return { pending: structuredClone(opened.pending), proposal };
         }
         // In propose_only mode the proposal waits READY, and the work never runs.
-        if (mode === "propose_only") {
+        // NEW IN STEP 41b: and for a replacement, in either mode (step 41b's README, decision D12).
+        if (mode === "propose_only" || supersedes !== undefined) {
           if (proposal === undefined) throw new Error("a propose_only claim made no proposal");
           return { ready: true, proposal };
         }

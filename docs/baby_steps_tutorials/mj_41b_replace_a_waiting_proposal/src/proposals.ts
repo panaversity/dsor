@@ -902,7 +902,10 @@ export async function openProposal(
   }
   // A proposal made in propose_only mode waits here. Nothing moves it on until
   // proposal.execute, which step 31 builds (§26.2, READY; step 23's README, decision 1).
-  if (draft.mode === "propose_only") return { proposal: proposalUri(tenant, id) };
+  // NEW IN STEP 41b: and so does a replacement, in either mode (step 41b's README, decision D12).
+  if (draft.mode === "propose_only" || draft.supersedes !== undefined) {
+    return { proposal: proposalUri(tenant, id) };
+  }
   await moveOrFail(store, tenant, id, "READY", "EXECUTING", {
     mover: dsor,
     cause: "execute mode: the work starts",
