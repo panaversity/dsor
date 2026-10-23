@@ -218,10 +218,11 @@ export type ProposalStore = {
   // And the lock of one operation over one record, held alone until the claim
   //   ends, so two attempts over one invoice look one after the other (step 32's README, D7).
   holdOver: (tenant: string, operation: string, uri: string) => Promise<void>;
-  // NEW IN STEP 41b: and the company's ending lock, which every mover of a waiting proposal takes
-  //   before it moves one or gives its booking back: a tear-up, the sweep, an approval, and now a
-  //   replacement. Held alone until the claim ends (step 25c's README, decision D13; step 41b's
-  //   README, "Found while checking the design").
+  // NEW IN STEP 41b: and the company's ending lock, which a tear-up, the sweep, an approval, and now
+  //   a replacement take before they move a waiting proposal or give its booking back. A release
+  //   takes none: its move to EXECUTING, and a replacement's move to CANCELLED, each check the state
+  //   they read, so of the two, one moves it and the other hears CONFLICT. Held alone until the claim
+  //   ends (step 25c's README, decision D13; step 41b's review, M2).
   holdEnding: (tenant: string) => Promise<void>;
   // NEW IN STEP 41b: and the address of the proposal that replaced this one, or none. A refused
   //   replacement ended DENIED, and replaced nothing, so it is never the answer (step 41b's README,

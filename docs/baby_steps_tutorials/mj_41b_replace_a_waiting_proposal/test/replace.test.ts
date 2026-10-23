@@ -11,7 +11,7 @@ import { money } from "../src/money.ts";
 import { handlersFor } from "../src/operations.ts";
 import { proposalUri, urisIn, type Requester, type State } from "../src/proposals.ts";
 import type { RequestEnvelope } from "../src/request.ts";
-import { AGENT, CFO, FIRM_IN_456, keyed, SUPERVISOR } from "./helpers.ts";
+import { AGENT, CFO, FIRM_IN_456, keyed, shippedRoles, SUPERVISOR } from "./helpers.ts";
 import { ruleWorld, type RuleWorld } from "./rule-world.ts";
 
 /** One draft's input, of one of org_456's bills, decided on version 1. */
@@ -53,6 +53,8 @@ describe("C1: supersedes travels in the request envelope", () => {
     ["an invoice's address", "dsor://org_456/invoice/INV-1008"],
     ["a proposal's address with an id of another form", "dsor://org_456/proposal/PAY-901"],
     ["an empty text", ""],
+    // Found by step 41b's review, L2: an invoice's address whose id has a proposal's form.
+    ["an invoice's address with a proposal's id", "dsor://org_456/invoice/prop_00000000-0000-4000-8000-000000000000"],
   ])(
     "step 41b's decision D9: C1: a supersedes that is %s is refused at line ①, and no proposal is made",
     async (_what, sent) => {
@@ -619,18 +621,20 @@ describe("C6: the booking given back, used once", () => {
   it("step 41b's decision D7: C6: two replacements of one run at once: one wins, the other hears CONFLICT, and the day holds one booking", async () => {
     const w = ruleWorld();
     const old = await waitingRun(w);
+    // Changed by step 41b's review, M3: the two new runs share no bill, so only the lock keeps
+    //   them apart, and the loser's words say it found the run CANCELLED, not that it moved.
     const both = await Promise.all([
-      w.ask(replacing(AGENT, old), "payment.run", RUN_A2),
-      w.ask(replacing(AGENT, old), "payment.run", linesOf("INV-1008", "INV-1006")),
+      w.ask(replacing(AGENT, old), "payment.run", linesOf("INV-1002")),
+      w.ask(replacing(AGENT, old), "payment.run", linesOf("INV-1006")),
     ]);
     const said = both.map(saidOf).sort();
-    expect(said).toStrictEqual(["CONFLICT", "PENDING_APPROVAL"]);
+    expect(said).toStrictEqual(["COMMITTED", "CONFLICT"]);
     const lost = both.find((a) => "code" in a)!;
     expect(lost).toMatchObject({
       message: `proposal ${old.split("/").at(-1)} is CANCELLED, and only a READY, PENDING_APPROVAL, or APPROVED proposal is replaced`,
     });
-    const held = (await w.reservations.all()).filter((r) => r.state === "held");
-    expect(held).toHaveLength(1);
+    const counted = (await w.reservations.all()).filter((r) => r.state !== "released");
+    expect(counted).toHaveLength(1);
   });
 });
 
@@ -764,4 +768,99 @@ describe("C9: a dry run of a replacement answers as the real call would", () => 
       expect((await proposalAt(w, old))!.state).toBe(state);
     },
   );
+});
+
+// Found by step 41b's review, M5: the person's side of D5 had no test either way.
+describe("step 41b's review, M5: a person replaces her own direct request only", () => {
+  it("step 41b's decision D5: M5: user_123 replaces her own direct draft", async () => {
+    const w = ruleWorld();
+    const old = proposalOf(await w.draft("INV-1008", SUPERVISOR));
+    const answer = await w.ask(replacing(SUPERVISOR, old), "payment.create", draftOf("INV-1008"));
+    expect(answer).toMatchObject({ outcome: "PENDING_APPROVAL" });
+    expect((await proposalAt(w, old))!.state).toBe("CANCELLED");
+  });
+
+  it("step 41b's decision D5: M5: another person who may draft cannot replace user_123's direct draft", async () => {
+    const roles = JSON.parse(shippedRoles.text) as Record<string, string[]>;
+    const table = { ...shippedRoles, text: JSON.stringify({ ...roles, CFO: [...roles["CFO"]!, "payment:create"] }) };
+    const u = undefined;
+    const w = ruleWorld(u, u, u, u, u, table);
+    const old = proposalOf(await w.draft("INV-1008", SUPERVISOR));
+    const answer = await w.ask(replacing(CFO, old), "payment.create", draftOf("INV-1002"));
+    expect(answer).toMatchObject({
+      code: "AUTHORIZATION_DENIED",
+      message: `cfo_100 may not replace proposal ${old.split("/").at(-1)}: cfo_100 did not ask for it`,
+    });
+    expect((await proposalAt(w, old))!.state).toBe("PENDING_APPROVAL");
+  });
+});
+
+// Found by step 41b's review, L3: the database's test of the tear-up's order passed the old order
+//   one time in 18. Here a run's id comes after its lines' ids, always.
+describe("step 41b's review, L3: a tear-up cancels a run before its lines", () => {
+  it("step 41b's decision D11: L3: the run's move to CANCELLED is recorded before each line's, though its id comes after theirs", async () => {
+    const w = ruleWorld();
+    const run = "prop_ffffffff-ffff-4fff-bfff-ffffffffffff";
+    const lines = ["prop_00000000-0000-4000-8000-000000000001", "prop_00000000-0000-4000-8000-000000000002"];
+    const by = {
+      mover: { mode: "direct" as const, subject: "dsor", actor_chain: [], subject_authority: agentAsker().subject_authority },
+      cause: "planted by the test",
+      correlation: { request_id: `req_${randomUUID()}` },
+    };
+    const base = {
+      operation: "payment.create@1",
+      mode: "execute" as const,
+      requester: agentAsker(),
+    };
+    const runPayload = linesOf("INV-1002", "INV-1006");
+    await w.proposals.create("org_456", run, {
+      ...base,
+      operation: "payment.run@1",
+      payload: runPayload,
+      payload_hash: payloadHash(runPayload),
+      resources: urisIn(runPayload),
+      idempotency_key: "k-planted-run",
+      manifest_hash: payloadHash(runPayload.lines),
+    }, by, "P7D");
+    for (const [index, id] of lines.entries()) {
+      const line = runPayload.lines[index]!;
+      await w.proposals.create("org_456", id, {
+        ...base,
+        payload: line,
+        payload_hash: payloadHash(line),
+        resources: urisIn(line),
+        idempotency_key: `k-planted-line-${index}`,
+        run: proposalUri("org_456", run),
+      }, by, "P7D");
+      expect(await w.proposals.move("org_456", id, "PROPOSED", "READY", by)).toBe(true);
+    }
+    const totals = { totals: [], vendor_totals: [] };
+    expect(await w.proposals.move("org_456", run, "PROPOSED", "READY", by, undefined, totals)).toBe(true);
+    const tearUp = { slip: "dsor://org_456/delegation/del_100", reason: "the agent's run is wrong" };
+    expect(await w.ask(keyed(SUPERVISOR), "delegation.revoke", tearUp)).toMatchObject({ outcome: "COMMITTED" });
+    const cancelled = (await w.proposals.transitions())
+      .filter((t) => t.result === "CANCELLED")
+      .map((t) => t.resources[0]!.split("/").at(-1));
+    expect(cancelled).toStrictEqual([run, ...lines]);
+  });
+});
+
+// Found by step 41b's review, L5: a few branches had no test.
+describe("step 41b's review, L5: the smaller gaps", () => {
+  it("step 41b's decision D6: L5: a refused replacement run's lines each name the line that refused", async () => {
+    const w = ruleWorld();
+    const old = await waitingRun(w);
+    w.vendors.find((v) => v.id === "VENDOR-31")!.status = "suspended";
+    const answer = await w.ask(replacing(AGENT, old), "payment.run", linesOf("INV-1002", "INV-1006"));
+    expect((await linesAt(w, proposalOf(answer))).map((l) => l.cause)).toStrictEqual(
+      Array(2).fill("line 2 of its run was refused: CONFLICT"),
+    );
+  });
+
+  it("DSOR-OPR-05: L5: a dry run that would replace DSoR's own work is refused, as the real call is", async () => {
+    const w = ruleWorld();
+    const old = await planted(w, "READY", { operation: "control.suspend@1" });
+    const answer = await w.ask(dryReplacing(AGENT, old), "payment.create", draftOf("INV-1002"));
+    expect(answer).toMatchObject({ code: "CONFLICT" });
+  });
 });

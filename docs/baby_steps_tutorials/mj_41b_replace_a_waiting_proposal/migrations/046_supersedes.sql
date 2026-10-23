@@ -25,6 +25,9 @@ GRANT INSERT (supersedes) ON dsor.proposals TO dsor_runtime;
 -- A claim keeps what its call replaced, beside the fingerprint and the mode. Every claim kept before
 --   this migration replaced nothing, so the column may be empty.
 ALTER TABLE dsor.idempotency ADD COLUMN supersedes text;
+-- And, as on a proposal, an address of the claim's own company. Found by step 41b's review, L4.
+ALTER TABLE dsor.idempotency ADD CONSTRAINT idempotency_supersedes_of_company
+  CHECK (supersedes IS NULL OR supersedes ~ ('^dsor://' || tenant_id || '/proposal/prop_[0-9a-f-]{36}$'));
 GRANT INSERT (supersedes) ON dsor.idempotency TO dsor_runtime;
 
 -- The trigger's picture, as migration 045 wrote it, with supersedes among the columns that never

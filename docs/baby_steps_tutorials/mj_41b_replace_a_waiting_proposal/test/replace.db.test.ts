@@ -255,9 +255,11 @@ describe("C4 to C6: the replacement, in one transaction, on the database", () =>
 
   it("step 41b's decision D7: C6: two replacements of one run at the same moment: one wins, the other hears CONFLICT, and the day holds one booking", async () => {
     const old = await waitingRun();
+    // Changed by step 41b's review, M3: the two new runs share no bill, so only the company's ending
+    //   lock keeps them apart, and the loser's words say it found the run CANCELLED.
     const answers = await Promise.all([
-      asIntake("payment.run", linesOf("INV-9411", "INV-9412"), { supersedes: old }),
-      asIntake("payment.run", linesOf("INV-9412", "INV-9413"), { supersedes: old }),
+      asIntake("payment.run", linesOf("INV-9414"), { supersedes: old }),
+      asIntake("payment.run", linesOf("INV-9415"), { supersedes: old }),
     ]);
     const said = answers.map((a) => ("code" in a ? a.code : (a as { outcome: string }).outcome));
     expect(said.sort()).toStrictEqual(["CONFLICT", "PENDING_APPROVAL"]);
@@ -274,6 +276,24 @@ describe("C4 to C6: the replacement, in one transaction, on the database", () =>
 });
 
 describe("C7 and C9: the refusal tells, and the dry run, on the database", () => {
+  // Found by step 41b's review, M3. user_123, whose clearance shows DSoR's words, as the agent's
+  //   does not: the loser found the old draft CANCELLED, because the lock made it wait for the winner.
+  it("step 41b's decision D7: M3: two replacements of user_123's draft at once, of bills they do not share: the loser found it CANCELLED", async () => {
+    const asUser = (input: unknown, extra: Partial<RequestEnvelope> = {}): Promise<Answer> =>
+      call(registry, log, { ...keyed(SUPERVISOR), ...extra } as RequestEnvelope, "payment.create", input);
+    const old = uriOf(await asUser(draftOf("INV-9412")));
+    const answers = await Promise.all([
+      asUser(draftOf("INV-9414"), { supersedes: old }),
+      asUser(draftOf("INV-9415"), { supersedes: old }),
+    ]);
+    const lost = answers.filter((a) => "code" in a);
+    expect(lost).toHaveLength(1);
+    expect(lost[0]).toMatchObject({
+      code: "CONFLICT",
+      message: `proposal ${idOf(old)} is CANCELLED, and only a READY, PENDING_APPROVAL, or APPROVED proposal is replaced`,
+    });
+  });
+
   it("step 41b's decision D8: C7: cfo_100 approves the replaced run: CONFLICT, naming the new run", async () => {
     const old = await waitingRun();
     const run = (await proposals.get("org_456", idOf(old)))!;
@@ -289,12 +309,25 @@ describe("C7 and C9: the refusal tells, and the dry run, on the database", () =>
     });
   });
 
+  // Changed by step 41b's review, M4: the dry run fits only once the old booking counts as given
+  //   back, so the database's own subtraction is what passes it.
   it("DSOR-OPR-05: C9: a dry run of a replacement counts the old booking as given back, and changes nothing", async () => {
-    const old = await waitingRun();
+    const answerOld = await asIntake(
+      "payment.run",
+      linesOf("INV-9411", "INV-9413", "INV-9414", "INV-9415", "INV-9416"),
+    );
+    expect(answerOld).toMatchObject({ outcome: "PENDING_APPROVAL" });
+    const old = uriOf(answerOld);
+    expect(await usedToday()).toBe("144540.50");
+    const dry = { ...INTAKE, mode: "validate_only" } as RequestEnvelope;
+    const plain = await withPlanted("tok_intake", intake, () =>
+      call(registry, log, dry, "payment.run", linesOf("INV-9417", "INV-9418")),
+    );
+    expect(plain).toMatchObject({ code: "LIMIT_EXCEEDED" });
     const used = await usedToday();
     const sent = { ...INTAKE, mode: "validate_only", supersedes: old } as RequestEnvelope;
     const answer = await withPlanted("tok_intake", intake, () =>
-      call(registry, log, sent, "payment.run", linesOf("INV-9411", "INV-9412")),
+      call(registry, log, sent, "payment.run", linesOf("INV-9417", "INV-9418")),
     );
     expect(answer).toMatchObject({ outcome: "VALIDATED", decision: "REQUIRE_APPROVAL" });
     expect((await proposals.get("org_456", idOf(old)))!.state).toBe("PENDING_APPROVAL");
@@ -342,5 +375,128 @@ describe("C8: a line moves to CANCELLED only with its run, on the database", () 
       const states = await statesOf(run);
       expect(states).toStrictEqual(Array(states.length).fill("CANCELLED"));
     }
+  });
+});
+
+// Found by step 41b's review, M1: a replacement of a single draft gave back the old booking, which
+//   locks the day's total, before it took the new bill's lock. A plain draft of the same bill, which
+//   took the bill's lock first and then waited for the day's total, waited for it in turn, and
+//   PostgreSQL ended one of the two as a deadlock: INTERNAL_ERROR.
+describe("step 41b's review, M1 and M2: a replacement at the same moment as other calls", () => {
+  it("step 41b's decision D7: M1: a replacement and a plain draft of the same bill at once, thirty times: never an accident", { timeout: 180_000 }, async () => {
+    const said: string[] = [];
+    for (let round = 0; round < 30; round++) {
+      ownerAttempts();
+      ownerLimits("add");
+      const old = uriOf(await asIntake("payment.create", draftOf("INV-9414")));
+      const answers = await Promise.all([
+        asIntake("payment.create", draftOf("INV-9415"), { supersedes: old }),
+        asIntake("payment.create", draftOf("INV-9415")),
+      ]);
+      for (const answer of answers) {
+        said.push("code" in answer ? answer.code : (answer as { outcome: string }).outcome);
+      }
+    }
+    expect(said).not.toContain("INTERNAL_ERROR");
+    expect(said.filter((one) => one === "PENDING_APPROVAL")).toHaveLength(30);
+  });
+
+  // Found by step 41b's review, M2: a release takes no ending lock, so only the move's own check of
+  //   the state keeps a release and a replacement of one approved proposal apart.
+  it("step 41b's decision D6: M2: a release and a replacement of one approved draft at once, eight times: never a payment running with its booking given back", { timeout: 180_000 }, async () => {
+    for (let round = 0; round < 8; round++) {
+      ownerAttempts();
+      ownerLimits("add");
+      const old = uriOf(await asIntake("payment.create", draftOf("INV-9412")));
+      const kept = (await proposals.get("org_456", idOf(old)))!;
+      const approval = { proposal: old, payload_hash: kept.payload_hash };
+      expect(await call(registry, log, keyed(CFO), "proposal.approve", approval)).toMatchObject({
+        data: { state: "APPROVED" },
+      });
+      const answers = await Promise.all([
+        asIntake("proposal.execute", { proposal: old }),
+        asIntake("payment.create", draftOf("INV-9411"), { supersedes: old }),
+      ]);
+      const said = answers.map((a) => ("code" in a ? a.code : (a as { outcome: string }).outcome));
+      expect(said).not.toContain("INTERNAL_ERROR");
+      const state = (await proposals.get("org_456", idOf(old)))!.state;
+      const booking = await bookingOf(old);
+      if (state === "COMMITTED") expect(booking).toMatchObject([{ state: "committed" }]);
+      else expect(state).toBe("CANCELLED");
+      // Exactly one of the two went through.
+      expect(said.filter((one) => one === "COMMITTED")).toHaveLength(1);
+    }
+  });
+});
+
+// Found by step 41b's review, L4 and L5: rules and paths with no test on the database.
+describe("step 41b's review, L4 and L5: the smaller gaps, on the database", () => {
+  it("DSOR-APR-12: L4: a line never names what it replaces, a claim's supersedes names this company's proposal, and dsor_runtime cannot change it", async () => {
+    const old = await waitingRun();
+    const [line] = await proposals.lines("org_456", old);
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT set_config('dsor.tenant_id', 'org_456', true)");
+      await client.query("SAVEPOINT one");
+      await expect(
+        client.query(
+          `INSERT INTO dsor.proposals (tenant_id, id, operation, mode, state, payload, payload_hash,
+                                       resources, requester, idempotency_key, expires_at, run, supersedes)
+           SELECT tenant_id, 'prop_' || gen_random_uuid(), operation, mode, 'PROPOSED', payload,
+                  payload_hash, resources, requester, 'line-supersedes', expires_at, run, $2
+             FROM dsor.proposals WHERE id = $1`,
+          [line!.id, old],
+        ),
+      ).rejects.toThrow(/a line is made only with its run/);
+      // The trigger refuses first, so the CHECK proposals_line_supersedes_nothing cannot be reached,
+      //   as step 41's review, L4, found for the run's own CHECKs.
+      await client.query("ROLLBACK TO SAVEPOINT one");
+      await expect(
+        client.query(
+          `INSERT INTO dsor.idempotency (tenant_id, principal, operation, idempotency_key,
+                                         payload_hash, mode, request_id, supersedes)
+           VALUES ('org_456', 'intake-fte', 'payment.create', 'k-other-company', $1, 'execute',
+                   'req_x', 'dsor://org_789/proposal/prop_00000000-0000-4000-8000-000000000041')`,
+          [`sha256:${"0".repeat(64)}`],
+        ),
+      ).rejects.toThrow(/idempotency_supersedes_of_company/);
+    } finally {
+      await client.query("ROLLBACK");
+      client.release();
+    }
+    await expect(
+      tryThenRollBack(pool, "UPDATE dsor.idempotency SET supersedes = NULL", "org_456"),
+    ).rejects.toThrow(/permission denied/);
+  });
+
+  it("step 41b's decision D8: L5: on the database, a release of a replaced approved draft names the new one", async () => {
+    const old = uriOf(await asIntake("payment.create", draftOf("INV-9412")));
+    const kept = (await proposals.get("org_456", idOf(old)))!;
+    await call(registry, log, keyed(CFO), "proposal.approve", {
+      proposal: old,
+      payload_hash: kept.payload_hash,
+    });
+    const made = uriOf(await asIntake("payment.create", draftOf("INV-9412"), { supersedes: old }));
+    // user_123 releases, a person who holds payment:create, whose clearance shows DSoR's words.
+    const answer = await call(registry, log, keyed(SUPERVISOR), "proposal.execute", { proposal: old });
+    expect(answer).toMatchObject({
+      code: "CONFLICT",
+      message: `proposal ${idOf(old)} was replaced by proposal ${made}, so it is not released`,
+    });
+  });
+
+  it("step 41b's decision D6: L5: on the database, a refused single-draft replacement leaves the old draft waiting with its booking", async () => {
+    const old = uriOf(await asIntake("payment.create", draftOf("INV-9412")));
+    ownerInvoices("vendor", "VENDOR-31", "suspended");
+    let answer: Answer;
+    try {
+      answer = await asIntake("payment.create", draftOf("INV-9413"), { supersedes: old });
+    } finally {
+      ownerInvoices("vendor", "VENDOR-31", "approved");
+    }
+    expect(answer).toMatchObject({ code: "CONFLICT" });
+    expect((await proposals.get("org_456", idOf(old)))!.state).toBe("PENDING_APPROVAL");
+    expect(await bookingOf(old)).toStrictEqual([{ value: "31400.00", state: "held" }]);
   });
 });

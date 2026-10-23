@@ -503,8 +503,10 @@ export async function call(
     // NEW IN STEP 41b: only a new request of the company's code replaces a proposal. A release
     //   makes no new request, and DSoR's own work is never released (step 31's README, D14), so
     //   neither takes supersedes (step 41b's README, "Found while checking the design").
+    // A release and DSoR's own work have no code of the company's, so this one test refuses both.
+    //   Found by step 41b's review, L1.
     const replaces = handler !== undefined || lineCode !== undefined;
-    if (supersedes !== undefined && (!replaces || releases(contract) || own !== undefined)) {
+    if (supersedes !== undefined && !replaces) {
       const why = `${JSON.stringify(contract.id)} makes no new request of the company's code, so it takes no supersedes`;
       throw new Refusal("VALIDATION_FAILED", why);
     }
@@ -2217,6 +2219,14 @@ export async function call(
                           if (mode === "execute") presealed(proposal);
                         }
                         return decided;
+                      }
+                      // NEW IN STEP 41b: a replacement takes the new bill's lock before it gives the
+                      //   old booking back, as a run takes its bills' locks first. A plain draft of
+                      //   the bill takes the bill's lock, then the day's total: taken the other way
+                      //   round, each waited for the other. Found by step 41b's review, M1.
+                      const exclusive = exclusiveOf(contract, copy);
+                      if (supersedes !== undefined && exclusive !== undefined) {
+                        await proposals.holdOver(tenant, contract.id, exclusive);
                       }
                       // Changed in step 41b: the proposal it replaces first, then its own checks,
                       //   as one part that a refusal undoes alone (decision D6).
