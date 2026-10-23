@@ -5,10 +5,15 @@
 //   DSOR-IDN-04b; step 43's README, claims C3 to C5, decisions D1, D5, D6, and D8).
 import type { Issuers } from "./issuers.ts";
 import { logins as STEP_05, type Principal } from "./principals.ts";
-import { checkedLogin, type KeySets } from "./tokens.ts";
+import { checkedLogin, type KeySets, type Unavailable } from "./tokens.ts";
 
-/** Who a token belongs to, or none. It never throws: line ① refuses a token with no caller. */
-export type LoginSource = { find: (token: unknown) => Promise<Principal | undefined> };
+/**
+ * Who a token belongs to, or none, or that it could not be checked now (R5). It never throws: line
+ * ① refuses a token with no caller, and answers an outage as one.
+ */
+export type LoginSource = {
+  find: (token: unknown) => Promise<Principal | Unavailable | undefined>;
+};
 
 // Step 05's table, as every world had it until now. The stories of pnpm start and the earlier
 //   tests keep it (decision D8).
@@ -53,17 +58,18 @@ export function realLogins(
   now: () => number = Date.now,
 ): LoginSource {
   return Object.freeze({
-    find: async (token: unknown): Promise<Principal | undefined> => {
+    find: async (token: unknown): Promise<Principal | Unavailable | undefined> => {
       const fake = typeof token === "string" ? STEP_05.get(token) : undefined;
       if (fake !== undefined) return fake.type === "human" ? undefined : fake;
       const login = await checkedLogin(token, issuers, keys, now);
-      if (login === undefined) return undefined;
+      if (login === undefined || "unavailable" in login) return login;
       let id: string | undefined;
       try {
         id = await links.principalOf(login.issuer, login.subject);
       } catch {
-        // A table that cannot be read gives no caller: fail closed (decision D7).
-        return undefined;
+        // A table that cannot be read is an outage, not a bad login: still no caller, and the
+        //   caller may try again (changed by the learner's R5).
+        return { unavailable: "DSoR's table of logins" };
       }
       const person = id === undefined ? undefined : PRINCIPALS.get(id);
       if (person === undefined || person.type !== "human") return undefined;

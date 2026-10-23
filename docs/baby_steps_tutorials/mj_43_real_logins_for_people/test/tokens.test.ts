@@ -183,13 +183,25 @@ describe("R4: each issuer's own algorithms and age", () => {
 });
 
 describe("C7: fail closed", () => {
-  it("Step 43, D7: when the issuer's keys cannot be fetched, a good token is refused", async () => {
+  it("Step 43, R5: when the issuer's keys cannot be fetched, the token is not refused as bad: the issuer is unavailable", async () => {
+    // Changed by the learner's R5: an outage is told apart from a bad token. Seen live on
+    //   2026-10-24, when a door that could not reach Neon told the real CFO to log in.
     const b = await startIssuer();
     const only = new Map([["org_456", [{ issuer: b.issuer, audience: b.audience, jwks: b.jwks }]]]);
     const token = await b.sign("ba_user_8c1f");
     b.down(true);
-    expect(await checkedLogin(token, only, remoteKeys())).toBeUndefined();
+    expect(await checkedLogin(token, only, remoteKeys())).toStrictEqual({ unavailable: b.issuer });
     await b.close();
+    expect(await checkedLogin(token, only, remoteKeys())).toStrictEqual({ unavailable: b.issuer });
+  });
+
+  it("Step 43, R5: a token whose key the issuer does not publish is still a bad token, not an outage", async () => {
+    const forged = await stranger.sign(
+      "ba_8c1f",
+      { iss: a.issuer, aud: a.audience },
+      { kid: "no-such-key" },
+    );
+    expect(await checkedLogin(forged, issuers, keys)).toBeUndefined();
   });
 
   it("Step 43, D2: a key the issuer no longer publishes refuses its tokens, once the keys are fetched again", async () => {

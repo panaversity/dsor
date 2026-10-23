@@ -163,7 +163,13 @@ export function whoIsCalling(request: RequestEnvelope): Principal {
 }
 
 /** The caller a login source found, or the refusal of a call with none (step 43's README, D7). */
-export function callerOf(found: Principal | undefined): Principal {
+export function callerOf(found: Principal | { unavailable: string } | undefined): Principal {
+  // Changed by the learner's R5: a login that could not be checked now is an outage, which the
+  //   caller may try again, never "log in first". It names the issuer, from DSoR's own list.
+  if (found !== undefined && "unavailable" in found) {
+    const why = `the sign-in service could not be checked now (${found.unavailable}): try again`;
+    throw new Refusal("CONNECTOR_UNAVAILABLE", why, "public");
+  }
   // One message for every case, so a refusal never tells a caller which tokens exist, nor why a
   //   signed token failed (step 43's README, decision D7).
   if (found === undefined) {

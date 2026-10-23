@@ -223,6 +223,48 @@ describe("C3: no login, nothing else (the review's L6 and L9)", () => {
   });
 });
 
+describe("R5: an outage is not a failed login", () => {
+  it("Step 43, R5: the issuer's keys cannot be fetched: CONNECTOR_UNAVAILABLE, retry safe_same_key, recorded with the cause", async () => {
+    const { w } = await realWorld();
+    const down = await startIssuer();
+    const issuers = new Map([
+      ["org_456", [{ issuer: down.issuer, audience: down.audience, jwks: down.jwks }]],
+    ]);
+    const links = memoryLinks([{ issuer: down.issuer, subject: "ba_8c1f", principal: "cfo_100" }]);
+    const registry = { ...w.registry, logins: realLogins(issuers, links, remoteKeys()) };
+    const token = await down.sign("ba_8c1f");
+    down.down(true);
+    const answer = await ask(registry, w, { token, tenant: "org_456" }, "invoice.get", INV_1008);
+    expect(answer).toMatchObject({ code: "CONNECTOR_UNAVAILABLE", retry: "safe_same_key" });
+    expect((answer as { message: string }).message).toBe(
+      `the sign-in service could not be checked now (${down.issuer}): try again`,
+    );
+    expect((await w.log.records()).at(-1)).toMatchObject({
+      authorization: "DENY",
+      result: "CONNECTOR_UNAVAILABLE",
+    });
+    await down.close();
+  });
+
+  it("Step 43, R5: DSoR's table of links cannot be read: CONNECTOR_UNAVAILABLE, not log in first", async () => {
+    const { w } = await realWorld();
+    const issuers = new Map([
+      ["org_456", [{ issuer: a.issuer, audience: a.audience, jwks: a.jwks }]],
+    ]);
+    const broken = {
+      principalOf: async (): Promise<string | undefined> => {
+        throw new Error("connection refused");
+      },
+    };
+    const registry = { ...w.registry, logins: realLogins(issuers, broken, remoteKeys()) };
+    const answer = await ask(registry, w, await as(a, "ba_8c1f"), "invoice.get", INV_1008);
+    expect(answer).toMatchObject({
+      code: "CONNECTOR_UNAVAILABLE",
+      message: "the sign-in service could not be checked now (DSoR's table of logins): try again",
+    });
+  });
+});
+
 describe("C6: the CFO approves under her own login", () => {
   it("DSOR-APR-05a: the agent's INV-1008 waits; tok_d4e8 cannot approve it; cfo_100's own token does", async () => {
     const { w, registry } = await realWorld();

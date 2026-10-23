@@ -3,11 +3,17 @@
 //   the algorithm, the audience, the time, and the subject. What it gives back is only who signed
 //   in, and where: never a role (DSOR-IDN-01, DSOR-IDN-04a, DSOR-IDN-04b; step 43's README, claims
 //   C2 and C7, decisions D2, D4, and D7).
-import { createRemoteJWKSet, decodeJwt, jwtVerify, type JWTVerifyGetKey } from "jose";
+import { createRemoteJWKSet, decodeJwt, errors, jwtVerify, type JWTVerifyGetKey } from "jose";
 import type { Issuer, Issuers } from "./issuers.ts";
 
 /** Who signed in: the issuer, as DSoR's list names it, and the subject, the user's id there. */
 export type Login = { issuer: string; subject: string };
+
+/**
+ * Changed by the learner's R5: a token DSoR could not check because the issuer's keys could not be
+ * fetched. Not a bad token: the caller hears an outage, and may try again.
+ */
+export type Unavailable = { unavailable: string };
 
 /** The published keys of an issuer, fetched and kept by their address. */
 export type KeySets = (jwks: string) => JWTVerifyGetKey;
@@ -49,7 +55,7 @@ export async function checkedLogin(
   issuers: Issuers,
   keys: KeySets,
   now: () => number = Date.now,
-): Promise<Login | undefined> {
+): Promise<Login | Unavailable | undefined> {
   if (typeof token !== "string" || token.length > LONGEST || !JWT.test(token)) return undefined;
   // The issuer the token names, read before any check, only to choose which issuer's keys to
   //   check it with. Nothing else is read from an unchecked token.
@@ -76,8 +82,10 @@ export async function checkedLogin(
     });
     if (typeof payload.sub !== "string" || payload.sub === "") return undefined;
     return { issuer: issuer.issuer, subject: payload.sub };
-  } catch {
-    return undefined;
+  } catch (error) {
+    // Keys that did not come, or came broken, are an outage of the issuer, not a bad token. A key
+    //   the issuer does not publish, a wrong signature, or a wrong claim is a bad token (R5).
+    return keysUnreachable(error) ? { unavailable: issuer.issuer } : undefined;
   }
 }
 
@@ -90,4 +98,12 @@ function issuerNamed(issuers: Issuers, named: unknown): Issuer | undefined {
     if (found !== undefined) return found;
   }
   return undefined;
+}
+
+// Whether jose failed to get the issuer's keys: a timeout, an answer that is not 200, keys that are
+//   not a key set, or no answer at all. Everything else jose throws is about the token (R5).
+function keysUnreachable(error: unknown): boolean {
+  if (error instanceof errors.JWKSTimeout || error instanceof errors.JWKSInvalid) return true;
+  if (!(error instanceof errors.JOSEError)) return true;
+  return error.code === "ERR_JOSE_GENERIC" && /JSON Web Key Set HTTP response/.test(error.message);
 }
