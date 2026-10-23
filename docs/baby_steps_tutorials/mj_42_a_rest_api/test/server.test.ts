@@ -107,6 +107,24 @@ describe("C5: the door has no answer of its own", () => {
     expect((await records(world)).length - before).toBe(2);
   });
 
+  it("Step 42, D5: broken JSON through the door is 422 for user_123 and 401 for nobody, each recorded", async () => {
+    // Found by break B8: a door that answered broken JSON with 400 itself left every test green.
+    const { world, base } = await doorOf();
+    const before = (await records(world)).length;
+    const keyed = { ...SUPERVISOR, "idempotency-key": "pay-broken-json" };
+    const supervisor = await send(base, "POST", "/payments", keyed, '{"invoice": ');
+    const nobody = await send(base, "POST", "/payments", NOBODY, '{"invoice": ');
+    expect([supervisor.status, supervisor.answer]).toMatchObject([
+      422,
+      { code: "VALIDATION_FAILED" },
+    ]);
+    expect([nobody.status, nobody.answer]).toMatchObject([
+      401,
+      { code: "AUTHENTICATION_REQUIRED" },
+    ]);
+    expect((await records(world)).length - before).toBe(2);
+  });
+
   it("Step 42, A2: the door keeps no more than 64 KiB of a body: exactly the cap is read, one byte more is not", async () => {
     const exactly = await readBody(Readable.from([Buffer.alloc(CAP, "a")]));
     expect(exactly).toStrictEqual({ text: "a".repeat(CAP) });
