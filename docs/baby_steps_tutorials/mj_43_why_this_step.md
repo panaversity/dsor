@@ -175,3 +175,29 @@ and #1 is proposed as a step of its own, 43b (people and their roles in a DSoR t
     unlink is recorded with who did it. A second admin's confirmation for powerful people (a two-person
     rule) is noted for step 43b. *Downside:* an admin with a second sign-in account could still
     accept; the log shows it afterwards.
+  - **R3. The owner creates invitations, never links (the learner's).** `pnpm link-login` is replaced
+    by `pnpm invite <principal>`, run as the database owner: it creates a recorded invitation and
+    prints its code; the first tenant admin accepts it with their own sign-in, as everyone else does.
+    One path in for every person. *Downside:* the owner can still start an invitation, by command and
+    always recorded.
+- **R4. Any provider: algorithms and maximum age per issuer (the learner's, #3).** `issuers.json` may
+  give each issuer `algorithms` (such as `["RS256"]`) and `max_age` (such as `"60m"`); left out, they
+  are Neon's, `["EdDSA"]` and `"15m"`. Start-up refuses a shared-secret algorithm (`HS…`), `none`, and
+  an age over 24 hours. So Okta, Entra ID, and Auth0 can sign people in, not only Neon. *Downside:* an
+  admin may set a weak but allowed value.
+- **R5. An outage is `CONNECTOR_UNAVAILABLE` (the learner's, #4).** When an issuer's keys cannot be
+  fetched, or DSoR's links cannot be read, the caller hears `CONNECTOR_UNAVAILABLE` (§28, retry
+  `safe_same_key`, the door's 503), and the log names the cause; not "log in first". A token whose key
+  the issuer does not publish is still a bad token. Seen live on 2026-10-24, when the door could not
+  reach Neon and told the real CFO to log in. *Downside:* the code's name says connector.
+- **R6. A sign-in service dedicated to DSoR, stated (the learner's, #5).** Each issuer must carry
+  `"dedicated_to_dsor": true`, or start-up refuses it: Managed Better Auth cannot set DSoR as a
+  token's audience, so a service shared with another app would make that app's tokens DSoR tokens. A
+  real DSoR audience comes with step 44's own Better Auth. *Downside:* a promise, not a proof.
+- **R7. Unlinking is the off-switch (the learner's, #6).** A leaver is banned in Neon and unlinked in
+  DSoR; DSoR looks the link up on every call, so it refuses the next one. The `banned` claim is not
+  read: Better Auth issues no token to a banned user, and the token from before the ban says
+  `banned: false`. Claude Code first proposed reading it, and corrected that. *Downside:* two places
+  to act; a forgotten unlink leaves up to 15 minutes.
+- **Proposed, not decided: step 43b**, people and their roles in a DSoR table, managed by an admin,
+  not written in `src/principals.ts`; with a second admin's confirmation for powerful people.
