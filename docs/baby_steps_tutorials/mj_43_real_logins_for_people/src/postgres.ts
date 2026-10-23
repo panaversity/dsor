@@ -57,6 +57,7 @@ import {
   type StaleMark,
 } from "./rulebook.ts";
 import type { Control } from "./controls.ts";
+import type { LinkStore } from "./logins.ts";
 import type { FoundSlip, SlipStore } from "./slips.ts";
 import { Refusal, type Requirement } from "./envelope.ts";
 import { approvalOf, stillOpen, type Approval, type Approving, type Offer } from "./approvals.ts";
@@ -2675,4 +2676,20 @@ function proposalOf(row: ProposalRow, moves: MoveRow[], approvals: string[]): Pr
       }),
     ),
   };
+}
+
+// NEW IN STEP 43: DSoR's table of links on PostgreSQL. Read at line ①, before any company is known,
+//   so the table has no company column and no row-level security; dsor_runtime may only read it
+//   (migration 047; step 43's README, claim C8, decision D5).
+/** The links of logins to principals, in dsor.logins. */
+export function createDbLinks(pool: pg.Pool): LinkStore {
+  return Object.freeze({
+    principalOf: async (issuer: string, subject: string): Promise<string | undefined> => {
+      const { rows } = await pool.query<{ principal_id: string }>(
+        "SELECT principal_id FROM dsor.logins WHERE issuer = $1 AND subject = $2",
+        [issuer, subject],
+      );
+      return rows[0]?.principal_id;
+    },
+  });
 }

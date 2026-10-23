@@ -345,6 +345,13 @@
         "CREATE TRIGGER event_alerts_stay BEFORE TRUNCATE ON dsor.event_alerts FOR EACH STATEMENT EXECUTE FUNCTION dsor.event_alerts_stay()"
       ]
     },
+    "dsor.logins": {
+      "kind": "shared-read",
+      "tenant": null,
+      "runtime": {
+        "table": ["SELECT"]
+      }
+    },
     "dsor.audit_heads": {
       "kind": "bookkeeping",
       "tenant": null,

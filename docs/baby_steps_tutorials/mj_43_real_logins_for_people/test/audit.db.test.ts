@@ -197,6 +197,10 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
       { object: "dsor.limit_counters INSERT", held: "tenant_id delegation day currency used" },
       { object: "dsor.limit_counters SELECT", held: "tenant_id delegation day currency used" },
       { object: "dsor.limit_counters UPDATE", held: "used" },
+      // Changed in step 43: the links of logins to principals, read only, every column (step 43's
+      //   README, decision D5).
+      { object: "dsor.logins", held: "SELECT" },
+      { object: "dsor.logins SELECT", held: "issuer subject principal_id linked_at" },
       // The notices to each rule's owner. Read every column, and add a notice through seven.
       // Nothing on at, which the database fills, and no change or removal (step 28b's README,
       // decision D5).

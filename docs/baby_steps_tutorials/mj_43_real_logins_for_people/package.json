@@ -8,6 +8,7 @@
   "scripts": {
     "start": "node src/main.ts",
     "serve": "node src/serve.ts",
+    "link-login": "node src/link-login.ts",
     "migrate": "node src/migrate.ts",
     "test": "vitest run",
     "test:db": "vitest run --config vitest.db.config.ts",

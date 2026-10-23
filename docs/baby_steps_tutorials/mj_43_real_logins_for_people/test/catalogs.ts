@@ -609,6 +609,22 @@ export function today(): Catalog {
         rules: [],
         triggers: [],
       },
+      // Changed in step 43: the links of logins to principals, which migration 047 makes. No company
+      //   column, so no row-level security; dsor_runtime reads every column and writes none, and
+      //   linked_at has a default (step 43's README, decision D5).
+      {
+        name: "dsor.logins",
+        kind: "table",
+        held: ["SELECT"],
+        columns: ["issuer", "subject", "principal_id", "linked_at"].map((name) => ({
+          name,
+          held: ["SELECT"],
+          filled: name === "linked_at",
+        })),
+        rowSecurity: { enabled: false, forced: false },
+        rules: [],
+        triggers: [],
+      },
       {
         name: "dsor.migrations",
         kind: "table",
