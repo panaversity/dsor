@@ -1095,3 +1095,19 @@ for a human. An agent may gather evidence; it does not settle these alone.
     company's code after the old one was cancelled, so the learner decided that a replacement never
     runs at once: it waits `READY` or for its approval. Should the specification require the
     atomicity, and say whether a superseding command may execute in the same call?
+162. **Should the REST binding name an HTTP status for each code, and the headers of the envelope?**
+    §39 says the mode, the idempotency key, the expected version, and the correlation identifiers
+    have "one canonical representation per interface, documented by the implementation", and names
+    no HTTP status and no header. Many HTTP clients repeat a 500, 502, 503, or 504 by themselves, so
+    a binding that maps `OUTCOME_UNKNOWN` to one of them invites a retry the retry class forbids.
+    Step 42's learner build gives a status that clients repeat only to a code whose retry class is
+    `safe_same_key` or `after_delay` (409 for `OUTCOME_UNKNOWN` and `RESOURCE_HELD`), and one header
+    for each field of the envelope. Should §39 name the status of each code, or at least forbid a
+    repeated status for `after_reconciliation` and `never`?
+163. **May an interface answer a request before the pipeline, below business authorization?**
+    DSOR-OPR-04b forbids an interface's own business authorization, and DSOR-EXE-02 records every
+    decision before the response. Some refusals happen below both: an HTTP server's 400 for a request
+    it cannot parse, 431 for headers that are too large, a cap on a body's size, and a check of the
+    `Host` header against DNS rebinding. Step 42's learner build hands everything it can to the
+    pipeline, so it is recorded, and Node keeps the 400 and the 431. Should §39 say which transport
+    refusals an interface may make by itself, and whether they leave evidence?

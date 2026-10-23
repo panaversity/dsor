@@ -2400,6 +2400,27 @@ of them real HTTP servers.
   cap and the envelope of a 404 or 413 that `call()` never saw; the status of each §28 code; how a
   test proves the door holds no check of its own.
 
+### Step 42, a REST API, built first at the learner's word (2026-10-23)
+
+After the understanding session, the learner said "go" and Phase A started: A1 (an id in the path
+only when there is no body) and A2 (the door has no answer of its own, revising D5) are the
+learner's. Then the learner said "build first and we discuss later", so A3 (`INTERNAL_ERROR` as 500)
+and A4 (how DSOR-OPR-04b is proved) are Claude Code's. Built in six pieces, red first: the routes,
+the translation, the statuses, the `node:http` server, the proof, and `pnpm serve` over the database.
+A real `curl` run on a scratch PostgreSQL: eight requests, eight decisions in `dsor.audit`.
+
+- **Breaks:** ten, run in a copy. B8 (the door answers broken JSON with 400) first left every test
+  green: the translation was tested, and no test sent broken JSON through the real server.
+- **The review:** one high finding, H1: one request (a target that is no URL, or a body cut off
+  mid-upload) stopped the whole program. M1: the first proof of DSOR-OPR-04b missed four door checks,
+  because its cases were one company, no mode, and few callers who may; the door now gets only a
+  function that asks `call()`, and a spy proves the request and the answer pass unchanged, 756 cases.
+  M2, M3, L1 to L10 fixed or recorded.
+- **For the learner:** Q1, the review's M4: the door does not check `Host`, so DNS rebinding lets a
+  web page call it with the public `tok_d4e8`; and the review of A3 and A4.
+- **Found along the way:** `fetch` will not send an `Expect` header; cfo_100 may not draft a
+  payment, so line ⑤ refused her before line ⑥ saw the JSON. Open questions 162 and 163.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.

@@ -167,17 +167,27 @@ option each time.
   start-up refuses any other address. Step 43 lifts this. *Downside:* cfo_100's real phone cannot
   try it yet.
 
-## Still to settle in the design (Phase A)
+## Settled in Phase A, then built (2026-10-23)
 
-Found while asking; not decided. Each follows from a decision above, or is the build's to propose.
+- **A1. An id goes in the path only when there is no body** (the learner's). Only
+  `GET /invoices/{id}` has one; it builds `dsor://<DSoR-Tenant>/invoice/<id>` with one fixed
+  template. Every command takes its whole input in its body.
+- **A2. The door has no answer of its own** (the learner's; it revises D5). An unknown route goes to
+  `call()` as `"<METHOD> <path>"`; a body over 64 KiB is cut off and `call()` gets a short text.
+- **A3. The status table, `INTERNAL_ERROR` as 500 (Claude Code's).** The learner sent "build first and
+  we discuss later" before answering.
+- **A4. How DSOR-OPR-04b is proved (Claude Code's).** A spy around `call()`: for 18 routes, six
+  callers, and seven envelopes, `call()` gets exactly the request and the door gives back exactly its
+  answer; and an import test.
 
-- **The 18 rows of D2.** The exact route of each operation, such as `POST /proposals/{id}/approve`
-  against `POST /approvals`, and how a path's `{id}` becomes the input's address.
-- **The 413 of D5.** The size cap, and the envelope a 404 or a 413 carries, since `call()` never
-  ran for it and nothing is recorded.
-- **D4's whole table.** The status of each code of §28, `BATCH_PARTIAL` included.
-- **How DSOR-OPR-04b is tested.** A test that the door holds no check of its own: for example, every
-  route, with each envelope, answers exactly what `call()` answers.
+Then step 42 was built, reviewed, and broken on purpose; see its README, "Break it" and "Think it
+through". The review's M4 is a question for the learner:
+
+**Q1. Should the door check the `Host` header?** A web page can make its own name point at 127.0.0.1
+(DNS rebinding) and call the door with the public `tok_d4e8`. The options are in step 42's README:
+(a) the door refuses a `Host` that is not its own address, with 421, a transport check (recommended);
+(b) the door hands `Host` to `call()`; (c) wait for step 43's real logins. Not built until the learner
+answers.
 
 ## The learner's predictions (2026-10-23)
 
@@ -203,7 +213,6 @@ Habit 2: the path and the membership were in view, the address inside the body w
 ## How to continue in a new session
 
 ```text
-Step 42 is understood and decided, not built. Read docs/baby_steps_tutorials/mj_42_why_this_step.md
-for the problem, the run, the rules, the learner's predictions, and decisions D1 to D7. Build
-only when the learner says go: copy step 41b, then Phase A from "Still to settle in the design".
+Step 42 is built: docs/baby_steps_tutorials/mj_42_a_rest_api/README.md. The learner reviews A3 and
+A4 (Claude Code's) and answers Q1 (the Host header) before step 43.
 ```
