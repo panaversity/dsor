@@ -423,11 +423,14 @@ export function memoryClaims(
         }
         for (const uri of done.moved) {
           // A proposal this call made goes only with the whole claim: its first record stays.
-          if (createdHere.has(uri)) throw new Error(`an undoable part moved its own proposal ${uri}`);
+          if (createdHere.has(uri))
+            throw new Error(`an undoable part moved its own proposal ${uri}`);
           await (proposals as MemoryProposals).undo(uri, requestId);
         }
-        for (const id of done.released) await (reservations as MemoryReservations).restore(tenant, id);
-        for (const id of done.reserved) await (reservations as MemoryReservations).forget(tenant, id);
+        for (const id of done.released)
+          await (reservations as MemoryReservations).restore(tenant, id);
+        for (const id of done.reserved)
+          await (reservations as MemoryReservations).forget(tenant, id);
       };
       const stores: WorkStores = {
         invoices,
@@ -492,7 +495,11 @@ export function memoryClaims(
         },
         undoable: async <T>(part: () => Promise<T>): Promise<T> => {
           if (inside !== undefined) throw new Error("an undoable part inside another");
-          const done = { moved: new Set<string>(), released: [] as string[], reserved: [] as string[] };
+          const done = {
+            moved: new Set<string>(),
+            released: [] as string[],
+            reserved: [] as string[],
+          };
           inside = done;
           try {
             return await part();

@@ -2574,7 +2574,11 @@ const swapCall = (who: RequestEnvelope, name: string, input: unknown): Promise<A
 const linesOfBills = (...ids: string[]) => ({
   lines: ids.map((id) => ({ invoice: `dsor://org_456/invoice/${id}`, expected_version: 1 })),
 });
-const firstRun = await swapCall(AGENT, "payment.run", linesOfBills("INV-1002", "INV-1008", "INV-1006"));
+const firstRun = await swapCall(
+  AGENT,
+  "payment.run",
+  linesOfBills("INV-1002", "INV-1008", "INV-1006"),
+);
 const firstUri = String("proposal" in firstRun ? firstRun.proposal : "");
 const swappedKept = await swapKept.get("org_456", firstUri.split("/").at(-1) ?? "");
 if (swappedKept === undefined) throw new Error("the story's first run is not there");
@@ -2587,7 +2591,9 @@ const replacement = await call(
   linesOfBills("INV-1002", "INV-1008"),
 );
 const secondUri = String("proposal" in replacement ? replacement.proposal : "");
-console.log(`  INV-1006 is wrong; the agent proposes the other two, superseding the first: ${waitHeard(replacement)}`);
+console.log(
+  `  INV-1006 is wrong; the agent proposes the other two, superseding the first: ${waitHeard(replacement)}`,
+);
 const firstNow = await swapKept.get("org_456", firstUri.split("/").at(-1) ?? "");
 const firstLines = await swapKept.lines("org_456", firstUri);
 console.log(

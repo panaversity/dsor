@@ -879,7 +879,7 @@ export async function call(
     //   undoes alone, so a refused replacement leaves the old one waiting, with its lines and its
     //   booking, while the claim keeps the refusal (decision D6). A call that replaces nothing needs
     //   no such part.
-    const guarded = <T,>(stores: WorkStores, part: () => Promise<T>): Promise<T> =>
+    const guarded = <T>(stores: WorkStores, part: () => Promise<T>): Promise<T> =>
       supersedes === undefined ? part() : stores.undoable(part);
     type LinePlan = {
       index: number;

@@ -54,7 +54,10 @@ describe("C1: supersedes travels in the request envelope", () => {
     ["a proposal's address with an id of another form", "dsor://org_456/proposal/PAY-901"],
     ["an empty text", ""],
     // Found by step 41b's review, L2: an invoice's address whose id has a proposal's form.
-    ["an invoice's address with a proposal's id", "dsor://org_456/invoice/prop_00000000-0000-4000-8000-000000000000"],
+    [
+      "an invoice's address with a proposal's id",
+      "dsor://org_456/invoice/prop_00000000-0000-4000-8000-000000000000",
+    ],
   ])(
     "step 41b's decision D9: C1: a supersedes that is %s is refused at line ①, and no proposal is made",
     async (_what, sent) => {
@@ -62,7 +65,8 @@ describe("C1: supersedes travels in the request envelope", () => {
       const answer = await w.ask(replacing(AGENT, sent), "payment.create", draftOf("INV-1002"));
       expect(answer).toMatchObject({
         code: "VALIDATION_FAILED",
-        message: "supersedes must be the address of a proposal, such as dsor://org_456/proposal/prop_…",
+        message:
+          "supersedes must be the address of a proposal, such as dsor://org_456/proposal/prop_…",
       });
       expect(await w.proposals.all()).toStrictEqual([]);
     },
@@ -79,11 +83,9 @@ describe("C1: supersedes travels in the request envelope", () => {
   it("step 41b's decision D9: C1: a query takes no supersedes", async () => {
     const w = ruleWorld();
     const old = await waitingDraft(w);
-    const answer = await w.ask(
-      { ...AGENT, supersedes: old } as RequestEnvelope,
-      "invoice.get",
-      { invoice: "dsor://org_456/invoice/INV-1008" },
-    );
+    const answer = await w.ask({ ...AGENT, supersedes: old } as RequestEnvelope, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+    });
     expect(answer).toMatchObject({
       code: "VALIDATION_FAILED",
       message: '"invoice.get" is a query, which takes no supersedes',
@@ -235,7 +237,12 @@ async function planted(
   const id = `prop_${randomUUID()}`;
   const payload = draftOf("INV-1006");
   const by = {
-    mover: { mode: "direct" as const, subject: "dsor", actor_chain: [], subject_authority: agentAsker().subject_authority },
+    mover: {
+      mode: "direct" as const,
+      subject: "dsor",
+      actor_chain: [],
+      subject_authority: agentAsker().subject_authority,
+    },
     cause: "planted by the test",
     correlation: { request_id: `req_${randomUUID()}` },
   };
@@ -258,7 +265,13 @@ async function planted(
   for (const to of PATHS[state]!) {
     const requires =
       to === "PENDING_APPROVAL"
-        ? [{ control: "high-value-payment", control_version: 8, approval: { role: "CFO", quorum: 1 } }]
+        ? [
+            {
+              control: "high-value-payment",
+              control_version: 8,
+              approval: { role: "CFO", quorum: 1 },
+            },
+          ]
         : undefined;
     expect(await w.proposals.move("org_456", id, from, to, by, requires as never)).toBe(true);
     from = to;
@@ -267,7 +280,11 @@ async function planted(
 }
 
 /** The agent's new draft of INV-1002, which names the proposal at `old` in supersedes. */
-function replaceWithDraft(w: RuleWorld, old: string, who: RequestEnvelope = AGENT): Promise<Answer> {
+function replaceWithDraft(
+  w: RuleWorld,
+  old: string,
+  who: RequestEnvelope = AGENT,
+): Promise<Answer> {
   return w.ask(replacing(who, old), "payment.create", draftOf("INV-1002"));
 }
 
@@ -335,7 +352,9 @@ describe("C3: who may replace a proposal, and when", () => {
         lines: [draftOf("INV-1009"), draftOf("INV-1008"), draftOf("INV-1006")],
       }),
     );
-    const line = (await w.proposals.all()).find((p) => p.run === run && p.state === "PENDING_APPROVAL")!;
+    const line = (await w.proposals.all()).find(
+      (p) => p.run === run && p.state === "PENDING_APPROVAL",
+    )!;
     const answer = await replaceWithDraft(w, line.uri);
     const id = line.uri.split("/").at(-1);
     expect(answer).toMatchObject({
@@ -533,8 +552,15 @@ describe("C5: a refused replacement changes nothing of the old proposal", () => 
     const old = await waitingRun(w);
     const before = await linesAt(w, old);
     w.vendors.find((v) => v.id === "VENDOR-31")!.status = "suspended";
-    const answer = await w.ask(replacing(AGENT, old), "payment.run", linesOf("INV-1002", "INV-1006"));
-    expect(answer).toMatchObject({ code: "CONFLICT", message: expect.stringMatching(/^line 2 of "payment\.run": /) });
+    const answer = await w.ask(
+      replacing(AGENT, old),
+      "payment.run",
+      linesOf("INV-1002", "INV-1006"),
+    );
+    expect(answer).toMatchObject({
+      code: "CONFLICT",
+      message: expect.stringMatching(/^line 2 of "payment\.run": /),
+    });
     expect((await proposalAt(w, old))!.state).toBe("PENDING_APPROVAL");
     expect(await linesAt(w, old)).toStrictEqual(before);
     expect(await bookingOf(w, old)).toMatchObject({ state: "held" });
@@ -559,7 +585,11 @@ describe("C5: a refused replacement changes nothing of the old proposal", () => 
     }
     expect(await w.reservations.used("org_456", "del_100", "USD")).toBe("168440.50");
     bill(w, "INV-3204", "VENDOR-12", "45000.00");
-    const answer = await w.ask(replacing(AGENT, old), "payment.run", linesOf("INV-1008", "INV-3204"));
+    const answer = await w.ask(
+      replacing(AGENT, old),
+      "payment.run",
+      linesOf("INV-1008", "INV-3204"),
+    );
     expect(answer).toMatchObject({ code: "LIMIT_EXCEEDED" });
     expect((await proposalAt(w, old))!.state).toBe("PENDING_APPROVAL");
     expect(await bookingOf(w, old)).toMatchObject({ state: "held" });
@@ -690,7 +720,10 @@ describe("C7: the refusal tells", () => {
     w.vendors.find((v) => v.id === "VENDOR-44")!.status = "suspended";
     expect(await replaceWithDraft(w, old)).toMatchObject({ code: "CONFLICT" });
     w.vendors.find((v) => v.id === "VENDOR-44")!.status = "approved";
-    const tearUp = { slip: "dsor://org_456/delegation/del_100", reason: "VENDOR-44's bank changed" };
+    const tearUp = {
+      slip: "dsor://org_456/delegation/del_100",
+      reason: "VENDOR-44's bank changed",
+    };
     expect(await w.ask(keyed(SUPERVISOR), "delegation.revoke", tearUp)).toMatchObject({
       outcome: "COMMITTED",
     });
@@ -729,7 +762,11 @@ describe("C9: a dry run of a replacement answers as the real call would", () => 
     expect(await w.proposals.all()).toStrictEqual(before);
     expect(await w.reservations.all()).toStrictEqual(bookings);
     // Without supersedes, the same dry run hears the old run's hold on its bills.
-    const plain = await w.ask({ ...AGENT, mode: "validate_only" } as RequestEnvelope, "payment.run", RUN_A2);
+    const plain = await w.ask(
+      { ...AGENT, mode: "validate_only" } as RequestEnvelope,
+      "payment.run",
+      RUN_A2,
+    );
     expect(plain).toMatchObject({ code: "CONFLICT" });
   });
 
@@ -750,7 +787,11 @@ describe("C9: a dry run of a replacement answers as the real call would", () => 
     const others = linesOf("INV-3311", "INV-3312", "INV-3313");
     const answer = await w.ask(dryReplacing(AGENT, old), "payment.run", others);
     expect(answer).toMatchObject({ outcome: "VALIDATED" });
-    const plain = await w.ask({ ...AGENT, mode: "validate_only" } as RequestEnvelope, "payment.run", others);
+    const plain = await w.ask(
+      { ...AGENT, mode: "validate_only" } as RequestEnvelope,
+      "payment.run",
+      others,
+    );
     expect(plain).toMatchObject({ code: "LIMIT_EXCEEDED" });
     expect(await w.reservations.used("org_456", "del_100", "USD")).toBe("150000.00");
   });
@@ -782,7 +823,10 @@ describe("step 41b's review, M5: a person replaces her own direct request only",
 
   it("step 41b's decision D5: M5: another person who may draft cannot replace user_123's direct draft", async () => {
     const roles = JSON.parse(shippedRoles.text) as Record<string, string[]>;
-    const table = { ...shippedRoles, text: JSON.stringify({ ...roles, CFO: [...roles["CFO"]!, "payment:create"] }) };
+    const table = {
+      ...shippedRoles,
+      text: JSON.stringify({ ...roles, CFO: [...roles["CFO"]!, "payment:create"] }),
+    };
     const u = undefined;
     const w = ruleWorld(u, u, u, u, u, table);
     const old = proposalOf(await w.draft("INV-1008", SUPERVISOR));
@@ -801,9 +845,17 @@ describe("step 41b's review, L3: a tear-up cancels a run before its lines", () =
   it("step 41b's decision D11: L3: the run's move to CANCELLED is recorded before each line's, though its id comes after theirs", async () => {
     const w = ruleWorld();
     const run = "prop_ffffffff-ffff-4fff-bfff-ffffffffffff";
-    const lines = ["prop_00000000-0000-4000-8000-000000000001", "prop_00000000-0000-4000-8000-000000000002"];
+    const lines = [
+      "prop_00000000-0000-4000-8000-000000000001",
+      "prop_00000000-0000-4000-8000-000000000002",
+    ];
     const by = {
-      mover: { mode: "direct" as const, subject: "dsor", actor_chain: [], subject_authority: agentAsker().subject_authority },
+      mover: {
+        mode: "direct" as const,
+        subject: "dsor",
+        actor_chain: [],
+        subject_authority: agentAsker().subject_authority,
+      },
       cause: "planted by the test",
       correlation: { request_id: `req_${randomUUID()}` },
     };
@@ -813,31 +865,50 @@ describe("step 41b's review, L3: a tear-up cancels a run before its lines", () =
       requester: agentAsker(),
     };
     const runPayload = linesOf("INV-1002", "INV-1006");
-    await w.proposals.create("org_456", run, {
-      ...base,
-      operation: "payment.run@1",
-      payload: runPayload,
-      payload_hash: payloadHash(runPayload),
-      resources: urisIn(runPayload),
-      idempotency_key: "k-planted-run",
-      manifest_hash: payloadHash(runPayload.lines),
-    }, by, "P7D");
+    await w.proposals.create(
+      "org_456",
+      run,
+      {
+        ...base,
+        operation: "payment.run@1",
+        payload: runPayload,
+        payload_hash: payloadHash(runPayload),
+        resources: urisIn(runPayload),
+        idempotency_key: "k-planted-run",
+        manifest_hash: payloadHash(runPayload.lines),
+      },
+      by,
+      "P7D",
+    );
     for (const [index, id] of lines.entries()) {
       const line = runPayload.lines[index]!;
-      await w.proposals.create("org_456", id, {
-        ...base,
-        payload: line,
-        payload_hash: payloadHash(line),
-        resources: urisIn(line),
-        idempotency_key: `k-planted-line-${index}`,
-        run: proposalUri("org_456", run),
-      }, by, "P7D");
+      await w.proposals.create(
+        "org_456",
+        id,
+        {
+          ...base,
+          payload: line,
+          payload_hash: payloadHash(line),
+          resources: urisIn(line),
+          idempotency_key: `k-planted-line-${index}`,
+          run: proposalUri("org_456", run),
+        },
+        by,
+        "P7D",
+      );
       expect(await w.proposals.move("org_456", id, "PROPOSED", "READY", by)).toBe(true);
     }
     const totals = { totals: [], vendor_totals: [] };
-    expect(await w.proposals.move("org_456", run, "PROPOSED", "READY", by, undefined, totals)).toBe(true);
-    const tearUp = { slip: "dsor://org_456/delegation/del_100", reason: "the agent's run is wrong" };
-    expect(await w.ask(keyed(SUPERVISOR), "delegation.revoke", tearUp)).toMatchObject({ outcome: "COMMITTED" });
+    expect(await w.proposals.move("org_456", run, "PROPOSED", "READY", by, undefined, totals)).toBe(
+      true,
+    );
+    const tearUp = {
+      slip: "dsor://org_456/delegation/del_100",
+      reason: "the agent's run is wrong",
+    };
+    expect(await w.ask(keyed(SUPERVISOR), "delegation.revoke", tearUp)).toMatchObject({
+      outcome: "COMMITTED",
+    });
     const cancelled = (await w.proposals.transitions())
       .filter((t) => t.result === "CANCELLED")
       .map((t) => t.resources[0]!.split("/").at(-1));
@@ -851,7 +922,11 @@ describe("step 41b's review, L5: the smaller gaps", () => {
     const w = ruleWorld();
     const old = await waitingRun(w);
     w.vendors.find((v) => v.id === "VENDOR-31")!.status = "suspended";
-    const answer = await w.ask(replacing(AGENT, old), "payment.run", linesOf("INV-1002", "INV-1006"));
+    const answer = await w.ask(
+      replacing(AGENT, old),
+      "payment.run",
+      linesOf("INV-1002", "INV-1006"),
+    );
     expect((await linesAt(w, proposalOf(answer))).map((l) => l.cause)).toStrictEqual(
       Array(2).fill("line 2 of its run was refused: CONFLICT"),
     );

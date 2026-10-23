@@ -190,19 +190,72 @@ Asked as stories, before any design or code. A real run settles each one after t
 | P2 | After P1, cfo_100 approves the old run with its fingerprint and totals. What does she hear, and what happens to the old run? | Refused, naming the new run; the old run stays `CANCELLED` |
 | P3 | The run of 12 is `APPROVED`. user_123, not the agent, proposes the 11 lines with `supersedes` naming it. What does he hear, and what state is the old run in after? | Refused; the old run is still `APPROVED` |
 
+## Questions waiting for the learner (2026-10-23)
+
+Found by the hostile review of the build, finding H1. The build stops here until the learner
+answers.
+
+### Q1. The company's code refuses after a replacement passed its checks. Does the old one stay cancelled?
+
+**The problem, run for real** on the build's own code (`9f8dadfd`), in memory, in a scratch copy. The
+company's `payment.create` is made to refuse, as an accounts system might at the last moment:
+
+```text
+the agent's run of INV-1002, INV-1008, INV-1006: PENDING_APPROVAL; booked 40940.50 USD
+the agent replaces it with a draft of INV-1002, and the company's code refuses: CONFLICT: the accounts system refuses INV-1002 now
+after: the old run CANCELLED, its lines CANCELLED, CANCELLED, CANCELLED; the new draft FAILED; booked 0.00 USD
+cfo_100 approves the old run: CONFLICT: proposal prop_e18129e6-… was replaced by proposal dsor://org_456/proposal/prop_3b2dc7a4-…, so it is not approved
+```
+
+The agent heard "no", and still the old run is gone, its bills are free, and its booking is back.
+Why: D6 rolls back a replacement when the new command's **checks** refuse (lines ⑨ and ⑩). In
+`execute` mode a new command that needs no approval then runs the company's code at once, in the
+claim's own work, after the replacement. A refusal there undoes only the code's writes, as it has
+since step 22: the new proposal ends `FAILED`, and the replacement stays. D6 says "A refused
+replacement changes nothing", and the README's claim C5 says the same, so the code and the words
+disagree. Only a new command that runs at once can reach this: one that waits for the CFO, or a
+call in `propose_only` mode, runs no code.
+
+**The options:**
+
+- **(a) The replacement stands, and the answer says so.** The old proposal was replaced in its own
+  right; then the new command's work failed, as any work can fail. C5 becomes "a replacement refused
+  at its checks changes nothing", and the refusal's words add "proposal … was replaced first".
+  *Downside:* a "no" that still changed something. The agent must propose again, without
+  `supersedes`, and the CFO's approval of the old one is lost.
+- **(b) The code's refusal undoes the replacement too.** The old proposal waits again, with its lines
+  and its booking; the new one ends `FAILED`. *Downside:* the most code. The replacement happens at
+  line ⑧, before the work's own savepoint, so both stores must undo it after the work, and memory
+  imitates it by hand again. More to test, and more to break.
+- **(c) A replacement never runs at once.** A new command with `supersedes` stops `READY`, as in
+  `propose_only` mode, or waits for its approval; it runs only when it is released. So no code runs
+  in the call that replaces, and D6 holds as written. *Downside:* a replacement that needs no one
+  costs one more call, the release. The run "replaced by one draft that needs no one" no longer
+  drafts at once.
+
+**Recommendation: (c).** It keeps D6 exactly as decided, one transaction where the new one waits or
+nothing changes, with the least new code. (a) is the smallest change, but it makes "refused" mean
+"changed" for one path. (b) keeps the words true at the highest cost.
+
+### Also found by the review, for the learner to know (no decision needed)
+
+- **D1's downside is not quite true.** "A run that is not wanted at all still waits until it
+  expires": the agent can replace it with any small proposal in `propose_only` mode and let that one
+  expire. So a run can be withdrawn in two calls. It is still not a `proposal.cancel`.
+
 ## Next
 
-Step 41 is copied into `mj_41b_replace_a_waiting_proposal`, its markers removed; its `pnpm check`
-passes, 2777 tests. Next: write that folder's README, "In plain words", "Why it matters", and "The
-design, before any code", from this document; then build piece by piece, each piece's tests red
-first.
+Pieces 1 to 9 are built, each committed and pushed: the README's design; `supersedes` in the
+envelope; who and when; the replacement in one transaction; the refusal that names the new one; the
+dry run; the database, migration 046; the story's scene; the review's fixes M1 to M5 and L1 to L5.
+The predictions P1 to P3 ran for real, and all three were right. The breaks run in copies.
+Waiting: the learner's answer to Q1. Then: build the answer, red first; then the hand-over
+(`docs/status.md`, `rules-met.md`, `mj_notes.md`, open questions).
 
 ## How to continue in a new session
 
 ```text
-Start step 41b of the DSoR baby-steps tutorial in learner mode, on branch mjunaidca/baby-steps.
-Read docs/baby_steps_tutorials/mj_41b_why_this_step.md first. The decisions D1 to D11 and the
-predictions P1 to P3 are made, and step 41 is copied into mj_41b_replace_a_waiting_proposal.
-Write its README's design from the document, then build piece by piece, tests red first. Ask me
-before any decision that is mine.
+Continue step 41b of the DSoR baby-steps tutorial, on branch mjunaidca/baby-steps. Read
+docs/baby_steps_tutorials/mj_41b_why_this_step.md first, then the step's README. Pieces 1 to 9 are
+built. My answer to Q1 is: <a, b, or c>. Build it, tests red first, then do the hand-over.
 ```

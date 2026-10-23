@@ -247,7 +247,12 @@ describe("C4 to C6: the replacement, in one transaction, on the database", () =>
     const old = await waitingRun();
     const before = await statesOf(old);
     // INV-9411 needs no one, so the broken code runs at once, once the old run lets go of it.
-    const answer = await asIntake("payment.create", draftOf("INV-9411"), { supersedes: old }, broken);
+    const answer = await asIntake(
+      "payment.create",
+      draftOf("INV-9411"),
+      { supersedes: old },
+      broken,
+    );
     expect(answer).toMatchObject({ code: "INTERNAL_ERROR" });
     expect(await statesOf(old)).toStrictEqual(before);
     expect(await bookingOf(old)).toStrictEqual([{ value: "40940.50", state: "held" }]);
@@ -280,7 +285,13 @@ describe("C7 and C9: the refusal tells, and the dry run, on the database", () =>
   //   does not: the loser found the old draft CANCELLED, because the lock made it wait for the winner.
   it("step 41b's decision D7: M3: two replacements of user_123's draft at once, of bills they do not share: the loser found it CANCELLED", async () => {
     const asUser = (input: unknown, extra: Partial<RequestEnvelope> = {}): Promise<Answer> =>
-      call(registry, log, { ...keyed(SUPERVISOR), ...extra } as RequestEnvelope, "payment.create", input);
+      call(
+        registry,
+        log,
+        { ...keyed(SUPERVISOR), ...extra } as RequestEnvelope,
+        "payment.create",
+        input,
+      );
     const old = uriOf(await asUser(draftOf("INV-9412")));
     const answers = await Promise.all([
       asUser(draftOf("INV-9414"), { supersedes: old }),
@@ -340,15 +351,20 @@ describe("C8: a line moves to CANCELLED only with its run, on the database", () 
     const old = await waitingRun();
     const [line] = await proposals.lines("org_456", old);
     await expect(
-      tryThenRollBack(pool, "UPDATE dsor.proposals SET state = 'CANCELLED' WHERE id = $1", "org_456", [
-        line!.id,
-      ]),
+      tryThenRollBack(
+        pool,
+        "UPDATE dsor.proposals SET state = 'CANCELLED' WHERE id = $1",
+        "org_456",
+        [line!.id],
+      ),
     ).rejects.toThrow(/a line moves to CANCELLED only with its run/);
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
       await client.query("SELECT set_config('dsor.tenant_id', 'org_456', true)");
-      await client.query("UPDATE dsor.proposals SET state = 'CANCELLED' WHERE id = $1", [idOf(old)]);
+      await client.query("UPDATE dsor.proposals SET state = 'CANCELLED' WHERE id = $1", [
+        idOf(old),
+      ]);
       const moved = await client.query(
         "UPDATE dsor.proposals SET state = 'CANCELLED' WHERE id = $1",
         [line!.id],
@@ -365,10 +381,15 @@ describe("C8: a line moves to CANCELLED only with its run, on the database", () 
     const runs = [];
     for (const ids of [["INV-9411", "INV-9412"], ["INV-9413"], ["INV-9414", "INV-9415"]]) {
       const answer = await asIntake("payment.run", linesOf(...ids), { mode: "propose_only" });
-      expect(answer).toMatchObject({ outcome: expect.stringMatching(/^(READY|PENDING_APPROVAL)$/) });
+      expect(answer).toMatchObject({
+        outcome: expect.stringMatching(/^(READY|PENDING_APPROVAL)$/),
+      });
       runs.push(uriOf(answer));
     }
-    const tearUp = { slip: "dsor://org_456/delegation/del_190", reason: "intake-fte's runs are wrong" };
+    const tearUp = {
+      slip: "dsor://org_456/delegation/del_190",
+      reason: "intake-fte's runs are wrong",
+    };
     const answer = await call(registry, log, keyed(SUPERVISOR), "delegation.revoke", tearUp);
     expect(answer).toMatchObject({ outcome: "COMMITTED" });
     for (const run of runs) {
@@ -383,50 +404,60 @@ describe("C8: a line moves to CANCELLED only with its run, on the database", () 
 //   took the bill's lock first and then waited for the day's total, waited for it in turn, and
 //   PostgreSQL ended one of the two as a deadlock: INTERNAL_ERROR.
 describe("step 41b's review, M1 and M2: a replacement at the same moment as other calls", () => {
-  it("step 41b's decision D7: M1: a replacement and a plain draft of the same bill at once, thirty times: never an accident", { timeout: 180_000 }, async () => {
-    const said: string[] = [];
-    for (let round = 0; round < 30; round++) {
-      ownerAttempts();
-      ownerLimits("add");
-      const old = uriOf(await asIntake("payment.create", draftOf("INV-9414")));
-      const answers = await Promise.all([
-        asIntake("payment.create", draftOf("INV-9415"), { supersedes: old }),
-        asIntake("payment.create", draftOf("INV-9415")),
-      ]);
-      for (const answer of answers) {
-        said.push("code" in answer ? answer.code : (answer as { outcome: string }).outcome);
+  it(
+    "step 41b's decision D7: M1: a replacement and a plain draft of the same bill at once, thirty times: never an accident",
+    { timeout: 180_000 },
+    async () => {
+      const said: string[] = [];
+      for (let round = 0; round < 30; round++) {
+        ownerAttempts();
+        ownerLimits("add");
+        const old = uriOf(await asIntake("payment.create", draftOf("INV-9414")));
+        const answers = await Promise.all([
+          asIntake("payment.create", draftOf("INV-9415"), { supersedes: old }),
+          asIntake("payment.create", draftOf("INV-9415")),
+        ]);
+        for (const answer of answers) {
+          said.push("code" in answer ? answer.code : (answer as { outcome: string }).outcome);
+        }
       }
-    }
-    expect(said).not.toContain("INTERNAL_ERROR");
-    expect(said.filter((one) => one === "PENDING_APPROVAL")).toHaveLength(30);
-  });
+      expect(said).not.toContain("INTERNAL_ERROR");
+      expect(said.filter((one) => one === "PENDING_APPROVAL")).toHaveLength(30);
+    },
+  );
 
   // Found by step 41b's review, M2: a release takes no ending lock, so only the move's own check of
   //   the state keeps a release and a replacement of one approved proposal apart.
-  it("step 41b's decision D6: M2: a release and a replacement of one approved draft at once, eight times: never a payment running with its booking given back", { timeout: 180_000 }, async () => {
-    for (let round = 0; round < 8; round++) {
-      ownerAttempts();
-      ownerLimits("add");
-      const old = uriOf(await asIntake("payment.create", draftOf("INV-9412")));
-      const kept = (await proposals.get("org_456", idOf(old)))!;
-      const approval = { proposal: old, payload_hash: kept.payload_hash };
-      expect(await call(registry, log, keyed(CFO), "proposal.approve", approval)).toMatchObject({
-        data: { state: "APPROVED" },
-      });
-      const answers = await Promise.all([
-        asIntake("proposal.execute", { proposal: old }),
-        asIntake("payment.create", draftOf("INV-9411"), { supersedes: old }),
-      ]);
-      const said = answers.map((a) => ("code" in a ? a.code : (a as { outcome: string }).outcome));
-      expect(said).not.toContain("INTERNAL_ERROR");
-      const state = (await proposals.get("org_456", idOf(old)))!.state;
-      const booking = await bookingOf(old);
-      if (state === "COMMITTED") expect(booking).toMatchObject([{ state: "committed" }]);
-      else expect(state).toBe("CANCELLED");
-      // Exactly one of the two went through.
-      expect(said.filter((one) => one === "COMMITTED")).toHaveLength(1);
-    }
-  });
+  it(
+    "step 41b's decision D6: M2: a release and a replacement of one approved draft at once, eight times: never a payment running with its booking given back",
+    { timeout: 180_000 },
+    async () => {
+      for (let round = 0; round < 8; round++) {
+        ownerAttempts();
+        ownerLimits("add");
+        const old = uriOf(await asIntake("payment.create", draftOf("INV-9412")));
+        const kept = (await proposals.get("org_456", idOf(old)))!;
+        const approval = { proposal: old, payload_hash: kept.payload_hash };
+        expect(await call(registry, log, keyed(CFO), "proposal.approve", approval)).toMatchObject({
+          data: { state: "APPROVED" },
+        });
+        const answers = await Promise.all([
+          asIntake("proposal.execute", { proposal: old }),
+          asIntake("payment.create", draftOf("INV-9411"), { supersedes: old }),
+        ]);
+        const said = answers.map((a) =>
+          "code" in a ? a.code : (a as { outcome: string }).outcome,
+        );
+        expect(said).not.toContain("INTERNAL_ERROR");
+        const state = (await proposals.get("org_456", idOf(old)))!.state;
+        const booking = await bookingOf(old);
+        if (state === "COMMITTED") expect(booking).toMatchObject([{ state: "committed" }]);
+        else expect(state).toBe("CANCELLED");
+        // Exactly one of the two went through.
+        expect(said.filter((one) => one === "COMMITTED")).toHaveLength(1);
+      }
+    },
+  );
 });
 
 // Found by step 41b's review, L4 and L5: rules and paths with no test on the database.
@@ -479,7 +510,9 @@ describe("step 41b's review, L4 and L5: the smaller gaps, on the database", () =
     });
     const made = uriOf(await asIntake("payment.create", draftOf("INV-9412"), { supersedes: old }));
     // user_123 releases, a person who holds payment:create, whose clearance shows DSoR's words.
-    const answer = await call(registry, log, keyed(SUPERVISOR), "proposal.execute", { proposal: old });
+    const answer = await call(registry, log, keyed(SUPERVISOR), "proposal.execute", {
+      proposal: old,
+    });
     expect(answer).toMatchObject({
       code: "CONFLICT",
       message: `proposal ${idOf(old)} was replaced by proposal ${made}, so it is not released`,
