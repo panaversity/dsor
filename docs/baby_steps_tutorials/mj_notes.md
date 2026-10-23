@@ -2449,6 +2449,15 @@ for the learner to review.
   The first real call failed because the door ran where it could not reach Neon's keys: an outage
   looked like a forgery (L7). Lesson: a step whose map names a real product is not done on a
   stand-in; say "built against a stand-in" until the real run passes. Open questions 164 and 165.
+- **Then revised by the learner (2026-10-24):** "I see really bad business and prod decisions on
+  this step." The learner chose R1 to R7, one question at a time: invitations instead of hand-made
+  links, tenant administrators who invite and unlink, `pnpm invite` for the owner, any provider's
+  algorithms, an outage that says so, a sign-in service stated as DSoR's own, and unlinking as the
+  off-switch. All built red first, fifteen breaks each caught. The hostile review then found that
+  an admin could invite a person who already had a login and become them with a second sign-up;
+  now each person has one live login. Lesson: a decision made "for now,
+  with every assumption" is a decision the learner has not made yet; the review of it is where the
+  step is decided. Open questions 166 and 167.
 
 ## Still unknown
 

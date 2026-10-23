@@ -201,3 +201,29 @@ and #1 is proposed as a step of its own, 43b (people and their roles in a DSoR t
   to act; a forgotten unlink leaves up to 15 minutes.
 - **Proposed, not decided: step 43b**, people and their roles in a DSoR table, managed by an admin,
   not written in `src/principals.ts`; with a second admin's confirmation for powerful people.
+
+## R1 to R7, built (2026-10-24)
+
+Built red first, one commit per piece, on the learner's "build R1 to R7 into step 43".
+
+- **Pieces:** R4 and R6 (each issuer's algorithms, age, and `dedicated_to_dsor`); R5 (an outage is
+  `CONNECTOR_UNAVAILABLE`); R1 (the code redeemed at line ①); the README's revised design; R2 and R7
+  (`login.invite`, `login.unlink`); the database (migration 048, `pnpm invite` replacing
+  `pnpm link-login`); fifteen breaks.
+- **Found while building:** a code was redeemed in any company the call named, even one that does
+  not trust the token's issuer. Now only where that issuer is trusted, with its own test.
+- **Found while writing the breaks:** the test of one login sending two codes at once counted the
+  links but not the invitations, so a code used up by a lost race would have gone unseen.
+- **The person is an address** (`dsor://org_456/person/cfo_100`) in the two commands, loosely typed,
+  as step 29 does for a proposal, so the cross-company suite still sees `TENANT_MISMATCH` before the
+  command's own check refuses anything that is not a person of the company.
+- **What the database now holds the line on:** `dsor_runtime` may add a link, but a trigger accepts
+  only one that an invitation that very login accepted names; a link ends once and stays as history;
+  an invitation moves once, and dsor_runtime cannot name its end date.
+- **The hostile review's high finding (R-H1):** an admin could invite a person who already had a
+  login, redeem the code with a second sign-up, and be that person too: create a payment as them and
+  approve it as the admin. Fixed red first: one live login for each person, held by a unique index.
+  An admin can still invite someone never linked and redeem it themselves; a second admin's
+  confirmation is for 43b. Two medium and three low findings are recorded in the README.
+- **Not done yet:** the invitation flow against the real Neon Auth. cfo_100's Neon login is still the
+  one `pnpm link-login` made. It needs the learner to sign in again. Open questions 166 and 167.

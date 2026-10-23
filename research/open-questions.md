@@ -1123,3 +1123,13 @@ for a human. An agent may gather evidence; it does not settle these alone.
     checks a token for as long as DSoR keeps the keys it fetched. Step 43's learner build keeps them
     ten minutes, `jose`'s default, and fetches again at once for a key name it lacks. §44 bounds the
     staleness of the role source and of reads, not of keys. Should it bound this too?
+166. **How does a person's login first come to name a principal?** DSOR-IDN-01 says DSoR maps a
+    login to a principal, but not how a link is made, by whom, or how it ends. Step 43's learner build,
+    revised by the learner, links a login only by an invitation: a tenant administrator invites a
+    person, DSoR keeps the code's hash, and the person's first call with the code links that login,
+    once, within seven days; unlinking ends it on the next call. Should the specification name a
+    joining and a leaving flow, who may run them, and what evidence each leaves?
+167. **Is a login's link one for all of DSoR, or one per company?** In step 43's learner build a link
+    has no company, so an administrator of one company who unlinks a person ends that person's login
+    in every company. No person of the story belongs to two companies, so no test meets it. Should a
+    link, or its end, belong to a company?
