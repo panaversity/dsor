@@ -10,8 +10,8 @@ export type HttpRequest = {
   method: string;
   url: string;
   headers: Readonly<Record<string, readonly string[]>>;
-  // The body's text, or that it was over the cap, or cut off before its end, or none.
-  body?: { text: string } | { over: true } | { aborted: true };
+  // The body's text, or that it was over the cap, cut off before its end, or not UTF-8, or none.
+  body?: { text: string } | { over: true } | { aborted: true } | { notUtf8: true };
 };
 
 /** What the door hands to call(). */
@@ -23,6 +23,9 @@ export const OVER = "the request body was over 65536 bytes, so the door read non
 // And in place of a body cut off before its end, as a phone that loses its signal mid-upload cuts
 //   it (the review's H1).
 export const ABORTED = "the request body was cut off before its end, so the door read none of it";
+// And in place of a body that is not UTF-8: a decoder that guessed would make two different bodies
+//   one input and one payload hash (the review's L6).
+export const NOT_UTF8 = "the request body was not UTF-8 text, so the door read none of it";
 
 /** The operation's name, the envelope, and the input of one HTTP request. */
 export function translate(request: HttpRequest, routes: readonly Route[] = ROUTES): Translated {
@@ -54,9 +57,22 @@ export function translate(request: HttpRequest, routes: readonly Route[] = ROUTE
   return { name, envelope, input: joined(parts) };
 }
 
-// Authorization's bearer token, Idempotency-Key, and each DSoR-<Name> header as <name>, with - read
-//   as _. A field two headers give, or one header given twice, is the list of its values, which the
-//   checklist refuses: the door never picks one (decisions D3 and D5).
+// The one header for each field of the envelope, besides Authorization's bearer token (§39: "one
+//   canonical representation per interface"; decision D3).
+const FIELDS: Readonly<Record<string, string>> = {
+  "idempotency-key": "idempotency_key",
+  "dsor-tenant": "tenant",
+  "dsor-mode": "mode",
+  "dsor-request-id": "request_id",
+  "dsor-supersedes": "supersedes",
+  "dsor-agent-asserted": "agent_asserted",
+};
+
+// Authorization's bearer token, and each header of FIELDS as its field. A field one header gives
+//   twice is the list of its values, which the checklist refuses: the door never picks one. Any
+//   other header that starts with dsor, and an Authorization that is not a bearer token, are handed
+//   over under their own names, which the closed envelope refuses, so a second spelling never
+//   counts and a near miss is never dropped (decisions D3 and D5; the review's L1 and L3).
 function envelopeOf(headers: HttpRequest["headers"]): Record<string, unknown> {
   const fields = new Map<string, unknown[]>();
   const add = (field: string, value: unknown): void => {
@@ -64,11 +80,15 @@ function envelopeOf(headers: HttpRequest["headers"]): Record<string, unknown> {
   };
   for (const [header, values] of Object.entries(headers)) {
     for (const value of values) {
-      if (header === "authorization") add("token", value.replace(/^Bearer /i, ""));
-      else if (header === "idempotency-key") add("idempotency_key", value);
-      else if (header.startsWith("dsor-")) {
-        const field = header.slice("dsor-".length).replaceAll("-", "_");
+      const field = FIELDS[header];
+      const bearer = /^Bearer (.*)$/is.exec(value);
+      if (header === "authorization") {
+        if (bearer !== null) add("token", bearer[1]);
+        else add("authorization", value);
+      } else if (field !== undefined) {
         add(field, field === "agent_asserted" ? jsonOrText(value) : value);
+      } else if (/^dsor[-_]/.test(header)) {
+        add(header.replaceAll("-", "_"), value);
       }
     }
   }
@@ -80,6 +100,7 @@ function bodyOf(body: HttpRequest["body"]): unknown {
   if (body === undefined) return undefined;
   if ("over" in body) return OVER;
   if ("aborted" in body) return ABORTED;
+  if ("notUtf8" in body) return NOT_UTF8;
   return body.text === "" ? undefined : jsonOrText(body.text);
 }
 

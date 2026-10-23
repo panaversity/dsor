@@ -197,6 +197,48 @@ describe("C5: no request can stop the door (the review's H1 and L2)", () => {
   });
 });
 
+describe("C5: what Node would answer by itself (the review's M3, L4, and L6)", () => {
+  it("Step 42, A2: an Expect header Node does not know is answered by call(), not by Node's 417, and recorded", async () => {
+    const { world, base } = await doorOf();
+    const before = (await records(world)).length;
+    // fetch will not send an Expect header, so the request goes on a socket of its own.
+    const heard = await new Promise<string>((done) => {
+      const socket = connect(Number(new URL(base).port), "127.0.0.1");
+      let text = "";
+      socket.on("data", (d) => (text += d.toString()));
+      socket.on("close", () => done(text));
+      socket.write(
+        "GET /invoices/INV-1008 HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer tok_d4e8\r\nDSoR-Tenant: org_456\r\nExpect: nope\r\nConnection: close\r\n\r\n",
+      );
+    });
+    expect(heard).toMatch(/^HTTP\/1\.1 200 /);
+    expect((await records(world)).length - before).toBe(1);
+  });
+
+  it("Step 42, D4: a 401 names the scheme a caller must use, as HTTP asks", async () => {
+    const { base } = await doorOf();
+    const response = await fetch(`${base}/invoices/INV-1008`, { headers: NOBODY });
+    expect([response.status, response.headers.get("www-authenticate")]).toStrictEqual([
+      401,
+      "Bearer",
+    ]);
+  });
+
+  it("Step 42, D5: a body that is not UTF-8 is handed over as a short text, never as a guess, and refused", async () => {
+    const { world, base } = await doorOf();
+    const before = (await records(world)).length;
+    const body = Buffer.from([0x7b, 0x22, 0xff, 0xfe, 0x22, 0x7d]);
+    const keyed = { ...SUPERVISOR, "idempotency-key": "pay-not-utf8" };
+    const response = await fetch(`${base}/payments`, { method: "POST", headers: keyed, body });
+    expect([response.status, ((await response.json()) as { code: string }).code]).toStrictEqual([
+      422,
+      "VALIDATION_FAILED",
+    ]);
+    expect((await records(world)).length - before).toBe(1);
+    expect(await readBody(Readable.from([body]))).toStrictEqual({ notUtf8: true });
+  });
+});
+
 describe("C6: the status, and the body unchanged", () => {
   it("Step 42, D4: cfo_100 reads INV-1008: 200, and the body is call()'s answer", async () => {
     const { base } = await doorOf();

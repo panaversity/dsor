@@ -54,14 +54,18 @@ describe("C3: the envelope, from the headers", () => {
     expect(await answer(req)).toMatchObject({ code: "AUTHENTICATION_REQUIRED" });
   });
 
-  it("Step 42, D5: an Authorization that is not Bearer is handed over whole, and line ① refuses it", async () => {
-    const req = request("GET", "/invoices/INV-1008", {
-      authorization: ["Basic dG9rX2Q0ZTg="],
-      "dsor-tenant": ["org_456"],
-    });
-    expect(translate(req).envelope["token"]).toBe("Basic dG9rX2Q0ZTg=");
-    expect(await answer(req)).toMatchObject({ code: "AUTHENTICATION_REQUIRED" });
-  });
+  it.each(["Basic dG9rX2Q0ZTg=", "tok_d4e8"])(
+    "Step 42, D3: an Authorization that is not a bearer token, %s, is handed over as the field authorization, never as a token, and line ① refuses it",
+    async (value) => {
+      // Found by the review's L1: "Authorization: tok_d4e8", with no scheme, logged in as cfo_100.
+      const req = request("GET", "/invoices/INV-1008", {
+        authorization: [value],
+        "dsor-tenant": ["org_456"],
+      });
+      expect(translate(req).envelope).toStrictEqual({ authorization: value, tenant: "org_456" });
+      expect(await answer(req)).toMatchObject({ code: "AUTHENTICATION_REQUIRED" });
+    },
+  );
 
   it("Step 42, D5: a header given twice is handed over as both values, and line ② refuses them", async () => {
     const req = request("GET", "/invoices/INV-1008", {
@@ -72,23 +76,33 @@ describe("C3: the envelope, from the headers", () => {
     expect(await answer(req)).toMatchObject({ code: "VALIDATION_FAILED" });
   });
 
-  it("Step 42, D5: Authorization beside DSoR-Token gives two tokens, and line ① refuses them", async () => {
+  it("Step 42, D5: two Authorization lines give two tokens, and line ① refuses them", async () => {
     const req = request("GET", "/invoices/INV-1008", {
-      ...CFO,
-      "dsor-token": ["tok_7f3a"],
+      authorization: ["Bearer tok_d4e8", "Bearer tok_7f3a"],
+      "dsor-tenant": ["org_456"],
     });
     expect(translate(req).envelope["token"]).toStrictEqual(["tok_d4e8", "tok_7f3a"]);
     expect(await answer(req)).toMatchObject({ code: "AUTHENTICATION_REQUIRED" });
   });
 
-  it("Step 42, D5: an unknown DSoR- header is handed over, and line ① refuses its field", async () => {
-    const req = request("GET", "/invoices/INV-1008", { ...CFO, "dsor-tenantt": ["org_789"] });
-    expect(translate(req).envelope["tenantt"]).toBe("org_789");
-    expect(await answer(req)).toMatchObject({
-      code: "VALIDATION_FAILED",
-      message: expect.stringContaining('not "tenantt"'),
-    });
-  });
+  it.each([
+    ["dsor-token", "tok_7f3a", "dsor_token"],
+    ["dsor-idempotency-key", "pay-1", "dsor_idempotency_key"],
+    ["dsor-tenantt", "org_789", "dsor_tenantt"],
+    ["dsor_mode", "validate_only", "dsor_mode"],
+  ])(
+    "Step 42, D3: %s is not one of the five DSoR- headers, so it is handed over under its own name, and line ① refuses it",
+    async (header, value, field) => {
+      // One spelling for each field (§39). Found by the review's L1 and L3: DSoR-Token and
+      //   DSoR-Idempotency-Key were second spellings, and DSoR_Mode was dropped, so a dry run ran.
+      const req = request("GET", "/invoices/INV-1008", { ...CFO, [header]: [value] });
+      expect(translate(req).envelope[field]).toBe(value);
+      expect(await answer(req)).toMatchObject({
+        code: "VALIDATION_FAILED",
+        message: expect.stringContaining(`not "${field}"`),
+      });
+    },
+  );
 
   it("Step 42, D5: a DSoR-Agent-Asserted that is not JSON is handed over as its text", () => {
     const req = request("POST", "/payments", { "dsor-agent-asserted": ["task t_1"] });

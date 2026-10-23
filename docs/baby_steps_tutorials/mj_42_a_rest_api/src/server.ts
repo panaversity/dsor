@@ -3,7 +3,7 @@
 //   program gives. The server holds no store, no log, and no rule of who may do what, and it has no
 //   answer of its own: what call() answers is the body, and statuses.ts gives its status
 //   (DSOR-OPR-04a, DSOR-OPR-04b; step 42's README, claims C1, C5, C6, and C7, decisions D6 and D7).
-import { createServer, type Server } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { translate, type HttpRequest } from "./door.ts";
 import type { Answer } from "./envelope.ts";
 import type { DecisionLog } from "./log.ts";
@@ -53,7 +53,7 @@ export function createDoor(
   const problems = routeProblems(operations, routes);
   if (problems.length > 0)
     throw new Error(`the routes refused to start:\n  ${problems.join("\n  ")}`);
-  return createServer(async (req, res) => {
+  const handle = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     // Nothing a request does may stop the program: an error here would end every call in flight.
     //   translate and readBody never throw, and call() never throws; this is the last guard, and it
     //   only closes the one connection (the review's H1).
@@ -69,12 +69,21 @@ export function createDoor(
       // call() never throws: every refusal is an answer, recorded before it is returned (step 04's
       //   README, C7; DSOR-EXE-02).
       const answer = await ask(envelope, name, input);
-      res.writeHead(statusOf(answer), { "content-type": "application/json; charset=utf-8" });
+      const status = statusOf(answer);
+      const headers: Record<string, string> = { "content-type": "application/json; charset=utf-8" };
+      // A 401 names the scheme a caller must use, as RFC 9110 asks (the review's L4).
+      if (status === 401) headers["www-authenticate"] = "Bearer";
+      res.writeHead(status, headers);
       res.end(JSON.stringify(answer));
     } catch {
       res.destroy();
     }
-  });
+  };
+  const server = createServer(handle);
+  // An Expect header Node does not know would get Node's own 417, with no call() and no record.
+  //   With this, call() answers it too (the review's M3).
+  server.on("checkExpectation", handle);
+  return server;
 }
 
 /**
@@ -100,7 +109,11 @@ export async function readBody(
   }
   if (size > cap) return { over: true };
   if (size === 0) return undefined;
-  return { text: Buffer.concat(kept).toString("utf8") };
+  try {
+    return { text: new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(kept)) };
+  } catch {
+    return { notUtf8: true };
+  }
 }
 
 /** Listens on 127.0.0.1 and this port, or a free one for 0, and gives the port. Any other address is refused. */
