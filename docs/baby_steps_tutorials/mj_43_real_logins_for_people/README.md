@@ -214,6 +214,31 @@ proposed as a step of its own, 43b. The whole conversation is in
 | B7 | The principal's companies are not cut to the issuer's |
 | B8 | The fake tokens of people still work under real logins |
 
+The learner's revisions were broken on purpose too, on 2026-10-24, in a copy of the step, and the
+database ones on a fresh database each. Each break failed the test named for it, and only that test:
+
+| Break | What it changes | Caught by |
+|---|---|---|
+| K1 | The book in memory takes a code past its seven days | "a code older than seven days is no caller" |
+| K2 | A linked login redeems a code too | "a login linked already never accepts a code" |
+| K3 | A code is redeemed in a company that does not trust the token's issuer | "a code sent in a company that does not trust the token's issuer links nothing" |
+| K4 | The book keeps the code, not only its hash | "the book keeps only its hash" |
+| K5 | Unlinking cancels no invitation, in memory | "once cfo_100 is unlinked … her open invitations are cancelled" |
+| K6 | An agent may be invited | "inviting accounts-payable-fte, an agent, … is refused" |
+| K7 | Another company's person may be invited | "inviting user_700, a person of org_789, … is refused" |
+| K8 | The AP supervisor holds `login:invite` | "user_123, an AP supervisor, holds no login:invite", and the role table's tests |
+| D1 | The database's book ignores expiry (the trigger still refuses, so the redeem fails loudly) | "a code past its seven days, by the database's clock, links nothing" |
+| D2 | A link that loses the race keeps its invitation accepted | "one login that sends two codes at once is linked once" |
+| D3 | An ended link still reads | "once cfo_100 is unlinked, her next call is no caller" |
+| D4 | Unlinking cancels no invitation, on the database | the same test |
+| M1 | No trigger checks a new link | "dsor_runtime is refused a link with no invitation", and one it did not accept |
+| M2 | `dsor_runtime` may move a link to another person | "dsor_runtime is refused moving a link to another person" |
+| M3 | An invitation may be accepted twice | "an invitation is accepted or cancelled once" |
+
+D2 would have passed: while writing the breaks, Claude Code saw that the test counted the links but
+not the invitations, so a code used up by a lost race went unseen. The test was given that check
+first, so the run above shows it caught.
+
 ## What changed since step 42
 
 | File | What changed |

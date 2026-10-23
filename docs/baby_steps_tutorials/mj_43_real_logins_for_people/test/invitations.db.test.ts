@@ -126,6 +126,12 @@ describe("R1 on PostgreSQL: a code links a login once", () => {
       [login.issuer, login.subject],
     );
     expect(rows[0].n).toBe(1);
+    // And the code that lost stays open: its acceptance was undone with the link that failed.
+    const open = await owner.query(
+      "SELECT count(*)::int AS n FROM dsor.invitations WHERE id = ANY($1) AND accepted_at IS NULL",
+      [[one.invitation.id, two.invitation.id]],
+    );
+    expect(open.rows[0].n).toBe(1);
   });
 
   it("Step 43, R1: a code past its seven days, by the database's clock, links nothing", async () => {
