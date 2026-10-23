@@ -109,6 +109,24 @@ describe("R2: login.invite", () => {
   );
 });
 
+describe("From the review of R1 to R7, finding 1: one live login for each person", () => {
+  // Found by the hostile review: an admin invited user_123, who had a login already, redeemed the
+  //   code with a second sign-up of their own, and was then user_123 too, so they could create a
+  //   payment as user_123 and approve it as themselves.
+  it("Step 43, the review's finding 1: admin_100 cannot invite user_123, who has a login already, and nothing is invited", async () => {
+    const { w, ask, as } = await adminWorld();
+    const answer = await ask(await as("ba_admin"), "login.invite", {
+      person: "dsor://org_456/person/user_123",
+      reason: "x",
+    });
+    expect(answer).toMatchObject({
+      code: "CONFLICT",
+      message: "user_123 has a login already: unlink it first",
+    });
+    expect(await w.book.invitations()).toStrictEqual([]);
+  });
+});
+
 describe("R7: login.unlink", () => {
   it("DSOR-IDN-01: admin_100 unlinks user_123; his next call is no caller", async () => {
     const { ask, as } = await adminWorld();

@@ -143,13 +143,37 @@ describe("R1: the first call with the code links the login", () => {
   });
 });
 
+describe("From the review of R1 to R7, finding 1: one live login for each person", () => {
+  it("Step 43, the review's finding 1: a code of a person linked meanwhile links nothing, and stays open", async () => {
+    const { book, ask } = await bookWorld();
+    const one = await book.invite("org_456", "cfo_100", BY);
+    const two = await book.invite("org_456", "cfo_100", BY);
+    await ask({ token: await a.sign("ba_first"), tenant: "org_456", invitation: one.code });
+    expect(
+      await ask({ token: await a.sign("ba_second"), tenant: "org_456", invitation: two.code }),
+    ).toMatchObject({ code: "AUTHENTICATION_REQUIRED" });
+    const kept = (await book.invitations()).find((i) => i.id === two.invitation.id);
+    expect(kept?.accepted_by).toBeUndefined();
+  });
+
+  it("Step 43, the review's finding 1: the book refuses to invite a person who has a login", async () => {
+    const { book, ask } = await bookWorld();
+    const { code } = await book.invite("org_456", "cfo_100", BY);
+    await ask({ token: await a.sign("ba_cfo"), tenant: "org_456", invitation: code });
+    await expect(book.invite("org_456", "cfo_100", BY)).rejects.toThrow(
+      "cfo_100 has a login already: unlink it first",
+    );
+  });
+});
+
 describe("R7: unlinking is the off-switch", () => {
   it("DSOR-IDN-01: once cfo_100 is unlinked, her next call is no caller, and her open invitations are cancelled", async () => {
     const { book, ask } = await bookWorld();
     const { code } = await book.invite("org_456", "cfo_100", BY);
+    // Changed by the review's finding 1: a linked person cannot be invited, so the spare comes first.
+    const spare = await book.invite("org_456", "cfo_100", BY);
     const token = await a.sign("ba_cfo");
     await ask({ token, tenant: "org_456", invitation: code });
-    const spare = await book.invite("org_456", "cfo_100", BY);
     expect(await book.unlink("org_456", "cfo_100", BY)).toStrictEqual({
       logins: 1,
       invitations: 1,

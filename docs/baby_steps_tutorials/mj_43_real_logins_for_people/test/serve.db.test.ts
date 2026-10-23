@@ -8,6 +8,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createDbBook } from "../src/postgres.ts";
+import { newPool } from "./db.ts";
 
 const STEP = fileURLToPath(new URL("..", import.meta.url));
 const running: ChildProcess[] = [];
@@ -53,6 +55,13 @@ beforeAll(async () => {
   ];
   const file = join(mkdtempSync(join(tmpdir(), "dsor43-")), "issuers.json");
   writeFileSync(file, JSON.stringify({ org_456: one, org_789: one }));
+  // One live login for each person (the review's finding 1): another file may have linked her.
+  const pool = newPool();
+  await createDbBook(pool).unlink("org_456", "cfo_100", {
+    person: "admin_100",
+    reason: "serve test",
+  });
+  await pool.end();
   const invited = spawnSync(
     process.execPath,
     [join(STEP, "src", "invite.ts"), "org_456", "cfo_100", "the serve test"],

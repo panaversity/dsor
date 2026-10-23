@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Answer } from "../src/envelope.ts";
 import { hashOf, newCode, realLogins } from "../src/logins.ts";
 import { call } from "../src/pipeline.ts";
@@ -38,6 +38,20 @@ afterAll(async () => {
 });
 
 const BY = { person: "admin_100", reason: "a step 43 database test" };
+
+// A person has one live login (the review's finding 1), and the tests share one database, so each
+//   starts with every person of the story unlinked.
+const PEOPLE = [
+  ["org_456", "cfo_100"],
+  ["org_456", "user_123"],
+  ["org_456", "admin_100"],
+  ["org_789", "user_700"],
+  ["org_789", "admin_700"],
+];
+beforeEach(async () => {
+  const book = createDbBook(pool);
+  for (const [tenant, person] of PEOPLE) await book.unlink(tenant as string, person as string, BY);
+});
 const INV_1008 = { invoice: "dsor://org_456/invoice/INV-1008" };
 
 /** The registry over the database, with real logins read from the database's book. */
@@ -156,15 +170,41 @@ describe("R1 on PostgreSQL: a code links a login once", () => {
   });
 });
 
+describe("From the review of R1 to R7, finding 1, on PostgreSQL: one live login for each person", () => {
+  it("Step 43, the review's finding 1: the book refuses to invite a person who has a login", async () => {
+    const book = createDbBook(pool);
+    await book.redeem("org_456", (await book.invite("org_456", "user_123", BY)).code, aLogin());
+    await expect(book.invite("org_456", "user_123", BY)).rejects.toThrow(
+      "user_123 has a login already: unlink it first",
+    );
+  });
+
+  it("Step 43, the review's finding 1: two logins with two codes of one person at once: one is linked, and the other code stays open", async () => {
+    const book = createDbBook(pool);
+    const one = await book.invite("org_456", "cfo_100", BY);
+    const two = await book.invite("org_456", "cfo_100", BY);
+    const won = await Promise.all([
+      book.redeem("org_456", one.code, aLogin()),
+      book.redeem("org_456", two.code, aLogin()),
+    ]);
+    expect(won.filter((person) => person === "cfo_100")).toHaveLength(1);
+    const { rows } = await owner.query(
+      "SELECT count(*)::int AS n FROM dsor.invitations WHERE id = ANY($1) AND accepted_at IS NULL",
+      [[one.invitation.id, two.invitation.id]],
+    );
+    expect(rows[0].n).toBe(1);
+  });
+});
+
 describe("R7 on PostgreSQL: unlinking is the off-switch, and is kept", () => {
   it("DSOR-IDN-01: once cfo_100 is unlinked, her next call is no caller, her open invitation is cancelled, and her old link is kept", async () => {
     const { book, ask } = world();
     const subject = `ba_${randomUUID()}`;
     const token = await a.sign(subject);
-    // A person of her own for this test: another test's links of cfo_100 are not ended here.
     const { code } = await book.invite("org_456", "cfo_100", BY);
-    await ask({ token, tenant: "org_456", invitation: code });
+    // Changed by the review's finding 1: a linked person cannot be invited, so the spare comes first.
     const spare = await book.invite("org_456", "cfo_100", BY);
+    await ask({ token, tenant: "org_456", invitation: code });
     const ended = await book.unlink("org_456", "cfo_100", BY);
     expect(ended.logins).toBeGreaterThanOrEqual(1);
     expect(ended.invitations).toBeGreaterThanOrEqual(1);
@@ -225,6 +265,43 @@ describe("R1 and R7: what dsor_runtime may do to the two tables", () => {
   ])("Step 43, R1: dsor_runtime is refused %s", async (_what, sql, refused) => {
     await expect(tryThenRollBack(pool, sql, "org_456")).rejects.toThrow(refused);
   });
+
+  // From the review of R1 to R7, finding 4: the link trigger reads the invitations under the
+  //   company the transaction set, and checks the person.
+  it.each([
+    ["accepted in org_789, linked while the company is org_456", "org_789", "user_700", "user_700"],
+    ["for user_123, linked as cfo_100", "org_456", "user_123", "cfo_100"],
+  ])(
+    "Step 43, the review's finding 4: dsor_runtime is refused a link to an invitation %s",
+    async (_what, home, invited, linkedAs) => {
+      const client = await pool.connect();
+      const id = `inv_${randomUUID()}`;
+      try {
+        await client.query("BEGIN");
+        await client.query("SELECT set_config('dsor.tenant_id', $1, true)", [home]);
+        await client.query(
+          `INSERT INTO dsor.invitations (tenant_id, id, principal_id, code_hash, invited_by, reason)
+           VALUES ($1, $2, $3, $4, 'admin_100', 'x')`,
+          [home, id, invited, hashOf(newCode())],
+        );
+        await client.query(
+          "UPDATE dsor.invitations SET accepted_issuer = $2, accepted_subject = 'ba_x' WHERE id = $1",
+          [id, a.issuer],
+        );
+        await client.query("SELECT set_config('dsor.tenant_id', 'org_456', true)");
+        await expect(
+          client.query(
+            `INSERT INTO dsor.logins (issuer, subject, principal_id, invitation_id)
+             VALUES ($1, 'ba_x', $2, $3)`,
+            [a.issuer, linkedAs, id],
+          ),
+        ).rejects.toThrow(/a login is linked only by an invitation it accepted/);
+      } finally {
+        await client.query("ROLLBACK");
+        client.release();
+      }
+    },
+  );
 
   it("Step 43, R1: an invitation is accepted or cancelled once, never both, never again", async () => {
     const book = createDbBook(pool);
@@ -313,6 +390,15 @@ describe("R3: the owner invites the first administrator with pnpm invite", () =>
       [hashOf(code as string)],
     );
     expect(rows).toStrictEqual([{ invited_by: "owner" }]);
+  });
+
+  it("Step 43, the review's finding 1: pnpm invite refuses a person who has a login", async () => {
+    const book = createDbBook(pool);
+    await book.redeem("org_456", (await book.invite("org_456", "admin_100", BY)).code, aLogin());
+    expect(invite("org_456", "admin_100", "again")).toStrictEqual({
+      status: 1,
+      out: "admin_100 has a login already: unlink it first",
+    });
   });
 
   it.each([

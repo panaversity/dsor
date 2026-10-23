@@ -57,7 +57,14 @@ import {
   type StaleMark,
 } from "./rulebook.ts";
 import type { Control } from "./controls.ts";
-import { hashOf, newCode, type BookBy, type Invitation, type LoginBook } from "./logins.ts";
+import {
+  alreadyLinked,
+  hashOf,
+  newCode,
+  type BookBy,
+  type Invitation,
+  type LoginBook,
+} from "./logins.ts";
 import type { Login } from "./tokens.ts";
 import type { FoundSlip, SlipStore } from "./slips.ts";
 import { Refusal, type Requirement } from "./envelope.ts";
@@ -2720,11 +2727,12 @@ function bookThrough(reader: pg.Pool | pg.ClientBase, run: Runner): LoginBook {
         );
         const invitation = accepted.rows[0];
         if (invitation === undefined) return undefined;
-        // A login linked meanwhile, by another code, stays as it is, and this code stays open.
+        // A login linked meanwhile, by another code, stays as it is, and this code stays open. So
+        //   does a person linked meanwhile: one live login each (the review's finding 1).
         const linked = await client.query(
           `INSERT INTO dsor.logins (issuer, subject, principal_id, invitation_id)
            VALUES ($1, $2, $3, $4)
-           ON CONFLICT (issuer, subject) WHERE unlinked_at IS NULL DO NOTHING
+           ON CONFLICT DO NOTHING
            RETURNING id`,
           [login.issuer, login.subject, invitation.principal_id, invitation.id],
         );
@@ -2737,6 +2745,11 @@ function bookThrough(reader: pg.Pool | pg.ClientBase, run: Runner): LoginBook {
       }),
     invite: async (tenant: string, person: string, by: BookBy) =>
       run(tenant, async (client) => {
+        const live = await client.query(
+          "SELECT 1 FROM dsor.logins WHERE principal_id = $1 AND unlinked_at IS NULL",
+          [person],
+        );
+        if (live.rowCount !== 0) throw alreadyLinked(person);
         const code = newCode();
         const id = `inv_${randomUUID()}`;
         const { rows } = await client.query<{ expires_at: Date }>(

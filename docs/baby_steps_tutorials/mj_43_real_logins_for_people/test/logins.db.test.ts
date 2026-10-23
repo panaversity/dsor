@@ -26,6 +26,8 @@ describe("C8: the links on PostgreSQL", () => {
   it("DSOR-IDN-01: cfo_100's real token, linked by her invitation on PostgreSQL, reads INV-1008 through the checklist", async () => {
     const subject = `ba_${randomUUID()}`;
     const book = createDbBook(pool);
+    // One live login for each person (the review's finding 1): another file may have linked her.
+    await book.unlink("org_456", "cfo_100", { person: "admin_100", reason: "the logins test" });
     const { code } = await book.invite("org_456", "cfo_100", {
       person: "admin_100",
       reason: "the logins test",

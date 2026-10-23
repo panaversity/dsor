@@ -156,7 +156,7 @@ proposed as a step of its own, 43b. The whole conversation is in
 |---|---|---|
 | **R1** | D5's hand-made links | A person joins by an **invitation code**: single use, valid 7 days. Not "match the email": anyone can sign up at Neon Auth, and its emails are not verified, so a stranger could sign up with the CFO's address |
 | **R2** | D5 | Only a **tenant administrator** invites or unlinks: new permissions `login:invite` and `login:unlink`, for people only, never an agent; every invitation, link, and unlink is recorded with who did it. A second admin's confirmation is noted for 43b |
-| **R3** | `pnpm link-login` | The database owner only **starts** an invitation, `pnpm invite`, for the first admin. Nobody is linked without signing in themselves |
+| **R3** | `pnpm link-login` | The database owner only **starts** an invitation, `pnpm invite`, for the first admin. Nobody types a login's id: a link is made by whoever signs in and presents the code first (see the review's R-H1 and R-M1 below) |
 | **R4** | D4's fixed EdDSA and 15 minutes | `algorithms` and `max_age` **per issuer** in `issuers.json`, Neon's by default; start-up refuses a shared-secret algorithm, `none`, and an age over 24 hours. So Okta, Entra ID, and Auth0 can sign people in |
 | **R5** | D7, for outages | Keys that cannot be fetched, or links that cannot be read, answer **`CONNECTOR_UNAVAILABLE`** (retry `safe_same_key`, the door's 503), and the log names the cause; never "log in first" |
 | **R6** | D3 | Each issuer states **`"dedicated_to_dsor": true`**, or start-up refuses it: Managed Better Auth cannot name DSoR as a token's audience, so a sign-in service shared with another app would make that app's tokens DSoR tokens |
@@ -169,8 +169,10 @@ proposed as a step of its own, 43b. The whole conversation is in
   envelope carries a code, line ① redeems it, in one transaction: an invitation of the company the
   envelope names, not used, not expired, not cancelled; then the link, and the invitation marked used
   by that login. A login that is linked already never redeems a code, so an admin's own login cannot
-  accept the admin's own invitation. *Downside:* a code is a secret in a header, like a token; and a
-  redeemed invitation stays redeemed even when the rest of that first call is refused.
+  accept the admin's own invitation, and a person has one live login: a linked person cannot be
+  invited until unlinked (the review's R-H1). *Downside:* a code is a secret in a header, like a
+  token, and whoever presents it first becomes the person (R-M1); and a redeemed invitation stays
+  redeemed even when the rest of that first call is refused.
 - **Two commands of DSoR's own (R2):** `login.invite` (`POST /invitations`), input
   `{ person, reason }`, answers the invitation's address, its code, and when it expires;
   `login.unlink` (`POST /logins/unlink`), input `{ person, reason }`, ends every login of that person
@@ -450,17 +452,31 @@ and broke the code in a copy.
 | L8 | The log names the principal, never the issuer and subject that signed in; a link cannot be removed | Recorded |
 | L9 | No test that, under real logins, a forged token never reaches the code | Added |
 
+### What the review of the revisions found (2026-10-24)
+
+A second hostile reviewer read R1 to R7 against DSOR-IDN-01, DSOR-IDN-04a, DSOR-APR-05a, and
+DSOR-TEN-02b, assuming the agent is an attacker and `dsor_runtime` may be broken into.
+
+| | Finding | What was done |
+|---|---|---|
+| R-H1 | An admin could invite user_123, who had a login already, redeem the code with a second sign-up of their own, and then be user_123 too: create a payment as user_123 and approve it as the admin. The separation check compares principals only | Fixed red first: a person has **one live login**. `login.invite` and `pnpm invite` refuse a linked person ("unlink it first"), a code of a person linked meanwhile links nothing and stays open, and a unique index holds it in the database. An admin can still invite a person who was never linked and redeem that code themselves; a second admin's confirmation is for 43b |
+| R-M1 | A code is a bearer secret: whoever presents it first becomes the person, and the real person then hears only "log in first" | Recorded as a downside of R1: send the code to the person alone; the invitation names the login that redeemed it |
+| R-M2 | A broken-into `dsor_runtime` can invite cfo_100 in org_789's rows, accept, and link: the database does not know which company a person belongs to, and org_456 cannot see org_789's rows | Recorded: the people are in code until 43b, so no database check can know their companies. Open question 167 |
+| R-L1 | The link trigger's company and person checks had no tests of their own | Added: an invitation accepted in org_789 linked while the company is org_456, and one for user_123 linked as cfo_100; both already held |
+| R-L2 | On a call with a code, line ① reads the company once more, for the redemption | Recorded: a link is for all of DSoR, so a company that changed between the reads gives the caller nothing more |
+| R-L3 | Unlinking ends a person's links everywhere, but cancels open invitations only in the calling company | Recorded: no person of the story belongs to two companies. Open question 167 |
+
 ### Left open on purpose
 
-- **Only cfo_100 is linked on Neon.** The other people sign in through the stand-in in this
-  README; each needs a Neon sign-up and a `pnpm link-login` to sign in for real.
+- **Only cfo_100 is linked on Neon**, by the old `pnpm link-login`. The invitation flow has not yet
+  run against Neon; it needs the learner to sign in again.
 - **An outage looks like a forgery** (L7), now seen for real: a door that cannot reach Neon tells
   cfo_100 to log in.
 - **Agents still use the fake table**, so the door stays on 127.0.0.1 (step 44).
 - **A stopped stand-in's port** can be taken by another program on this computer, which could then
   publish keys of its own. `DSOR_STAND_IN=on` makes trusting a stand-in a choice; Neon closes it.
 - **A token's audience is the sign-in service** (M2), and **an outage looks like a forgery** (L7).
-- **No way to unlink a login**; the log does not name the login, only the principal (L8).
+- **The log names the principal, not the login** (L8); `login.unlink` now ends a login (R7).
 
 ## Build it yourself with Claude Code
 

@@ -40,6 +40,15 @@ try {
   await client.query("BEGIN");
   // The company's row: row-level security holds for the owner too (FORCE).
   await client.query("SELECT set_config('dsor.tenant_id', $1, true)", [company]);
+  // One live login for each person (the review's finding 1): to change it, unlink it first.
+  const live = await client.query(
+    "SELECT 1 FROM dsor.logins WHERE principal_id = $1 AND unlinked_at IS NULL",
+    [person],
+  );
+  if (live.rowCount !== 0) {
+    await client.query("ROLLBACK");
+    refuse(`${person} has a login already: unlink it first`);
+  }
   const { rows } = await client.query<{ expires_at: Date }>(
     `INSERT INTO dsor.invitations (tenant_id, id, principal_id, code_hash, invited_by, reason)
      VALUES ($1, $2, $3, $4, 'owner', $5) RETURNING expires_at`,

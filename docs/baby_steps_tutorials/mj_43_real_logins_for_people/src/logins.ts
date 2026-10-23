@@ -4,6 +4,7 @@
 //   DSoR decides which principal that is, and in which companies (DSOR-IDN-01, DSOR-IDN-04a,
 //   DSOR-IDN-04b; step 43's README, claims C3 to C5, decisions D1, D5, D6, and D8).
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { Refusal } from "./envelope.ts";
 import type { Issuers } from "./issuers.ts";
 import { logins as STEP_05, type Principal } from "./principals.ts";
 import { checkedLogin, type KeySets, type Login, type Unavailable } from "./tokens.ts";
@@ -83,6 +84,14 @@ export function hashOf(code: string): string {
   return createHash("sha256").update(code).digest("hex");
 }
 
+// Found by the review of R1 to R7, finding 1: an admin invited a person who had a login already,
+//   redeemed the code with a second sign-up, and was that person too. So a person has at most one
+//   live login: to change it, unlink first, which is recorded.
+/** The refusal to invite a person who has a login. */
+export function alreadyLinked(person: string): Refusal {
+  return new Refusal("CONFLICT", `${person} has a login already: unlink it first`, "internal");
+}
+
 /** The book in memory, for the unit tests, what a test reads of it, and a link a test sets up. */
 export type MemoryLoginBook = LoginBook & {
   invitations: () => Promise<Invitation[]>;
@@ -110,13 +119,20 @@ export function memoryLoginBook(
   const kept: (Invitation & { hash: string; expires: number })[] = [];
   const activeOf = (issuer: string, subject: string) =>
     links.find((l) => !l.ended && l.issuer === issuer && l.subject === subject);
+  const linked = (person: string) => links.some((l) => !l.ended && l.principal === person);
   return Object.freeze({
     principalOf: async (issuer: string, subject: string) => activeOf(issuer, subject)?.principal,
     redeem: async (tenant: string, code: string, login: Login) => {
       const found = kept.find((i) => i.tenant === tenant && i.hash === hashOf(code));
       const open =
         found !== undefined && found.accepted_by === undefined && found.cancelled_by === undefined;
-      if (!open || found.expires <= now() || activeOf(login.issuer, login.subject) !== undefined) {
+      // Changed by the review's finding 1: nor a person who has a login already.
+      if (
+        !open ||
+        found.expires <= now() ||
+        activeOf(login.issuer, login.subject) !== undefined ||
+        linked(found.person)
+      ) {
         return undefined;
       }
       found.accepted_by = { issuer: login.issuer, subject: login.subject };
@@ -129,6 +145,7 @@ export function memoryLoginBook(
       return found.person;
     },
     invite: async (tenant: string, person: string, by: BookBy) => {
+      if (linked(person)) throw alreadyLinked(person);
       const code = newCode();
       const expires = now() + DAYS_7;
       const invitation: Invitation = {

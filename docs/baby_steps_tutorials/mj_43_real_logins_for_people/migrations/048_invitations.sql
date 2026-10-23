@@ -86,6 +86,10 @@ ALTER TABLE dsor.logins
   ADD COLUMN unlinked_at timestamptz,
   ADD CONSTRAINT logins_unlinked CHECK ((unlinked_by IS NULL) = (unlinked_at IS NULL));
 CREATE UNIQUE INDEX logins_one_live ON dsor.logins (issuer, subject) WHERE unlinked_at IS NULL;
+-- And a person has at most one live login: found by the review of R1 to R7, finding 1, where an
+--   admin invited a person who had a login, redeemed the code with a second sign-up, and was that
+--   person too. To change a person's login, unlink it first, which is kept.
+CREATE UNIQUE INDEX logins_one_per_person ON dsor.logins (principal_id) WHERE unlinked_at IS NULL;
 
 -- A new link names an invitation that this login accepted, for this person. Read under the
 --   company the transaction set, so an invitation of another company is no invitation here.
