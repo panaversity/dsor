@@ -63,6 +63,17 @@ describe("C2: what a token must be", () => {
     expect(await checkedLogin(`${head}.${body}.${mac}`, issuers, keys)).toBeUndefined();
   });
 
+  it("Step 43, D4: a token signed with ES256 by a key its own issuer publishes is refused: EdDSA only", async () => {
+    // Found by break B2: jose already refuses none, and HS256 against an Ed25519 key, so only an
+    //   issuer that publishes a key of another kind shows the list of algorithms at work.
+    const es = await startIssuer("ES256");
+    const only = new Map([
+      ["org_456", [{ issuer: es.issuer, audience: es.audience, jwks: es.jwks }]],
+    ]);
+    expect(await checkedLogin(await es.sign("ba_8c1f"), only, remoteKeys())).toBeUndefined();
+    await es.close();
+  });
+
   it("Step 43, D4: a token that names no algorithm, with no signature, is refused", async () => {
     const head = part({ alg: "none", typ: "JWT" });
     const body = part({

@@ -29,18 +29,17 @@ export type TestIssuer = Issuer & {
 
 type Key = { kid: string; privateKey: CryptoKey; publicJwk: JWK };
 
-async function newKey(kid: string): Promise<Key> {
-  const { privateKey, publicKey } = await generateKeyPair("EdDSA", {
-    crv: "Ed25519",
-    extractable: true,
-  });
-  const publicJwk = { ...(await exportJWK(publicKey)), kid, alg: "EdDSA", use: "sig" };
+async function newKey(kid: string, alg: string): Promise<Key> {
+  const curve = alg === "EdDSA" ? { crv: "Ed25519" } : {};
+  const { privateKey, publicKey } = await generateKeyPair(alg, { ...curve, extractable: true });
+  const publicJwk = { ...(await exportJWK(publicKey)), kid, alg, use: "sig" };
   return { kid, privateKey, publicJwk };
 }
 
 /** Starts an issuer on a free port of 127.0.0.1. Its issuer and audience are its origin, as Neon's are. */
-export async function startIssuer(): Promise<TestIssuer> {
-  let key = await newKey("key-1");
+// Ed25519, as Managed Better Auth's key, unless the test names another algorithm.
+export async function startIssuer(alg = "EdDSA"): Promise<TestIssuer> {
+  let key = await newKey("key-1", alg);
   let isDown = false;
   let rotations = 1;
   const server: Server = createServer((req, res) => {
@@ -61,7 +60,7 @@ export async function startIssuer(): Promise<TestIssuer> {
     jwks: `${origin}/.well-known/jwks.json`,
     sign: async (subject, claims = {}, header = {}) => {
       const jwt = new SignJWT({ email: `${subject ?? "nobody"}@example.com`, ...claims })
-        .setProtectedHeader({ alg: header.alg ?? "EdDSA", kid: header.kid ?? key.kid, typ: "JWT" })
+        .setProtectedHeader({ alg: header.alg ?? alg, kid: header.kid ?? key.kid, typ: "JWT" })
         .setIssuedAt();
       if (!("exp" in claims)) jwt.setExpirationTime("15m");
       if (subject !== undefined) jwt.setSubject(subject);
@@ -71,7 +70,7 @@ export async function startIssuer(): Promise<TestIssuer> {
     },
     rotate: async () => {
       rotations++;
-      key = await newKey(`key-${rotations}`);
+      key = await newKey(`key-${rotations}`, alg);
     },
     down: (value) => {
       isDown = value;
