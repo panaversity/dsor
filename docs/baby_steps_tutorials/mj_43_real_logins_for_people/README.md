@@ -144,6 +144,43 @@ Claude Code's, 2026-10-23, for the learner to review.
   audience of DSoR's own: a token's `aud` is the sign-in service, so another app of the same Neon
   project could hand a person's token on to DSoR (DSOR-RP-02b, the review's M2).
 
+### Revised by the learner, 2026-10-24
+
+After the real run on Neon, the learner reviewed D1 to D10 and said: "I see really bad business and
+prod decisions on this step." Six were weak in production. The learner chose to change four of them
+here, as R1 to R7, one question at a time; the fifth, people and their roles written in code, is
+proposed as a step of its own, 43b. The whole conversation is in
+[`../mj_43_why_this_step.md`](../mj_43_why_this_step.md).
+
+| Revision | Replaces | What it says |
+|---|---|---|
+| **R1** | D5's hand-made links | A person joins by an **invitation code**: single use, valid 7 days. Not "match the email": anyone can sign up at Neon Auth, and its emails are not verified, so a stranger could sign up with the CFO's address |
+| **R2** | D5 | Only a **tenant administrator** invites or unlinks: new permissions `login:invite` and `login:unlink`, for people only, never an agent; every invitation, link, and unlink is recorded with who did it. A second admin's confirmation is noted for 43b |
+| **R3** | `pnpm link-login` | The database owner only **starts** an invitation, `pnpm invite`, for the first admin. Nobody is linked without signing in themselves |
+| **R4** | D4's fixed EdDSA and 15 minutes | `algorithms` and `max_age` **per issuer** in `issuers.json`, Neon's by default; start-up refuses a shared-secret algorithm, `none`, and an age over 24 hours. So Okta, Entra ID, and Auth0 can sign people in |
+| **R5** | D7, for outages | Keys that cannot be fetched, or links that cannot be read, answer **`CONNECTOR_UNAVAILABLE`** (retry `safe_same_key`, the door's 503), and the log names the cause; never "log in first" |
+| **R6** | D3 | Each issuer states **`"dedicated_to_dsor": true`**, or start-up refuses it: Managed Better Auth cannot name DSoR as a token's audience, so a sign-in service shared with another app would make that app's tokens DSoR tokens |
+| **R7** | D10's silence on leavers | **Unlinking** is the off-switch: DSoR looks the link up on every call, so it refuses the next one. The `banned` claim is not read: Better Auth gives a banned person no new token |
+
+**How the revisions are built (Claude Code), each with its downside:**
+
+- **The code is accepted on the person's first call (R1).** The request envelope gains a field,
+  `invitation`, the header `DSoR-Invitation` at the door. When a checked token has no link and the
+  envelope carries a code, line ① redeems it, in one transaction: an invitation of the company the
+  envelope names, not used, not expired, not cancelled; then the link, and the invitation marked used
+  by that login. A login that is linked already never redeems a code, so an admin's own login cannot
+  accept the admin's own invitation. *Downside:* a code is a secret in a header, like a token; and a
+  redeemed invitation stays redeemed even when the rest of that first call is refused.
+- **Two commands of DSoR's own (R2):** `login.invite` (`POST /invitations`), input
+  `{ person, reason }`, answers the invitation's address, its code, and when it expires;
+  `login.unlink` (`POST /logins/unlink`), input `{ person, reason }`, ends every login of that person
+  and cancels their open invitations. The person must be a person of the company. *Downside:* the code
+  is in the answer, so the idempotency claim keeps it until it is used or expires.
+- **The code is kept only as its hash** in `dsor.invitations`, a company table under row-level security
+  (migration 048). The links gain who linked them and by which invitation, and when they ended; a login
+  ended may be invited again. *Downside:* a link is one login for the whole of DSoR, so an unlink in one
+  company ends it in every company of that person.
+
 ### The tests, by claim
 
 | Claim | Test |
