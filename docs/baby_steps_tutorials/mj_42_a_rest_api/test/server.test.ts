@@ -10,6 +10,7 @@ import type { DecisionRecord } from "../src/log.ts";
 import { CAP, doorOver, listen, readBody } from "../src/server.ts";
 import { ROUTES } from "../src/routes.ts";
 import { ruleWorldOnTuesday, type RuleWorld } from "./rule-world.ts";
+import { schemaProblems } from "./helpers.ts";
 
 const CFO = { authorization: "Bearer tok_d4e8", "dsor-tenant": "org_456" };
 const SUPERVISOR = { authorization: "Bearer tok_2c91", "dsor-tenant": "org_456" };
@@ -161,7 +162,7 @@ describe("C5: no request can stop the door (the review's H1 and L2)", () => {
     const before = (await records(world)).length;
     const heard = await raw(
       base,
-      "GET http://a:99999/x HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer tok_d4e8\r\nDSoR-Tenant: org_456\r\nConnection: close\r\n\r\n",
+      `GET http://a:99999/x HTTP/1.1\r\nHost: 127.0.0.1:${new URL(base).port}\r\nAuthorization: Bearer tok_d4e8\r\nDSoR-Tenant: org_456\r\nConnection: close\r\n\r\n`,
     );
     expect(heard).toMatch(/^HTTP\/1\.1 404 /);
     expect(heard).toContain('no operation named \\"GET http://a:99999/x\\"');
@@ -174,7 +175,7 @@ describe("C5: no request can stop the door (the review's H1 and L2)", () => {
     const before = (await records(world)).length;
     await raw(
       base,
-      'POST /payments HTTP/1.1\r\nHost: 127.0.0.1\r\nDSoR-Tenant: org_456\r\nContent-Length: 100\r\n\r\n{"inv',
+      `POST /payments HTTP/1.1\r\nHost: 127.0.0.1:${new URL(base).port}\r\nDSoR-Tenant: org_456\r\nContent-Length: 100\r\n\r\n{"inv`,
       true,
     );
     await vi.waitFor(async () => expect((await records(world)).length - before).toBe(1));
@@ -190,7 +191,7 @@ describe("C5: no request can stop the door (the review's H1 and L2)", () => {
     const { base } = await doorOf();
     const heard = await raw(
       base,
-      `GET ${path} HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer tok_d4e8\r\nDSoR-Tenant: org_456\r\nConnection: close\r\n\r\n`,
+      `GET ${path} HTTP/1.1\r\nHost: 127.0.0.1:${new URL(base).port}\r\nAuthorization: Bearer tok_d4e8\r\nDSoR-Tenant: org_456\r\nConnection: close\r\n\r\n`,
     );
     expect(heard).toMatch(/^HTTP\/1\.1 404 /);
     expect(heard).toContain(`no operation named \\"GET ${path}`);
@@ -208,7 +209,7 @@ describe("C5: what Node would answer by itself (the review's M3, L4, and L6)", (
       socket.on("data", (d) => (text += d.toString()));
       socket.on("close", () => done(text));
       socket.write(
-        "GET /invoices/INV-1008 HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer tok_d4e8\r\nDSoR-Tenant: org_456\r\nExpect: nope\r\nConnection: close\r\n\r\n",
+        `GET /invoices/INV-1008 HTTP/1.1\r\nHost: 127.0.0.1:${new URL(base).port}\r\nAuthorization: Bearer tok_d4e8\r\nDSoR-Tenant: org_456\r\nExpect: nope\r\nConnection: close\r\n\r\n`,
       );
     });
     expect(heard).toMatch(/^HTTP\/1\.1 200 /);
@@ -285,6 +286,73 @@ describe("C6: the status, and the body unchanged", () => {
       409,
       { code: "OUTCOME_UNKNOWN", retry: "after_reconciliation" },
     ]);
+  });
+});
+
+describe("C9: only requests meant for this door (the learner's D8, the review's M4)", () => {
+  /** Sends one request on a socket of its own, with these header lines, and reads the answer. */
+  function rawAt(base: string, lines: string[]): Promise<string> {
+    return new Promise((done) => {
+      const socket = connect(Number(new URL(base).port), "127.0.0.1");
+      let heard = "";
+      socket.on("data", (d) => (heard += d.toString()));
+      socket.on("close", () => done(heard));
+      socket.write(
+        [
+          ...lines,
+          "Authorization: Bearer tok_d4e8",
+          "DSoR-Tenant: org_456",
+          "Connection: close",
+          "",
+          "",
+        ].join("\r\n"),
+      );
+    });
+  }
+
+  /** The body of an HTTP answer. */
+  function bodyOf(heard: string): unknown {
+    return JSON.parse(heard.slice(heard.indexOf("\r\n\r\n") + 4));
+  }
+
+  it.each([
+    ["a name made to point at 127.0.0.1", (port: string) => `Host: attacker.example:${port}`],
+    ["localhost", (port: string) => `Host: localhost:${port}`],
+    ["another port", () => "Host: 127.0.0.1:1"],
+    ["no port", () => "Host: 127.0.0.1"],
+  ])(
+    "Step 42, D8: a Host of %s is refused with 421 by the door, and call() is never asked",
+    async (_kind, host) => {
+      const { world, base } = await doorOf();
+      const before = (await records(world)).length;
+      const heard = await rawAt(base, [
+        "POST /proposals/approve HTTP/1.1",
+        host(new URL(base).port),
+      ]);
+      expect(heard).toMatch(/^HTTP\/1\.1 421 /);
+      expect(schemaProblems(bodyOf(heard))).toStrictEqual([]);
+      expect(bodyOf(heard)).toMatchObject({ code: "VALIDATION_FAILED", retry: "never" });
+      expect((await records(world)).length - before).toBe(0);
+    },
+  );
+
+  it("Step 42, D8: a request with no Host at all is refused with 421", async () => {
+    const { world, base } = await doorOf();
+    const before = (await records(world)).length;
+    const heard = await rawAt(base, ["GET /invoices/INV-1008 HTTP/1.0"]);
+    expect(heard).toMatch(/^HTTP\/1\.[01] 421 /);
+    expect((await records(world)).length - before).toBe(0);
+  });
+
+  it("Step 42, D8: the door's own address, 127.0.0.1 and its port, goes to call()", async () => {
+    const { world, base } = await doorOf();
+    const before = (await records(world)).length;
+    const heard = await rawAt(base, [
+      "GET /invoices/INV-1008 HTTP/1.1",
+      `Host: 127.0.0.1:${new URL(base).port}`,
+    ]);
+    expect(heard).toMatch(/^HTTP\/1\.1 200 /);
+    expect((await records(world)).length - before).toBe(1);
   });
 });
 

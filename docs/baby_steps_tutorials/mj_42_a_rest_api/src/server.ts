@@ -3,6 +3,7 @@
 //   program gives. The server holds no store, no log, and no rule of who may do what, and it has no
 //   answer of its own: what call() answers is the body, and statuses.ts gives its status
 //   (DSOR-OPR-04a, DSOR-OPR-04b; step 42's README, claims C1, C5, C6, and C7, decisions D6 and D7).
+import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { translate, type HttpRequest } from "./door.ts";
 import type { Answer } from "./envelope.ts";
@@ -57,6 +58,14 @@ export function createDoor(
     // Nothing a request does may stop the program: an error here would end every call in flight.
     //   translate and readBody never throw, and call() never throws; this is the last guard, and it
     //   only closes the one connection (the review's H1).
+    // NEW IN STEP 42: a request meant for another name is refused before anything else: a web page
+    //   that made its own name point at 127.0.0.1 (DNS rebinding) must not reach the fake logins. A
+    //   check of the wire, not of who may do what, so DSOR-OPR-04b allows it. The one answer the door
+    //   makes by itself, and it leaves no record (the learner's D8, answering the review's M4).
+    if (!meantForThisDoor(req)) {
+      misdirected(res);
+      return;
+    }
     try {
       const request: HttpRequest = {
         method: req.method ?? "",
@@ -84,6 +93,30 @@ export function createDoor(
   //   With this, call() answers it too (the review's M3).
   server.on("checkExpectation", handle);
   return server;
+}
+
+/** Whether the request names this door: exactly one Host, 127.0.0.1 and the port it came in on. */
+function meantForThisDoor(req: IncomingMessage): boolean {
+  const hosts = req.headersDistinct["host"] ?? [];
+  return hosts.length === 1 && hosts[0] === `${ONLY_HOST}:${req.socket.localPort}`;
+}
+
+// 421 Misdirected Request, with an error envelope of §28's shape, so a caller reads every refusal
+//   the same way. Its request id is made here, since call() never saw the request (DSOR-COR-01b).
+function misdirected(res: ServerResponse): void {
+  const envelope = {
+    code: "VALIDATION_FAILED",
+    message: `this door answers only requests for ${ONLY_HOST} and its own port, named in the Host header`,
+    retry: "never",
+    correlation: { request_id: `req_${randomUUID()}` },
+  };
+  const body = JSON.stringify(envelope);
+  res.writeHead(421, {
+    "content-type": "application/json; charset=utf-8",
+    "content-length": Buffer.byteLength(body),
+    connection: "close",
+  });
+  res.end(body);
 }
 
 /**

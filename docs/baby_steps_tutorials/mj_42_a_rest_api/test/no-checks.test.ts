@@ -217,6 +217,7 @@ describe("C8: the door's files import nothing that decides who may do what", () 
       "./registry.ts",
       "./routes.ts",
       "./statuses.ts",
+      "node:crypto",
       "node:http",
     ]);
   });
