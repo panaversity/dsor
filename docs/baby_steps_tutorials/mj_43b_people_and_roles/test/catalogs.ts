@@ -97,6 +97,51 @@ const LOGIN_COLUMNS = [
   "unlinked_at",
 ];
 const LOGIN_WRITTEN = ["issuer", "subject", "principal_id", "invitation_id"];
+// Changed in step 43b: DSoR's table of people (migration 049; step 43b's README, claim C8).
+export const INVITATION_PERSON_TRIGGER =
+  "CREATE TRIGGER invitations_name_a_person BEFORE INSERT ON dsor.invitations FOR EACH ROW EXECUTE FUNCTION dsor.invitation_names_a_person()";
+const PEOPLE_COLUMNS = [
+  "id",
+  "tenant_id",
+  "principal_id",
+  "added_by",
+  "reason",
+  "added_at",
+  "removed_by",
+  "removed_at",
+];
+const PEOPLE_WRITTEN = ["tenant_id", "principal_id", "added_by", "reason"];
+export const PEOPLE_TRIGGER =
+  "CREATE TRIGGER people_leave BEFORE UPDATE ON dsor.people FOR EACH ROW EXECUTE FUNCTION dsor.person_leaves()";
+const GRANT_COLUMNS = [
+  "id",
+  "tenant_id",
+  "principal_id",
+  "role",
+  "asked_by",
+  "reason",
+  "needs_confirm",
+  "asked_at",
+  "expires_at",
+  "confirmed_by",
+  "confirmed_at",
+  "ended_by",
+  "ended_at",
+];
+const GRANT_WRITTEN = [
+  "id",
+  "tenant_id",
+  "principal_id",
+  "role",
+  "asked_by",
+  "reason",
+  "needs_confirm",
+];
+const GRANT_MOVES = ["confirmed_by", "ended_by"];
+export const GRANT_TRIGGERS: string[] = [
+  "CREATE TRIGGER role_grants_move BEFORE UPDATE ON dsor.role_grants FOR EACH ROW EXECUTE FUNCTION dsor.role_grant_moves()",
+  "CREATE TRIGGER role_grants_start BEFORE INSERT ON dsor.role_grants FOR EACH ROW EXECUTE FUNCTION dsor.role_grant_starts()",
+];
 export const LOGIN_TRIGGERS: string[] = [
   "CREATE TRIGGER logins_end BEFORE UPDATE ON dsor.logins FOR EACH ROW EXECUTE FUNCTION dsor.login_ends()",
   "CREATE TRIGGER logins_link BEFORE INSERT ON dsor.logins FOR EACH ROW EXECUTE FUNCTION dsor.login_links()",
@@ -644,7 +689,8 @@ export function today(): Catalog {
         }),
         rowSecurity: { enabled: true, forced: true },
         rules: [],
-        triggers: [INVITATION_TRIGGER],
+        // Changed in step 43b: DSoR's table of people (migration 049; step 43b's README, claim C8): and the check that an invitation names a person of its company.
+        triggers: [INVITATION_TRIGGER, INVITATION_PERSON_TRIGGER],
       },
       // The day's totals, behind the company's lock.
       {
@@ -745,6 +791,21 @@ export function today(): Catalog {
         rules: [],
         triggers: [TRIES_STAY, TRIES_WRITTEN, TRY_ALERT],
       },
+      // Changed in step 43b: DSoR's table of people (migration 049; step 43b's README, claim C8): the people, readable across companies, written inside one, each removed once.
+      {
+        name: "dsor.people",
+        kind: "table",
+        held: ["SELECT"],
+        columns: PEOPLE_COLUMNS.map((name) => {
+          const filled = name === "id" || name === "added_at";
+          if (name === "removed_by") return { name, held: ["SELECT", "UPDATE"], filled };
+          const held = PEOPLE_WRITTEN.includes(name) ? ["SELECT", "INSERT"] : ["SELECT"];
+          return { name, held, filled };
+        }),
+        rowSecurity: { enabled: true, forced: true },
+        rules: [],
+        triggers: [PEOPLE_TRIGGER],
+      },
       {
         name: "dsor.proposals",
         kind: "table",
@@ -788,6 +849,21 @@ export function today(): Catalog {
         rowSecurity: { enabled: true, forced: true },
         rules: [],
         triggers: [],
+      },
+      // Changed in step 43b: DSoR's table of people (migration 049; step 43b's README, claim C8): the role grants, each confirmed and ended once.
+      {
+        name: "dsor.role_grants",
+        kind: "table",
+        held: ["SELECT"],
+        columns: GRANT_COLUMNS.map((name) => {
+          const filled = name === "asked_at";
+          if (GRANT_MOVES.includes(name)) return { name, held: ["SELECT", "UPDATE"], filled };
+          const held = GRANT_WRITTEN.includes(name) ? ["SELECT", "INSERT"] : ["SELECT"];
+          return { name, held, filled };
+        }),
+        rowSecurity: { enabled: true, forced: true },
+        rules: [],
+        triggers: [...GRANT_TRIGGERS],
       },
     ],
     // The counter behind each payment's number. dsor_runtime holds nothing on it: an

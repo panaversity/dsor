@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import {
+  createDbPeople,
   createDbBrakes,
   createDbClaims,
   createDbControls,
@@ -106,6 +107,11 @@ export function dbRegistry(
     connectors,
     banks,
     alerts,
+    undefined,
+    undefined,
+    // Changed in step 43b: and the table of people, in dsor.people and dsor.role_grants, which the
+    //   claims above write too (step 43b's README, claim C8).
+    createDbPeople(pool),
   );
 }
 

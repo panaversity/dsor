@@ -8,6 +8,7 @@ import type { Answer } from "../src/envelope.ts";
 import { call } from "../src/pipeline.ts";
 import {
   createDbLog,
+  createDbPeople,
   createDbProposals,
   createDbReservations,
   createDbSlips,
@@ -522,8 +523,12 @@ describe("from step 25's review, on the database", () => {
       type: "human",
       memberships: [{ tenant_id: "org_456", roles: ["ap_supervisor"] }],
     } as unknown as Principal;
-    const answer = await withPlanted("tok_user_124", user124, () =>
-      tearUp(keyed({ token: "tok_user_124", tenant: "org_456" })),
+    // Changed in step 43b: and in DSoR's table of people, where line ① finds them.
+    const answer = await withPlanted(
+      "tok_user_124",
+      user124,
+      () => tearUp(keyed({ token: "tok_user_124", tenant: "org_456" })),
+      createDbPeople(pool),
     );
     expect(answer).toMatchObject({ code: "AUTHORIZATION_DENIED" });
     const rows = await rowsOf(

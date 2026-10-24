@@ -68,12 +68,18 @@ describe("the suite, on the database", () => {
       "payment.reconcile",
       // Step 41: and the run (step 41's README, claim C1).
       "payment.run",
+      // Changed in step 43b: the five commands of people and roles (step 43b's README, claims C3 to C6).
+      "person.add",
+      "person.remove",
       // And step 29's proposal.approve.
       "proposal.approve",
       // And step 31's release (step 31's README, decision D12).
       "proposal.execute",
       "proposal.expire_due",
       "rate.load",
+      "role.confirm",
+      "role.grant",
+      "role.revoke",
       // And step 28's four commands of a rule's life.
       "rule.activate",
       // And step 28b's sweep.
@@ -102,7 +108,8 @@ describe("the suite, on the database", () => {
     //   callers (step 41's README, claims C1 and C5).
     // Changed in step 43: and login.invite's and login.unlink's 12, admin_100 and admin_700, 3
     //   swaps each (step 43's README, revisions R2 and R7).
-    expect(report.attacks).toHaveLength(285);
+    // Changed in step 43b: the five commands of people and roles (step 43b's README, claims C3 to C6): and 30, admin_100 and admin_700, 3 swaps each.
+    expect(report.attacks).toHaveLength(315);
     // And the in-company pair, from org_456's four readers and org_789's two, through the
     // database's store. Found by the Stage 2 review, and fixed from step 12 on.
     expect(report.pairs).toHaveLength(6);
@@ -164,7 +171,8 @@ describe("the suite, on the database", () => {
       //   proposal.approve's vendor, 3 callers in org_456 and 2 in org_789, × 3 each.
       // Changed in step 43: and login.invite and login.unlink, admin_100 in org_456 and admin_700 in
       //   org_789, 2 × 3 each (step 43's README, revisions R2 and R7).
-      expect(made).toHaveLength(home === "org_456" ? 162 : 123);
+      // Changed in step 43b: the five commands of people and roles (step 43b's README, claims C3 to C6): and 15 in each company.
+      expect(made).toHaveLength(home === "org_456" ? 177 : 138);
       const ids = made.map((attack) => attack.request_id);
       expect(await recordsIn(home, ids)).toStrictEqual(
         made.map(({ operation, request_id }) => ({

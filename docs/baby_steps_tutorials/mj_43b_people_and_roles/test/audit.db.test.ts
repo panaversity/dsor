@@ -260,6 +260,14 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
       // it, and nothing changes it after (step 25c's README, decisions D6 and D7).
       // Changed in step 29: and what a waiting proposal waits for, written on the move to
       // PENDING_APPROVAL, never when it is added (step 29's README, decision D4).
+      // Changed in step 43b: DSoR's table of people (migration 049; step 43b's README, claim C8): read every column, add a person through four, and remove one through removed_by.
+      { object: "dsor.people", held: "SELECT" },
+      { object: "dsor.people INSERT", held: "tenant_id principal_id added_by reason" },
+      {
+        object: "dsor.people SELECT",
+        held: "id tenant_id principal_id added_by reason added_at removed_by removed_at",
+      },
+      { object: "dsor.people UPDATE", held: "removed_by" },
       { object: "dsor.proposals", held: "SELECT" },
       {
         object: "dsor.proposals INSERT",
@@ -298,6 +306,17 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
         held: "tenant_id proposal_id delegation day amount_value amount_currency state",
       },
       { object: "dsor.reservations UPDATE", held: "state" },
+      // Changed in step 43b: DSoR's table of people (migration 049; step 43b's README, claim C8): and the grants: add one through seven columns, and confirm or end it through two.
+      { object: "dsor.role_grants", held: "SELECT" },
+      {
+        object: "dsor.role_grants INSERT",
+        held: "id tenant_id principal_id role asked_by reason needs_confirm",
+      },
+      {
+        object: "dsor.role_grants SELECT",
+        held: "id tenant_id principal_id role asked_by reason needs_confirm asked_at expires_at confirmed_by confirmed_at ended_by ended_at",
+      },
+      { object: "dsor.role_grants UPDATE", held: "confirmed_by ended_by" },
       { object: "schema app", held: "USAGE" },
       { object: "schema dsor", held: "USAGE" },
       { object: "schema public", held: "USAGE" },

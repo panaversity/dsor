@@ -27,11 +27,6 @@ const people = [...logins.values()];
 const { issuers, problems } = checkIssuers(readIssuers(process.env["DSOR_ISSUERS_FILE"]), people);
 if (problems.length > 0) refuse(`the issuers refused to start:\n  ${problems.join("\n  ")}`);
 if (!issuers.has(company)) refuse(`${company} is no company in issuers.json`);
-// A person of this company: agents get real logins in step 44 (decision D1).
-const found = people.find((p) => p.id === person && p.type === "human");
-if (found === undefined || !found.memberships.some((m) => m.tenant_id === company)) {
-  refuse(`${person} is no person of ${company}`);
-}
 
 const owner = new pg.Pool({ connectionString: requireEnv("DSOR_MIGRATION_URL"), max: 1 });
 const client = await owner.connect();
@@ -40,6 +35,16 @@ try {
   await client.query("BEGIN");
   // The company's row: row-level security holds for the owner too (FORCE).
   await client.query("SELECT set_config('dsor.tenant_id', $1, true)", [company]);
+  // A person of this company. Changed in step 43b: in DSoR's table of people, never in code, so a
+  //   new hire can be invited once person.add has added them (step 43b's README, claim C3).
+  const member = await client.query(
+    "SELECT 1 FROM dsor.people WHERE tenant_id = $1 AND principal_id = $2 AND removed_at IS NULL",
+    [company, person],
+  );
+  if (member.rowCount !== 1) {
+    await client.query("ROLLBACK");
+    refuse(`${person} is no person of ${company}`);
+  }
   // One live login for each person (the review's finding 1): to change it, unlink it first.
   const live = await client.query(
     "SELECT 1 FROM dsor.logins WHERE principal_id = $1 AND unlinked_at IS NULL",

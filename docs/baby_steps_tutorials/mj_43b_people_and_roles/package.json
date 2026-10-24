@@ -9,6 +9,7 @@
     "start": "node src/main.ts",
     "serve": "node src/serve.ts",
     "invite": "node src/invite.ts",
+    "grant": "node src/grant.ts",
     "dev-issuer": "node src/dev-issuer.ts",
     "migrate": "node src/migrate.ts",
     "test": "vitest run",

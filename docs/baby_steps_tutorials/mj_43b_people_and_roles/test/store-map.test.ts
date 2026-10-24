@@ -94,6 +94,9 @@ describe("the shipped map", () => {
       "dsor.event_alerts",
       // Changed in step 43, the learner's R1: and dsor.invitations (migration 048).
       "dsor.invitations",
+      // Changed in step 43b: DSoR's table of people (migration 049; step 43b's README, claim C8).
+      "dsor.people",
+      "dsor.role_grants",
       // Changed in step 43: and dsor.logins, the links of logins to principals (step 43's README, D5).
       "dsor.logins",
       // Changed in step 39: and dsor.audit_heads, a twentieth (step 39's README, decision D8).

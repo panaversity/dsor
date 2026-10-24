@@ -1,5 +1,5 @@
 {
-  "person": "dsor://org_456/person/cfo_100",
+  "person": "dsor://org_456/person/suite_nobody",
   "role": "ap_clerk",
-  "reason": "the cross-tenant suite grants a role"
+  "reason": "the cross-tenant suite grants a role to a person no company has"
 }

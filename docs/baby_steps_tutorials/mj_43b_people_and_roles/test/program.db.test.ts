@@ -62,7 +62,7 @@ describe("the program", () => {
         // Changed in step 38b: and alert.escalate_due, first (step 38b's README, decision D3).
         // Changed in step 38c: and alert.list, second (step 38c's README).
         // Changed in step 41: and payment.run (step 41's README, claim C1).
-        /operations: \[\s+'alert\.escalate_due',\s+'alert\.list',\s+'control\.lift',\s+'control\.suspend',\s+'delegation\.revoke',\s+'invoice\.get',\s+'invoice\.issue',\s+'invoice\.list',\s+'login\.invite',\s+'login\.unlink',\s+'payment\.cancel',\s+'payment\.create',\s+'payment\.execute',\s+'payment\.reconcile',\s+'payment\.run',\s+'proposal\.approve',\s+'proposal\.execute',\s+'proposal\.expire_due',\s+'rate\.load',\s+'rule\.activate',\s+'rule\.check_authority',\s+'rule\.draft',\s+'rule\.retire',\s+'rule\.suspend'\s+\]/,
+        /operations: \[\s+'alert\.escalate_due',\s+'alert\.list',\s+'control\.lift',\s+'control\.suspend',\s+'delegation\.revoke',\s+'invoice\.get',\s+'invoice\.issue',\s+'invoice\.list',\s+'login\.invite',\s+'login\.unlink',\s+'payment\.cancel',\s+'payment\.create',\s+'payment\.execute',\s+'payment\.reconcile',\s+'payment\.run',\s+'person\.add',\s+'person\.remove',\s+'proposal\.approve',\s+'proposal\.execute',\s+'proposal\.expire_due',\s+'rate\.load',\s+'role\.confirm',\s+'role\.grant',\s+'role\.revoke',\s+'rule\.activate',\s+'rule\.check_authority',\s+'rule\.draft',\s+'rule\.retire',\s+'rule\.suspend'\s+\]/,
       );
       // Found by step 08's review: "id: 'INV-1008'" also matches the address read back, so
       // the success envelope could go unprinted. "data: {" is only in the success.

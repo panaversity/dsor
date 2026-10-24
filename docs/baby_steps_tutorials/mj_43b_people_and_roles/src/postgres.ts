@@ -66,7 +66,8 @@ import {
   type LoginBook,
 } from "./logins.ts";
 import type { Login } from "./tokens.ts";
-import { NO_PEOPLE } from "./people.ts";
+import { sameHands, type Grant, type PeopleBy, type PeopleStore } from "./people.ts";
+import type { Membership } from "./principals.ts";
 import type { FoundSlip, SlipStore } from "./slips.ts";
 import { Refusal, type Requirement } from "./envelope.ts";
 import { approvalOf, stillOpen, type Approval, type Approving, type Offer } from "./approvals.ts";
@@ -1327,8 +1328,9 @@ function storesIn(
     // NEW IN STEP 43: and the book of links and invitations, so login.invite and login.unlink write
     //   in the claim's transaction, with their record (the learner's R2 and R7).
     logins: bookThrough(client, run),
-    // NEW IN STEP 43b: and the table of people; none until migration 049's table.
-    people: NO_PEOPLE,
+    // NEW IN STEP 43b: and the table of people, so the five commands write in the claim's
+    //   transaction, with their record (step 43b's README, claims C3 to C6).
+    people: peopleThrough(client, run),
     // And the claim's own connection, so the record is written in its
     //   transaction (decision D1).
     transaction: client,
@@ -2786,5 +2788,203 @@ function bookThrough(reader: pg.Pool | pg.ClientBase, run: Runner): LoginBook {
         );
         return { logins: logins.rowCount ?? 0, invitations: invitations.rowCount ?? 0 };
       }),
+  });
+}
+
+// NEW IN STEP 43b: the table of people on PostgreSQL, dsor.people and dsor.role_grants (migration
+//   049). Read across companies, on the pool, because line ① reads a person's companies before it
+//   knows which one the call works in; written only inside one company, through a runner. The
+//   database checks what a broken-into program could try: a grant to someone of no company here, a
+//   confirm by its asker or the person it names, a second move (step 43b's README, claims C1 and C8,
+//   decisions D3 to D7).
+/** The table of people, in dsor.people and dsor.role_grants. */
+export function createDbPeople(pool: pg.Pool): PeopleStore {
+  return peopleThrough(pool, onPool(pool));
+}
+
+// A grant as pg gives it back.
+type GrantRow = {
+  id: string;
+  tenant_id: string;
+  principal_id: string;
+  role: string;
+  asked_by: string;
+  reason: string;
+  needs_confirm: boolean;
+  expires_at: Date | null;
+  confirmed_by: string | null;
+  confirmed_at: Date | null;
+  ended_at: Date | null;
+};
+
+// Where a grant stands now, as the memory store says it (src/people.ts).
+function grantOfRow(row: GrantRow): Grant {
+  const state =
+    row.ended_at !== null
+      ? "ended"
+      : !row.needs_confirm || row.confirmed_at !== null
+        ? "active"
+        : "pending";
+  return {
+    tenant: row.tenant_id,
+    id: row.id,
+    person: row.principal_id,
+    role: row.role,
+    asked_by: row.asked_by,
+    reason: row.reason,
+    state,
+    ...(row.expires_at === null ? {} : { expires_at: row.expires_at.toISOString() }),
+    ...(row.confirmed_by === null ? {} : { confirmed_by: row.confirmed_by }),
+  };
+}
+
+// The roles that count: live, and needing no confirm or confirmed.
+const COUNTS = `g.ended_at IS NULL AND (NOT g.needs_confirm OR g.confirmed_at IS NOT NULL)`;
+// A grant that still stands: one that counts, or one that waits and has not expired.
+const STANDS = `g.ended_at IS NULL AND (NOT g.needs_confirm OR g.confirmed_at IS NOT NULL OR g.expires_at > now())`;
+
+// The same statements, through a runner: on the pool, or inside a claim, where the five commands
+//   write in the claim's own transaction. A read is on the reader: no company.
+function peopleThrough(reader: pg.Pool | pg.ClientBase, run: Runner): PeopleStore {
+  const rolesHere = async (
+    client: pg.Pool | pg.ClientBase,
+    tenant: string,
+    person: string,
+  ): Promise<string[]> => {
+    const { rows } = await client.query<{ role: string }>(
+      `SELECT g.role FROM dsor.role_grants g
+        WHERE g.tenant_id = $1 AND g.principal_id = $2 AND ${COUNTS} ORDER BY g.role`,
+      [tenant, person],
+    );
+    return rows.map((row) => row.role);
+  };
+  return Object.freeze({
+    membershipsOf: async (person: string): Promise<Membership[]> => {
+      const { rows } = await reader.query<{ tenant_id: string; roles: string[] }>(
+        `SELECT p.tenant_id,
+                coalesce(array_agg(g.role ORDER BY g.role) FILTER (WHERE g.id IS NOT NULL), '{}') AS roles
+           FROM dsor.people p
+           LEFT JOIN dsor.role_grants g
+             ON g.tenant_id = p.tenant_id AND g.principal_id = p.principal_id AND ${COUNTS}
+          WHERE p.principal_id = $1 AND p.removed_at IS NULL
+          GROUP BY p.tenant_id ORDER BY p.tenant_id`,
+        [person],
+      );
+      return rows.map((row) => ({ tenant_id: row.tenant_id, roles: row.roles }));
+    },
+    memberOf: async (tenant: string, person: string) => {
+      const { rows } = await reader.query<{ removed: boolean }>(
+        `SELECT removed_at IS NOT NULL AS removed FROM dsor.people
+          WHERE tenant_id = $1 AND principal_id = $2 ORDER BY added_at DESC, removed_at DESC NULLS FIRST LIMIT 1`,
+        [tenant, person],
+      );
+      const row = rows[0];
+      if (row === undefined) return undefined;
+      if (row.removed) return { status: "deprovisioned" as const, roles: [] };
+      return { status: "active" as const, roles: await rolesHere(reader, tenant, person) };
+    },
+    add: async (tenant: string, person: string, by: PeopleBy): Promise<void> =>
+      run(tenant, async (client) => {
+        const added = await client.query(
+          `INSERT INTO dsor.people (tenant_id, principal_id, added_by, reason)
+           VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+          [tenant, person, by.person, by.reason],
+        );
+        if (added.rowCount !== 1) {
+          throw new Refusal("CONFLICT", `${person} is a person of ${tenant} already`, "internal");
+        }
+      }),
+    remove: async (tenant: string, person: string, by: PeopleBy) =>
+      run(tenant, async (client) => {
+        const gone = await client.query(
+          `UPDATE dsor.people SET removed_by = $3
+            WHERE tenant_id = $1 AND principal_id = $2 AND removed_at IS NULL`,
+          [tenant, person, by.person],
+        );
+        if (gone.rowCount !== 1) {
+          throw new Refusal("CONFLICT", `${person} is no active person of ${tenant}`, "internal");
+        }
+        const ended = await client.query(
+          `UPDATE dsor.role_grants g SET ended_by = $3
+            WHERE g.tenant_id = $1 AND g.principal_id = $2 AND ${STANDS}`,
+          [tenant, person, by.person],
+        );
+        return { roles: ended.rowCount ?? 0 };
+      }),
+    grant: async (tenant: string, person: string, role: string, powerful: boolean, by: PeopleBy) =>
+      run(tenant, async (client) => {
+        // A pending grant past its seven days is ended first, so the role may be asked for again.
+        await client.query(
+          `UPDATE dsor.role_grants SET ended_by = 'dsor'
+            WHERE tenant_id = $1 AND principal_id = $2 AND role = $3 AND ended_at IS NULL
+              AND needs_confirm AND confirmed_at IS NULL AND expires_at <= now()`,
+          [tenant, person, role],
+        );
+        const { rows } = await client.query<GrantRow>(
+          `INSERT INTO dsor.role_grants (id, tenant_id, principal_id, role, asked_by, reason, needs_confirm)
+           VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING
+           RETURNING id, tenant_id, principal_id, role, asked_by, reason, needs_confirm, expires_at,
+                     confirmed_by, confirmed_at, ended_at`,
+          [`grt_${randomUUID()}`, tenant, person, role, by.person, by.reason, powerful],
+        );
+        const row = rows[0];
+        if (row === undefined) {
+          throw new Refusal(
+            "CONFLICT",
+            `${person} holds ${role} in ${tenant} already, or it waits`,
+            "internal",
+          );
+        }
+        return grantOfRow(row);
+      }),
+    confirm: async (tenant: string, id: string, by: PeopleBy) =>
+      run(tenant, async (client) => {
+        // Locked, so two confirms at the same moment are one after the other: the second finds it
+        //   confirmed already.
+        const { rows } = await client.query<GrantRow>(
+          `SELECT id, tenant_id, principal_id, role, asked_by, reason, needs_confirm, expires_at,
+                  confirmed_by, confirmed_at, ended_at
+             FROM dsor.role_grants WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
+          [tenant, id],
+        );
+        const row = rows[0];
+        const waits =
+          row !== undefined &&
+          row.needs_confirm &&
+          row.confirmed_at === null &&
+          row.ended_at === null &&
+          row.expires_at !== null &&
+          row.expires_at.getTime() > (await databaseNow(client as pg.PoolClient)).getTime();
+        if (!waits)
+          throw new Refusal("CONFLICT", `no grant waits as ${id} in ${tenant}`, "internal");
+        const grant = grantOfRow(row);
+        if (by.person === row.asked_by || by.person === row.principal_id)
+          throw sameHands(by.person, grant);
+        const moved = await client.query<GrantRow>(
+          `UPDATE dsor.role_grants SET confirmed_by = $3 WHERE tenant_id = $1 AND id = $2
+           RETURNING id, tenant_id, principal_id, role, asked_by, reason, needs_confirm, expires_at,
+                     confirmed_by, confirmed_at, ended_at`,
+          [tenant, id, by.person],
+        );
+        return grantOfRow(moved.rows[0] as GrantRow);
+      }),
+    revoke: async (tenant: string, person: string, role: string, by: PeopleBy) =>
+      run(tenant, async (client) => {
+        const ended = await client.query(
+          `UPDATE dsor.role_grants g SET ended_by = $4
+            WHERE g.tenant_id = $1 AND g.principal_id = $2 AND g.role = $3 AND ${STANDS}`,
+          [tenant, person, role, by.person],
+        );
+        return ended.rowCount ?? 0;
+      }),
+    admins: async (tenant: string): Promise<number> => {
+      const { rows } = await reader.query<{ n: number }>(
+        `SELECT count(DISTINCT p.principal_id)::int AS n FROM dsor.people p
+           JOIN dsor.role_grants g ON g.tenant_id = p.tenant_id AND g.principal_id = p.principal_id
+          WHERE p.tenant_id = $1 AND p.removed_at IS NULL AND g.role = 'tenant_admin' AND ${COUNTS}`,
+        [tenant],
+      );
+      return rows[0]?.n ?? 0;
+    },
   });
 }

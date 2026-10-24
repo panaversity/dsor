@@ -18,6 +18,9 @@ import {
   INVITATION_TRIGGER,
   LOGIN_TRIGGERS,
   OUTBOX_TRIGGER,
+  INVITATION_PERSON_TRIGGER,
+  PEOPLE_TRIGGER,
+  GRANT_TRIGGERS,
   OUTBOX_KEEP_TRIGGER,
   OUTBOX_STAMP_TRIGGER,
   OUTBOX_STAY_TRIGGER,
@@ -369,6 +372,8 @@ describe("C8 and C11: the version in a read, and the triggers in the catalog", (
       INTENT_TRIGGER,
       // Changed in step 43, the learner's R1 and R7: the guards of the invitations and of the links (migration 048).
       INVITATION_TRIGGER,
+      // Changed in step 43b: DSoR's table of people (migration 049; step 43b's README, claim C8): and the check that an invitation names a person of its company.
+      INVITATION_PERSON_TRIGGER,
       INVOICE_TRIGGER,
       ...LOGIN_TRIGGERS,
       // Changed in step 40: and the guard on an event's mark (step 40's README, decision D2).
@@ -387,9 +392,13 @@ describe("C8 and C11: the version in a read, and the triggers in the catalog", (
       // Changed in step 40b: and the guard that keeps paid final (step 40b's README, decision D8).
       PAYMENT_STAYS_TRIGGER,
       PAYMENT_TRIGGER,
+      // Changed in step 43b: DSoR's table of people (migration 049; step 43b's README, claim C8): a person leaves once.
+      PEOPLE_TRIGGER,
       // Changed in step 38b: and the proposals' trigger that raises and closes an alert.
       PROPOSAL_ALERT,
       PROPOSAL_TRIGGER,
+      // Changed in step 43b: DSoR's table of people (migration 049; step 43b's README, claim C8): and a grant's two guards.
+      ...GRANT_TRIGGERS,
       // And a vendor's (step 32's README, decision D1).
       VENDOR_TRIGGER,
     ]);

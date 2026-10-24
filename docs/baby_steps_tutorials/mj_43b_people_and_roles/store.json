@@ -356,7 +356,37 @@
         }
       },
       "triggers": [
-        "CREATE TRIGGER invitations_move BEFORE UPDATE ON dsor.invitations FOR EACH ROW EXECUTE FUNCTION dsor.invitation_moves()"
+        "CREATE TRIGGER invitations_move BEFORE UPDATE ON dsor.invitations FOR EACH ROW EXECUTE FUNCTION dsor.invitation_moves()",
+        "CREATE TRIGGER invitations_name_a_person BEFORE INSERT ON dsor.invitations FOR EACH ROW EXECUTE FUNCTION dsor.invitation_names_a_person()"
+      ]
+    },
+    "dsor.people": {
+      "kind": "control-moved",
+      "tenant": "tenant_id",
+      "runtime": {
+        "table": ["SELECT"],
+        "columns": {
+          "INSERT": ["tenant_id", "principal_id", "added_by", "reason"],
+          "UPDATE": ["removed_by"]
+        }
+      },
+      "triggers": [
+        "CREATE TRIGGER people_leave BEFORE UPDATE ON dsor.people FOR EACH ROW EXECUTE FUNCTION dsor.person_leaves()"
+      ]
+    },
+    "dsor.role_grants": {
+      "kind": "control-moved",
+      "tenant": "tenant_id",
+      "runtime": {
+        "table": ["SELECT"],
+        "columns": {
+          "INSERT": ["id", "tenant_id", "principal_id", "role", "asked_by", "reason", "needs_confirm"],
+          "UPDATE": ["confirmed_by", "ended_by"]
+        }
+      },
+      "triggers": [
+        "CREATE TRIGGER role_grants_move BEFORE UPDATE ON dsor.role_grants FOR EACH ROW EXECUTE FUNCTION dsor.role_grant_moves()",
+        "CREATE TRIGGER role_grants_start BEFORE INSERT ON dsor.role_grants FOR EACH ROW EXECUTE FUNCTION dsor.role_grant_starts()"
       ]
     },
     "dsor.logins": {

@@ -113,7 +113,7 @@ describe("C1: every table with a company column has its lock", () => {
   // And dsor.intents, the notes (step 36's README, decision D1).
   // Changed in step 40: and dsor.outbox, the events (step 40's README, decision D2).
   // Changed in step 40c: and dsor.event_alerts and dsor.outbox_tries (step 40c's README, D4, D5).
-  it("DSOR-RP-01b: app.invoices, app.payments, app.vendors, dsor.alerts, dsor.approvals, dsor.audit, dsor.brakes, dsor.controls, dsor.decision_bundles, dsor.delegations, dsor.event_alerts, dsor.holds, dsor.idempotency, dsor.intents, dsor.invitations, dsor.limit_counters, dsor.notices, dsor.outbox, dsor.outbox_tries, dsor.proposals, dsor.rates, and dsor.reservations have row-level security enabled, forced, and policies", async () => {
+  it("DSOR-RP-01b: app.invoices, app.payments, app.vendors, dsor.alerts, dsor.approvals, dsor.audit, dsor.brakes, dsor.controls, dsor.decision_bundles, dsor.delegations, dsor.event_alerts, dsor.holds, dsor.idempotency, dsor.intents, dsor.invitations, dsor.limit_counters, dsor.notices, dsor.outbox, dsor.outbox_tries, dsor.people, dsor.proposals, dsor.rates, dsor.reservations, and dsor.role_grants have row-level security enabled, forced, and policies", async () => {
     const { rows } = await observer.query(TENANT_TABLES);
     expect(rows).toStrictEqual([
       { table: "app.invoices", enabled: true, forced: true, policies: 1 },
@@ -150,9 +150,12 @@ describe("C1: every table with a company column has its lock", () => {
       { table: "dsor.outbox", enabled: true, forced: true, policies: 1 },
       // Step 40c: the failed tries, with the company's rule.
       { table: "dsor.outbox_tries", enabled: true, forced: true, policies: 1 },
+      // Changed in step 43b: DSoR's table of people (migration 049; step 43b's README, claim C8): three policies each.
+      { table: "dsor.people", enabled: true, forced: true, policies: 3 },
       { table: "dsor.proposals", enabled: true, forced: true, policies: 1 },
       { table: "dsor.rates", enabled: true, forced: true, policies: 1 },
       { table: "dsor.reservations", enabled: true, forced: true, policies: 3 },
+      { table: "dsor.role_grants", enabled: true, forced: true, policies: 3 },
     ]);
   });
 
@@ -432,6 +435,34 @@ describe("C1: every table with a company column has its lock", () => {
         kind: "PERMISSIVE",
       },
       // The company's rule on proposals (step 22's README).
+      // Changed in step 43b: DSoR's table of people (migration 049; step 43b's README, claim C8): read across companies, written inside one (decision D5).
+      {
+        table: "dsor.people",
+        name: "people_add",
+        command: "INSERT",
+        roles: ["public"],
+        using: null,
+        check: `(tenant_id = ${company})`,
+        kind: "PERMISSIVE",
+      },
+      {
+        table: "dsor.people",
+        name: "people_change",
+        command: "UPDATE",
+        roles: ["public"],
+        using: `(tenant_id = ${company})`,
+        check: `(tenant_id = ${company})`,
+        kind: "PERMISSIVE",
+      },
+      {
+        table: "dsor.people",
+        name: "people_read",
+        command: "SELECT",
+        roles: ["public"],
+        using: "true",
+        check: null,
+        kind: "PERMISSIVE",
+      },
       {
         table: "dsor.proposals",
         name: "tenant_isolation",
@@ -478,6 +509,33 @@ describe("C1: every table with a company column has its lock", () => {
         command: "ALL",
         roles: ["public"],
         using: `(tenant_id = ${company})`,
+        check: null,
+        kind: "PERMISSIVE",
+      },
+      {
+        table: "dsor.role_grants",
+        name: "role_grants_add",
+        command: "INSERT",
+        roles: ["public"],
+        using: null,
+        check: `(tenant_id = ${company})`,
+        kind: "PERMISSIVE",
+      },
+      {
+        table: "dsor.role_grants",
+        name: "role_grants_change",
+        command: "UPDATE",
+        roles: ["public"],
+        using: `(tenant_id = ${company})`,
+        check: `(tenant_id = ${company})`,
+        kind: "PERMISSIVE",
+      },
+      {
+        table: "dsor.role_grants",
+        name: "role_grants_read",
+        command: "SELECT",
+        roles: ["public"],
+        using: "true",
         check: null,
         kind: "PERMISSIVE",
       },

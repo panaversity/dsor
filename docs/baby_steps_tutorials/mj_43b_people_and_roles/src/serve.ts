@@ -8,7 +8,6 @@
 import { fileURLToPath } from "node:url";
 import { readRoleSettings } from "./authority.ts";
 import { readCatalog } from "./catalog.ts";
-import { fakeDirectory } from "./directory.ts";
 import { readInputs } from "./inputs.ts";
 import { storeDifferences } from "./inspector.ts";
 import { readClassifications } from "./labels.ts";
@@ -24,6 +23,7 @@ import {
   createDbControls,
   createDbInvoices,
   createDbBook,
+  createDbPeople,
   createDbLog,
   createDbPayments,
   createDbSlips,
@@ -59,20 +59,9 @@ if (!Number.isInteger(port) || port < 0 || port > 65535) {
 }
 const pool = openPool(process.env["DSOR_DB_URL"] ?? "");
 
-// Each company's staff directory, fake, with the story's people, as pnpm start has them.
-const directories = new Map([
-  [
-    "org_456",
-    fakeDirectory("org_456", {
-      user_123: { status: "active", roles: ["ap_supervisor"] },
-      cfo_100: { status: "active", roles: ["CFO"] },
-    }),
-  ],
-  [
-    "org_789",
-    fakeDirectory("org_789", { user_700: { status: "active", roles: ["ap_supervisor"] } }),
-  ],
-]);
+// Changed in step 43b: no fake directory. Each company's role source is DSoR's own table of people,
+//   dsor.people and dsor.role_grants, as role-sources.json says (step 43b's README, claim C2).
+const people = createDbPeople(pool);
 
 // The registry over the database, with the company's rules in dsor.controls, which the claims read
 //   inside their own transactions, as the database tests of step 28 on have it.
@@ -88,7 +77,7 @@ try {
     createDbInvoices(pool),
     createDbPayments(pool),
     createDbSlips(pool),
-    directories,
+    new Map(),
     readRoleSettings(),
     createDbClaims(pool, "database"),
     ownWorkFor(),
@@ -96,6 +85,14 @@ try {
     undefined,
     undefined,
     controls,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    // NEW IN STEP 43b: and the table of people, which line ① and the role source read.
+    people,
   );
   const { problems } = checkStore(readStore());
   if (problems.length > 0)
