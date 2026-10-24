@@ -1122,6 +1122,8 @@ export function createDbClaims(
     intents: createDbIntents(pool),
     // And the holds, each look in a transaction of its own, for a dry run.
     holds: createDbHolds(pool),
+    // NEW IN STEP 43b: and the table of people, which the registry reads unless it is given another.
+    people: createDbPeople(pool),
     run: async (
       scope: ClaimScope,
       payloadHash: string,

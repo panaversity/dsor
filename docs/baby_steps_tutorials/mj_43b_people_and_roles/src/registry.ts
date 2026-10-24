@@ -72,7 +72,7 @@ import { undoProblems } from "./semantics.ts";
 import { NO_SLIPS, type SlipStore } from "./slips.ts";
 import { loginProblems, logins } from "./principals.ts";
 import { FAKE_LOGINS, type LoginSource } from "./logins.ts";
-import { peopleDirectory, storyPeople, type PeopleStore } from "./people.ts";
+import { peopleDirectory, type PeopleStore } from "./people.ts";
 
 /** One contract file, as it was read from disk: its name and its text. */
 export type ContractSource = { file: string; text: string };
@@ -266,7 +266,9 @@ export function buildRegistry(
   // NEW IN STEP 43b: and the table of people, a fresh one of the story's people unless the caller
   //   gives another. The claims must be given the same table, so a change that one command makes is
   //   what line ① reads next (step 43b's README, decision D2).
-  people: PeopleStore = storyPeople(),
+  // Changed by the code review of step 43b, finding 1: the claims' own table unless the caller gives
+  //   one, never a second copy of the story's people.
+  people: PeopleStore = claims.people,
 ): Registry {
   // Every problem is collected first, and the refusal names them all (step 03's
   // README, decision 2).

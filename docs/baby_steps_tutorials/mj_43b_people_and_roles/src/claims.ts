@@ -141,6 +141,10 @@ export type ClaimStore = {
   intents: IntentStore;
   // And the holds, which a dry run's line ⑨ looks at, outside any claim.
   holds: HoldStore;
+  // NEW IN STEP 43b: and the table of people the claims write, which the registry reads unless it is
+  //   given another. One table, so a change one command makes is what line ① reads next. Found by
+  //   the code review of step 43b, finding 1: each made its own copy of the story's people.
+  people: PeopleStore;
   /**
    * Claims the key and runs the work, or gives back the outcome recorded for the same request,
    * or refuses a different request with IDEMPOTENCY_CONFLICT.
@@ -647,7 +651,7 @@ export function memoryClaims(
     if (held.supersedes !== supersedes) throw usedToReplaceAnother(scope.operation);
     return { ...fresh(ended), replay_of: held.requestId };
   };
-  return Object.freeze({ run, reservations, rates, proposals, intents, holds });
+  return Object.freeze({ run, reservations, rates, proposals, intents, holds, people });
 }
 
 // The outcome, with a copy of its value, so no caller can change what the claim keeps.
