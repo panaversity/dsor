@@ -4,7 +4,7 @@
 // administrator's role.confirm; each call is recorded like any other (step 43b's README, claims C3
 // to C6, decisions L1 to L4, D3, and D7).
 import { Refusal } from "./envelope.ts";
-import { isPowerful, sameHands, type Grant } from "./people.ts";
+import { isPowerful, sameHands, taken, type Grant } from "./people.ts";
 import { logins } from "./principals.ts";
 import type { OwnLook, OwnStores, OwnWork } from "./revocation.ts";
 import { formatUri, parseUri } from "./uri.ts";
@@ -69,7 +69,7 @@ async function mayAdd(input: unknown, look: OwnLook): Promise<void> {
   //   only "taken", never which company.
   const elsewhere = (await look.people.companiesOf(person)).filter((t) => t !== look.tenant);
   if (elsewhere.length > 0) {
-    throw new Refusal("CONFLICT", `the id ${person} is taken: choose another`, "internal");
+    throw taken(person);
   }
 }
 
@@ -132,7 +132,10 @@ export function peopleWorkFor(): Record<string, OwnWork> {
       change: async (input: unknown, work: OwnStores): Promise<unknown> => {
         const person = personOf(input) as string;
         const { reason } = input as PersonInput;
-        await work.stores.people.add(work.tenant, person, { person: work.caller.id, reason });
+        // Alone: an id another company has is refused here too, inside the claim, so two
+        //   administrators adding one new id at the same moment cannot both succeed (the code
+        //   review of step 43b, finding 3).
+        await work.stores.people.add(work.tenant, person, { person: work.caller.id, reason }, true);
         return { person, status: "active" };
       },
     },

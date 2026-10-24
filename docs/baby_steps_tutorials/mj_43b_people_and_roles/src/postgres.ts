@@ -66,7 +66,7 @@ import {
   type LoginBook,
 } from "./logins.ts";
 import type { Login } from "./tokens.ts";
-import { sameHands, type Grant, type PeopleBy, type PeopleStore } from "./people.ts";
+import { sameHands, taken, type Grant, type PeopleBy, type PeopleStore } from "./people.ts";
 import type { Membership } from "./principals.ts";
 import type { FoundSlip, SlipStore } from "./slips.ts";
 import { Refusal, type Requirement } from "./envelope.ts";
@@ -2891,8 +2891,22 @@ function peopleThrough(reader: pg.Pool | pg.ClientBase, run: Runner): PeopleStor
       if (row.removed) return { status: "deprovisioned" as const, roles: [] };
       return { status: "active" as const, roles: await rolesHere(reader, tenant, person) };
     },
-    add: async (tenant: string, person: string, by: PeopleBy): Promise<void> =>
+    add: async (tenant: string, person: string, by: PeopleBy, alone = false): Promise<void> =>
       run(tenant, async (client) => {
+        // Changed by the code review of step 43b, finding 3: for an administrator's person.add, the
+        //   id's lock, held until the claim commits, so a second add of the same id in another
+        //   company waits, then sees the first, and is refused.
+        if (alone) {
+          await client.query(
+            "SELECT pg_advisory_xact_lock(hashtextextended('dsor.people/' || $1, 0))",
+            [person],
+          );
+          const elsewhere = await client.query(
+            "SELECT 1 FROM dsor.people WHERE principal_id = $1 AND tenant_id <> $2 LIMIT 1",
+            [person, tenant],
+          );
+          if (elsewhere.rowCount !== 0) throw taken(person);
+        }
         const added = await client.query(
           `INSERT INTO dsor.people (tenant_id, principal_id, added_by, reason)
            VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,

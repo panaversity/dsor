@@ -37,7 +37,10 @@ export type PeopleStore = {
     tenant: string,
     person: string,
   ) => Promise<{ status: Status; roles: string[] } | undefined>;
-  add: (tenant: string, person: string, by: PeopleBy) => Promise<void>;
+  // Changed by the code review of step 43b, finding 3: alone, for an administrator's person.add,
+  //   refuses an id another company has or had, checked and added in one step, so two adds of one id
+  //   at the same moment cannot both pass. The owner's rows may put a person in two companies.
+  add: (tenant: string, person: string, by: PeopleBy, alone?: boolean) => Promise<void>;
   // Marks the person deprovisioned here, and ends their roles and pending grants here.
   remove: (tenant: string, person: string, by: PeopleBy) => Promise<{ roles: number }>;
   grant: (
@@ -63,6 +66,11 @@ const DAYS_7 = 7 * 86_400_000;
 /** The refusal of a change the table cannot make. */
 function conflict(why: string): Refusal {
   return new Refusal("CONFLICT", why, "internal");
+}
+
+/** The refusal of an id another company has, or had: it says only "taken", never which company. */
+export function taken(person: string): Refusal {
+  return conflict(`the id ${person} is taken: choose another`);
 }
 
 /** The table in memory, starting with these people, and its own clock. */
@@ -121,9 +129,13 @@ export function memoryPeople(
         ? undefined
         : { status: member.status, roles: rolesOf(tenant, person) };
     },
-    add: async (tenant, person, _by) => {
+    add: async (tenant, person, _by, alone = false) => {
       if (members.get(key(tenant, person))?.status === "active") {
         throw conflict(`${person} is a person of ${tenant} already`);
+      }
+      // No await between this check and the add below, so two adds cannot interleave here.
+      if (alone && [...members.values()].some((m) => m.person === person && m.tenant !== tenant)) {
+        throw taken(person);
       }
       members.set(key(tenant, person), { tenant, person, status: "active" });
     },

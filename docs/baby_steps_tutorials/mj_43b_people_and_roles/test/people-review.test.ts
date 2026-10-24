@@ -55,6 +55,17 @@ describe("From the review, finding 1: one company's administrator cannot take an
     expect(await w.people.memberOf("org_789", "cfo_100")).toBeUndefined();
   });
 
+  it("DSOR-IDN-03a: admin_100 and admin_700 add the same new id at the same moment: one adds it, the other hears the id is taken (the code review of step 43b, finding 3)", async () => {
+    const w = await ruleWorldOnTuesday();
+    const both = await Promise.all([
+      as(w, ADMIN_456, "person.add", { person: "dsor://org_456/person/jane_300", reason: "x" }),
+      as(w, ADMIN_789, "person.add", { person: "dsor://org_789/person/jane_300", reason: "x" }),
+    ]);
+    expect(both.filter((answer) => "outcome" in answer)).toHaveLength(1);
+    expect(both.filter((answer) => "code" in answer && answer.code === "CONFLICT")).toHaveLength(1);
+    expect(await w.people.companiesOf("jane_300")).toHaveLength(1);
+  });
+
   it("DSOR-IDN-03a: a person in both companies: org_789's login.unlink never ends the login org_456's invitation made", async () => {
     const w = await ruleWorldOnTuesday();
     // cfo_100 works in both, as the owner's rows can say.

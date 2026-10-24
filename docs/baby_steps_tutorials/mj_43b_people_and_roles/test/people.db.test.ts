@@ -190,6 +190,18 @@ describe("From the review of step 43b, findings 1 and 4, on PostgreSQL", () => {
     }
   });
 
+  it("DSOR-IDN-03a: one new id added by two administrators to org_456 and org_789 at the same moment, ten times: always one company (the code review of step 43b, finding 3)", async () => {
+    for (let i = 0; i < 10; i += 1) {
+      const p = fresh();
+      const both = await Promise.allSettled([
+        people.add("org_456", p.id, OWNER, true),
+        people.add("org_789", p.id, OWNER, true),
+      ]);
+      expect(both.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      expect(await people.companiesOf(p.id)).toHaveLength(1);
+    }
+  });
+
   it("DSOR-IDN-03a: org_789's unlink of a person in both companies ends no login that org_456's invitation made", async () => {
     const p = fresh();
     await people.add("org_456", p.id, OWNER);
