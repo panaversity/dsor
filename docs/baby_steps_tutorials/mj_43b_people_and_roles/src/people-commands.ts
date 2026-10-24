@@ -29,11 +29,13 @@ function noPerson(person: string | undefined, tenant: string): Refusal {
   );
 }
 
-/** The person must be an active member of this company now. */
-async function mustBeMember(input: unknown, look: OwnLook): Promise<string> {
+/** The person must be an active member of this company now. login.invite and login.unlink ask it too. */
+export async function mustBeMember(input: unknown, look: OwnLook): Promise<string> {
   const person = personOf(input);
   const found = person === undefined ? undefined : await look.people.memberOf(look.tenant, person);
-  if (person === undefined || found?.status !== "active") throw noPerson(person, look.tenant);
+  // The answer names the address's id, whatever its kind, as login.invite's did since step 43.
+  const named = parseUri((input as PersonInput).person).id;
+  if (person === undefined || found?.status !== "active") throw noPerson(named, look.tenant);
   return person;
 }
 
@@ -101,10 +103,6 @@ const SYSTEM_ROLES: ReadonlySet<string> = (() => {
   return new Set([...held("system")].filter((role) => !people.has(role)));
 })();
 
-async function mayRevoke(input: unknown, look: OwnLook): Promise<void> {
-  await mustBeMember(input, look);
-}
-
 // A grant's address, such as dsor://org_456/grant/grt_…. Any other kind names no grant here.
 function grantOf(input: unknown): string | undefined {
   const { entity, id } = parseUri((input as ConfirmInput).grant);
@@ -140,9 +138,7 @@ export function peopleWorkFor(): Record<string, OwnWork> {
       },
     },
     "person.remove": {
-      check: async (input, look) => {
-        await mustBeMember(input, look);
-      },
+      check: async (input, look) => void (await mustBeMember(input, look)),
       change: async (input: unknown, work: OwnStores): Promise<unknown> => {
         const person = personOf(input) as string;
         const { reason } = input as PersonInput;
@@ -188,9 +184,9 @@ export function peopleWorkFor(): Record<string, OwnWork> {
         }
       },
       change: async (input: unknown, work: OwnStores): Promise<unknown> => {
-        const id = grantOf(input);
+        // Line ⑨'s check has found a grant at this address already.
+        const id = grantOf(input) as string;
         const { reason } = input as ConfirmInput;
-        if (id === undefined) throw new Refusal("RESOURCE_NOT_FOUND", `no grant waits here`);
         const grant = await work.stores.people.confirm(work.tenant, id, {
           person: work.caller.id,
           reason,
@@ -199,7 +195,7 @@ export function peopleWorkFor(): Record<string, OwnWork> {
       },
     },
     "role.revoke": {
-      check: mayRevoke,
+      check: async (input, look) => void (await mustBeMember(input, look)),
       change: async (input: unknown, work: OwnStores): Promise<unknown> => {
         const person = personOf(input) as string;
         const { role, reason } = input as RoleInput;
