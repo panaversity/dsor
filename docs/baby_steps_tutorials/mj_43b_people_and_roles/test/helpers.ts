@@ -748,6 +748,9 @@ export function slipRegistry(
     memoryPayments(rows),
     slips,
     directories,
+    // Changed in step 43b: step 19's settings, named here, whose fake directories these tests
+    //   drive; the registry's default is the shipped role source (the code review's finding 5).
+    readRoleSettings(STEP_19_ROLE_SOURCES),
   );
 }
 

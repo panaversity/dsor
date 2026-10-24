@@ -10,7 +10,6 @@ import {
   checkRoleSettings,
   createRoleSource,
   readRoleSettings,
-  STEP_19_ROLE_SOURCES,
   type RoleSettings,
   type RoleSettingsSource,
   type RoleSource,
@@ -215,10 +214,9 @@ export function buildRegistry(
   directories: Directories = NO_DIRECTORIES,
   // Each company's role source setting. This step's own, unless the caller
   // gives others (step 19's README, decision 8).
-  // Changed in step 43b: a registry built with no settings asks the directory it is given, as
-  //   since step 19, from step 19's file. The program reads role-sources.json, DSoR's own table
-  //   (step 43b's README, claim C2).
-  roleSettings: RoleSettingsSource = readRoleSettings(STEP_19_ROLE_SOURCES),
+  // Changed in step 43b: the shipped role-sources.json, DSoR's own table, unless the caller gives
+  //   another, as the earlier stories give step 19's (the code review of step 43b, finding 5).
+  roleSettings: RoleSettingsSource = readRoleSettings(),
   // The claims of idempotency keys. In memory, beside these stores, unless the
   // caller gives others. The program and the database tests give the database's (step 20's
   // README, decision 6).
