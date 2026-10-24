@@ -37,8 +37,17 @@ try {
     "SELECT 1 FROM dsor.people WHERE tenant_id = $1 AND principal_id = $2 AND removed_at IS NULL",
     [company, person],
   );
+  // Changed by the code review of step 43b, finding 7: an administrator already is said so, not met
+  //   with the database's duplicate-key error.
+  const already = await client.query(
+    `SELECT 1 FROM dsor.role_grants
+      WHERE tenant_id = $1 AND principal_id = $2 AND role = 'tenant_admin' AND ended_at IS NULL`,
+    [company, person],
+  );
   if (member.rowCount !== 1) {
     outcome = `${person} is no person of ${company}`;
+  } else if (already.rowCount !== 0) {
+    outcome = `${person} is an administrator of ${company} already`;
   } else {
     const { rows } = await client.query<{ n: number }>(
       `SELECT count(DISTINCT p.principal_id)::int AS n FROM dsor.people p

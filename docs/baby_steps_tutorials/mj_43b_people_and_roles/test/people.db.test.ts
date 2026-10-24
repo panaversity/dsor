@@ -378,6 +378,11 @@ describe("C7: the owner's pnpm grant", () => {
       "pnpm grant gives tenant_admin only: every other role is role.grant's",
     ],
     [["org_789", "cfo_999", "tenant_admin", "x"], "cfo_999 is no person of org_789"],
+    // From the code review of step 43b, finding 7: it printed the database's duplicate-key error.
+    [
+      ["org_789", "admin_700", "tenant_admin", "x"],
+      "admin_700 is an administrator of org_789 already",
+    ],
     [["org_789", "user_700"], "use: pnpm grant <company> <person> tenant_admin <reason>"],
   ])("Step 43b, L3: pnpm grant %j is refused", (words, message) => {
     expect(grant(...words)).toStrictEqual({ status: 1, out: message });
