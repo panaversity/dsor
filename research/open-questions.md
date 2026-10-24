@@ -1133,3 +1133,13 @@ for a human. An agent may gather evidence; it does not settle these alone.
     has no company, so an administrator of one company who unlinks a person ends that person's login
     in every company. No person of the story belongs to two companies, so no test meets it. Should a
     link, or its end, belong to a company?
+168. **How fresh must a present person's roles be?** §44 bounds how old an absent signer's authority
+    may be (DSOR-IDN-06: 24 hours at L2, 1 hour at L3), but sets no bound for the roles of a person on
+    the call, such as cfo_100 approving. Step 43b's learner build reads DSoR's own table at every
+    call, so the bound does not arise there; a company whose roles come from its own directory, or
+    from its tokens, will need one. Should §44 bound it too?
+169. **Who may change a role, and how many must agree?** DSOR-IDN-05 names DSoR-held role
+    assignments as a role source, but the specification does not say who may change them, nor
+    whether a role that may approve needs more than one person to grant. Step 43b's learner build
+    lets a tenant administrator grant and revoke, and makes a role that may approve or grant wait for
+    a second administrator's confirmation. Should the specification say so, with a requirement id?

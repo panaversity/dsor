@@ -2460,6 +2460,24 @@ for the learner to review.
   with every assumption" is a decision the learner has not made yet; the review of it is where the
   step is decided. Open questions 166 and 167.
 
+### Step 43b, people and roles in DSoR's table (2026-10-24)
+
+- **The question first:** "is it prebuilt in Managed Neon Auth?" Partly: its organizations have three
+  fixed roles, no CFO. So the learner chose DSoR's own table now, and a company's own source, with a
+  real single sign-on server, as step 43c. The choice of source is per company, as `issuers.json` is.
+- **Two of the learner's first answers met walls in earlier steps,** and were asked again: reusing
+  payment approvals needed step 31's unbuilt release of DSoR's own work, so a small `role.confirm`;
+  and the owner is no person, so `pnpm grant` makes only the first administrators.
+- **Found while building:** on PostgreSQL, the cross-company suite's own same-company call removed
+  cfo_100, because the example of `person.remove` named her; every later file failed. Examples now
+  name a person no company has.
+- **Breaks:** ten, each caught.
+- **The hostile review found a critical hole:** org_789's administrator could add an id called
+  cfo_100, unlink and invite it, and sign in as org_456's CFO, because a person's id and login are
+  one for all of DSoR. Fixed red first, with a removed CFO's approval that still released a payment,
+  and nine smaller findings. Lesson: a design that is per company in the table but global in the
+  logins must be attacked across the seam.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.
