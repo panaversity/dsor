@@ -294,19 +294,19 @@ export async function checkApprovals(
   const binding = given.filter(
     (a) => a.status === "active" && a.payload_hash === found.payload_hash,
   );
-  // Changed in step 43b: and only while every approver is still an active person of the company,
-  //   holding each role the approval met, now. A CFO removed, or no longer CFO, after approving no
-  //   longer approves (DSOR-APR-03b; the review of step 43b, finding 2).
-  const counted: Approval[] = [];
-  for (const approval of binding) {
-    let holds = true;
-    for (const { principal } of approval.approvers) {
-      const now = await people.memberOf(tenant, principal);
-      const roles = now?.status === "active" ? now.roles : [];
-      if (!approval.satisfies.every((line) => roles.includes(line.requirement.role))) holds = false;
-    }
-    if (holds) counted.push(approval);
+  // Changed in step 43b: an approval counts for a rule only while each of its approvers is still an
+  //   active person of the company holding that rule's role, now. A CFO removed, or no longer CFO,
+  //   after approving no longer approves (DSOR-APR-03b; the review of step 43b, finding 2). Rule by
+  //   rule, not all or nothing: an approval still counts where its role is still held (the code
+  //   review of step 43b, finding 6). Each approver's roles are read once (finding 10).
+  const held = new Map<string, readonly string[]>();
+  for (const principal of new Set(binding.flatMap((a) => a.approvers.map((p) => p.principal)))) {
+    const now = await people.memberOf(tenant, principal);
+    held.set(principal, now?.status === "active" ? now.roles : []);
   }
+  const stillHolds = (a: Approval, role: string): boolean =>
+    a.approvers.every((p) => (held.get(p.principal) ?? []).includes(role));
+  const counted = binding;
   for (const now of requires) {
     const { control, control_version: version } = now;
     const { role, quorum } = now.approval;
@@ -317,8 +317,11 @@ export async function checkApprovals(
     // One person counts once (DSOR-SOD-04c), and only for the role their approval met.
     const people = new Set(
       counted
-        .filter((a) =>
-          a.satisfies.some((line) => line.control === control && line.requirement.role === role),
+        .filter(
+          (a) =>
+            a.satisfies.some(
+              (line) => line.control === control && line.requirement.role === role,
+            ) && stillHolds(a, role),
         )
         .flatMap((a) => a.approvers.map((approver) => approver.principal)),
     );
@@ -333,7 +336,7 @@ export async function checkApprovals(
   const metBy = (a: Approval, r: Requirement): boolean =>
     a.satisfies.some(
       (line) => line.control === r.control && line.requirement.role === r.approval.role,
-    );
+    ) && stillHolds(a, r.approval.role);
   // A Map, never a plain object: a rule's id is the company's text, and a rule named constructor
   //   found Object's own constructor in a plain one. Found by step 33's review, findings 1 and 2.
   const satisfied = new Map<string, string[]>();

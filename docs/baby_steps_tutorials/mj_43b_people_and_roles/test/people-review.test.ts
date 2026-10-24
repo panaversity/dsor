@@ -11,7 +11,8 @@ import type { RequestEnvelope } from "../src/request.ts";
 import { remoteKeys } from "../src/tokens.ts";
 import { keyed } from "./helpers.ts";
 import { startIssuer, type TestIssuer } from "./issuer.ts";
-import { ruleWorldOnTuesday, type RuleWorld } from "./rule-world.ts";
+import { ruleWorldOnTuesday, shippedRule, type RuleWorld } from "./rule-world.ts";
+import type { Control } from "../src/controls.ts";
 
 let a: TestIssuer;
 beforeAll(async () => {
@@ -121,6 +122,35 @@ describe("From the review, finding 2: an approval counts only while its approver
       expect(w.drafted.filter((p) => p.invoice_id === "INV-1008")).toStrictEqual([]);
     },
   );
+
+  // From the code review of step 43b, finding 6: an approval counts for each rule whose role its
+  //   approver still holds, not all or nothing.
+  it("DSOR-APR-03b: cfo_100, also an administrator, approves INV-1008 for both rules; that rule is retired and she loses tenant_admin: her approval still counts for the CFO's rule", async () => {
+    const adminAbove30000: Control = {
+      ...shippedRule(),
+      id: "admin-above-30000",
+      version: 1,
+      condition: 'dsor_exceeds(state.invoice.open_amount, dsor_money("30000", "USD"))',
+      effect: { require_approval: { role: "tenant_admin", quorum: 1 } },
+    };
+    const w = await ruleWorldOnTuesday({
+      file: "controls.json",
+      text: JSON.stringify({ org_456: [shippedRule(), adminAbove30000], org_789: [] }),
+    });
+    await w.people.grant("org_456", "cfo_100", "tenant_admin", false, OWNER);
+    const { proposal } = await approvedByCfo(w);
+    expect(
+      await as(w, CFO, "rule.retire", {
+        rule: "dsor://org_456/rule/admin-above-30000",
+        version: 1,
+        reason: "no longer asked",
+      }),
+    ).toMatchObject({ outcome: "COMMITTED" });
+    await w.people.revoke("org_456", "cfo_100", "tenant_admin", OWNER);
+    expect(await as(w, AGENT, "proposal.execute", { proposal })).toMatchObject({
+      outcome: "COMMITTED",
+    });
+  });
 
   it("DSOR-APR-03b: with cfo_100 still CFO, the same release goes through", async () => {
     const w = await ruleWorldOnTuesday();
