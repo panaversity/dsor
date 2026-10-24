@@ -653,7 +653,8 @@ const inMemory = buildRegistry(
     ["org_456", tuesday456],
     ["org_789", directory789],
   ]),
-  undefined,
+  // Changed in step 43b: step 19's settings, named, for this story's fake directory.
+  readRoleSettings(STEP_19_ROLE_SOURCES),
   undefined,
   undefined,
   undefined,
@@ -699,7 +700,8 @@ const accounts = buildRegistry(
   memoryPayments(notePayments),
   memorySlips(copies.filter((slip) => slip !== undefined)),
   directories,
-  undefined,
+  // Changed in step 43b: step 19's settings, named, for this story's fake directory.
+  readRoleSettings(STEP_19_ROLE_SOURCES),
   undefined,
   undefined,
   undefined,
