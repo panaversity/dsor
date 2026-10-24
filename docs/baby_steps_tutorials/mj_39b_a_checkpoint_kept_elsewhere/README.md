@@ -446,6 +446,11 @@ and its tests failed (see the breaks above).
 
 ### Left open on purpose
 
+- **On Windows, "owner only" is the folder's job.** `makeKeyPair` writes the private key with the
+  permission bits `0600`, readable by its owner only. Windows has no such bits: Node writes none and
+  reports `0666`, and who may read the key is decided by the folder's access list. So the test checks
+  the bits everywhere but Windows. Keep the key in a folder only you can read, such as your own user
+  folder. Found by CI on `windows-latest`, 2026-10-25.
 - **The checker trusts the database server.** A superuser of the server, or a changed PostgreSQL,
   can show the checker other rows. Only a copy of the log kept elsewhere, such as a backup or a
   stream to another system, answers that.
