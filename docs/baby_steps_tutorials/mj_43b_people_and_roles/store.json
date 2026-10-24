@@ -380,7 +380,15 @@
       "runtime": {
         "table": ["SELECT"],
         "columns": {
-          "INSERT": ["id", "tenant_id", "principal_id", "role", "asked_by", "reason", "needs_confirm"],
+          "INSERT": [
+            "id",
+            "tenant_id",
+            "principal_id",
+            "role",
+            "asked_by",
+            "reason",
+            "needs_confirm"
+          ],
           "UPDATE": ["confirmed_by", "ended_by"]
         }
       },

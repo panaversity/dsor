@@ -156,3 +156,109 @@ tutorial's decisions.
 | B6 | `pnpm grant` gives any role |
 | B7 | A removed person's memberships still count |
 | B8 | The link trigger forgets the company check |
+
+## What changed since step 43
+
+| File | What changed |
+| --- | --- |
+| `src/people.ts` | **New.** The table of people in memory, what a grant is, which roles are powerful, the role source's directory over the table, and line ①'s `withPeople` (C1, C2) |
+| `src/people-commands.ts`, `contracts/person.*.json`, `contracts/role.*.json`, `inputs/Person*Request.schema.json`, `inputs/Role*Request.schema.json`, `examples/` | **New.** The five commands (C3 to C6) |
+| `migrations/049_people.sql`, `store.json`, `src/postgres.ts` | **New migration.** `dsor.people` and `dsor.role_grants`, with their guards and the story's people as the first rows; the database's store (C8) |
+| `src/grant.ts`, `package.json` | **New program**, `pnpm grant`: the owner makes a company's first administrators (C7) |
+| `src/pipeline.ts`, `src/registry.ts`, `src/logins.ts`, `src/release.ts`, `src/invitations.ts`, `src/invite.ts` | Line ①, a person's own release, and the invitations read the table, never `src/principals.ts`; a real login may name a person who is not in the code |
+| `role-sources.json`, `role-sources.step-19.json`, `src/authority.ts` | The shipped role source is `dsor_assignments`, read now and never kept. Step 19's fake directory, `idp_lookup`, moves to its own file, for the stories and tests that drive it |
+| `roles.json`, `classifications.json`, `src/routes.ts` | Five permissions for `tenant_admin`, four kinds of answer, five routes |
+| `src/serve.ts` | `pnpm serve` reads the table on PostgreSQL, and has no fake directory |
+| `test/people.test.ts`, `test/people-commands.test.ts`, `test/people.db.test.ts` | **New.** The claims |
+| `test/helpers.ts`, `test/rule-world.ts`, `test/db.ts`, and the earlier lists | A planted person is planted in the table too; the worlds hold a table; every list of operations, routes, roles, labels, tables, triggers, policies, and privileges names the new ones. Each says "Changed in step 43b" |
+
+```bash
+git diff --no-index ../mj_43_real_logins_for_people/src src
+git diff --no-index ../mj_43_real_logins_for_people/test test
+```
+
+## Run it
+
+In memory, the story of this step (a script in a scratch folder, on this step's code, with the
+shipped role source), on 2026-10-24:
+
+```text
+1. admin_100 hires jane_200
+   {"person":"jane_200","status":"active","by":"admin_100"}
+2. admin_100 makes her an AP clerk: no approval power, so at once
+   {"grant":"dsor://org_456/grant/grt_8c6dde0e-…","person":"jane_200","role":"ap_clerk","state":"active","by":"admin_100"}
+3. admin_100 asks for CFO for user_123: CFO may approve, so it waits
+   {"grant":"dsor://org_456/grant/grt_d91954bd-…","person":"user_123","role":"CFO","state":"pending","expires_at":"2026-10-13T15:05:00.000Z","by":"admin_100"}
+4. admin_100 confirms it himself
+   SOD_VIOLATION: admin_100 may not confirm grant grt_d91954bd-…: admin_100 asked for it
+5. the owner makes cfo_100 org_456's second administrator (pnpm grant, on PostgreSQL)
+6. cfo_100 confirms admin_100's grant
+   {"grant":"dsor://org_456/grant/grt_d91954bd-…","person":"user_123","role":"CFO","state":"active","by":"cfo_100"}
+7. user_123's roles in DSoR's table now
+   {"status":"active","roles":["ap_supervisor","CFO"]}
+8. user_123 leaves: admin_100 removes him
+   {"person":"user_123","status":"deprovisioned","roles":2,"by":"admin_100"}
+9. that night, the agent pays INV-1009 under del_100, the slip user_123 signed
+   DELEGATION_REQUIRED: "payment.create": slip del_100 is signed by user_123, whom the directory of org_456 does not list as active
+10. del_100 now
+   "suspended"
+```
+
+Run 9 is the failure of "Why it matters", now refused. The message still says "the directory of
+org_456": the role source of that company, which is DSoR's own table now.
+
+On PostgreSQL, as in step 43: a new database, `pnpm migrate` (migration 049 is new), then
+`pnpm serve`. A company with one administrator gets its second with the owner's command:
+
+```bash
+pnpm grant org_789 user_700 tenant_admin "the second administrator"
+```
+
+## Break it
+
+B4 lets the administrator who asked confirm their own grant. In `src/people.ts`, in `confirm`, change
+
+```ts
+if (by.person === grant.asked_by || by.person === grant.person) {
+```
+
+to
+
+```ts
+if (by.person === grant.person) {
+```
+
+and run the story again. A real run on 2026-10-24, in a copy of the step:
+
+```text
+3. admin_100 asks for CFO for user_123: CFO may approve, so it waits
+   {"grant":"dsor://org_456/grant/grt_919bdc63-…","person":"user_123","role":"CFO","state":"pending","expires_at":"2026-10-13T15:05:00.000Z","by":"admin_100"}
+4. admin_100 confirms it himself
+   {"grant":"dsor://org_456/grant/grt_919bdc63-…","person":"user_123","role":"CFO","state":"active","by":"admin_100"}
+```
+
+One administrator made user_123 the CFO alone, and the two-person rule is gone. The tests name it:
+
+```text
+     × DSOR-SOD-04c: the administrator who asked cannot confirm their own grant
+      Tests  1 failed | 24 passed (25)
+```
+
+On PostgreSQL, the trigger `role_grants_move` refuses the same confirm even when the program forgets
+to (break B10 below). Restore the line, and `pnpm check` is green again.
+
+Every break of the design was made on 2026-10-24, in a copy of the step, and the database ones on a
+fresh database each. Each failed the test written for it:
+
+| Break | What it changes | Caught by |
+|---|---|---|
+| B1 | Line ① reads the roles from `src/principals.ts` again | "a role revoked in the table is gone from cfo_100's next call", and 17 more |
+| B2 | The role source keeps an answer for `dsor_assignments` | "the table cannot be read: the agent is refused, with no answer kept" |
+| B3 | A powerful grant counts at once | "a CFO grant to user_123 waits seven days", and 4 more |
+| B4 | The asker may confirm their own grant | "the administrator who asked cannot confirm their own grant" |
+| B5 | The person granted may confirm it | "the person a grant names cannot confirm it" |
+| B6 | `pnpm grant` gives any role | "pnpm grant [org_789, user_700, CFO, x] is refused" |
+| B7 | A removed person's memberships still count | "a person removed from her only company is no caller", and 2 more |
+| B8 | The link trigger forgets the company check | "a link for a person removed from the invitation's company is refused" |
+| B9 | A person's own release reads `src/principals.ts` again | "user_123 prepares INV-1009 …, his role is revoked …: invalidated" |
+| B10 | The database's store lets the asker confirm; the trigger still refuses | "a CFO grant waits; its asker cannot confirm it", which then hears a database error instead of `SOD_VIOLATION` |

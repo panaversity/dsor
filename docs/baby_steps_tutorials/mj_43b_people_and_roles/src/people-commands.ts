@@ -39,6 +39,8 @@ async function mustBeMember(input: unknown, look: OwnLook): Promise<string> {
 
 // A new person's id: a person's, never an agent's or a system login's, which stay in
 //   src/principals.ts until step 44 (decision D1).
+// not copied: the tutorial's own form of a person's id, the one migration 049's CHECK uses; the
+//   specification gives a principal's id no pattern.
 const PERSON_ID = /^[a-z][a-z0-9_-]{0,63}$/;
 async function mayAdd(input: unknown, look: OwnLook): Promise<void> {
   const person = personOf(input);
