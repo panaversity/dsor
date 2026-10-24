@@ -1,0 +1,46 @@
+{
+  "id": "person.remove",
+  "version": 1,
+  "kind": "command",
+  "effect": "mutating",
+  "input": {
+    "schema": "PersonRemoveRequest"
+  },
+  "output": {
+    "schema": "PersonRemoved"
+  },
+  "authorization": {
+    "permission": "person:remove"
+  },
+  "tenancy": {
+    "required": true
+  },
+  "delegation": {
+    "required": false
+  },
+  "idempotency": {
+    "required": true
+  },
+  "concurrency": {
+    "strategy": "none"
+  },
+  "execution": {
+    "semantics": "atomic"
+  },
+  "risk": {
+    "level": "high"
+  },
+  "preconditions": {
+    "freshness": "current",
+    "predicates": []
+  },
+  "controls": [],
+  "audit": {
+    "level": "full"
+  },
+  "extensions": {
+    "org.panaversity.steps": {
+      "people_only": true
+    }
+  }
+}

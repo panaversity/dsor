@@ -1,0 +1,5 @@
+{
+  "person": "dsor://org_456/person/cfo_100",
+  "role": "CFO",
+  "reason": "the cross-tenant suite revokes a role"
+}

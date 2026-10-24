@@ -30,6 +30,9 @@ import { preview, type Contract } from "./registry.ts";
 import type { ControlStore, RuleCheck } from "./rulebook.ts";
 import type { Slip, SlipStore } from "./slips.ts";
 import { parseUri } from "./uri.ts";
+import type { PeopleStore } from "./people.ts";
+import { peopleWorkFor } from "./people-commands.ts";
+import type { Roles } from "./permissions.ts";
 
 /** What DSoR's own check reads at line ⑨: the company, the caller and the caller's roles there, and the slips, read only. */
 export type OwnLook = {
@@ -61,6 +64,10 @@ export type OwnLook = {
   proposals: Pick<ProposalStore, "get" | "approvals" | "isDue" | "replacedBy">;
   contracts: ReadonlyMap<string, Contract>;
   permissions: ReadonlySet<string>;
+  // NEW IN STEP 43b: and the table of people, read only, and the role table, for the commands that
+  //   change people and roles (step 43b's README, claims C3 to C6).
+  people: Pick<PeopleStore, "memberOf">;
+  roleTable: Roles;
 };
 
 /** What DSoR's own change gets after line ⑩: the company, the caller, DSoR's stores, and the call. */
@@ -86,6 +93,8 @@ export type OwnStores = {
   // And the writer of this call's events, bound to its company, its ids, and the
   //   classifications (step 40's README, decision D1).
   events: EventWriter;
+  // NEW IN STEP 43b: and the role table, which says whether a role is powerful (decision L1).
+  roleTable: Roles;
 };
 
 /** DSoR's own work for a command that changes DSoR's own store, never the company's. */
@@ -117,8 +126,10 @@ export function ownWorkFor(): Record<string, OwnWork> {
     ...reconcileWorkFor(),
     // And the escalation sweep (step 38b's README, decision D3).
     ...escalationWorkFor(),
-    // NEW IN STEP 43: and the invitations and unlinks of logins (step 43's README, R2 and R7).
+    // And the invitations and unlinks of logins (step 43's README, R2 and R7).
     ...invitationWorkFor(),
+    // NEW IN STEP 43b: and the commands of people and roles (step 43b's README, C3 to C6).
+    ...peopleWorkFor(),
   };
 }
 
@@ -144,6 +155,9 @@ export function lookFor(
   proposals: ProposalStore,
   contracts: ReadonlyMap<string, Contract>,
   permissions: ReadonlySet<string>,
+  // NEW IN STEP 43b: and the table of people, read only too, and the role table.
+  people: PeopleStore,
+  roleTable: Roles,
 ): OwnLook {
   // The roles of this company only: a tenant administrator of org_789 is no tenant
   // administrator in org_456.
@@ -169,6 +183,8 @@ export function lookFor(
     },
     contracts,
     permissions,
+    people: { memberOf: (company, person) => people.memberOf(company, person) },
+    roleTable,
   };
 }
 

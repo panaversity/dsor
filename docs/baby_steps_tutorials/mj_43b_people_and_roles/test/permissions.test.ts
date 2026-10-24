@@ -362,7 +362,13 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
         "login:invite",
         "login:unlink",
         "payment:approve",
+        // Changed in step 43b: the five commands of people and roles (step 43b's README, claims C3 to C6).
+        "person:add",
+        "person:remove",
         "proposal:approve",
+        "role:confirm",
+        "role:grant",
+        "role:revoke",
         "rule:draft",
         "rule:manage",
       ],

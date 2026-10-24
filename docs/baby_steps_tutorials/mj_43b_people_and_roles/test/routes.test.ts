@@ -7,10 +7,11 @@ import { registry } from "./helpers.ts";
 const contracts = registry.contracts;
 
 describe("C2: the routes, checked against the contracts", () => {
-  it("Step 42, D1: the shipped table passes: 20 routes, and the four system jobs stay inside", () => {
+  it("Step 42, D1: the shipped table passes: 25 routes, and the four system jobs stay inside", () => {
     expect(routeProblems(contracts)).toStrictEqual([]);
     // Changed in step 43: login.invite and login.unlink, DSoR's own commands (step 43's README, revisions R2 and R7): POST /invitations and POST /logins/unlink.
-    expect(ROUTES).toHaveLength(20);
+    // Changed in step 43b: the five commands of people and roles (step 43b's README, claims C3 to C6).
+    expect(ROUTES).toHaveLength(25);
     expect([...INSIDE].sort()).toStrictEqual([
       "alert.escalate_due",
       "proposal.expire_due",

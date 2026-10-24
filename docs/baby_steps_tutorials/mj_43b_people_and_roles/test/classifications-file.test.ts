@@ -89,6 +89,17 @@ const LABELS = {
     expires_at: "internal",
   },
   LoginsEnded: { person: "internal", logins: "internal", invitations: "internal" },
+  // Changed in step 43b: the five commands of people and roles (step 43b's README, claims C3 to C6).
+  PersonAdded: { person: "internal", status: "internal" },
+  PersonRemoved: { person: "internal", status: "internal", roles: "internal" },
+  RoleGrant: {
+    grant: "internal",
+    person: "internal",
+    role: "internal",
+    state: "internal",
+    expires_at: "internal",
+  },
+  RoleRevoked: { person: "internal", role: "internal", ended: "internal" },
   ProposalExpiry: { tenant_id: "internal", expired: "internal" },
   // The sheet that rate.load wrote, and how many currencies it holds (step 26's
   // README, decision L2).

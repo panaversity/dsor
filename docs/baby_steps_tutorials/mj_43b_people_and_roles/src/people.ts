@@ -165,9 +165,7 @@ export function memoryPeople(
       }
       // Someone else: neither the one who asked nor the one who gets the role (decision D3).
       if (by.person === grant.asked_by || by.person === grant.person) {
-        throw conflict(
-          "a grant is confirmed by someone else than the one who asked and the one it names",
-        );
+        throw sameHands(by.person, grant);
       }
       grant.state = "active";
       grant.confirmed_by = by.person;
@@ -217,8 +215,18 @@ const POWERFUL: ReadonlySet<string> = new Set([
 ]);
 
 /** Whether a grant of this role waits for a second administrator (decision L1). */
-export function isPowerful(role: string, roles: ReadonlyMap<string, readonly string[]>): boolean {
-  return (roles.get(role) ?? []).some((permission) => POWERFUL.has(permission));
+export function isPowerful(role: string, roles: ReadonlyMap<string, Iterable<string>>): boolean {
+  return [...(roles.get(role) ?? [])].some((permission) => POWERFUL.has(permission));
+}
+
+/** The refusal of a confirm by the one who asked, or by the one the grant names (decision D3). */
+export function sameHands(confirmer: string, grant: Grant): Refusal {
+  const why = confirmer === grant.asked_by ? "asked for it" : "is the person it names";
+  return new Refusal(
+    "SOD_VIOLATION",
+    `${confirmer} may not confirm grant ${grant.id}: ${confirmer} ${why}`,
+    "internal",
+  );
 }
 
 /** A company's directory, read from the table: what the role source dsor_assignments asks. */

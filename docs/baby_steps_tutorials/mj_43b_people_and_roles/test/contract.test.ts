@@ -29,7 +29,8 @@ describe("C2: a contract passes the specification's own schema", () => {
   // Changed in step 38c: twenty-one, with alert.list (step 38c's README).
   // Changed in step 41: twenty-two, with payment.run (step 41's README, claim C1).
   // Changed in step 43: login.invite and login.unlink, DSoR's own commands (step 43's README, revisions R2 and R7): twenty-four.
-  it("DSOR-OPR-01: the twenty-four shipped contracts pass", async () => {
+  // Changed in step 43b: the five commands of people and roles (step 43b's README, claims C3 to C6): twenty-nine.
+  it("DSOR-OPR-01: the twenty-nine shipped contracts pass", async () => {
     const registry = buildRegistry(shipped, handlers, shippedRoles);
     // invoice.list. Step 17's two commands, payment.cancel and payment.create.
     // And delegation.revoke, DSoR's own command. And the brake's two, DSoR's own commands too.
@@ -53,12 +54,18 @@ describe("C2: a contract passes the specification's own schema", () => {
       "payment.reconcile",
       // Step 41: and the run.
       "payment.run",
+      // Changed in step 43b: the five commands of people and roles (step 43b's README, claims C3 to C6).
+      "person.add",
+      "person.remove",
       "proposal.approve",
       // And step 31's release (step 31's README, decision D12).
       "proposal.execute",
       "proposal.expire_due",
       // And rate.load, DSoR's own command too (step 26's README, decision L2).
       "rate.load",
+      "role.confirm",
+      "role.grant",
+      "role.revoke",
       "rule.activate",
       "rule.check_authority",
       "rule.draft",

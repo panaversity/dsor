@@ -718,6 +718,8 @@ export async function call(
               proposals,
               registry.contracts,
               permissionsOf(caller, registry.roles, tenant),
+              registry.people,
+              registry.roles,
             ),
           );
         // Line ⑩ reads what DSoR read, never the count: the company's rules and the limits judge
@@ -1591,6 +1593,7 @@ export async function call(
               bank,
               alerting,
               events,
+              roleTable: registry.roles,
             };
             returned = await job.own.change(job.input, work);
           } else if (job.lines !== undefined && job.handler !== undefined) {

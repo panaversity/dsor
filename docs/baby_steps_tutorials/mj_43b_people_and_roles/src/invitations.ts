@@ -4,7 +4,6 @@
 // call them (login:invite, login:unlink in roles.json; people_only in their contracts), and each call
 // is recorded like any other (step 43's README, revisions R1, R2, and R7).
 import { Refusal } from "./envelope.ts";
-import { principalNamed } from "./principals.ts";
 import type { OwnLook, OwnStores, OwnWork } from "./revocation.ts";
 import { formatUri, parseUri } from "./uri.ts";
 
@@ -19,9 +18,9 @@ const idOf = (input: unknown): string => parseUri((input as PersonInput).person)
 async function mustBePersonOfCompany(input: unknown, look: OwnLook): Promise<void> {
   const { entity } = parseUri((input as PersonInput).person);
   const person = idOf(input);
-  const found = entity === "person" ? principalNamed(person) : undefined;
-  const member = found?.memberships.some((m) => m.tenant_id === look.tenant) ?? false;
-  if (found === undefined || found.type !== "human" || !member) {
+  // Changed in step 43b: DSoR's table of people, never src/principals.ts (step 43b's README, C3).
+  const found = entity === "person" ? await look.people.memberOf(look.tenant, person) : undefined;
+  if (found?.status !== "active") {
     throw new Refusal(
       "RESOURCE_NOT_FOUND",
       `no person ${JSON.stringify(person)} in ${look.tenant}`,

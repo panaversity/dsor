@@ -129,6 +129,9 @@ describe("C1: every command declares its semantics in its contract", () => {
       ["payment.reconcile", "atomic"],
       // Step 41: and the run, compensatable as each of its drafts is, by payment.cancel.
       ["payment.run", "compensatable"],
+      // Changed in step 43b: the five commands of people and roles (step 43b's README, claims C3 to C6), atomic.
+      ["person.add", "atomic"],
+      ["person.remove", "atomic"],
       // And proposal.approve, atomic: the approval and its move in one
       // transaction (step 29's README, decision D9).
       ["proposal.approve", "atomic"],
@@ -139,6 +142,9 @@ describe("C1: every command declares its semantics in its contract", () => {
       // And rate.load, atomic too: a sheet is written whole, or not at all (step
       // 26's README, decision D6).
       ["rate.load", "atomic"],
+      ["role.confirm", "atomic"],
+      ["role.grant", "atomic"],
+      ["role.revoke", "atomic"],
       // And the four commands of a rule's life, atomic: one transaction in DSoR's
       // own store, with their records (step 28's README, decision D14).
       ["rule.activate", "atomic"],

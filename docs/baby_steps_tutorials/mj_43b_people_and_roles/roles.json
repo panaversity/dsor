@@ -31,7 +31,12 @@
     "proposal:approve",
     "payment:approve",
     "login:invite",
-    "login:unlink"
+    "login:unlink",
+    "person:add",
+    "person:remove",
+    "role:grant",
+    "role:confirm",
+    "role:revoke"
   ],
   "scheduler": ["proposal:expire", "rule:check", "payment:reconcile", "alert:escalate"],
   "rate_loader": ["rate:load"]

@@ -22,7 +22,7 @@ const RULE = "dsor://org_456/rule/high-value-payment";
 const AGENT_TARGET = "dsor://org_456/agent/accounts-payable-fte";
 
 /** What the world holds before each case: a proposal that waits for the CFO, and a drafted payment. */
-type Setup = { proposal: string; payload_hash: string; payment: string };
+type Setup = { proposal: string; payload_hash: string; payment: string; grant: string };
 
 /** The agent's INV-1008, which waits for cfo_100, and user_123's draft of INV-1002. */
 async function setUp(w: RuleWorld): Promise<Setup> {
@@ -36,10 +36,16 @@ async function setUp(w: RuleWorld): Promise<Setup> {
     invoice: INV_1002,
     expected_version: 1,
   })) as { data: { id: string } };
+  // Changed in step 43b: the five commands of people and roles (step 43b's README, claims C3 to C6): and a grant of CFO to user_123 that the owner asked for, which admin_100 may confirm.
+  const asked = await w.people.grant("org_456", "user_123", "CFO", true, {
+    person: "owner",
+    reason: "a step 43b test",
+  });
   return {
     proposal: waits.proposal,
     payload_hash: waits.payload_hash,
     payment: `dsor://org_456/payment/${drafted.data.id}`,
+    grant: `dsor://org_456/grant/${asked.id}`,
   };
 }
 
@@ -67,6 +73,20 @@ function inputOf(operation: string, s: Setup): Record<string, unknown> {
     // Changed in step 43: the two commands of logins (step 43's README, revisions R2 and R7).
     "login.invite": { person: "dsor://org_456/person/cfo_100", reason: "a step 43 test" },
     "login.unlink": { person: "dsor://org_456/person/cfo_100", reason: "a step 43 test" },
+    // Changed in step 43b: the five commands of people and roles (step 43b's README, claims C3 to C6).
+    "person.add": { person: "dsor://org_456/person/jane_200", reason: "a step 43b test" },
+    "person.remove": { person: "dsor://org_456/person/user_123", reason: "a step 43b test" },
+    "role.grant": {
+      person: "dsor://org_456/person/cfo_100",
+      role: "ap_clerk",
+      reason: "a step 43b test",
+    },
+    "role.confirm": { grant: s.grant, reason: "a step 43b test" },
+    "role.revoke": {
+      person: "dsor://org_456/person/user_123",
+      role: "ap_supervisor",
+      reason: "a step 43b test",
+    },
     "control.lift": { target: AGENT_TARGET, reason: "a step 42 test" },
     "rule.draft": { rule: RULE, draft: {}, reason: "a step 42 test" },
     "rule.activate": { rule: RULE, version: 8, reason: "a step 42 test" },
@@ -132,7 +152,9 @@ afterAll(async () => {
   await Promise.all(open.map((s) => new Promise((done) => s.close(done))));
 });
 
-const VARIANTS = Object.keys(variantsOf({ proposal: "", payload_hash: "", payment: "" }));
+const VARIANTS = Object.keys(
+  variantsOf({ proposal: "", payload_hash: "", payment: "", grant: "" }),
+);
 const CASES = ROUTES.flatMap((route) =>
   Object.keys(CALLERS).flatMap((who) =>
     VARIANTS.map((variant) => [`${route.method} ${route.path}`, who, variant, route] as const),

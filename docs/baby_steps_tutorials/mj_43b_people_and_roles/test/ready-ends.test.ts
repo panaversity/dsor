@@ -403,6 +403,8 @@ describe("C4: the sweep", () => {
       contracts: new Map(),
       // Changed in step 40: and a writer of events, which the sweep never uses.
       events: NO_EVENTS,
+      // Changed in step 43b: and the role table, which the sweep never reads.
+      roleTable: new Map(),
     };
     const expire = ownWorkFor()["proposal.expire_due"]!;
     expect(await expire.change(companyOf(SCHEDULER), work)).toStrictEqual({

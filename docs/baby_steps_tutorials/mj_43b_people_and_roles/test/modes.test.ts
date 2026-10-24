@@ -813,7 +813,8 @@ describe("from the review: every command, in each mode", () => {
       //   of its two URIs (step 41's README, claim C1). And 15 for proposal.approve, whose example
       //   names a run's vendor now, 3 swaps for each of its 5 callers (claim C5).
       // Changed in step 43: login.invite and login.unlink, DSoR's own commands (step 43's README, revisions R2 and R7): and 12 for login.invite and login.unlink, admin_100 and admin_700, 3 swaps each.
-      expect(report.attacks).toHaveLength(285);
+      // Changed in step 43b: the five commands of people and roles (step 43b's README, claims C3 to C6): and 30, admin_100 and admin_700, 3 swaps each.
+      expect(report.attacks).toHaveLength(315);
     },
   );
 

@@ -30,7 +30,9 @@
     "amount": "confidential Money",
     "version": "internal"
   },
-  "PaymentRun": { "payments": "Payment[]" },
+  "PaymentRun": {
+    "payments": "Payment[]"
+  },
   "InvoiceIssueResult": {},
   "Delegation": {
     "tenant_id": "internal",
@@ -125,5 +127,26 @@
     "person": "internal",
     "logins": "internal",
     "invitations": "internal"
+  },
+  "PersonAdded": {
+    "person": "internal",
+    "status": "internal"
+  },
+  "PersonRemoved": {
+    "person": "internal",
+    "status": "internal",
+    "roles": "internal"
+  },
+  "RoleGrant": {
+    "grant": "internal",
+    "person": "internal",
+    "role": "internal",
+    "state": "internal",
+    "expires_at": "internal"
+  },
+  "RoleRevoked": {
+    "person": "internal",
+    "role": "internal",
+    "ended": "internal"
   }
 }
