@@ -151,4 +151,33 @@ describe("C8: pnpm serve takes real logins for people", () => {
     expect(run.status).toBe(1);
     expect(run.stderr).toContain("is plain http on this computer: a stand-in");
   });
+
+  // From the code review of step 43b, finding 4: pnpm serve has no directory to ask, so a company
+  //   whose role source is idp_lookup would fail at its first agent call, not at start-up.
+  it("DSOR-IDN-05: pnpm serve refuses to start when role-sources.json names idp_lookup, which it has no directory for", () => {
+    const file = join(mkdtempSync(join(tmpdir(), "dsor43b-")), "role-sources.json");
+    writeFileSync(
+      file,
+      JSON.stringify({
+        org_456: { kind: "dsor_assignments", max_staleness: "PT1H" },
+        org_789: { kind: "idp_lookup", max_staleness: "PT1H" },
+      }),
+    );
+    const run = spawnSync(process.execPath, [join(STEP, "src", "serve.ts")], {
+      cwd: STEP,
+      env: {
+        ...process.env,
+        DSOR_HTTP_PORT: "0",
+        DSOR_ISSUERS_FILE: issuersFile,
+        DSOR_STAND_IN: "on",
+        DSOR_ROLE_SOURCES_FILE: file,
+      },
+      encoding: "utf8",
+      timeout: 15_000,
+    });
+    expect(run.status).toBe(1);
+    expect(run.stderr).toContain(
+      "role-sources.json: org_789's role source is idp_lookup, and pnpm serve has no directory to ask: name dsor_assignments",
+    );
+  });
 });

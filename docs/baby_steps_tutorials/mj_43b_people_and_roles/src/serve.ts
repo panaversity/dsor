@@ -6,7 +6,7 @@
 // another, and every request is answered by call(), over the database, with dsor.audit as its log
 // (DSOR-OPR-04a; step 42's README, claims C1, C2, and C7, decision D7).
 import { fileURLToPath } from "node:url";
-import { readRoleSettings } from "./authority.ts";
+import { checkRoleSettings, readRoleSettings } from "./authority.ts";
 import { readCatalog } from "./catalog.ts";
 import { readInputs } from "./inputs.ts";
 import { storeDifferences } from "./inspector.ts";
@@ -45,7 +45,13 @@ function refuse(message: string): never {
   process.exit(1);
 }
 
-loadDotEnv(["DSOR_DB_URL", "DSOR_HTTP_PORT", "DSOR_ISSUERS_FILE", "DSOR_STAND_IN"]);
+loadDotEnv([
+  "DSOR_DB_URL",
+  "DSOR_HTTP_PORT",
+  "DSOR_ISSUERS_FILE",
+  "DSOR_STAND_IN",
+  "DSOR_ROLE_SOURCES_FILE",
+]);
 // No database named, no door: it never falls back to a log in memory (step 09's README, decision 15).
 try {
   requireEnv("DSOR_DB_URL");
@@ -58,6 +64,20 @@ if (!Number.isInteger(port) || port < 0 || port > 65535) {
   refuse("DSOR_HTTP_PORT must be a port number, 0 to 65535");
 }
 const pool = openPool(process.env["DSOR_DB_URL"] ?? "");
+
+// NEW IN STEP 43b: each company's role source, from role-sources.json, or the file that
+//   DSOR_ROLE_SOURCES_FILE names, as DSOR_ISSUERS_FILE names the issuers. pnpm serve asks no directory,
+//   so a company whose role source is idp_lookup is refused here, at start-up, not at its first
+//   agent call (the code review of step 43b, finding 4).
+const roleSources = readRoleSettings(process.env["DSOR_ROLE_SOURCES_FILE"] || undefined);
+const askingNobody = [...checkRoleSettings(roleSources, logins.values()).settings.entries()].filter(
+  ([, setting]) => setting.kind !== "dsor_assignments",
+);
+for (const [tenant, setting] of askingNobody) {
+  refuse(
+    `role-sources.json: ${tenant}'s role source is ${setting.kind}, and pnpm serve has no directory to ask: name dsor_assignments`,
+  );
+}
 
 // Changed in step 43b: no fake directory. Each company's role source is DSoR's own table of people,
 //   dsor.people and dsor.role_grants, as role-sources.json says (step 43b's README, claim C2).
@@ -78,7 +98,7 @@ try {
     createDbPayments(pool),
     createDbSlips(pool),
     new Map(),
-    readRoleSettings(),
+    roleSources,
     createDbClaims(pool, "database"),
     ownWorkFor(),
     createDbBrakes(pool),
