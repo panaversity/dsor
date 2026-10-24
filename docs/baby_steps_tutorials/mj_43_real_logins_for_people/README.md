@@ -236,8 +236,14 @@ database ones on a fresh database each. Each break failed the test named for it,
 | M1 | No trigger checks a new link | "dsor_runtime is refused a link with no invitation", and one it did not accept |
 | M2 | `dsor_runtime` may move a link to another person | "dsor_runtime is refused moving a link to another person" |
 | M3 | An invitation may be accepted twice | "an invitation is accepted or cancelled once" |
+| K9 | The book in memory invites a person who has a login (after the review's R-H1) | "admin_100 cannot invite user_123, who has a login already", and "the book refuses to invite a person who has a login" |
+| K10 | The book in memory links a second login of a person | "a code of a person linked meanwhile links nothing, and stays open" |
+| D5 | The database's book invites a person who has a login | "the book refuses to invite a person who has a login", on the database |
+| M4 | No index holds one live login for each person | "two logins with two codes of one person at once: one is linked" |
+| P1 | `pnpm invite` invites a person who has a login | "pnpm invite refuses a person who has a login" |
 
-D2 would have passed: while writing the breaks, Claude Code saw that the test counted the links but
+K9 to P1 first ran in a copy whose tests were older than its code, and K9 passed: the copy, not the
+test, was wrong. Run again in a fresh copy, each failed the test written for it. D2 would have passed: while writing the breaks, Claude Code saw that the test counted the links but
 not the invitations, so a code used up by a lost race went unseen. The test was given that check
 first, so the run above shows it caught.
 
