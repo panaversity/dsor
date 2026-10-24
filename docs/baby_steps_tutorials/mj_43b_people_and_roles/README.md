@@ -349,6 +349,26 @@ be broken into, and made 22 breaks in a copy. Eight left every test green.
 The breaks that survived, B04, B05, B07, B09, B16, and B22, were made again after the fixes, and each
 failed a test.
 
+### What the code review found
+
+A line-by-line review of this step's diff found ten more. The four correctness bugs were fixed red
+first, one commit each:
+
+| | Finding | What was done |
+|---|---|---|
+| 1 | The registry and the claims each made their own copy of the story's people, so in a world given no table a command wrote one and line ① read the other: a `role.revoke` answered `COMMITTED`, and the role still worked | The registry reads the claims' own table unless it is given another |
+| 2 | With no book of logins, `person.remove` removed the person, then threw while ending their logins, and answered `INTERNAL_ERROR` | With no book, unlinking ends nothing, and says so |
+| 3 | Two administrators adding one new id to two companies at the same moment both passed the "taken" check, which ran before any lock | An administrator's add checks and adds in one step: in memory with no wait between, on PostgreSQL behind the id's lock. The owner may still put a person in two companies, as the firm's clerk of step 10 is |
+| 4 | `pnpm serve` accepted `idp_lookup`, which it has no directory for, and failed at that company's first agent call | Refused at start-up; `DSOR_ROLE_SOURCES_FILE` names another file, as `DSOR_ISSUERS_FILE` does |
+| 5 | The registry's default role source is step 19's file, not the shipped one | Recorded: the earlier tests rely on it; `pnpm serve` passes the shipped file |
+| 6 | The release recount drops a whole approval when its approver lost any one of its roles | Recorded: it fails closed |
+| 7 | `pnpm grant` for an administrator prints a raw database error | Recorded |
+| 8 to 10 | A repeated person check, an unreachable branch in `role.confirm`, and approvers read one by one | Recorded, for a cleanup |
+
+The first try at finding 3 made every id one company's, in the database too, and four earlier tests
+failed: a person in two companies is the specification's own model (DSOR-IDN-01, "tenant
+memberships"). The fix moved to the one place the rule belongs, an administrator's add.
+
 ### Left open on purpose
 
 - **The people and their roles are DSoR's own; a company's own source is step 43c**, with a role
