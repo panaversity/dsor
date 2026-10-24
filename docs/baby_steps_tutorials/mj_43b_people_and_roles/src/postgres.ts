@@ -1325,7 +1325,7 @@ function storesIn(
     // And the outbox, through the claim's own connection, so an event commits with
     //   its change (DSOR-EVT-01a; step 40's README, decision D1).
     outbox: outboxIn(client),
-    // NEW IN STEP 43: and the book of links and invitations, so login.invite and login.unlink write
+    // Since step 43: and the book of links and invitations, so login.invite and login.unlink write
     //   in the claim's transaction, with their record (the learner's R2 and R7).
     logins: bookThrough(client, run),
     // NEW IN STEP 43b: and the table of people, so the five commands write in the claim's
@@ -2694,7 +2694,7 @@ function proposalOf(row: ProposalRow, moves: MoveRow[], approvals: string[]): Pr
   };
 }
 
-// NEW IN STEP 43: DSoR's table of links on PostgreSQL. Read at line ①, before any company is known,
+// Since step 43: DSoR's table of links on PostgreSQL. Read at line ①, before any company is known,
 //   so the table has no company column and no row-level security (migration 047; step 43's README,
 //   claim C8, decision D5).
 // Changed by the learner's R1, R2, and R7 (migration 048): and the invitations, a company's rows.

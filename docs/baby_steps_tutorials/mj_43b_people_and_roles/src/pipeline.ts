@@ -282,7 +282,7 @@ export async function call(
     //   token and DSoR's own table only (DSOR-IDN-01, DSOR-SRC-02a). Then any principal the
     //   arguments name must be the caller (DSOR-SRC-02b), and the request id must be usable
     //   (step 05's README, decisions 6 and 7; step 07's README, decision 8).
-    // NEW IN STEP 43: the login is found first, from the world's source: step 05's table, or a
+    // Since step 43: the login is found first, from the world's source: step 05's table, or a
     //   signed token checked against its issuer's keys and DSoR's own links. It never throws; a
     //   call with no caller is refused just below, at line ①, before any other check (DSOR-IDN-01;
     //   step 43's README, decisions D7 and D8).

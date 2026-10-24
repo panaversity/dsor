@@ -1,4 +1,4 @@
-// NEW IN STEP 43, the learner's R2 and R7: two commands of DSoR's own. login.invite asks DSoR for an
+// Since step 43, the learner's R2 and R7: two commands of DSoR's own. login.invite asks DSoR for an
 // invitation of a person of the company, and answers its one-time code; login.unlink ends every
 // login of a person and cancels their open invitations. Only a tenant administrator, a person, may
 // call them (login:invite, login:unlink in roles.json; people_only in their contracts), and each call

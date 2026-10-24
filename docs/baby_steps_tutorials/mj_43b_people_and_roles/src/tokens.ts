@@ -1,4 +1,4 @@
-// NEW IN STEP 43: a signed token, checked. DSoR takes nothing in it on trust: it finds the issuer
+// Since step 43: a signed token, checked. DSoR takes nothing in it on trust: it finds the issuer
 //   the token names in its own list, checks the signature with a key that issuer publishes, then
 //   the algorithm, the audience, the time, and the subject. What it gives back is only who signed
 //   in, and where: never a role (DSOR-IDN-01, DSOR-IDN-04a, DSOR-IDN-04b; step 43's README, claims

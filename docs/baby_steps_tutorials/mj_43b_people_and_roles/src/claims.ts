@@ -77,7 +77,7 @@ export type WorkStores = {
   // And the outbox, where DSoR writes the event of a change in the change's own
   //   transaction (DSOR-EVT-01a; step 40's README, decision D1).
   outbox: OutboxWriter;
-  // NEW IN STEP 43: and DSoR's book of links and invitations, so login.invite and login.unlink write
+  // Since step 43: and DSoR's book of links and invitations, so login.invite and login.unlink write
   //   in the claim's transaction, with their record (step 43's README, revisions R2 and R7).
   logins: LoginBook;
   // NEW IN STEP 43b: and the table of people, so person.add, person.remove, and the role commands
@@ -336,7 +336,7 @@ export function memoryClaims(
   holds: HoldStore = memoryHolds(),
   // And this outbox, in memory unless the test gives one it reads.
   outbox: OutboxWriter = memoryOutbox(),
-  // NEW IN STEP 43: and this book of links and invitations, none unless the test gives one.
+  // Since step 43: and this book of links and invitations, none unless the test gives one.
   logins: LoginBook = NO_BOOK,
   // NEW IN STEP 43b: and this table of people, none unless the test gives one.
   people: PeopleStore = NO_PEOPLE,

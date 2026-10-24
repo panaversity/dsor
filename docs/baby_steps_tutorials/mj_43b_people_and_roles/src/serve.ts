@@ -97,7 +97,7 @@ try {
   const { problems } = checkStore(readStore());
   if (problems.length > 0)
     refuse(`the map of the store refused to start:\n  ${problems.join("\n  ")}`);
-  // NEW IN STEP 43: real logins for people: each company's issuers, checked before any caller, and
+  // Since step 43: real logins for people: each company's issuers, checked before any caller, and
   //   DSoR's own links in dsor.logins. Agents and system logins keep step 05's table until step 44
   //   (step 43's README, decisions D1, D3, and D8).
   const issuers = checkIssuers(readIssuers(process.env["DSOR_ISSUERS_FILE"]), logins.values());

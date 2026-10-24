@@ -125,7 +125,7 @@ export const KINDS: ReadonlyMap<string, Kind> = new Map<string, Kind>([
     "control-moved",
     { side: "dsor", table: ["SELECT"], columns: ["INSERT", "UPDATE"], key: true, triggers: true },
   ],
-  // NEW IN STEP 43: DSoR's own records that are no company's: the links of logins to principals,
+  // Since step 43: DSoR's own records that are no company's: the links of logins to principals,
   //   read at line ①, before any company is known. No company key, so no row-level security.
   //   Changed by the learner's R1 and R7: dsor_runtime adds a link through named columns, and ends
   //   one through a named column; the guards that allow only a link an invitation made, and only

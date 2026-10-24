@@ -1,4 +1,4 @@
-// NEW IN STEP 43, the learner's R3: run with  pnpm invite <company> <person> <reason>
+// Since step 43, the learner's R3: run with  pnpm invite <company> <person> <reason>
 // Invites one person of a company, as the owner, DSOR_MIGRATION_URL, and prints the code once. The
 // person sends it with their first call, and DSoR links their login (decision R1). Run it for the
 // first administrator of a company: from then on, that administrator invites the others with

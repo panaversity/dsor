@@ -146,7 +146,7 @@ export type Registry = {
   // DSoR's own reads, for the queries over DSoR's own store, kept apart from the
   //   company's code and from DSoR's own work, which changes things (step 38c's README).
   reads: ReadonlyMap<string, OwnRead>;
-  // NEW IN STEP 43: and where a call's login comes from: step 05's table, unless the world gives
+  // Since step 43: and where a call's login comes from: step 05's table, unless the world gives
   //   real logins (step 43's README, decision D8).
   logins: LoginSource;
   // NEW IN STEP 43b: each company's people and their roles, which line ① reads for a person, and
@@ -261,7 +261,7 @@ export function buildRegistry(
   // DSoR's own reads. Given, or else this step's own for each contract the
   //   registry has, so a registry of a few contracts gets no read of a contract it lacks.
   given?: Record<string, OwnRead>,
-  // NEW IN STEP 43: the logins, step 05's table unless the caller gives real ones.
+  // Since step 43: the logins, step 05's table unless the caller gives real ones.
   loginSource: LoginSource = FAKE_LOGINS,
   // NEW IN STEP 43b: and the table of people, a fresh one of the story's people unless the caller
   //   gives another. The claims must be given the same table, so a change that one command makes is

@@ -1,4 +1,4 @@
-// NEW IN STEP 43: where a call's login comes from. Each world chooses: step 05's table, or real
+// Since step 43: where a call's login comes from. Each world chooses: step 05's table, or real
 //   logins for people. A real login is a signed token, checked (tokens.ts), then looked up in DSoR's
 //   own table of links: which principal is this user of this issuer? A login proves who you are;
 //   DSoR decides which principal that is, and in which companies (DSOR-IDN-01, DSOR-IDN-04a,
@@ -53,7 +53,7 @@ export type Invitation = {
 export type BookBy = { person: string; reason: string };
 
 /**
- * NEW IN STEP 43, the learner's R1, R2, R3, and R7: DSoR's book of links and invitations. An
+ * Since step 43, the learner's R1, R2, R3, and R7: DSoR's book of links and invitations. An
  * invitation names a person of a company; its code, kept only as a hash, links the first login
  * that presents it, once, within seven days. Unlinking ends every login of a person, and cancels
  * their open invitations in the company.

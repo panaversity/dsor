@@ -1,4 +1,4 @@
-// NEW IN STEP 43: run with  pnpm dev-issuer
+// Since step 43: run with  pnpm dev-issuer
 // A stand-in for Managed Better Auth, on this computer only, so the step runs without a Neon
 // account. It makes a new Ed25519 key each time it starts, publishes the public half at
 // /.well-known/jwks.json, and signs in the story's people at /token?email=…&code=…, with a token in the

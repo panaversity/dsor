@@ -1,4 +1,4 @@
-// NEW IN STEP 43: the sign-in services each company trusts. A token is accepted only from an issuer
+// Since step 43: the sign-in services each company trusts. A token is accepted only from an issuer
 //   that the company configured, here, as authoritative (DSOR-IDN-04a). Start-up checks the file
 //   before any caller can ask (step 43's README, claim C1, decision D3).
 import { readFileSync } from "node:fs";

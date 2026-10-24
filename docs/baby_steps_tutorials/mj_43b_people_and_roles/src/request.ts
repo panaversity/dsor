@@ -26,7 +26,7 @@ export type RequestEnvelope = {
   //   treat the call, not what to pay, so it travels here, beside the mode, and never in the input
   //   (DSOR-APR-12; step 41b's README, decision D9).
   supersedes?: unknown;
-  // NEW IN STEP 43: and an invitation's code, which a person's first call carries. Line ① redeems
+  // Since step 43: and an invitation's code, which a person's first call carries. Line ① redeems
   //   it, linking that login to the person invited (step 43's README, revision R1).
   invitation?: unknown;
 };
