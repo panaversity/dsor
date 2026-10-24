@@ -35,7 +35,10 @@ describe("C1: the key pair", () => {
 
   it("DSOR-AUD-04b: the private key is readable by its owner only, and the pair signs a checkpoint the checker accepts", () => {
     makeKeyPair(privateFile, publicFile);
-    expect(statSync(privateFile).mode & 0o777).toBe(0o600);
+    // Owner only, by its permission bits, where there are any. Windows has no POSIX permission
+    //   bits: Node writes none and reports 0666, and the folder's access list decides who reads the
+    //   key. Found by CI on windows-latest, 2026-10-25 (step 39b's README, "Think it through").
+    if (process.platform !== "win32") expect(statSync(privateFile).mode & 0o777).toBe(0o600);
     const taken = takeCheckpoint({ rows: LOG(), database: DB }, AT_9, null);
     if (!("checkpoint" in taken)) throw new Error("the test's log is broken");
     const out = join(dir, "signed");
