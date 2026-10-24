@@ -189,6 +189,13 @@ through". The review's M4 is a question for the learner:
 `call()`; (c) wait for step 43's real logins. **The learner chose (a), decision D8**, built red first:
 `Host: attacker.example:8042` now hears 421, and `call()` is never asked.
 
+**A3 and A4, reviewed by the learner (2026-10-24).** Both kept, now the learner's:
+- **A3.** `INTERNAL_ERROR` stays 500. Every HTTP tool reads 500 as "the server failed", and a library
+  that repeats it with the same `Idempotency-Key` hears the recorded answer replayed. *Downside:* a
+  library that sends a new key on its retry asks again.
+- **A4.** The proof stays a spy around `call()` over every route, six callers, and seven envelopes,
+  with the import test. *Downside:* about a thousand cases, some twenty seconds.
+
 ## The learner's predictions (2026-10-23)
 
 Asked as gut calls with "how sure", before each explanation, and each settled at once by a real
@@ -214,6 +221,5 @@ Habit 2: the path and the membership were in view, the address inside the body w
 
 ```text
 Step 42 is built: docs/baby_steps_tutorials/mj_42_a_rest_api/README.md. The learner answered Q1 with
-D8. On 2026-10-23 the learner said "make all assumptions and complete 42 and 43", so A3 and A4
-(Claude Code's) stand for now; they are to be discussed with step 43's decisions.
+D8. A3 and A4 were Claude Code's on 2026-10-23, and the learner kept both on 2026-10-24.
 ```
