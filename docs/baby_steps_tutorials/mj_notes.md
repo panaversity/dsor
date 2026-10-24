@@ -2478,6 +2478,28 @@ for the learner to review.
   and nine smaller findings. Lesson: a design that is per company in the table but global in the
   logins must be attacked across the seam.
 
+### Understanding step 43c, a company's own role source (2026-10-25)
+
+Not built. Six parts, each settled by a real run on step 43b's code from the scratchpad, or by a
+sketch labelled so: whose truth `role-sources.json` names; the three kinds of role source (ask each
+time, a pushed copy, DSoR's own) and `max_staleness`; the role map; whose id DSoR asks a directory
+about; roles inside a token, a photo from sign-in; leavers, whose power outlives the leaving by the
+push delay, the copy's age, or a token's age.
+
+- **The habit found:** "DSoR knows what the story knows". Four misses on one root (a group name read
+  as a role, a directory asked in DSoR's name, a token's roles after HR removed them, a SCIM copy
+  before its push). The story tells the learner what is true; DSoR knows only what reaches it.
+  Asked which idea led there, the learner picked all four offered, including "when unsure, let it
+  through", which is the opposite of DSoR's rule: a lock that stays locked when the power fails.
+- **What helped:** each run showed the learner's case beside the right one, and the fourth miss got
+  a before-and-after run of one push.
+- **Design questions for Phase A:** the learner's SSO server; which kind or kinds of role source; the
+  role map (names or ids, many to one, where it lives); whose id (the directory's as the principal's,
+  or a mapping), and whether a directory member still needs an invitation; the numbers (lookup
+  staleness, copy age, full re-read period, a bound for a person on the call, open question 168);
+  leavers (`active: false` or a delete, at once or at next use, a missed push); and whether a powerful
+  role granted in the company's directory still needs DSoR's second administrator.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.
