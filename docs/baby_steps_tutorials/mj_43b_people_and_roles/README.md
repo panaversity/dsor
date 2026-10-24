@@ -352,7 +352,7 @@ failed a test.
 ### What the code review found
 
 A line-by-line review of this step's diff found ten more. The four correctness bugs were fixed red
-first, one commit each:
+first, one commit each, and the six others after them:
 
 | | Finding | What was done |
 |---|---|---|
@@ -360,10 +360,15 @@ first, one commit each:
 | 2 | With no book of logins, `person.remove` removed the person, then threw while ending their logins, and answered `INTERNAL_ERROR` | With no book, unlinking ends nothing, and says so |
 | 3 | Two administrators adding one new id to two companies at the same moment both passed the "taken" check, which ran before any lock | An administrator's add checks and adds in one step: in memory with no wait between, on PostgreSQL behind the id's lock. The owner may still put a person in two companies, as the firm's clerk of step 10 is |
 | 4 | `pnpm serve` accepted `idp_lookup`, which it has no directory for, and failed at that company's first agent call | Refused at start-up; `DSOR_ROLE_SOURCES_FILE` names another file, as `DSOR_ISSUERS_FILE` does |
-| 5 | The registry's default role source is step 19's file, not the shipped one | Recorded: the earlier tests rely on it; `pnpm serve` passes the shipped file |
-| 6 | The release recount drops a whole approval when its approver lost any one of its roles | Recorded: it fails closed |
-| 7 | `pnpm grant` for an administrator prints a raw database error | Recorded |
-| 8 to 10 | A repeated person check, an unreachable branch in `role.confirm`, and approvers read one by one | Recorded, for a cleanup |
+| 5 | The registry's default role source is step 19's file, not the shipped one | Fixed: the default is the shipped file again, and step 19's tests name their own |
+| 6 | The release recount drops a whole approval when its approver lost any one of its roles | Fixed red first: an approval counts rule by rule, while its approver holds that rule's role |
+| 7 | `pnpm grant` for an administrator prints a raw database error | Fixed red first: "is an administrator already" |
+| 8 to 10 | A repeated person check, an unreachable branch in `role.confirm`, and approvers read one by one | Fixed: one person check, no dead branch, each approver read once |
+
+Two timing tests were also made steady. A test of step 35 slept 150 ms before a cancel, and under
+load the cancel came first; it now waits until the bank has been asked. A test of step 09 ran all 61
+database files to prove that none starts without a database, which took over three minutes under
+load; it now runs two, since the refusal is the shared setup file's.
 
 The first try at finding 3 made every id one company's, in the database too, and four earlier tests
 failed: a person in two companies is the specification's own model (DSOR-IDN-01, "tenant

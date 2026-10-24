@@ -113,6 +113,8 @@ describe("decision 8: with no database named, the database tests fail and never 
 
   // The real command, with the variable set to "". .env does not override a variable
   // that is already set, so no database is reached.
+  // Changed in step 43b: two database files, not all 61. The refusal is the shared setup file's,
+  //   which every database file runs, so two prove it; all 61 took over three minutes under load.
   // Found live 2026-10-12, in step 28: beside step 28's heavier cross-tenant suites, on a machine
   // at load 23, the run of 29 database files took 88 to 124 seconds, and alone 35. A run that
   // hangs is still stopped, at three minutes.
@@ -121,11 +123,16 @@ describe("decision 8: with no database named, the database tests fail and never 
     { timeout: 180_000 },
     () => {
       const vitest = fileURLToPath(new URL("node_modules/vitest/vitest.mjs", HERE));
-      const run = spawnSync(process.execPath, [vitest, "run", "--config", "vitest.db.config.ts"], {
-        cwd: fileURLToPath(HERE),
-        encoding: "utf8",
-        env: { ...process.env, DSOR_DB_URL: "" },
-      });
+      const files = ["test/rls.db.test.ts", "test/people.db.test.ts"];
+      const run = spawnSync(
+        process.execPath,
+        [vitest, "run", "--config", "vitest.db.config.ts", ...files],
+        {
+          cwd: fileURLToPath(HERE),
+          encoding: "utf8",
+          env: { ...process.env, DSOR_DB_URL: "" },
+        },
+      );
       expect(run.status).not.toBe(0);
       expect(run.stdout + run.stderr).toMatch("DSOR_DB_URL is not set");
       // Nothing passed and nothing skipped: every database test file failed to start.

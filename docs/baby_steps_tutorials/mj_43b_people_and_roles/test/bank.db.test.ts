@@ -95,7 +95,14 @@ describe("C4: on the database, paid only once the bank has answered", () => {
       payment: `dsor://org_456/payment/${id}`,
       expected_version: 1,
     });
-    await new Promise((done) => setTimeout(done, 150));
+    // Changed in step 43b: wait until the bank has been asked, the moment the send holds the
+    //   payment's lock, not a fixed 150 ms. Found under load: the cancel came first, and heard
+    //   RESOURCE_HELD. The bank records a transfer as soon as it is asked, before its slow wait.
+    const asked = Date.now();
+    while (!slowBank.transfers().some((t) => t.payment === id)) {
+      if (Date.now() - asked > 20_000) throw new Error("the bank was never asked");
+      await new Promise((done) => setTimeout(done, 10));
+    }
     const cancel = await call(registry, log, keyed(SUPERVISOR), "payment.cancel", {
       payment: `dsor://org_456/payment/${id}`,
       expected_version: 1,
