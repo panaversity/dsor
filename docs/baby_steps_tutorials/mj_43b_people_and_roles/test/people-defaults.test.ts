@@ -68,3 +68,17 @@ describe("From the code review of step 43b, finding 1: one table, written and re
     });
   });
 });
+
+describe("From the code review of step 43b, finding 2: a world with no book still removes a person", () => {
+  it("DSOR-IDN-01: with no book of logins, person.remove answers COMMITTED, and user_123's next call is no caller", async () => {
+    const { ask } = worldWithNoTableGiven();
+    const removed = await ask(keyed(ADMIN), "person.remove", {
+      person: "dsor://org_456/person/user_123",
+      reason: "left the company",
+    });
+    expect(removed).toMatchObject({ outcome: "COMMITTED", data: { status: "deprovisioned" } });
+    expect(await ask(SUPERVISOR, "invoice.get", INV_1008)).toMatchObject({
+      code: "AUTHENTICATION_REQUIRED",
+    });
+  });
+});

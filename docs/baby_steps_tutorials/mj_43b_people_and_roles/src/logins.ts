@@ -105,9 +105,9 @@ export const NO_BOOK: LoginBook = Object.freeze({
   invite: async (): Promise<never> => {
     throw new Error("this world keeps no invitations");
   },
-  unlink: async (): Promise<never> => {
-    throw new Error("this world keeps no links");
-  },
+  // Changed by the code review of step 43b, finding 2: with no book, nobody has a login, so ending a
+  //   person's logins ends none. It threw, and person.remove then failed after it had removed.
+  unlink: async () => ({ logins: 0, invitations: 0 }),
 });
 
 /** A book of links and invitations in memory, with these links to start, and its own clock. */
