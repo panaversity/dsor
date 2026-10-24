@@ -225,5 +225,7 @@ Built red first, one commit per piece, on the learner's "build R1 to R7 into ste
   approve it as the admin. Fixed red first: one live login for each person, held by a unique index.
   An admin can still invite someone never linked and redeem it themselves; a second admin's
   confirmation is for 43b. Two medium and three low findings are recorded in the README.
-- **Not done yet:** the invitation flow against the real Neon Auth. cfo_100's Neon login is still the
-  one `pnpm link-login` made. It needs the learner to sign in again. Open questions 166 and 167.
+- **Run for real on Neon (2026-10-24):** the owner ended cfo_100's old link and ran `pnpm invite`;
+  the learner signed her in at Neon. Her token alone was refused; with the code once, she read
+  INV-1008 as cfo_100, and her token alone worked after; a stranger with tok_d4e8 and the used code
+  was refused. Open questions 166 and 167.

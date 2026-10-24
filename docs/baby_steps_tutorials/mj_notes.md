@@ -2455,7 +2455,8 @@ for the learner to review.
   algorithms, an outage that says so, a sign-in service stated as DSoR's own, and unlinking as the
   off-switch. All built red first, fifteen breaks each caught. The hostile review then found that
   an admin could invite a person who already had a login and become them with a second sign-up;
-  now each person has one live login. Lesson: a decision made "for now,
+  now each person has one live login. Then run for real on Neon: cfo_100 joined again by an
+  invitation from `pnpm invite`, and her first call with the code linked her Neon login. Lesson: a decision made "for now,
   with every assumption" is a decision the learner has not made yet; the review of it is where the
   step is decided. Open questions 166 and 167.
 

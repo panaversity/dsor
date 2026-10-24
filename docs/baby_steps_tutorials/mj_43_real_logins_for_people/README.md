@@ -376,6 +376,42 @@ Then `pnpm serve`, with no stand-in, and the learner's own call:
    HTTP 401
 ```
 
+**The invitation, for real (2026-10-24, after R1 to R7).** The owner ended cfo_100's old link (it is
+kept, ended by `owner`) and invited her:
+
+```text
+$ pnpm invite org_456 cfo_100 "the learner's real run on Neon Auth"
+invited cfo_100 to org_456 until 2026-10-31T04:22:00.688Z
+code: (kept in a file, never shown)
+```
+
+The learner signed cfo_100 in at Neon with her own password, and a script that never prints the token
+or the code made four calls through `pnpm serve`:
+
+```text
+1. cfo_100 reads INV-1008 with her Neon token, before she sends the code:
+  AUTHENTICATION_REQUIRED: log in first: the call has no login token that DSoR gave
+2. the same call, with the invitation's code once:
+  {"principal": "cfo_100", "invoice": "INV-1008", "amount": {"value": "31400.00", "currency": "USD"}}
+3. her token alone, after:
+  {"principal": "cfo_100", "invoice": "INV-1008", "amount": {"value": "31400.00", "currency": "USD"}}
+4. a stranger with tok_d4e8 and her used code:
+  AUTHENTICATION_REQUIRED: log in first: the call has no login token that DSoR gave
+```
+
+What the database kept, read as the owner. The invitation keeps only the code's hash, and names the
+Neon login that accepted it; her old link stays, ended; the four decisions are in `dsor.audit`:
+
+```text
+cfo_100|owner|e7e52cf33c1d…|f829c014-ea14-4a01-ad06-fdeeed83e24b|accepted
+cfo_100|f829c014-…|by_invitation=f|ended by owner
+cfo_100|f829c014-…|by_invitation=t|(live)
+invoice.get@1|DENY|AUTHENTICATION_REQUIRED|(nobody)
+invoice.get@1|ALLOW|ok|cfo_100
+invoice.get@1|ALLOW|ok|cfo_100
+invoice.get@1|DENY|AUTHENTICATION_REQUIRED|(nobody)
+```
+
 **To do it with your own Neon project:**
 
 1. Switch on Neon Auth for a branch (the console, or the Neon connector), and read its Auth URL.
@@ -468,8 +504,8 @@ DSOR-TEN-02b, assuming the agent is an attacker and `dsor_runtime` may be broken
 
 ### Left open on purpose
 
-- **Only cfo_100 is linked on Neon**, by the old `pnpm link-login`. The invitation flow has not yet
-  run against Neon; it needs the learner to sign in again.
+- **Only cfo_100 is linked on Neon**, by an invitation since 2026-10-24. The other people sign in
+  through the stand-in in this README; each needs a Neon sign-up and an invitation.
 - **An outage looks like a forgery** (L7), now seen for real: a door that cannot reach Neon tells
   cfo_100 to log in.
 - **Agents still use the fake table**, so the door stays on 127.0.0.1 (step 44).
