@@ -30,6 +30,7 @@ import { NO_RATES, type RateStore } from "./rates.ts";
 import { NO_CONTROLS, type ControlStore } from "./rulebook.ts";
 import { NO_SLIPS, type SlipStore } from "./slips.ts";
 import { NO_BOOK, type LoginBook } from "./logins.ts";
+import { NO_PEOPLE, type PeopleStore } from "./people.ts";
 
 /**
  * The scope of one claim: the company, the caller, the operation, and the key. One key text in
@@ -79,6 +80,9 @@ export type WorkStores = {
   // NEW IN STEP 43: and DSoR's book of links and invitations, so login.invite and login.unlink write
   //   in the claim's transaction, with their record (step 43's README, revisions R2 and R7).
   logins: LoginBook;
+  // NEW IN STEP 43b: and the table of people, so person.add, person.remove, and the role commands
+  //   write in the claim's transaction, with their record (step 43b's README, claims C3 to C6).
+  people: PeopleStore;
   // And the claim's transaction itself, so the record commits with the work.
   transaction?: ClaimTransaction;
   // And a part of the work that a refusal undoes alone, while the claim keeps the
@@ -334,6 +338,8 @@ export function memoryClaims(
   outbox: OutboxWriter = memoryOutbox(),
   // NEW IN STEP 43: and this book of links and invitations, none unless the test gives one.
   logins: LoginBook = NO_BOOK,
+  // NEW IN STEP 43b: and this table of people, none unless the test gives one.
+  people: PeopleStore = NO_PEOPLE,
 ): ClaimStore {
   // Each claim by its scope, written as one text.
   const claims = new Map<string, MemoryClaim>();
@@ -491,6 +497,7 @@ export function memoryClaims(
         holds,
         outbox,
         logins,
+        people,
         // Memory has no transaction to commit, and keeps the note as it is written. From here
         //   on the claim is kept, as the database's is once its checkpoint commits.
         checkpoint: async () => {

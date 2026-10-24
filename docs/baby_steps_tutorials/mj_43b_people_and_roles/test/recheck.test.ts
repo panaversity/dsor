@@ -515,15 +515,22 @@ describe("C3: the guards the review found no test for (DSOR-APR-03a, DSOR-APR-03
         memberships: [{ tenant_id: "org_456", roles }],
       }) as unknown as Principal;
     const USER_150: RequestEnvelope = { token: "tok_150", tenant: "org_456" };
-    const prepared = await withPlanted("tok_150", person(["ap_supervisor"]), () =>
-      w.ask({ ...keyed(USER_150), mode: "propose_only" }, "payment.create", {
-        invoice: "dsor://org_456/invoice/INV-1009",
-        expected_version: 1,
-      }),
+    const prepared = await withPlanted(
+      "tok_150",
+      person(["ap_supervisor"]),
+      () =>
+        w.ask({ ...keyed(USER_150), mode: "propose_only" }, "payment.create", {
+          invoice: "dsor://org_456/invoice/INV-1009",
+          expected_version: 1,
+        }),
+      w.registry.people,
     );
     expect(prepared).toMatchObject({ outcome: "READY" });
-    const answer = await withPlanted("tok_150", person([]), () =>
-      release(w, SUPERVISOR, uriOf(prepared)),
+    const answer = await withPlanted(
+      "tok_150",
+      person([]),
+      () => release(w, SUPERVISOR, uriOf(prepared)),
+      w.registry.people,
     );
     await expectInvalidated(w, answer, idOf(prepared), "READY");
     expect((await afterwards(w, idOf(prepared))).cause).toBe(

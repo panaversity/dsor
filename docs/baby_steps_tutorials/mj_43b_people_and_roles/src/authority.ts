@@ -31,7 +31,12 @@ export class SignerGone extends Refusal {
 }
 
 /** One company's role source setting, once start-up has checked it. */
-export type RoleSetting = { kind: "idp_lookup"; max_staleness: string; ms: number };
+// Changed in step 43b: or dsor_assignments, DSoR's own table (step 43b's README, claim C2).
+export type RoleSetting = {
+  kind: "idp_lookup" | "dsor_assignments";
+  max_staleness: string;
+  ms: number;
+};
 
 /** Each company's role source setting, by company. */
 export type RoleSettings = ReadonlyMap<string, RoleSetting>;
@@ -50,6 +55,13 @@ export type RoleSource = {
 const SHIPPED = fileURLToPath(new URL("../role-sources.json", import.meta.url));
 
 /** Reads the settings file: this step's own, unless another is named. */
+// NEW IN STEP 43b: step 19's settings, idp_lookup for both companies, with which pnpm start tells the
+//   stories of a fake directory, off and on, and the earlier tests drive one. The shipped file names
+//   DSoR's own table, dsor_assignments (step 43b's README, claim C2).
+export const STEP_19_ROLE_SOURCES: string = fileURLToPath(
+  new URL("../role-sources.step-19.json", import.meta.url),
+);
+
 export function readRoleSettings(path: string = SHIPPED): RoleSettingsSource {
   return { file: "role-sources.json", text: readFileSync(path, "utf8") };
 }
@@ -124,8 +136,11 @@ export function checkRoleSettings(
     }
     const { kind, max_staleness } = setting as { kind: string; max_staleness: string };
     // Then this step: it builds a lookup only (step 19's README, decision 1).
-    if (kind !== "idp_lookup") {
-      const why = "is not built: step 19 asks a directory at each call, idp_lookup";
+    // Changed in step 43b: and DSoR's own table of people, dsor_assignments (step 43b's README,
+    //   claim C2). SCIM is still not built.
+    if (kind !== "idp_lookup" && kind !== "dsor_assignments") {
+      const why =
+        "is not built: step 19 asks a directory at each call, idp_lookup, and step 43b reads DSoR's own table, dsor_assignments";
       problems.push(`${file}: ${tenant}'s kind ${JSON.stringify(kind)} ${why}`);
       continue;
     }
@@ -136,7 +151,7 @@ export function checkRoleSettings(
       problems.push(`${file}: ${tenant}'s max_staleness ${JSON.stringify(max_staleness)} ${why}`);
       continue;
     }
-    settings.set(tenant, { kind, max_staleness, ms });
+    settings.set(tenant, { kind: kind as RoleSetting["kind"], max_staleness, ms });
   }
   // Every company where a login works needs a setting (DSOR-IDN-05). A setting for a company
   // where no login works is a typo, like a role nobody holds.
@@ -196,6 +211,9 @@ export function createRoleSource(
       const last = kept.get(key);
       let answer: Record<string, unknown>;
       let at: number;
+      // NEW IN STEP 43b: DSoR's own table is never kept from: a table that cannot be read gives no
+      //   answer, and nothing older counts (step 43b's README, decision D4).
+      const keeps = setting.kind !== "dsor_assignments";
       if (asked.answered) {
         // One copy, read once, and every check and every use reads that copy, as line ①
         // copies the input (step 07's README, decision 9; step 19's README, decision 17).
@@ -212,13 +230,15 @@ export function createRoleSource(
         // Older news never replaces newer: an answer that arrives late, to an earlier
         // question, is not kept over one DSoR asked for after it (decision 14). Found by step
         // 19's review.
-        if (last === undefined || last.at <= askedAt) kept.set(key, { answer: copy, at: askedAt });
+        if (keeps && (last === undefined || last.at <= askedAt)) {
+          kept.set(key, { answer: copy, at: askedAt });
+        }
       } else {
         // No answer: the kept one counts only while it is under the company's bound
         // (DSOR-IDN-06; step 19's README, decisions 3, 4, and 5). Never one from the future: a
         // clock that went back would make an old answer look young (decision 15).
         const age = last === undefined ? Number.NaN : Date.now() - last.at;
-        if (last === undefined || !(age >= 0 && age < setting.ms)) {
+        if (!keeps || last === undefined || !(age >= 0 && age < setting.ms)) {
           // The message names no bound: how long a kept answer lasts is the company's to know
           // (decision 16).
           const where = `from the directory of ${tenant} that is recent enough`;

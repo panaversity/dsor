@@ -12,7 +12,8 @@ import { Refusal } from "../src/envelope.ts";
 import { memoryInvoices, type InvoiceStore } from "../src/invoice.ts";
 import { memoryPayments, type Payment } from "../src/payment.ts";
 import { memoryClaims } from "../src/claims.ts";
-import { readRoleSettings } from "../src/authority.ts";
+import { readRoleSettings, STEP_19_ROLE_SOURCES } from "../src/authority.ts";
+import type { PeopleStore } from "../src/people.ts";
 import type { ProposalStore } from "../src/proposals.ts";
 import { fakeKsor, type FakeKsor } from "../src/ksor.ts";
 import { readClassifications, type ClassificationSource } from "../src/labels.ts";
@@ -76,13 +77,36 @@ export async function withPlanted<T>(
   token: string,
   principal: Principal,
   run: () => T | Promise<T>,
+  // Changed in step 43b: and the world's table of people, where line ① reads a person's companies
+  //   and roles. A planted person holds there exactly the roles the test gives (step 43b's README,
+  //   claim C1).
+  people?: PeopleStore,
 ): Promise<T> {
   const table = logins as Map<string, Principal>;
   table.set(token, principal);
+  if (people !== undefined) await plantInTable(people, principal);
   try {
     return await run();
   } finally {
     table.delete(token);
+  }
+}
+
+/** Sets a person's companies and roles in a table of people, as an owner's first rows would. */
+async function plantInTable(people: PeopleStore, principal: Principal): Promise<void> {
+  if (principal.type !== "human") return;
+  const by = { person: "owner", reason: "a test's planted person" };
+  for (const { tenant_id, roles } of principal.memberships) {
+    if ((await people.memberOf(tenant_id, principal.id))?.status !== "active") {
+      await people.add(tenant_id, principal.id, by);
+    }
+    const held = (await people.memberOf(tenant_id, principal.id))?.roles ?? [];
+    for (const role of held.filter((r) => !roles.includes(r))) {
+      await people.revoke(tenant_id, principal.id, role, by);
+    }
+    for (const role of roles.filter((r) => !held.includes(r))) {
+      await people.grant(tenant_id, principal.id, role, false, by);
+    }
   }
 }
 
@@ -695,7 +719,7 @@ export function proposalRegistry(
     payments,
     slips,
     storyDirectories(),
-    readRoleSettings(),
+    readRoleSettings(STEP_19_ROLE_SOURCES),
     memoryClaims(invoices, payments, proposals, undefined, slips),
   );
 }

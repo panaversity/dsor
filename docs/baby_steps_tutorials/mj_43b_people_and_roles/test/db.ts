@@ -16,7 +16,7 @@ import {
   createDbSlips,
   requireEnv,
 } from "../src/postgres.ts";
-import { readRoleSettings } from "../src/authority.ts";
+import { readRoleSettings, STEP_19_ROLE_SOURCES } from "../src/authority.ts";
 import { NO_CONTROLS, type ControlStore } from "../src/rulebook.ts";
 import { readLifetimes, type LifetimesSource } from "../src/lifetimes.ts";
 import { handlersFor } from "../src/operations.ts";
@@ -90,7 +90,7 @@ export function dbRegistry(
     createDbSlips(pool),
     // And the directories (step 19's README, decision 2).
     directories,
-    readRoleSettings(),
+    readRoleSettings(STEP_19_ROLE_SOURCES),
     // And the claims of idempotency keys, in dsor.idempotency (step 20's README,
     // decision 6).
     // And the same rules as the registry's.

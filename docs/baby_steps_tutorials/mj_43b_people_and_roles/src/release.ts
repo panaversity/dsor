@@ -9,6 +9,7 @@ import type { Approval } from "./approvals.ts";
 import { Refusal, type ErrorCode, type Requirement } from "./envelope.ts";
 import { checkPermission, covers, type Roles } from "./permissions.ts";
 import { actsAsAgent, principalNamed, type Principal } from "./principals.ts";
+import { NO_PEOPLE, type PeopleStore } from "./people.ts";
 import type { Proposal } from "./proposals.ts";
 import { preview, type Contract } from "./registry.ts";
 import { staleRefusal } from "./concurrency.ts";
@@ -169,6 +170,9 @@ export async function askerNow(
   // Inside the release's claim, under the brake's and the slip's locks, as at a draft. A dry run
   //   takes no lock: it reads the brake, and line ③'s look has read the slip.
   inClaim = true,
+  // NEW IN STEP 43b: and the table of people, where a person who asked for herself holds her roles
+  //   now (step 43b's README, claim C1).
+  people: PeopleStore = NO_PEOPLE,
 ): Promise<AskerNow> {
   const { requester } = found;
   const asker = requester.actor_chain[0];
@@ -204,11 +208,19 @@ export async function askerNow(
     };
   }
   // A person who asked for herself: what she holds in DSoR's own table now.
-  const person = principalNamed(requester.subject);
-  if (person === undefined) {
+  // Changed in step 43b: the table of people, never src/principals.ts. A person who is no active
+  //   member of the company now holds nothing here.
+  const story = principalNamed(requester.subject);
+  const member = await people.memberOf(tenant, requester.subject);
+  if (member?.status !== "active" || (story !== undefined && story.type !== "human")) {
     const why = `${requester.subject}, who asked, has no login now`;
     throw new Refusal("AUTHORIZATION_DENIED", why, "internal");
   }
+  const person: Principal = {
+    id: requester.subject,
+    type: "human",
+    memberships: [{ tenant_id: tenant, roles: member.roles }],
+  };
   checkPermission(person, target, roles, tenant, undefined, undefined, found.mode);
   return {
     roles: person.memberships.find((m) => m.tenant_id === tenant)?.roles ?? [],

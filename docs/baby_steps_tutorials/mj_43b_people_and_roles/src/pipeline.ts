@@ -82,6 +82,7 @@ import { checkResultSize } from "./pages.ts";
 import { checkPermission, effectivePermissions, permissionsOf } from "./permissions.ts";
 import { clearanceOf, maskRefusal, show } from "./masking.ts";
 import { callerIds, callerOf, checkNamedPrincipals } from "./principals.ts";
+import { NO_PEOPLE, withPeople } from "./people.ts";
 import {
   callerMover,
   closeProposal,
@@ -297,9 +298,18 @@ export async function call(
     //   between two reads.
     const carries = typeof request === "object" && request !== null && "invitation" in request;
     const first = carries ? { tenant: request.tenant, invitation: request.invitation } : {};
-    const login = await Promise.resolve()
+    const signedIn = await Promise.resolve()
       .then(() => registry.logins.find(token, first))
       .catch(() => undefined);
+    // NEW IN STEP 43b: a person's companies and roles come from DSoR's table of people, read now.
+    //   A table that cannot be read is an outage, never "log in first"; an agent or a system login
+    //   is not in the table (step 43b's README, claim C1, decisions L5 and D1).
+    const login =
+      signedIn === undefined || "unavailable" in signedIn
+        ? signedIn
+        : await withPeople(signedIn, registry.people).catch(() => ({
+            unavailable: "DSoR's table of people",
+          }));
     const { caller, copy, key, named, supersedes } = line(1, () => {
       // The caller's own request id labels every answer, when DSoR can use it (step 05's
       // README, decisions 6 and 7). It is read inside the try, so an envelope whose
@@ -1292,7 +1302,16 @@ export async function call(
         }
       });
       const asker = await line(9, () =>
-        askerNow(loaded, target, registry.roles, registry.roleSource, stores, tenant, inClaim),
+        askerNow(
+          loaded,
+          target,
+          registry.roles,
+          registry.roleSource,
+          stores,
+          tenant,
+          inClaim,
+          registry.people,
+        ),
       );
       // The bundle names the request the release decides, for whom lines ③ to ⑤
       //   checked it again just now, and who released it, in this tutorial's extensions. Found by
@@ -1370,6 +1389,8 @@ export async function call(
           const outside: WorkStores = {
             // Changed in step 43: and no book: a dry run of a release invites nobody.
             logins: NO_BOOK,
+            // NEW IN STEP 43b: and no table of people to write: a dry run changes nobody.
+            people: NO_PEOPLE,
             invoices: registry.invoices,
             reservations: registry.claims.reservations,
             slips: registry.delegations,
@@ -2007,6 +2028,8 @@ export async function call(
         returned = await runCode({
           // Changed in step 43: and no book: a query invites nobody.
           logins: NO_BOOK,
+          // NEW IN STEP 43b: and no table of people to write: a query changes nobody.
+          people: NO_PEOPLE,
           invoices: registry.invoices,
           payments: registry.payments,
           proposals: NO_PROPOSALS,

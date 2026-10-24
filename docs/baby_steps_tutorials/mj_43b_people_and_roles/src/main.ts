@@ -64,7 +64,7 @@ import { createFakeBank, type FakeBank } from "./bank.ts";
 import { readConnectors, type ConnectorsSource } from "./connectors.ts";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { readRoleSettings } from "./authority.ts";
+import { readRoleSettings, STEP_19_ROLE_SOURCES } from "./authority.ts";
 import { readClassifications } from "./labels.ts";
 import type { Answer } from "./envelope.ts";
 import { readCatalog } from "./catalog.ts";
@@ -178,7 +178,7 @@ try {
     createDbSlips(pool),
     // And each company's directory.
     directories,
-    readRoleSettings(),
+    readRoleSettings(STEP_19_ROLE_SOURCES),
     // And the claims of idempotency keys, in dsor.idempotency (step 20's
     // README, decision 6).
     createDbClaims(pool),
@@ -587,7 +587,7 @@ const restarted = buildRegistry(
   createDbPayments(pool),
   createDbSlips(pool),
   directories,
-  readRoleSettings(),
+  readRoleSettings(STEP_19_ROLE_SOURCES),
   // The same claims, in the database.
   createDbClaims(pool),
   // And DSoR's own work.
@@ -758,7 +758,7 @@ const dayLimits = buildRegistry(
   limitPayments,
   limitSlips,
   directories,
-  readRoleSettings(),
+  readRoleSettings(STEP_19_ROLE_SOURCES),
   memoryClaims(limitInvoices, limitPayments, undefined, undefined, limitSlips),
   undefined,
   undefined,
@@ -809,7 +809,7 @@ const tearWorld = buildRegistry(
   tearPayments,
   tearSlips,
   directories,
-  readRoleSettings(),
+  readRoleSettings(STEP_19_ROLE_SOURCES),
   memoryClaims(tearInvoices, tearPayments, tearProposals, tearReservations, tearSlips),
   ownWorkFor(),
   undefined,
@@ -884,7 +884,7 @@ const brakeWorld = buildRegistry(
   brakePayments,
   brakeSlips,
   directories,
-  readRoleSettings(),
+  readRoleSettings(STEP_19_ROLE_SOURCES),
   // The claims pull and lift in the same brakes that line ④ reads.
   memoryClaims(
     brakeInvoices,
@@ -995,7 +995,7 @@ const expiryWorld = buildRegistry(
   expiryPayments,
   expirySlips,
   directories,
-  readRoleSettings(),
+  readRoleSettings(STEP_19_ROLE_SOURCES),
   memoryClaims(expiryInvoices, expiryPayments, expiryProposals, expiryReservations, expirySlips),
   ownWorkFor(),
   undefined,
@@ -1079,7 +1079,7 @@ const moneyWorld = buildRegistry(
   moneyPayments,
   moneySlips,
   directories,
-  readRoleSettings(),
+  readRoleSettings(STEP_19_ROLE_SOURCES),
   memoryClaims(
     moneyInvoices,
     moneyPayments,
@@ -1174,7 +1174,7 @@ const ruleWorld = buildRegistry(
   rulePayments,
   ruleSlips,
   directories,
-  readRoleSettings(),
+  readRoleSettings(STEP_19_ROLE_SOURCES),
   memoryClaims(
     ruleInvoices,
     rulePayments,
@@ -1324,7 +1324,7 @@ const lifeWorld = buildRegistry(
   lifePayments,
   lifeSlips,
   directories,
-  readRoleSettings(),
+  readRoleSettings(STEP_19_ROLE_SOURCES),
   memoryClaims(
     lifeInvoices,
     lifePayments,
@@ -1477,7 +1477,7 @@ const driftWorld = buildRegistry(
   driftPayments,
   driftSlips,
   directories,
-  readRoleSettings(),
+  readRoleSettings(STEP_19_ROLE_SOURCES),
   memoryClaims(
     driftInvoices,
     driftPayments,
@@ -1604,7 +1604,7 @@ const approvalWorld = buildRegistry(
   approvalPayments,
   approvalSlips,
   directories,
-  readRoleSettings(),
+  readRoleSettings(STEP_19_ROLE_SOURCES),
   memoryClaims(
     approvalInvoices,
     approvalPayments,
@@ -1809,7 +1809,7 @@ const releaseWorld = buildRegistry(
   releasePayments,
   releaseSlips,
   directories,
-  readRoleSettings(),
+  readRoleSettings(STEP_19_ROLE_SOURCES),
   memoryClaims(
     releaseInvoices,
     releasePayments,
@@ -1963,7 +1963,7 @@ const attemptWorld = buildRegistry(
   attemptPayments,
   attemptSlips,
   directories,
-  readRoleSettings(),
+  readRoleSettings(STEP_19_ROLE_SOURCES),
   memoryClaims(
     attemptInvoices,
     attemptPayments,
@@ -2048,7 +2048,7 @@ const bundleWorld = buildRegistry(
   bundlePayments,
   bundleSlips,
   directories,
-  readRoleSettings(),
+  readRoleSettings(STEP_19_ROLE_SOURCES),
   memoryClaims(
     bundleInvoices,
     bundlePayments,
@@ -2213,7 +2213,7 @@ async function connectorWorld(
     paid,
     slips,
     directories,
-    readRoleSettings(),
+    readRoleSettings(STEP_19_ROLE_SOURCES),
     memoryClaims(
       store,
       paid,

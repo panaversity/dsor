@@ -402,8 +402,11 @@ describe("From step 29's review: line ⑨ says no before any work, and the store
       message: `cfo_100 approved proposal ${id} already`,
     });
     expect((await recordOf(w, twice))?.authorization).toBe("DENY");
-    const second = await withPlanted("tok_cfo200", cfo200, () =>
-      approves(w, CFO_200, uri, payload_hash),
+    const second = await withPlanted(
+      "tok_cfo200",
+      cfo200,
+      () => approves(w, CFO_200, uri, payload_hash),
+      w.registry.people,
     );
     expect(second).toMatchObject({
       code: "CONFLICT",
@@ -419,8 +422,12 @@ describe("From step 29's review: line ⑨ says no before any work, and the store
   it("Step 29: cfo_100 and cfo_200 approve INV-1008 at the same moment: one is approved, and the other hears CONFLICT from the store, with no approval kept", async () => {
     const w = await ruleWorldOnTuesday();
     const { id, uri, payload_hash } = await drafted(w, "INV-1008");
-    const answers = await withPlanted("tok_cfo200", cfo200, () =>
-      Promise.all([approves(w, CFO, uri, payload_hash), approves(w, CFO_200, uri, payload_hash)]),
+    const answers = await withPlanted(
+      "tok_cfo200",
+      cfo200,
+      () =>
+        Promise.all([approves(w, CFO, uri, payload_hash), approves(w, CFO_200, uri, payload_hash)]),
+      w.registry.people,
     );
     expect(answers.map(heard).sort()).toStrictEqual(["COMMITTED", "CONFLICT"]);
     expect(answers).toContainEqual(
@@ -451,8 +458,11 @@ describe("From step 29's review: only the call's own company counts, and each fi
   it("Step 29: a tenant administrator of org_456 who is CFO in org_789 approves INV-1008, which waits for both: only org_456's role counts, and it still waits for the CFO", async () => {
     const w = await ruleWorldOnTuesday(controlsOf(shippedRule(), ADMIN_ABOVE_30000));
     const { id, uri, payload_hash } = await drafted(w, "INV-1008");
-    const answer = await withPlanted("tok_two", inTwo(["tenant_admin"]), () =>
-      approves(w, TWO_COMPANIES, uri, payload_hash),
+    const answer = await withPlanted(
+      "tok_two",
+      inTwo(["tenant_admin"]),
+      () => approves(w, TWO_COMPANIES, uri, payload_hash),
+      w.registry.people,
     );
     expect(answer).toMatchObject({
       outcome: "COMMITTED",
@@ -485,8 +495,11 @@ describe("From step 29's review: only the call's own company counts, and each fi
       roles,
     );
     const { uri, payload_hash } = await drafted(w, "INV-1008");
-    const answer = await withPlanted("tok_two", inTwo(["approver_clerk"]), () =>
-      approves(w, TWO_COMPANIES, uri, payload_hash),
+    const answer = await withPlanted(
+      "tok_two",
+      inTwo(["approver_clerk"]),
+      () => approves(w, TWO_COMPANIES, uri, payload_hash),
+      w.registry.people,
     );
     expect(answer).toMatchObject({
       code: "AUTHORIZATION_DENIED",

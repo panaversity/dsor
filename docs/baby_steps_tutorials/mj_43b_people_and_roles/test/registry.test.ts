@@ -2,6 +2,7 @@
 // README). From step 04, call answers with an envelope instead of throwing.
 import { memoryClaims } from "../src/claims.ts";
 import { FAKE_LOGINS } from "../src/logins.ts";
+import { storyPeople } from "../src/people.ts";
 import { describe, expect, it, vi } from "vitest";
 import type { ErrorEnvelope } from "../src/envelope.ts";
 import { memoryInvoices, NO_STORE } from "../src/invoice.ts";
@@ -157,6 +158,8 @@ describe("C1: nothing can be called without a contract", () => {
       reads: new Map(),
       // Changed in step 43: and step 05's table of logins.
       logins: FAKE_LOGINS,
+      // Changed in step 43b: and the story's table of people.
+      people: storyPeople(),
     };
     // The refusal is an envelope, not a throw.
     expect(await call(handMade, log, AGENT, "invoice.delete", {})).toMatchObject({

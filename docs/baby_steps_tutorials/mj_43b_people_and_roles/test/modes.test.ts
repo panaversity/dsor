@@ -5,7 +5,7 @@
 import { readFileSync } from "node:fs";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { describe, expect, it } from "vitest";
-import { readRoleSettings } from "../src/authority.ts";
+import { readRoleSettings, STEP_19_ROLE_SOURCES } from "../src/authority.ts";
 import { payloadHash } from "../src/canonical.ts";
 import { memoryClaims } from "../src/claims.ts";
 import type { Answer } from "../src/envelope.ts";
@@ -79,7 +79,8 @@ function story(options: { roles?: RoleTableSource; slips?: readonly StorySlip[] 
     payments,
     slips,
     directories,
-    readRoleSettings(),
+    // Changed in step 43b: step 19's settings, whose fake directory these tests switch.
+    readRoleSettings(STEP_19_ROLE_SOURCES),
     // The claim reads the slip again, so it gets the slips that line ③ reads (step 25c's README, decision D12).
     memoryClaims(store, payments, proposals, undefined, slips),
   );

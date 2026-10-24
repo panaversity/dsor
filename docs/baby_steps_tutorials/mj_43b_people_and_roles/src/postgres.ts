@@ -66,6 +66,7 @@ import {
   type LoginBook,
 } from "./logins.ts";
 import type { Login } from "./tokens.ts";
+import { NO_PEOPLE } from "./people.ts";
 import type { FoundSlip, SlipStore } from "./slips.ts";
 import { Refusal, type Requirement } from "./envelope.ts";
 import { approvalOf, stillOpen, type Approval, type Approving, type Offer } from "./approvals.ts";
@@ -1326,6 +1327,8 @@ function storesIn(
     // NEW IN STEP 43: and the book of links and invitations, so login.invite and login.unlink write
     //   in the claim's transaction, with their record (the learner's R2 and R7).
     logins: bookThrough(client, run),
+    // NEW IN STEP 43b: and the table of people; none until migration 049's table.
+    people: NO_PEOPLE,
     // And the claim's own connection, so the record is written in its
     //   transaction (decision D1).
     transaction: client,

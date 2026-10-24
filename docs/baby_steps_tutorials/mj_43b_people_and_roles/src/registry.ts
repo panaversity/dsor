@@ -10,6 +10,8 @@ import {
   checkRoleSettings,
   createRoleSource,
   readRoleSettings,
+  STEP_19_ROLE_SOURCES,
+  type RoleSettings,
   type RoleSettingsSource,
   type RoleSource,
 } from "./authority.ts";
@@ -70,6 +72,7 @@ import { undoProblems } from "./semantics.ts";
 import { NO_SLIPS, type SlipStore } from "./slips.ts";
 import { loginProblems, logins } from "./principals.ts";
 import { FAKE_LOGINS, type LoginSource } from "./logins.ts";
+import { peopleDirectory, storyPeople, type PeopleStore } from "./people.ts";
 
 /** One contract file, as it was read from disk: its name and its text. */
 export type ContractSource = { file: string; text: string };
@@ -146,6 +149,10 @@ export type Registry = {
   // NEW IN STEP 43: and where a call's login comes from: step 05's table, unless the world gives
   //   real logins (step 43's README, decision D8).
   logins: LoginSource;
+  // NEW IN STEP 43b: each company's people and their roles, which line ① reads for a person, and
+  //   the role source dsor_assignments reads for an absent signer (step 43b's README, claims C1 and
+  //   C2).
+  people: PeopleStore;
 };
 
 // The specification's own schemas, copied byte for byte (step 03's README, decision 3).
@@ -208,7 +215,10 @@ export function buildRegistry(
   directories: Directories = NO_DIRECTORIES,
   // Each company's role source setting. This step's own, unless the caller
   // gives others (step 19's README, decision 8).
-  roleSettings: RoleSettingsSource = readRoleSettings(),
+  // Changed in step 43b: a registry built with no settings asks the directory it is given, as
+  //   since step 19, from step 19's file. The program reads role-sources.json, DSoR's own table
+  //   (step 43b's README, claim C2).
+  roleSettings: RoleSettingsSource = readRoleSettings(STEP_19_ROLE_SOURCES),
   // The claims of idempotency keys. In memory, beside these stores, unless the
   // caller gives others. The program and the database tests give the database's (step 20's
   // README, decision 6).
@@ -253,6 +263,10 @@ export function buildRegistry(
   given?: Record<string, OwnRead>,
   // NEW IN STEP 43: the logins, step 05's table unless the caller gives real ones.
   loginSource: LoginSource = FAKE_LOGINS,
+  // NEW IN STEP 43b: and the table of people, a fresh one of the story's people unless the caller
+  //   gives another. The claims must be given the same table, so a change that one command makes is
+  //   what line ① reads next (step 43b's README, decision D2).
+  people: PeopleStore = storyPeople(),
 ): Registry {
   // Every problem is collected first, and the refusal names them all (step 03's
   // README, decision 2).
@@ -487,7 +501,9 @@ export function buildRegistry(
     invoices,
     payments,
     delegations,
-    roleSource: createRoleSource(settings, directories),
+    // Changed in step 43b: a company whose role source is dsor_assignments is answered from the
+    //   table of people, whatever directory the caller gave (step 43b's README, claim C2).
+    roleSource: createRoleSource(settings, withTable(settings, directories, people)),
     claims,
     own: ownWork,
     brakes,
@@ -500,7 +516,18 @@ export function buildRegistry(
     alerts,
     reads: ownReads,
     logins: loginSource,
+    people,
   };
+}
+
+/** Each company's directory: the table of people where the company's role source is DSoR's own. */
+function withTable(settings: RoleSettings, given: Directories, people: PeopleStore): Directories {
+  const directories = new Map(given);
+  for (const [tenant, setting] of settings) {
+    if (setting.kind === "dsor_assignments")
+      directories.set(tenant, peopleDirectory(tenant, people));
+  }
+  return directories;
 }
 
 // One problem, as ajv found it: where in the contract, and what is wrong there.

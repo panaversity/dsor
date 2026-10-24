@@ -234,11 +234,18 @@ export function realLogins(
         //   caller may try again (changed by the learner's R5).
         return { unavailable: "DSoR's table of logins" };
       }
-      const person = id === undefined ? undefined : PRINCIPALS.get(id);
-      if (person === undefined || person.type !== "human") return undefined;
-      const trusted = (tenant: string): boolean =>
-        (issuers.get(tenant) ?? []).some((i) => i.issuer === login.issuer);
-      return { ...person, memberships: person.memberships.filter((m) => trusted(m.tenant_id)) };
+      if (id === undefined) return undefined;
+      // An agent or a system login is never a person's link (decision D1).
+      const story = PRINCIPALS.get(id);
+      if (story !== undefined && story.type !== "human") return undefined;
+      // Changed in step 43b: a person need not be in src/principals.ts, a new hire too. Here the
+      //   login says only where it may count: the companies whose issuers include the token's.
+      //   Line ① then takes the person's companies and roles from DSoR's table of people, inside
+      //   those (step 43b's README, claim C1).
+      const trusted = [...issuers.entries()]
+        .filter(([, list]) => list.some((i) => i.issuer === login.issuer))
+        .map(([tenant]) => ({ tenant_id: tenant, roles: [] }));
+      return { id, type: "human", memberships: trusted };
     },
   });
 }

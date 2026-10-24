@@ -6,7 +6,12 @@ import { readAlerts, type AlertsSource } from "../src/alerts.ts";
 import { memoryHolds, type MemoryHolds } from "../src/holds.ts";
 import { memoryIntents, type MemoryIntents } from "../src/intents.ts";
 import { memoryOutbox, type MemoryOutbox } from "../src/outbox.ts";
-import { readRoleSettings } from "../src/authority.ts";
+import {
+  readRoleSettings,
+  STEP_19_ROLE_SOURCES,
+  type RoleSettingsSource,
+} from "../src/authority.ts";
+import { storyPeople, type PeopleStore } from "../src/people.ts";
 import { memoryBrakes } from "../src/brakes.ts";
 import { memoryClaims } from "../src/claims.ts";
 import { readControls, type Control, type ControlsSource } from "../src/controls.ts";
@@ -110,6 +115,9 @@ export type RuleWorld = {
   // Changed in step 43: and the book of links and invitations, which login.invite and login.unlink
   //   write, and a world of real logins reads (step 43's README, revisions R1, R2, and R7).
   book: MemoryLoginBook;
+  // Changed in step 43b: and the table of people, which line ① reads, and which a world of the
+  //   shipped role-sources.json reads for an absent signer too (step 43b's README, claims C1, C2).
+  people: PeopleStore;
 };
 
 /** A world in memory: the story's slips, del_100 with step 24's limits, and these rules. */
@@ -140,6 +148,9 @@ export function ruleWorld(
   alerts: AlertsSource = readAlerts(),
   // Step 40: and the outbox, a fresh one unless a test gives one that refuses an event.
   outbox: MemoryOutbox = memoryOutbox(),
+  // Changed in step 43b: and each company's role source. Step 19's fake directory, idp_lookup,
+  //   which the earlier stories drive, unless a test gives the shipped file, DSoR's own table.
+  roleSettings: RoleSettingsSource = readRoleSettings(STEP_19_ROLE_SOURCES),
 ): RuleWorld {
   const clock = { now: T0 };
   const bills = [...structuredClone(invoices), ...structuredClone(BILLS)];
@@ -163,6 +174,7 @@ export function ruleWorld(
   const intents = memoryIntents();
   const holds = memoryHolds();
   const book = memoryLoginBook([]);
+  const people = storyPeople(() => clock.now);
   const rules = memoryControls(controls);
   const given = around(rules);
   const registry = buildRegistry(
@@ -175,7 +187,7 @@ export function ruleWorld(
     payments,
     slips,
     directories,
-    readRoleSettings(),
+    roleSettings,
     memoryClaims(
       store,
       payments,
@@ -189,6 +201,7 @@ export function ruleWorld(
       holds,
       outbox,
       book,
+      people,
     ),
     ownWorkFor(),
     brakes,
@@ -199,6 +212,9 @@ export function ruleWorld(
     connectors,
     new Map([["fake-bank", { bank, waitMs: 50 }]]),
     alerts,
+    undefined,
+    undefined,
+    people,
   );
   const log = createLog();
   const ask = (who: RequestEnvelope, name: string, input: unknown): Promise<Answer> =>
@@ -229,7 +245,36 @@ export function ruleWorld(
     holds,
     outbox,
     book,
+    people,
   };
+}
+
+const TUESDAY_SHEET = {
+  source: "ecb-daily",
+  base: "EUR",
+  published_at: "2026-10-06T14:00:00.000Z",
+  rates: { USD: "1.0800", GBP: "0.8532", PKR: "302.40" },
+};
+
+/** The world with Tuesday's sheet, whose role source is the shipped one: DSoR's table of people. */
+export async function tableWorldOnTuesday(): Promise<RuleWorld> {
+  const w = ruleWorld(
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    readRoleSettings(),
+  );
+  await w.rates.load("org_456", TUESDAY_SHEET);
+  return w;
 }
 
 /** The same world, with Tuesday's sheet of ecb-daily loaded. */
@@ -244,12 +289,7 @@ export async function ruleWorldOnTuesday(
   connectors?: ConnectorsSource,
 ): Promise<RuleWorld> {
   const w = ruleWorld(controls, more, inputs, contracts, around, roles, ksors, connectors);
-  await w.rates.load("org_456", {
-    source: "ecb-daily",
-    base: "EUR",
-    published_at: "2026-10-06T14:00:00.000Z",
-    rates: { USD: "1.0800", GBP: "0.8532", PKR: "302.40" },
-  });
+  await w.rates.load("org_456", TUESDAY_SHEET);
   return w;
 }
 
@@ -353,7 +393,7 @@ export async function startWith(
     memoryPayments([]),
     memorySlips(STORY_SLIPS),
     storyDirectories(),
-    readRoleSettings(),
+    readRoleSettings(STEP_19_ROLE_SOURCES),
     undefined,
     ownWorkFor(),
     undefined,

@@ -8,6 +8,7 @@ import {
   createRoleSource,
   keptKey,
   readRoleSettings,
+  STEP_19_ROLE_SOURCES,
   type Kept,
   type RoleSettingsSource,
 } from "../src/authority.ts";
@@ -116,8 +117,13 @@ function at(time: string): void {
 }
 
 describe("C1: each company has its own role source, or DSoR does not start", () => {
-  it("DSOR-IDN-05: the shipped role-sources.json gives both companies a lookup, PT1H and PT4H", () => {
-    const { settings, problems } = checkRoleSettings(readRoleSettings(), logins.values());
+  // Changed in step 43b: step 19's file, role-sources.step-19.json, which the earlier stories read.
+  //   The shipped role-sources.json names DSoR's own table now (people.test.ts).
+  it("DSOR-IDN-05: step 19's role-sources file gives both companies a lookup, PT1H and PT4H", () => {
+    const { settings, problems } = checkRoleSettings(
+      readRoleSettings(STEP_19_ROLE_SOURCES),
+      logins.values(),
+    );
     expect(problems).toStrictEqual([]);
     expect([...settings]).toStrictEqual([
       ["org_456", { kind: "idp_lookup", max_staleness: "PT1H", ms: 3600000 }],
@@ -147,9 +153,10 @@ describe("C1: each company has its own role source, or DSoR does not start", () 
       'org_456\'s kind "scim" is not built: step 19 asks a directory at each call, idp_lookup',
     ],
     [
-      "the kind dsor_assignments",
-      { org_456: { ...GOOD_456, kind: "dsor_assignments" }, org_789: GOOD_789 },
-      'org_456\'s kind "dsor_assignments" is not built: step 19 asks a directory at each call, idp_lookup',
+      // Changed in step 43b: dsor_assignments is built now; SCIM is not.
+      "the kind scim",
+      { org_456: { ...GOOD_456, kind: "scim" }, org_789: GOOD_789 },
+      "org_456's kind \"scim\" is not built: step 19 asks a directory at each call, idp_lookup, and step 43b reads DSoR's own table, dsor_assignments",
     ],
     [
       "a kind the schema does not know",
@@ -1001,7 +1008,8 @@ describe("C10: an answer DSoR cannot use is a fault, and is never used", () => {
   });
 
   it("DSOR-TEN-02a: a kept answer from another company is a fault, though it is kept under this company", async () => {
-    const { settings } = checkRoleSettings(readRoleSettings(), logins.values());
+    // Changed in step 43b: step 19's file, whose answers are kept.
+    const { settings } = checkRoleSettings(readRoleSettings(STEP_19_ROLE_SOURCES), logins.values());
     const off: Directory = {
       ask: async () => {
         throw new Error("off");

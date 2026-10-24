@@ -6,6 +6,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { readRoleSettings } from "../src/authority.ts";
+import type { Registry } from "../src/registry.ts";
 import { memoryClaims } from "../src/claims.ts";
 import type { Answer } from "../src/envelope.ts";
 import { invoices, memoryInvoices } from "../src/invoice.ts";
@@ -262,8 +263,11 @@ describe("C3: nobody else tears up a slip", () => {
       type: "human",
       memberships: [{ tenant_id: "org_456", roles: ["ap_supervisor"] }],
     } as unknown as Principal;
-    const answer = await withPlanted("tok_user_124", other, () =>
-      tearUp(world, keyed({ token: "tok_user_124", tenant: "org_456" })),
+    const answer = await withPlanted(
+      "tok_user_124",
+      other,
+      () => tearUp(world, keyed({ token: "tok_user_124", tenant: "org_456" })),
+      world.registry.people,
     );
     expect(answer).toMatchObject({
       code: "AUTHORIZATION_DENIED",
@@ -656,13 +660,14 @@ describe("from step 25's review", () => {
     memberships: [{ tenant_id: "org_456", roles: ["ap_supervisor"] }],
   } as unknown as Principal;
   const AS_124 = { token: "tok_user_124", tenant: "org_456" };
-  const asUser124 = <T>(run: () => Promise<T>): Promise<T> =>
-    withPlanted("tok_user_124", user124, run);
+  // Changed in step 43b: and in the world's table of people, where line ① finds them.
+  const asUser124 = <T>(world: { registry: Registry }, run: () => Promise<T>): Promise<T> =>
+    withPlanted("tok_user_124", user124, run, world.registry.people);
 
   // M1: the who-check ran inside the work, after DSoR had said yes.
   it("DSOR-EXE-02: a refused tear-up is recorded DENY, and its proposal ends DENIED, never EXECUTING", async () => {
     const world = story();
-    const answer = await asUser124(() => tearUp(world, keyed(AS_124)));
+    const answer = await asUser124(world, () => tearUp(world, keyed(AS_124)));
     expect(answer).toMatchObject({ code: "AUTHORIZATION_DENIED" });
     const record = (await world.log.records()).at(-1);
     expect([record?.authorization, record?.result]).toStrictEqual(["DENY", "AUTHORIZATION_DENIED"]);
@@ -674,7 +679,7 @@ describe("from step 25's review", () => {
     const world = story();
     for (const mode of ["validate_only", "propose_only"] as const) {
       const envelope = mode === "validate_only" ? { ...AS_124, mode } : { ...keyed(AS_124), mode };
-      expect(await asUser124(() => tearUp(world, envelope))).toMatchObject({
+      expect(await asUser124(world, () => tearUp(world, envelope))).toMatchObject({
         code: "AUTHORIZATION_DENIED",
         message: notYours("user_124", "del_100"),
       });
@@ -693,9 +698,9 @@ describe("from step 25's review", () => {
 
   it("DSOR-ERR-01b: a person who may not tear up a slip hears one answer for a slip that is there and one that is not", async () => {
     const world = story();
-    const there = await asUser124(() => tearUp(world, keyed(AS_124)));
+    const there = await asUser124(world, () => tearUp(world, keyed(AS_124)));
     const none = { slip: "dsor://org_456/delegation/del_999", reason: WHY };
-    const notThere = await asUser124(() => tearUp(world, keyed(AS_124), none));
+    const notThere = await asUser124(world, () => tearUp(world, keyed(AS_124), none));
     const [a, b] = [there, notThere].map((answer) =>
       "code" in answer ? [answer.code, answer.message.replace(/del_\d+/, "del_N")] : [],
     );
@@ -706,9 +711,9 @@ describe("from step 25's review", () => {
   // user_124 heard that a slip user_124 may not touch was torn up already.
   it("DSOR-ERR-01b: a person who may not tear up a slip hears the same refusal when it is torn up already: its state stays hidden", async () => {
     const world = story();
-    const before = await asUser124(() => tearUp(world, keyed(AS_124)));
+    const before = await asUser124(world, () => tearUp(world, keyed(AS_124)));
     expect(heard(await tearUp(world))).toBe("COMMITTED");
-    const after = await asUser124(() => tearUp(world, keyed(AS_124)));
+    const after = await asUser124(world, () => tearUp(world, keyed(AS_124)));
     expect(after).toMatchObject({
       code: "AUTHORIZATION_DENIED",
       message: notYours("user_124", "del_100"),
@@ -775,8 +780,11 @@ describe("from step 25's review", () => {
     const listing = { ...DEL_100, permissions: [...DEL_100.permissions, "delegation:revoke"] };
     const world = story([listing, DEL_101, DEL_102]);
     for (const caller of [application, unknown]) {
-      const answer = await withPlanted("tok_other", caller, () =>
-        tearUp(world, keyed({ token: "tok_other", tenant: "org_456" })),
+      const answer = await withPlanted(
+        "tok_other",
+        caller,
+        () => tearUp(world, keyed({ token: "tok_other", tenant: "org_456" })),
+        world.registry.people,
       );
       expect(answer).toMatchObject({
         code: "AUTHORIZATION_DENIED",
@@ -811,8 +819,11 @@ describe("from step 25's review", () => {
         { tenant_id: "org_789", roles: ["tenant_admin"] },
       ],
     } as unknown as Principal;
-    const answer = await withPlanted("tok_user_125", elsewhere, () =>
-      tearUp(world, keyed({ token: "tok_user_125", tenant: "org_456" })),
+    const answer = await withPlanted(
+      "tok_user_125",
+      elsewhere,
+      () => tearUp(world, keyed({ token: "tok_user_125", tenant: "org_456" })),
+      world.registry.people,
     );
     expect(answer).toMatchObject({
       code: "AUTHORIZATION_DENIED",

@@ -149,8 +149,11 @@ describe("C2: someone outside the chain who holds the role approves (step 30's R
     const w = await withSupervisors();
     const { id, uri, payload_hash } = await drafted(w, "INV-1012");
     expect((await w.proposals.get("org_456", id))?.requires).toStrictEqual([ONE_SUPERVISOR]);
-    const answer = await withPlanted("tok_user_124", user124, () =>
-      approves(w, USER_124, uri, payload_hash),
+    const answer = await withPlanted(
+      "tok_user_124",
+      user124,
+      () => approves(w, USER_124, uri, payload_hash),
+      w.registry.people,
     );
     expect(answer).toMatchObject({
       outcome: "COMMITTED",
@@ -204,8 +207,11 @@ describe("C1 and C3: no one in the requesting chain approves, and the no comes b
       message: `user_123 may not approve proposal ${id}: user_123 asked for it`,
     });
     expect(await stateOf(w, id)).toStrictEqual({ state: "PENDING_APPROVAL", approvals: 0 });
-    const other = await withPlanted("tok_user_124", user124, () =>
-      approves(w, USER_124, uri, payload_hash),
+    const other = await withPlanted(
+      "tok_user_124",
+      user124,
+      () => approves(w, USER_124, uri, payload_hash),
+      w.registry.people,
     );
     expect(other).toMatchObject({ outcome: "COMMITTED", data: { state: "APPROVED" } });
   });
@@ -229,7 +235,12 @@ describe("C1 and C3: no one in the requesting chain approves, and the no comes b
   it("DSOR-SOD-02: the chain is asked before the proposal's state: after user_124 approved INV-1012, user_123 still hears SOD_VIOLATION, not CONFLICT", async () => {
     const w = await withSupervisors();
     const { id, uri, payload_hash } = await drafted(w, "INV-1012");
-    await withPlanted("tok_user_124", user124, () => approves(w, USER_124, uri, payload_hash));
+    await withPlanted(
+      "tok_user_124",
+      user124,
+      () => approves(w, USER_124, uri, payload_hash),
+      w.registry.people,
+    );
     expect(await stateOf(w, id)).toStrictEqual({ state: "APPROVED", approvals: 1 });
     expect(await approves(w, SUPERVISOR, uri, payload_hash)).toMatchObject({
       code: "SOD_VIOLATION",
@@ -295,8 +306,11 @@ describe("C1: every part of the chain, read from DSoR's own records (step 30's R
       active_tenant: "org_456",
       subject_authority: AS_OF,
     });
-    const answer = await withPlanted("tok_user_124", user124, () =>
-      approves(w, USER_124, kept.uri, kept.payload_hash),
+    const answer = await withPlanted(
+      "tok_user_124",
+      user124,
+      () => approves(w, USER_124, kept.uri, kept.payload_hash),
+      w.registry.people,
     );
     expect(answer).toMatchObject({
       code: "SOD_VIOLATION",
@@ -320,8 +334,11 @@ describe("C1: every part of the chain, read from DSoR's own records (step 30's R
       code: "SOD_VIOLATION",
       message: `user_123 may not approve proposal ${id}: user_123 signed slip del_100, which the agent that asked works under`,
     });
-    const theirs = await withPlanted("tok_user_124", user124, () =>
-      approves(w, USER_124, kept.uri, kept.payload_hash),
+    const theirs = await withPlanted(
+      "tok_user_124",
+      user124,
+      () => approves(w, USER_124, kept.uri, kept.payload_hash),
+      w.registry.people,
     );
     expect(theirs).toMatchObject({
       code: "SOD_VIOLATION",
@@ -395,7 +412,12 @@ describe("C4: an agent never approves, and every approver is a person (step 30's
       const who: RequestEnvelope = { token, tenant: "org_456" };
       const w = await ruleWorldOnTuesday();
       const { id, uri, payload_hash } = await waitingIn(w, "org_456");
-      const answer = await withPlanted("tok_ops", ops, () => approves(w, who, uri, payload_hash));
+      const answer = await withPlanted(
+        "tok_ops",
+        ops,
+        () => approves(w, who, uri, payload_hash),
+        w.registry.people,
+      );
       expect(answer).toMatchObject({
         code: "AUTHORIZATION_DENIED",
         message: `"proposal.approve" is for people only, and ${login} is not a person`,
@@ -416,8 +438,11 @@ describe("C4: an agent never approves, and every approver is a person (step 30's
         memberships: [{ tenant_id: "org_456", roles: ["CFO"] }],
       } as unknown as Principal;
       const LOGIN: RequestEnvelope = { token: "tok_cfo_login", tenant: "org_456" };
-      const answer = await withPlanted("tok_cfo_login", login, () =>
-        approves(w, LOGIN, uri, payload_hash),
+      const answer = await withPlanted(
+        "tok_cfo_login",
+        login,
+        () => approves(w, LOGIN, uri, payload_hash),
+        w.registry.people,
       );
       expect(answer).toMatchObject({
         code: "AUTHORIZATION_DENIED",
@@ -454,8 +479,11 @@ describe("C5: a quorum counts distinct people (step 30's README, decision D8)", 
       message: `cfo_100 approved proposal ${id} already`,
     });
     expect(await stateOf(w, id)).toStrictEqual({ state: "PENDING_APPROVAL", approvals: 1 });
-    const second = await withPlanted("tok_cfo200", cfo200, () =>
-      approves(w, CFO_200, uri, payload_hash),
+    const second = await withPlanted(
+      "tok_cfo200",
+      cfo200,
+      () => approves(w, CFO_200, uri, payload_hash),
+      w.registry.people,
     );
     expect(second).toMatchObject({ outcome: "COMMITTED", data: { state: "APPROVED" } });
     const given = await w.proposals.approvals("org_456", id);

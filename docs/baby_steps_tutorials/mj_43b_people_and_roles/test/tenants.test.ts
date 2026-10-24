@@ -352,8 +352,11 @@ describe("C3: only the caller's roles in the active company count", () => {
   const CLERK_IN = (tenant: string): RequestEnvelope => ({ token: "tok_clerk", tenant });
 
   it("DSOR-IDN-03a: a person who supervises in org_789 is denied invoice.issue in org_456", async () => {
-    const answer = await withPlanted("tok_clerk", clerk, () =>
-      call(registry, log, CLERK_IN("org_456"), "invoice.issue", GOOD_ISSUE),
+    const answer = await withPlanted(
+      "tok_clerk",
+      clerk,
+      () => call(registry, log, CLERK_IN("org_456"), "invoice.issue", GOOD_ISSUE),
+      registry.people,
     );
     expect(answer).toStrictEqual(
       refused("AUTHORIZATION_DENIED", notGranted("invoice.issue", "invoice:issue"), {
@@ -363,8 +366,11 @@ describe("C3: only the caller's roles in the active company count", () => {
   });
 
   it("DSOR-IDN-03a: the same person passes line ⑤ for invoice.issue in org_789", async () => {
-    const answer = await withPlanted("tok_clerk", clerk, () =>
-      call(registry, log, CLERK_IN("org_789"), "invoice.issue", FOREIGN_1008),
+    const answer = await withPlanted(
+      "tok_clerk",
+      clerk,
+      () => call(registry, log, CLERK_IN("org_789"), "invoice.issue", FOREIGN_1008),
+      registry.people,
     );
     expect(answer).toStrictEqual(
       refused("UNSUPPORTED_CAPABILITY", '"invoice.issue" is not built yet', {
