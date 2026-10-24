@@ -50,8 +50,11 @@ export type PeopleStore = {
   confirm: (tenant: string, grant: string, by: PeopleBy) => Promise<Grant>;
   // Ends the person's role here, active or pending; the number of grants it ended.
   revoke: (tenant: string, person: string, role: string, by: PeopleBy) => Promise<number>;
-  // The active administrators of a company, for the owner's pnpm grant (decision L3).
-  admins: (tenant: string) => Promise<number>;
+  // Changed by the review of step 43b: every company that has ever had this person, removed or
+  //   not, so another company cannot take the id (finding 1). And one grant, read only, so
+  //   role.confirm checks it at line ⑨, before any work (finding 13).
+  companiesOf: (person: string) => Promise<string[]>;
+  grantOf: (tenant: string, grant: string) => Promise<Grant | undefined>;
 };
 
 // A pending grant lasts seven days, as an invitation does (decision D7).
@@ -181,13 +184,17 @@ export function memoryPeople(
       }
       return ended;
     },
-    admins: async (tenant) =>
-      [...members.values()].filter(
-        (m) =>
-          m.tenant === tenant &&
-          m.status === "active" &&
-          rolesOf(tenant, m.person).includes("tenant_admin"),
-      ).length,
+    companiesOf: async (person) =>
+      [
+        ...new Set([...members.values()].filter((m) => m.person === person).map((m) => m.tenant)),
+      ].sort(),
+    grantOf: async (tenant, id) => {
+      const grant = grants.find((g) => g.tenant === tenant && g.id === id);
+      if (grant === undefined) return undefined;
+      // A pending grant past its seven days is ended, as every read says.
+      const ended = grant.state === "pending" && grant.expires <= now();
+      return { ...shown(grant), ...(ended ? { state: "ended" as const } : {}) };
+    },
   };
 }
 
@@ -204,19 +211,21 @@ export function storyPeople(now?: () => number): PeopleStore {
 /** No table: nobody is a person of any company. */
 export const NO_PEOPLE: PeopleStore = memoryPeople([]);
 
-// The permissions that make a role powerful: to approve, or to change people and roles. Read from
-//   roles.json, so a role that gains one becomes powerful by itself (the learner's L1).
-const POWERFUL: ReadonlySet<string> = new Set([
-  "proposal:approve",
-  "payment:approve",
-  "person:add",
-  "role:grant",
-  "role:confirm",
+// Changed by the review of step 43b, finding 5: the permissions that leave a role harmless, to read,
+//   to prepare, and to stop. A role holding any other is powerful: a list of the harmless never
+//   misses a new power, as a list of the powerful did (rule:manage, control:suspend, and
+//   login:invite were not on it). Read against roles.json, so a role that gains one becomes powerful
+//   by itself (the learner's L1).
+const HARMLESS: ReadonlySet<string> = new Set([
+  "invoice:read",
+  "alert:read",
+  "payment:create.propose",
+  "delegation:revoke",
 ]);
 
 /** Whether a grant of this role waits for a second administrator (decision L1). */
 export function isPowerful(role: string, roles: ReadonlyMap<string, Iterable<string>>): boolean {
-  return [...(roles.get(role) ?? [])].some((permission) => POWERFUL.has(permission));
+  return [...(roles.get(role) ?? [])].some((permission) => !HARMLESS.has(permission));
 }
 
 /** The refusal of a confirm by the one who asked, or by the one the grant names (decision D3). */

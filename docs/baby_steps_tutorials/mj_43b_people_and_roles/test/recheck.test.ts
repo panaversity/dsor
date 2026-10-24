@@ -396,12 +396,14 @@ describe("C4: an approval counts only while it lasts, and only for its request (
     const given = await w.proposals.approvals("org_456", id);
     const other = given.map((a) => ({ ...a, payload_hash: `sha256:${"0".repeat(64)}` }));
     await expect(
-      checkApprovals(kept, kept.requires ?? [], other, w.registry.delegations, "org_456"),
+      // Changed in step 43b: and the world's table of people, where cfo_100 is still CFO.
+      checkApprovals(kept, kept.requires ?? [], other, w.registry.delegations, "org_456", w.people),
     ).rejects.toThrow("high-value-payment version 8 asks for an approval by CFO, and 0 counts");
     // Changed in step 33: the check answers what it counted, for the decision's bundle (step 33's
     //   README, D7), the ids by rule in a Map (step 33's review, finding 1).
     await expect(
-      checkApprovals(kept, kept.requires ?? [], given, w.registry.delegations, "org_456"),
+      // Changed in step 43b: and the world's table of people, where cfo_100 is still CFO.
+      checkApprovals(kept, kept.requires ?? [], given, w.registry.delegations, "org_456", w.people),
     ).resolves.toStrictEqual({
       approvals: given,
       satisfied: new Map([["high-value-payment", [given[0]!.id]]]),

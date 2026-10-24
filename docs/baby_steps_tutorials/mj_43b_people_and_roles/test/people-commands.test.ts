@@ -202,6 +202,13 @@ describe("C5: role.confirm", () => {
       "CFO",
       "ap_supervisor",
     ]);
+    // The table names who asked and who confirmed: two people. Found by the review of step 43b: a
+    //   confirm that wrote another name passed every test.
+    const id = (asked["grant"] as string).split("/").at(-1) as string;
+    expect(await w.people.grantOf("org_456", id)).toMatchObject({
+      asked_by: "admin_100",
+      confirmed_by: "cfo_100",
+    });
   });
 
   it("DSOR-SOD-04c: the administrator who asked cannot confirm their own grant", async () => {

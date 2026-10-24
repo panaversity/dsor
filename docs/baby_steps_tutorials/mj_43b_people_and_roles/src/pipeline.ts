@@ -1213,7 +1213,8 @@ export async function call(
       }
       const given = await proposals.approvals(tenant, runId);
       evidence.counted = await line(10, () =>
-        checkApprovals(loaded, [...waitsFor.values()], given, slips, tenant),
+        // In the claim's own store, so the release takes no second connection.
+        checkApprovals(loaded, [...waitsFor.values()], given, slips, tenant, stores.people),
       );
     };
     // A run's dry run: each line checked as the real run checks it, outside any claim, with no lock
@@ -1312,7 +1313,7 @@ export async function call(
           stores,
           tenant,
           inClaim,
-          registry.people,
+          stores.people,
         ),
       );
       // The bundle names the request the release decides, for whom lines ③ to ⑤
@@ -1375,7 +1376,9 @@ export async function call(
       const given = await proposals.approvals(tenant, id);
       // And what it counted, for the bundle (step 33's README, D7).
       evidence.counted = await line(10, () =>
-        checkApprovals(loaded, requires ?? [], given, slips, tenant),
+        // In the claim's own store, so the release takes no second connection: two releases at once
+        //   each held one and waited for another. Found by the database tests.
+        checkApprovals(loaded, requires ?? [], given, slips, tenant, stores.people),
       );
     };
     if (released !== undefined) {
@@ -1391,8 +1394,9 @@ export async function call(
           const outside: WorkStores = {
             // Changed in step 43: and no book: a dry run of a release invites nobody.
             logins: NO_BOOK,
-            // NEW IN STEP 43b: and no table of people to write: a dry run changes nobody.
-            people: NO_PEOPLE,
+            // NEW IN STEP 43b: and the table of people, which a dry run only reads: the approvers
+            //   and the asker of the release it checks.
+            people: registry.people,
             invoices: registry.invoices,
             reservations: registry.claims.reservations,
             slips: registry.delegations,

@@ -4,7 +4,7 @@
 // administrator's role.confirm; each call is recorded like any other (step 43b's README, claims C3
 // to C6, decisions L1 to L4, D3, and D7).
 import { Refusal } from "./envelope.ts";
-import { isPowerful, type Grant } from "./people.ts";
+import { isPowerful, sameHands, type Grant } from "./people.ts";
 import { logins } from "./principals.ts";
 import type { OwnLook, OwnStores, OwnWork } from "./revocation.ts";
 import { formatUri, parseUri } from "./uri.ts";
@@ -42,9 +42,12 @@ async function mustBeMember(input: unknown, look: OwnLook): Promise<string> {
 // not copied: the tutorial's own form of a person's id, the one migration 049's CHECK uses; the
 //   specification gives a principal's id no pattern.
 const PERSON_ID = /^[a-z][a-z0-9_-]{0,63}$/;
+// Changed by the review of step 43b, finding 11: the names DSoR's own records use for the owner and
+//   for itself are never a person's.
+const RESERVED: ReadonlySet<string> = new Set(["owner", "dsor"]);
 async function mayAdd(input: unknown, look: OwnLook): Promise<void> {
   const person = personOf(input);
-  if (person === undefined || !PERSON_ID.test(person)) {
+  if (person === undefined || !PERSON_ID.test(person) || RESERVED.has(person)) {
     throw new Refusal(
       "VALIDATION_FAILED",
       "person.add names a person's address, such as dsor://org_456/person/jane_200",
@@ -60,6 +63,14 @@ async function mayAdd(input: unknown, look: OwnLook): Promise<void> {
   if ((await look.people.memberOf(look.tenant, person))?.status === "active") {
     throw new Refusal("CONFLICT", `${person} is a person of ${look.tenant} already`, "internal");
   }
+  // Changed by the review of step 43b, finding 1: a person's id is one for all of DSoR, as their
+  //   login is, so an id another company has, or had, is taken. Otherwise org_789's administrator
+  //   could add cfo_100 to org_789, invite that id, and sign in as org_456's CFO. The answer says
+  //   only "taken", never which company.
+  const elsewhere = (await look.people.companiesOf(person)).filter((t) => t !== look.tenant);
+  if (elsewhere.length > 0) {
+    throw new Refusal("CONFLICT", `the id ${person} is taken: choose another`, "internal");
+  }
 }
 
 /** The role must be one roles.json has: what a role may do is DSoR's to say (decision L6). */
@@ -69,7 +80,26 @@ async function mayGrant(input: unknown, look: OwnLook): Promise<void> {
   if (!look.roleTable.has(role)) {
     throw new Refusal("VALIDATION_FAILED", `roles.json has no role ${JSON.stringify(role)}`);
   }
+  // Changed by the review of step 43b, finding 8: a role only DSoR's system logins hold, such as
+  //   scheduler, is never a person's.
+  if (SYSTEM_ROLES.has(role)) {
+    throw new Refusal(
+      "VALIDATION_FAILED",
+      `${role} is a role of DSoR's system logins, never a person's`,
+    );
+  }
 }
+
+// The roles src/principals.ts gives a system login and no person.
+const SYSTEM_ROLES: ReadonlySet<string> = (() => {
+  const everyone = [...logins.values()];
+  const held = (type: string) =>
+    new Set(
+      everyone.filter((p) => p.type === type).flatMap((p) => p.memberships.flatMap((m) => m.roles)),
+    );
+  const people = held("human");
+  return new Set([...held("system")].filter((role) => !people.has(role)));
+})();
 
 async function mayRevoke(input: unknown, look: OwnLook): Promise<void> {
   await mustBeMember(input, look);
@@ -117,6 +147,9 @@ export function peopleWorkFor(): Record<string, OwnWork> {
           person: work.caller.id,
           reason,
         });
+        // Changed by the review of step 43b, finding 9: and the person's logins that this company's
+        //   invitations made, and their open invitations here, end with them.
+        await work.stores.logins.unlink(work.tenant, person, { person: work.caller.id, reason });
         return { person, status: "deprovisioned", roles };
       },
     },
@@ -134,8 +167,23 @@ export function peopleWorkFor(): Record<string, OwnWork> {
       },
     },
     "role.confirm": {
-      // The grant is read in the claim's own store, so its state is the state the confirm moves.
-      check: async () => {},
+      // Changed by the review of step 43b, finding 13: line ⑨ reads the grant and refuses a confirm
+      //   by its asker or the person it names before any work, so the record says DENY. The store
+      //   checks again inside the claim, where a second confirm at the same moment waits.
+      check: async (input, look) => {
+        const id = grantOf(input);
+        const grant = id === undefined ? undefined : await look.people.grantOf(look.tenant, id);
+        if (grant === undefined || grant.state !== "pending") {
+          throw new Refusal(
+            "CONFLICT",
+            `no grant waits as ${id ?? ""} in ${look.tenant}`,
+            "internal",
+          );
+        }
+        if (look.caller.id === grant.asked_by || look.caller.id === grant.person) {
+          throw sameHands(look.caller.id, grant);
+        }
+      },
       change: async (input: unknown, work: OwnStores): Promise<unknown> => {
         const id = grantOf(input);
         const { reason } = input as ConfirmInput;

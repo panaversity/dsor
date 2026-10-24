@@ -2777,8 +2777,14 @@ function bookThrough(reader: pg.Pool | pg.ClientBase, run: Runner): LoginBook {
     unlink: async (tenant: string, person: string, by: BookBy) =>
       run(tenant, async (client) => {
         const logins = await client.query(
-          "UPDATE dsor.logins SET unlinked_by = $2 WHERE principal_id = $1 AND unlinked_at IS NULL",
-          [person, by.person],
+          // Changed in step 43b: only the links this company's invitations made; a link no
+          //   invitation made, from before migration 048, ends from any company where the person
+          //   works (the review of step 43b, finding 1).
+          `UPDATE dsor.logins SET unlinked_by = $2
+            WHERE principal_id = $1 AND unlinked_at IS NULL
+              AND (invitation_id IS NULL OR invitation_id IN
+                   (SELECT id FROM dsor.invitations WHERE tenant_id = $3))`,
+          [person, by.person, tenant],
         );
         const invitations = await client.query(
           `UPDATE dsor.invitations SET cancelled_by = $3
@@ -2977,14 +2983,25 @@ function peopleThrough(reader: pg.Pool | pg.ClientBase, run: Runner): PeopleStor
         );
         return ended.rowCount ?? 0;
       }),
-    admins: async (tenant: string): Promise<number> => {
-      const { rows } = await reader.query<{ n: number }>(
-        `SELECT count(DISTINCT p.principal_id)::int AS n FROM dsor.people p
-           JOIN dsor.role_grants g ON g.tenant_id = p.tenant_id AND g.principal_id = p.principal_id
-          WHERE p.tenant_id = $1 AND p.removed_at IS NULL AND g.role = 'tenant_admin' AND ${COUNTS}`,
-        [tenant],
+    companiesOf: async (person: string): Promise<string[]> => {
+      const { rows } = await reader.query<{ tenant_id: string }>(
+        "SELECT DISTINCT tenant_id FROM dsor.people WHERE principal_id = $1 ORDER BY tenant_id",
+        [person],
       );
-      return rows[0]?.n ?? 0;
+      return rows.map((row) => row.tenant_id);
+    },
+    grantOf: async (tenant: string, id: string): Promise<Grant | undefined> => {
+      const { rows } = await reader.query<GrantRow & { expired: boolean }>(
+        `SELECT id, tenant_id, principal_id, role, asked_by, reason, needs_confirm, expires_at,
+                confirmed_by, confirmed_at, ended_at,
+                (needs_confirm AND confirmed_at IS NULL AND expires_at <= now()) AS expired
+           FROM dsor.role_grants WHERE tenant_id = $1 AND id = $2`,
+        [tenant, id],
+      );
+      const row = rows[0];
+      if (row === undefined) return undefined;
+      const grant = grantOfRow(row);
+      return row.expired ? { ...grant, state: "ended" } : grant;
     },
   });
 }

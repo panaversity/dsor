@@ -115,7 +115,11 @@ export function memoryLoginBook(
   rows: readonly Link[],
   now: () => number = Date.now,
 ): MemoryLoginBook {
-  const links = rows.map((r) => ({ ...r, ended: false }));
+  // Each link names the company whose invitation made it, or none for a link a test sets up.
+  const links: (Link & { ended: boolean; tenant?: string })[] = rows.map((r) => ({
+    ...r,
+    ended: false,
+  }));
   const kept: (Invitation & { hash: string; expires: number })[] = [];
   const activeOf = (issuer: string, subject: string) =>
     links.find((l) => !l.ended && l.issuer === issuer && l.subject === subject);
@@ -141,6 +145,7 @@ export function memoryLoginBook(
         subject: login.subject,
         principal: found.person,
         ended: false,
+        tenant,
       });
       return found.person;
     },
@@ -160,7 +165,12 @@ export function memoryLoginBook(
       return { invitation: structuredClone(invitation), code };
     },
     unlink: async (tenant: string, person: string, by: BookBy) => {
-      const ended = links.filter((l) => !l.ended && l.principal === person);
+      // Changed in step 43b: only the links this company's invitations made, so one company never
+      //   ends another company's login of a person in both (the review of step 43b, finding 1).
+      const ended = links.filter(
+        (l) =>
+          !l.ended && l.principal === person && (l.tenant === undefined || l.tenant === tenant),
+      );
       for (const link of ended) link.ended = true;
       const open = kept.filter(
         (i) =>

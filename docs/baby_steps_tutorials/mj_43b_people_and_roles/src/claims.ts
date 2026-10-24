@@ -30,7 +30,7 @@ import { NO_RATES, type RateStore } from "./rates.ts";
 import { NO_CONTROLS, type ControlStore } from "./rulebook.ts";
 import { NO_SLIPS, type SlipStore } from "./slips.ts";
 import { NO_BOOK, type LoginBook } from "./logins.ts";
-import { NO_PEOPLE, type PeopleStore } from "./people.ts";
+import { storyPeople, type PeopleStore } from "./people.ts";
 
 /**
  * The scope of one claim: the company, the caller, the operation, and the key. One key text in
@@ -338,8 +338,10 @@ export function memoryClaims(
   outbox: OutboxWriter = memoryOutbox(),
   // Since step 43: and this book of links and invitations, none unless the test gives one.
   logins: LoginBook = NO_BOOK,
-  // NEW IN STEP 43b: and this table of people, none unless the test gives one.
-  people: PeopleStore = NO_PEOPLE,
+  // NEW IN STEP 43b: and this table of people, the story's unless the caller gives one. A world
+  //   that changes people gives the registry and the claims one table, so a change is what line ①
+  //   reads next; a world that only reads, such as pnpm start's, has the story's people in both.
+  people: PeopleStore = storyPeople(),
 ): ClaimStore {
   // Each claim by its scope, written as one text.
   const claims = new Map<string, MemoryClaim>();

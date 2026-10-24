@@ -10,7 +10,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import type { Answer } from "../src/envelope.ts";
 import { hashOf, newCode } from "../src/logins.ts";
 import { call } from "../src/pipeline.ts";
-import { createDbLog, createDbPeople } from "../src/postgres.ts";
+import { createDbBook, createDbLog, createDbPeople } from "../src/postgres.ts";
 import type { Principal } from "../src/principals.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import { dbRegistry, newPool, tryThenRollBack } from "./db.ts";
@@ -168,6 +168,40 @@ describe("C3 to C6 on PostgreSQL: the commands, inside their claims", () => {
       },
       people,
     );
+  });
+});
+
+describe("From the review of step 43b, findings 1 and 4, on PostgreSQL", () => {
+  it("Step 43b, the review's finding 4: a grant and a removal at the same moment, twenty times: never a live grant for a removed person", async () => {
+    for (let i = 0; i < 20; i += 1) {
+      const p = fresh();
+      await people.add("org_456", p.id, OWNER);
+      await Promise.allSettled([
+        people.grant("org_456", p.id, "ap_clerk", false, OWNER),
+        people.remove("org_456", p.id, OWNER),
+      ]);
+      const { rows } = await pool.query(
+        `SELECT count(*)::int AS n FROM dsor.role_grants g JOIN dsor.people p
+            ON p.tenant_id = g.tenant_id AND p.principal_id = g.principal_id
+         WHERE g.principal_id = $1 AND g.ended_at IS NULL AND p.removed_at IS NOT NULL`,
+        [p.id],
+      );
+      expect(rows[0].n).toBe(0);
+    }
+  });
+
+  it("DSOR-IDN-03a: org_789's unlink of a person in both companies ends no login that org_456's invitation made", async () => {
+    const p = fresh();
+    await people.add("org_456", p.id, OWNER);
+    await people.add("org_789", p.id, OWNER);
+    const book = createDbBook(pool);
+    const { code } = await book.invite("org_456", p.id, { person: "admin_100", reason: "x" });
+    const login = { issuer: "http://127.0.0.1:8043", subject: `ba_${p.id}` };
+    expect(await book.redeem("org_456", code, login)).toBe(p.id);
+    expect(await book.unlink("org_789", p.id, { person: "admin_700", reason: "x" })).toMatchObject({
+      logins: 0,
+    });
+    expect(await book.principalOf(login.issuer, login.subject)).toBe(p.id);
   });
 });
 

@@ -276,6 +276,9 @@ export async function checkApprovals(
   given: readonly Approval[],
   slips: Pick<SlipStore, "get">,
   tenant: string,
+  // NEW IN STEP 43b: and the table of people, which says whether each approver still holds the
+  //   role their approval met (the review of step 43b, finding 2).
+  people: Pick<PeopleStore, "memberOf"> = NO_PEOPLE,
 ): Promise<Counted> {
   for (const approval of given) {
     for (const { principal } of approval.approvers) {
@@ -288,9 +291,22 @@ export async function checkApprovals(
   // Only an approval that is active and binds this very request counts: one for another
   //   fingerprint approved another request (DSOR-APR-09). Its expiry is its proposal's, which the
   //   release reads again just before the work (found by step 31's review, finding M2).
-  const counted = given.filter(
+  const binding = given.filter(
     (a) => a.status === "active" && a.payload_hash === found.payload_hash,
   );
+  // Changed in step 43b: and only while every approver is still an active person of the company,
+  //   holding each role the approval met, now. A CFO removed, or no longer CFO, after approving no
+  //   longer approves (DSOR-APR-03b; the review of step 43b, finding 2).
+  const counted: Approval[] = [];
+  for (const approval of binding) {
+    let holds = true;
+    for (const { principal } of approval.approvers) {
+      const now = await people.memberOf(tenant, principal);
+      const roles = now?.status === "active" ? now.roles : [];
+      if (!approval.satisfies.every((line) => roles.includes(line.requirement.role))) holds = false;
+    }
+    if (holds) counted.push(approval);
+  }
   for (const now of requires) {
     const { control, control_version: version } = now;
     const { role, quorum } = now.approval;

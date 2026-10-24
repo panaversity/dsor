@@ -74,9 +74,13 @@ CREATE UNIQUE INDEX role_grants_one_live ON dsor.role_grants (tenant_id, princip
 CREATE FUNCTION dsor.role_grant_starts() RETURNS trigger LANGUAGE plpgsql
   SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM dsor.people p
-                  WHERE p.tenant_id = NEW.tenant_id AND p.principal_id = NEW.principal_id
-                    AND p.removed_at IS NULL) THEN
+  -- FOR SHARE: the person's row stays as it is until this grant commits, so a removal at the same
+  --   moment waits, and then ends this grant too. Found by the review of step 43b, finding 4: with
+  --   a plain read, both committed, and a removed person kept a live grant.
+  PERFORM 1 FROM dsor.people p
+    WHERE p.tenant_id = NEW.tenant_id AND p.principal_id = NEW.principal_id AND p.removed_at IS NULL
+    FOR SHARE;
+  IF NOT FOUND THEN
     RAISE EXCEPTION 'a role is granted only to an active person of its company'
       USING ERRCODE = 'check_violation';
   END IF;

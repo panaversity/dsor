@@ -262,3 +262,116 @@ fresh database each. Each failed the test written for it:
 | B8 | The link trigger forgets the company check | "a link for a person removed from the invitation's company is refused" |
 | B9 | A person's own release reads `src/principals.ts` again | "user_123 prepares INV-1009 …, his role is revoked …: invalidated" |
 | B10 | The database's store lets the asker confirm; the trigger still refuses | "a CFO grant waits; its asker cannot confirm it", which then hears a database error instead of `SOD_VIOLATION` |
+
+## Build it yourself with Claude Code
+
+| # | Move | What was done |
+|---|---|---|
+| 1 | Understand | The problem, shown with a real run of step 43's code: nobody can be hired, and a leaver's slip still pays vendors |
+| 2 | Ask | Six questions to the learner; two answers met walls in earlier steps and were asked again (L2, L3) |
+| 3 | The copy | Step 43 copied, its markers turned into "Since step 43" |
+| 4 | Build, piece by piece | Three pieces, each with its tests written first and seen red: the table read at line ① and by the role source; the five commands; the table on PostgreSQL with `pnpm grant` |
+| 5 | Break it | B1 to B10, for real, in a copy |
+| 6 | Review | A reviewer who had not seen the conversation; its findings fixed red first, or recorded below |
+
+To start it in a new session:
+
+```text
+Build step 43b in learner mode from the design in
+docs/baby_steps_tutorials/mj_43b_people_and_roles/README.md and the decisions in
+docs/baby_steps_tutorials/mj_43b_why_this_step.md.
+```
+
+## Check yourself
+
+1. user_123 leaves the company, and admin_100 runs `person.remove`. That night the agent drafts a
+   payment under `del_100`, the slip user_123 signed. What does DSoR answer, and what happens to
+   `del_100`?
+2. admin_100 asks for CFO for user_123. Why does the grant wait, and who may confirm it?
+3. cfo_100 approves INV-1008, 31,400.00 USD, and is removed before the agent releases it. Is the
+   payment made?
+4. admin_700, of org_789, adds a person called cfo_100 to org_789. What does DSoR answer, and why
+   does it matter?
+5. Why does `pnpm grant` refuse to give CFO?
+
+<details>
+<summary>Answers</summary>
+
+1. `DELEGATION_REQUIRED`: the role source, DSoR's own table, no longer lists him as active, and
+   `del_100` is suspended at that call (DSOR-IDN-07).
+2. CFO may approve, so it is powerful (L1). A second tenant administrator confirms it, never
+   admin_100, who asked, and never user_123, whom it names (D3).
+3. No. At the release, an approval counts only while its approver still holds the role it met, so
+   the proposal is invalidated (DSOR-APR-03b; the review's finding 2).
+4. `CONFLICT`, "the id cfo_100 is taken". A person's id and their login are one for all of DSoR;
+   otherwise admin_700 could invite that id and sign in as org_456's CFO (the review's finding 1).
+5. The owner is no person DSoR knows, so it may only make a company's first administrators. Every
+   other role is the company's own administrators' to give (L3).
+
+</details>
+
+## Think it through
+
+### Found while building
+
+- **The cross-company suite changed the people.** On PostgreSQL its own same-company call is real,
+  and the first example of `person.remove` named cfo_100: the suite removed the CFO, and every later
+  file that read as her failed. The examples now name a person no company has.
+- **A second connection inside a claim starves the pool.** The first fix of the review's finding 2
+  read each approver from the table through the pool, while the release's claim held a connection
+  of its own. Two releases at once each held one and waited for another, and the database tests
+  timed out. The release now reads the approvers inside its own claim.
+- **Reusing payment approvals needed a second idea.** Step 31 never releases DSoR's own work, so the
+  learner chose `role.confirm` instead (L2).
+
+### What the review found
+
+A reviewer who had not seen the conversation read the step against DSOR-IDN-01, DSOR-IDN-05,
+DSOR-IDN-07, DSOR-SOD-04c, and DSOR-APR-03a, assumed the agent is an attacker and `dsor_runtime` can
+be broken into, and made 22 breaks in a copy. Eight left every test green.
+
+| | Finding | What was done |
+|---|---|---|
+| 1 | Critical. admin_700 could add an id called cfo_100 to org_789, unlink it, invite it, and sign in as org_456's CFO: a person's id and login are one for all of DSoR, and unlinking ended a login in every company | Fixed red first: `person.add` refuses an id another company has or had ("taken"), and unlinking ends only the links this company's invitations made |
+| 2 | High. A CFO removed after approving still had her approval release the payment | Fixed red first: at the release, an approval counts only while its approver is an active person holding the role it met (DSOR-APR-03b) |
+| 3 | High, if `dsor_runtime` is broken into: the program says which grants need a confirm, and writes the confirmer's name | Recorded. The database cannot know which roles may approve while `roles.json` is code, and a broken-into program can write any confirmer's name. The trigger stops honest bugs only |
+| 4 | A grant and a removal at the same moment could both commit, leaving a removed person a live grant | Fixed red first: the grant's trigger locks the person's row, and twenty parallel tries leave none |
+| 5 | The list of powerful permissions was a list of the powerful: `rule:manage`, `control:suspend`, `login:invite` were missing | Fixed red first: a list of the harmless; any other permission makes a role powerful |
+| 6 | No test ended a pending grant with its person | Added |
+| 7 | One administrator can remove the other, then make a new second administrator with the owner | Recorded: the learner's L4 lets one administrator remove, at once |
+| 8 | `role.grant` gave a person `scheduler` or `rate_loader` | Fixed red first: a role only DSoR's system logins hold is never a person's |
+| 9 | The memory store linked a removed person's invitation; the database refused it | Fixed red first: `person.remove` cancels the person's open invitations and ends this company's logins |
+| 10 | An invitation of another company's person told whether they had a login | Gone with finding 1 |
+| 11 | `owner` and `dsor` could be people | Fixed red first |
+| 12 | The store's `admins` was never used | Removed |
+| 13 | A refused confirm was recorded `ALLOW`, because the check ran inside the work | Fixed red first: `role.confirm` checks the grant at line ⑨, so the record says `DENY` |
+
+The breaks that survived, B04, B05, B07, B09, B16, and B22, were made again after the fixes, and each
+failed a test.
+
+### Left open on purpose
+
+- **The people and their roles are DSoR's own; a company's own source is step 43c**, with a role
+  map, its freshness, and roles in tokens.
+- **A broken-into program can still grant itself power** (finding 3), as it can invite and accept a
+  code since step 43. The records of each step stay.
+- **One administrator can take roles away** (L4), the other administrator's too (finding 7).
+- **How fresh a present person's roles must be** is not bounded by §44: open question 168. Who may
+  change a role is not in the specification: open question 169.
+- **A link made before migration 048 names no invitation**, so unlinking ends it from any company
+  where the person works.
+
+## The rules this step meets
+
+| Rule | What it says | Spec | Tests |
+|---|---|---|---|
+| DSOR-IDN-01 | Every caller becomes a principal with a type and tenant memberships | [§12](../../../specs/dsor/02-security.md#12-identity-and-principals) | `test/people.test.ts`, `test/people-commands.test.ts`, `test/people.db.test.ts` |
+| DSOR-IDN-03a | The call works only in a company the caller belongs to | [§12](../../../specs/dsor/02-security.md#12-identity-and-principals) | `test/people.test.ts`, `test/people-review.test.ts` |
+| DSOR-IDN-05 | Each company configures a role source, such as DSoR-held role assignments | [§12](../../../specs/dsor/02-security.md#12-identity-and-principals) | `test/people.test.ts` |
+| DSOR-IDN-06 | A delegator's authority that cannot be established denies the command | [§12](../../../specs/dsor/02-security.md#12-identity-and-principals) | `test/people.test.ts` |
+| DSOR-IDN-07 | A removed delegator's slips are suspended | [§12](../../../specs/dsor/02-security.md#12-identity-and-principals) | `test/people.test.ts`, `test/people-commands.test.ts` |
+| DSOR-SOD-04c | Approvals of a quorum come from distinct principals; here, a grant's asker and confirmer | [§16](../../../specs/dsor/02-security.md#16-segregation-of-duties) | `test/people-commands.test.ts`, `test/people.db.test.ts` |
+| DSOR-APR-03b | At a release, each approval must still meet the role the rules ask for | [§26](../../../specs/dsor/03-execution.md#26-proposals-and-approvals) | `test/people-review.test.ts` |
+
+**Next:** step 43c, a company's own role source, with a real single sign-on server; or step 44, real
+logins for agents.

@@ -66,7 +66,7 @@ export type OwnLook = {
   permissions: ReadonlySet<string>;
   // NEW IN STEP 43b: and the table of people, read only, and the role table, for the commands that
   //   change people and roles (step 43b's README, claims C3 to C6).
-  people: Pick<PeopleStore, "memberOf">;
+  people: Pick<PeopleStore, "memberOf" | "companiesOf" | "grantOf">;
   roleTable: Roles;
 };
 
@@ -183,7 +183,11 @@ export function lookFor(
     },
     contracts,
     permissions,
-    people: { memberOf: (company, person) => people.memberOf(company, person) },
+    people: {
+      memberOf: (company, person) => people.memberOf(company, person),
+      companiesOf: (person) => people.companiesOf(person),
+      grantOf: (company, grant) => people.grantOf(company, grant),
+    },
     roleTable,
   };
 }
