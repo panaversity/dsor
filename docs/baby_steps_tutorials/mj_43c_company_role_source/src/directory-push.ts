@@ -75,6 +75,20 @@ function shownGroup(group: CopyGroup): Record<string, unknown> {
   return { kind: "group", ...group, members: group.members.map((id) => ({ id })) };
 }
 
+/**
+ * Every active slip the person signed in this company, suspended in this push's own transaction, with
+ * one record each, as step 19b suspends a gone signer's at line ③. The learner's L8b, after the review
+ * of step 43c, finding 1: at the next use, a person suspended and made active again before the agent
+ * called never had her slips suspended, though her directory had said so (DSOR-IDN-07).
+ */
+async function leaves(work: OwnStores, person: string, word: string): Promise<void> {
+  await work.stores.slips.suspend(work.tenant, person, {
+    word,
+    as_of: work.now,
+    correlation: work.correlation,
+  });
+}
+
 /** The change, after line ⑩, inside the claim. */
 async function pushChange(input: unknown, work: OwnStores): Promise<unknown> {
   const copy = work.stores.copy;
@@ -87,11 +101,17 @@ async function pushChange(input: unknown, work: OwnStores): Promise<unknown> {
   switch (push.kind) {
     case "user.create":
       return shownUser(await copy.createUser(tenant, push.account));
-    case "user.replace":
-      return shownUser(found(await copy.replaceUser(tenant, push.id, push.account), push.id));
-    case "user.delete":
-      found((await copy.deleteUser(tenant, push.id)) || undefined, push.id);
+    case "user.replace": {
+      const user = found(await copy.replaceUser(tenant, push.id, push.account), push.id);
+      if (!user.active) await leaves(work, user.person, "suspended");
+      return shownUser(user);
+    }
+    case "user.delete": {
+      const user = found(await copy.user(tenant, push.id), push.id);
+      await copy.deleteUser(tenant, push.id);
+      await leaves(work, user.person, "deprovisioned");
       return { kind: "user", id: push.id, deleted: true };
+    }
     case "group.create":
       return shownGroup(await copy.createGroup(tenant, push.group));
     case "group.replace":

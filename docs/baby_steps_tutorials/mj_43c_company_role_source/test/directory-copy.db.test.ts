@@ -31,8 +31,8 @@ import { checkRoleMaps, type RoleMapsSource } from "../src/role-maps.ts";
 import { scimDoorOver } from "../src/scim-door.ts";
 import { listen } from "../src/server.ts";
 import { tokenHash } from "../src/directory-clients.ts";
-import { newPool, tryThenRollBack } from "./db.ts";
-import { keyed, shipped, shippedInputs, shippedLabels, shippedRoles } from "./helpers.ts";
+import { newPool, ownerSlips, tryThenRollBack } from "./db.ts";
+import { DEL_100, keyed, shipped, shippedInputs, shippedLabels, shippedRoles } from "./helpers.ts";
 
 const pool = newPool();
 afterAll(async () => {
@@ -175,6 +175,43 @@ describe("Step 43c, C8: the copy on PostgreSQL, read by line ① through the map
         account: { user_name: "admin_700", external_id: randomUUID(), active: true },
       }),
     ).toMatchObject({ code: "CONFLICT", message: "the id admin_700 is taken: choose another" });
+  });
+});
+
+describe("Step 43c, L8b on PostgreSQL: the push that says a person left suspends her slips", () => {
+  it("DSOR-IDN-07: a push of active: false suspends the slip she signed, in the push's own transaction", async () => {
+    // The owner's helper suspends and forgets only a signer named as a test's own (u19b-…).
+    const p = { name: `u19b-${randomUUID().slice(0, 8)}`, uuid: randomUUID() };
+    const slip = {
+      ...DEL_100,
+      id: `del_43c-${p.name}`,
+      delegator: p.name,
+      delegate: `a43c-${p.name}`,
+    };
+    ownerSlips("add", JSON.stringify([slip]));
+    try {
+      const user = dataOf(
+        await push({
+          kind: "user.create",
+          account: { user_name: p.name, external_id: p.uuid, active: true },
+        }),
+      );
+      expect(ownerSlips("statuses", p.name)).toContainEqual(
+        expect.objectContaining({ id: slip.id, status: "active" }),
+      );
+      dataOf(
+        await push({
+          kind: "user.replace",
+          id: user["id"],
+          account: { user_name: p.name, external_id: p.uuid, active: false },
+        }),
+      );
+      expect(ownerSlips("statuses", p.name)).toContainEqual(
+        expect.objectContaining({ id: slip.id, status: "suspended" }),
+      );
+    } finally {
+      ownerSlips("forget", p.name);
+    }
   });
 });
 

@@ -273,3 +273,67 @@ describe("Step 43c, C3: who may push, and what a push may say", () => {
     expect((await both.copy.users("org_789"))[0]).toMatchObject({ active: true });
   });
 });
+
+// Changed by the learner's L8b, after the review of step 43c, finding 1: at the next use, a person
+//   suspended and made active again before the agent next called never had her slips suspended,
+//   though her directory reported it.
+describe("Step 43c, L8b: the push that says a person left suspends her slips, in its own transaction", () => {
+  /** The status of del_100, the slip user_123 signed. */
+  const del100 = async (w: RuleWorld): Promise<string> =>
+    ((await w.registry.delegations.get("org_456", "del_100")) as { slip: { status: string } }).slip
+      .status;
+
+  it.each([
+    [
+      "active: false",
+      (id: string) => ({
+        change: "user.replace",
+        id,
+        account: { user_name: "user_123", external_id: UUIDS.user_123, active: false },
+      }),
+    ],
+    ["a delete", (id: string) => ({ change: "user.delete", id })],
+  ])(
+    "DSOR-IDN-07: %s of user_123 suspends del_100 at once, before the agent calls",
+    async (_case, change) => {
+      const w = await scimWorldOnTuesday(spokeMinutesAgo(30));
+      const row = (await w.copy.users("org_456", { field: "userName", value: "user_123" }))[0]!;
+      expect(await push(w, DIRECTORY_456, change(row.id))).toMatchObject({ outcome: "COMMITTED" });
+      expect(await del100(w)).toBe("suspended");
+    },
+  );
+
+  it("DSOR-IDN-07: user_123 suspended and made active again before the agent calls: del_100 stays suspended", async () => {
+    const w = await scimWorldOnTuesday(spokeMinutesAgo(30));
+    const row = (await w.copy.users("org_456", { field: "userName", value: "user_123" }))[0]!;
+    const account = { user_name: "user_123", external_id: UUIDS.user_123 };
+    await push(w, DIRECTORY_456, {
+      change: "user.replace",
+      id: row.id,
+      account: { ...account, active: false },
+    });
+    await push(w, DIRECTORY_456, {
+      change: "user.replace",
+      id: row.id,
+      account: { ...account, active: true },
+    });
+    expect(await del100(w)).toBe("suspended");
+    expect(await w.draft("INV-2002")).toMatchObject({ code: "DELEGATION_REQUIRED" });
+  });
+
+  it("DSOR-IDN-07: an active user's change, a new display name, suspends nothing", async () => {
+    const w = await scimWorldOnTuesday(spokeMinutesAgo(30));
+    const row = (await w.copy.users("org_456", { field: "userName", value: "user_123" }))[0]!;
+    await push(w, DIRECTORY_456, {
+      change: "user.replace",
+      id: row.id,
+      account: {
+        user_name: "user_123",
+        external_id: UUIDS.user_123,
+        display_name: "Umar K.",
+        active: true,
+      },
+    });
+    expect(await del100(w)).toBe("active");
+  });
+});
