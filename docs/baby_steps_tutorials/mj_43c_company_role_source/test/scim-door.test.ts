@@ -130,6 +130,28 @@ describe("Step 43c, C2: the SCIM door takes only a directory's own token, for it
     },
   );
 
+  // From the real run of 2026-10-26: authentik's token was ended, its pushes were answered 401 for
+  //   minutes, and DSoR's evidence held nothing of them.
+  it("DSOR-EXE-02: a request with a token DSoR does not know is refused at line ① and recorded DENY, as step 42's door records one", async () => {
+    const { w, base } = await doorOf();
+    const before = (await w.log.records()).length;
+    const reply = await scim(
+      base,
+      "POST",
+      "/scim/v2/Users",
+      userBody("cfo_100", UUIDS.cfo_100),
+      "a".repeat(48),
+    );
+    expect(reply.status).toBe(401);
+    const records = (await w.log.records()).slice(before);
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      operation: "directory.push@1",
+      authorization: "DENY",
+      result: "AUTHENTICATION_REQUIRED",
+    });
+  });
+
   it("DSOR-TEN-02b: decision D3: the company is the token's: org_789's token pushes into org_789, whatever the request says", async () => {
     const { w, base } = await doorOf();
     const reply = await scim(

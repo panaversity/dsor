@@ -72,12 +72,21 @@ export function scimDoorOver(
       const auth = req.headersDistinct["authorization"] ?? [];
       const token = auth.length === 1 ? /^Bearer (\S+)$/.exec(auth[0] as string)?.[1] : undefined;
       const caller = await logins.find(token);
+      // No directory's token: line ① refuses it, and records the refusal, as every refusal is
+      //   recorded before its answer (DSOR-EXE-02). The door reads no body for an unknown caller.
+      //   Changed by the real run of 2026-10-26: the door answered 401 by itself, and minutes of
+      //   authentik's pushes with an ended token left no trace in DSoR's evidence.
       if (caller === undefined || "unavailable" in caller) {
-        const why =
-          caller === undefined
-            ? "a directory's own token"
-            : `${caller.unavailable} could not be read`;
-        send(res, scimError(caller === undefined ? 401 : 503, `this door takes ${why}`));
+        const name = req.method === "GET" ? "directory.read" : "directory.push";
+        const answer = await call(door, log, { token }, name, {});
+        send(
+          res,
+          reply(
+            { method: req.method ?? "", path: "", query: url.searchParams, body: undefined },
+            { name, input: {} },
+            answer,
+          ),
+        );
         return;
       }
       // The company is the token's: its directory login has one membership (decision D3).
