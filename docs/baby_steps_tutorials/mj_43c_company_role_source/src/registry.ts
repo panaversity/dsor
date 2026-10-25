@@ -72,6 +72,7 @@ import { NO_SLIPS, type SlipStore } from "./slips.ts";
 import { loginProblems, logins } from "./principals.ts";
 import { FAKE_LOGINS, type LoginSource } from "./logins.ts";
 import { peopleDirectory, type PeopleStore } from "./people.ts";
+import { checkRoleMaps, readRoleMaps, type RoleMaps, type RoleMapsSource } from "./role-maps.ts";
 
 /** One contract file, as it was read from disk: its name and its text. */
 export type ContractSource = { file: string; text: string };
@@ -152,6 +153,9 @@ export type Registry = {
   //   the role source dsor_assignments reads for an absent signer (step 43b's README, claims C1 and
   //   C2).
   people: PeopleStore;
+  // NEW IN STEP 43c: each company's role map, for a company on its own directory: which group gives
+  //   which role (step 43c's README, claim C1).
+  roleMaps: RoleMaps;
 };
 
 // The specification's own schemas, copied byte for byte (step 03's README, decision 3).
@@ -267,6 +271,9 @@ export function buildRegistry(
   // Changed by the code review of step 43b, finding 1: the claims' own table unless the caller gives
   //   one, never a second copy of the story's people.
   people: PeopleStore = claims.people,
+  // NEW IN STEP 43c: and each company's role map, this step's own file unless the caller gives
+  //   another. Only a company on scim is read (step 43c's README, claim C1).
+  roleMapSource: RoleMapsSource = readRoleMaps(),
 ): Registry {
   // Every problem is collected first, and the refusal names them all (step 03's
   // README, decision 2).
@@ -373,6 +380,10 @@ export function buildRegistry(
   // decision 8). Its problems are named with the others.
   const { settings, problems: settingProblems } = checkRoleSettings(roleSettings, logins.values());
   problems.push(...settingProblems);
+  // NEW IN STEP 43c: and each company on scim has a map, whose every group is named by its id and
+  //   gives a role the role table has (DSOR-IDN-04a; step 43c's README, claim C1).
+  const { maps: roleMaps, problems: mapProblems } = checkRoleMaps(roleMapSource, settings, roles);
+  problems.push(...mapProblems);
   // And every company where a login works has a READY lifetime, more than zero and
   // at most §44's 30 days for an approval (step 25c's README, claim C6).
   const { lifetimes, problems: lifetimeProblems } = checkLifetimes(lifetimeSource, logins.values());
@@ -517,6 +528,7 @@ export function buildRegistry(
     reads: ownReads,
     logins: loginSource,
     people,
+    roleMaps,
   };
 }
 

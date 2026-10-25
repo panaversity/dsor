@@ -179,7 +179,7 @@ it changed people in authentik and read what arrived. What it found:
 
 | | Claim |
 |---|---|
-| C1 | `role-sources.json` may give a company the kind `scim`. `role-maps.json` gives each such company its map: a group's id, its name, and a role `roles.json` has that is no system login's. Start-up refuses a map that is wrong, a map for a company not on `scim`, and a `scim` company with no map |
+| C1 | `role-sources.json` may give a company the kind `scim`. `role-maps.json` gives each such company its map: a group's id, its name, and a role `roles.json` has that is no system login's. Start-up refuses a map that is wrong and a `scim` company with no map. A map for a company on DSoR's table is not read |
 | C2 | The SCIM door answers only a directory's token: no token, or one DSoR does not know, is `401`; the company is the token's. It answers only `/scim/v2/…`, and only for the host names it is given |
 | C3 | `directory.push` keeps the company's copy: a user by `externalId`, with its DSoR id from the first push; a group by `externalId`; its members. `directory.read` lists, searches, and reads it. Neither sees another company's rows. A taken id, a missing `externalId`, a wrong username, and an unknown member are refused |
 | C4 | For a `scim` company, line ① and the role source read the copy: an active user has the roles of their mapped groups; `active: false` is suspended; a deleted user is deprovisioned. A suspended or deprovisioned signer's slips are suspended (DSOR-IDN-07) |
@@ -192,7 +192,7 @@ it changed people in authentik and read what arrived. What it found:
 
 | Claim | Test |
 |---|---|
-| C1 | The shipped files start; a map naming a role `roles.json` lacks, a system role, a group id that is no uuid, a company not on `scim`, and a `scim` company with no map are each refused at start-up |
+| C1 | The shipped files start; a map naming a role `roles.json` lacks, a system role, a group by its name, one group twice, and a `scim` company with no map are each refused at start-up; a map for org_789, on DSoR's table, is not read |
 | C2 | No token, a wrong token, and another company's token; a path outside `/scim/v2/`; a host not named |
 | C3 | authentik's own requests, from the real check: the first sync, a change, a deactivation, a group leave by filter path, a delete, a double post, a search after `409`; another company's id, row, and search |
 | C4 | cfo_100 pushed into Finance-Approvers approves INV-1008; removed from the group, she cannot; user_123 made inactive: his agent's payment is refused and del_100 suspended; deleted: the same; back active: his next call works |

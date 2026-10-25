@@ -702,6 +702,8 @@ describe("C4: an operation nobody was granted is denied to everyone", () => {
         logins: FAKE_LOGINS,
         // Changed in step 43b: and the shared registry's table of people.
         people: registry.people,
+        // Changed in step 43c: and the registry's role maps.
+        roleMaps: registry.roleMaps,
       };
       expect(
         await call(handMade, log, SUPERVISOR, "invoice.get", {

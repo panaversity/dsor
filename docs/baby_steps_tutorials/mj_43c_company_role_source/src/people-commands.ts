@@ -93,7 +93,8 @@ async function mayGrant(input: unknown, look: OwnLook): Promise<void> {
 }
 
 // The roles src/principals.ts gives a system login and no person.
-const SYSTEM_ROLES: ReadonlySet<string> = (() => {
+// Changed in step 43c: exported, so a company's role map can never give one either.
+export const SYSTEM_ROLES: ReadonlySet<string> = (() => {
   const everyone = [...logins.values()];
   const held = (type: string) =>
     new Set(

@@ -32,8 +32,9 @@ export class SignerGone extends Refusal {
 
 /** One company's role source setting, once start-up has checked it. */
 // Changed in step 43b: or dsor_assignments, DSoR's own table (step 43b's README, claim C2).
+// NEW IN STEP 43c: or scim, the copy the company's directory pushes (step 43c's README, claim C1).
 export type RoleSetting = {
-  kind: "idp_lookup" | "dsor_assignments";
+  kind: "idp_lookup" | "dsor_assignments" | "scim";
   max_staleness: string;
   ms: number;
 };
@@ -60,6 +61,13 @@ const SHIPPED = fileURLToPath(new URL("../role-sources.json", import.meta.url));
 //   DSoR's own table, dsor_assignments (step 43b's README, claim C2).
 export const STEP_19_ROLE_SOURCES: string = fileURLToPath(
   new URL("../role-sources.step-19.json", import.meta.url),
+);
+
+// NEW IN STEP 43c: org_456 on its own directory, authentik, by SCIM, and org_789 on DSoR's table.
+//   The stories of this step and pnpm serve read it; the shipped file keeps DSoR's table for both,
+//   so every earlier story runs as it did (step 43c's README, claim C1).
+export const SCIM_ROLE_SOURCES: string = fileURLToPath(
+  new URL("../role-sources.scim.json", import.meta.url),
 );
 
 export function readRoleSettings(path: string = SHIPPED): RoleSettingsSource {
@@ -137,13 +145,9 @@ export function checkRoleSettings(
     const { kind, max_staleness } = setting as { kind: string; max_staleness: string };
     // Then this step: it builds a lookup only (step 19's README, decision 1).
     // Changed in step 43b: and DSoR's own table of people, dsor_assignments (step 43b's README,
-    //   claim C2). SCIM is still not built.
-    if (kind !== "idp_lookup" && kind !== "dsor_assignments") {
-      const why =
-        "is not built: step 19 asks a directory at each call, idp_lookup, and step 43b reads DSoR's own table, dsor_assignments";
-      problems.push(`${file}: ${tenant}'s kind ${JSON.stringify(kind)} ${why}`);
-      continue;
-    }
+    //   claim C2).
+    // Changed in step 43c: and scim, the copy the company's directory pushes. Every kind the
+    //   specification names is built now, so the schema's check above is the whole check.
     // And §44's limit. A tighter value, zero too, is the company's to set (DSOR-BND-02).
     const ms = millisecondsOf(max_staleness);
     if (ms > DAY) {

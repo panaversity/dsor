@@ -1,0 +1,4 @@
+{
+  "org_456": { "kind": "scim", "max_staleness": "PT2H" },
+  "org_789": { "kind": "dsor_assignments", "max_staleness": "PT1H" }
+}

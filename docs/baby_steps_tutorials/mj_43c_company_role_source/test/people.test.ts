@@ -187,13 +187,14 @@ describe("C2: the table is the company's role source, dsor_assignments", () => {
     ).toMatchObject({ code: "FRESHNESS_UNSATISFIABLE" });
   });
 
-  it("Step 43b, C2: scim is still refused at start-up: this step builds dsor_assignments, beside step 19's idp_lookup", () => {
+  // Changed in step 43c: scim is built, beside dsor_assignments and step 19's idp_lookup; its map is
+  //   checked in role-maps.test.ts.
+  it("Step 43c, C1: scim starts now: a company may take its people from its own directory", () => {
     const text = JSON.stringify({
       org_456: { kind: "scim", max_staleness: "PT1H" },
       org_789: { kind: "dsor_assignments", max_staleness: "PT1H" },
     });
     const { problems } = checkRoleSettings({ file: "role-sources.json", text }, logins.values());
-    expect(problems).toHaveLength(1);
-    expect(problems[0]).toMatch(/^role-sources\.json: org_456's kind "scim" is not built/);
+    expect(problems).toStrictEqual([]);
   });
 });

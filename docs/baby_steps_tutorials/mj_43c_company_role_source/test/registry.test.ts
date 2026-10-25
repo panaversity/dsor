@@ -160,6 +160,8 @@ describe("C1: nothing can be called without a contract", () => {
       logins: FAKE_LOGINS,
       // Changed in step 43b: and the story's table of people.
       people: storyPeople(),
+      // Changed in step 43c: and no role map: no company is on its own directory.
+      roleMaps: new Map(),
     };
     // The refusal is an envelope, not a throw.
     expect(await call(handMade, log, AGENT, "invoice.delete", {})).toMatchObject({

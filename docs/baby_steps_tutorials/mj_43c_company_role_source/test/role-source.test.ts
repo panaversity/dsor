@@ -147,17 +147,9 @@ describe("C1: each company has its own role source, or DSoR does not start", () 
       { org_456: GOOD_456, org_789: GOOD_789, acme: GOOD_456 },
       '"acme" is not a company id like org_456',
     ],
-    [
-      "the kind scim",
-      { org_456: { ...GOOD_456, kind: "scim" }, org_789: GOOD_789 },
-      'org_456\'s kind "scim" is not built: step 19 asks a directory at each call, idp_lookup',
-    ],
-    [
-      // Changed in step 43b: dsor_assignments is built now; SCIM is not.
-      "the kind scim",
-      { org_456: { ...GOOD_456, kind: "scim" }, org_789: GOOD_789 },
-      "org_456's kind \"scim\" is not built: step 19 asks a directory at each call, idp_lookup, and step 43b reads DSoR's own table, dsor_assignments",
-    ],
+    // Changed in step 43b: dsor_assignments is built now; SCIM is not.
+    // Changed in step 43c: SCIM is built too, so the two rows that refused it are gone. A company on
+    //   scim and its map are checked in role-maps.test.ts.
     [
       "a kind the schema does not know",
       { org_456: { ...GOOD_456, kind: "ldap" }, org_789: GOOD_789 },
