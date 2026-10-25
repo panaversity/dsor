@@ -51,8 +51,10 @@ function group(body: unknown): Record<string, unknown> {
 }
 
 // A search, as authentik asks after a conflict: `userName eq "admin_100"` (F5). Nothing else.
+// not copied: RFC 7644's filter grammar is far wider; this is the one form authentik sent.
 const FILTER = /^(userName|externalId|displayName) eq "([^"]*)"$/;
 // A member's removal by its id, as authentik sends it: `members[value eq "<id>"]` (F7).
+// not copied: RFC 7644's value path, in the one form authentik sent.
 const MEMBER = /^members\[value eq "([^"]+)"\]$/;
 
 /** A PATCH of a group, as one change, or the reason it cannot be read. */
