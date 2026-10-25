@@ -53,6 +53,36 @@ export function fromItsDirectory(tenant: string): Refusal {
   return new Refusal("CONFLICT", why, "internal");
 }
 
+/** Who a login is by its uuid: the person a directory's copy names, or none (the learner's L6). */
+export type ByUuid = (issuer: string, subject: string) => Promise<string | undefined>;
+
+/**
+ * A login's person by the uuid its directory pushed: in each company on scim that trusts the
+ * login's issuer, the copy's person whose externalId is the token's sub. One person, or none: a
+ * uuid that two companies' copies name differently names nobody. Nothing else in the token is read
+ * (DSOR-IDN-04b; step 43c's README, claim C6).
+ */
+export function copyLogins(
+  copy: Pick<DirectoryCopy, "personOf">,
+  settings: RoleSettings,
+  issuers: ReadonlyMap<string, readonly { issuer: string }[]>,
+): ByUuid {
+  return async (issuer, subject) => {
+    const tenants = [...issuers]
+      .filter(
+        ([tenant, list]) =>
+          settings.get(tenant)?.kind === "scim" && list.some((i) => i.issuer === issuer),
+      )
+      .map(([tenant]) => tenant);
+    const people = new Set<string>();
+    for (const tenant of tenants) {
+      const person = await copy.personOf(tenant, subject);
+      if (person !== undefined) people.add(person);
+    }
+    return people.size === 1 ? [...people][0] : undefined;
+  };
+}
+
 /** The error of a copy too old to use. Line ① answers it as an outage; the role source as no answer. */
 export class StaleCopy extends Error {}
 

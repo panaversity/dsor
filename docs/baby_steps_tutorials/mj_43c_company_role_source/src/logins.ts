@@ -212,6 +212,9 @@ export function realLogins(
   links: LinkStore | LoginBook,
   keys: KeySets,
   now: () => number = Date.now,
+  // NEW IN STEP 43c: and who a login is by the uuid its company's directory pushed, for a login no
+  //   link names (step 43c's README, claim C6, the learner's L6). None, unless the caller gives it.
+  byUuid: (issuer: string, subject: string) => Promise<string | undefined> = async () => undefined,
 ): LoginSource {
   return Object.freeze({
     find: async (
@@ -239,6 +242,9 @@ export function realLogins(
         ) {
           id = await links.redeem(tenant, invitation, login);
         }
+        // NEW IN STEP 43c: a login no link and no invitation names may be a person a directory
+        //   pushed, by her uuid, in a company that trusts this issuer (the learner's L6).
+        if (id === undefined) id = await byUuid(login.issuer, login.subject);
       } catch {
         // A table that cannot be read is an outage, not a bad login: still no caller, and the
         //   caller may try again (changed by the learner's R5).
