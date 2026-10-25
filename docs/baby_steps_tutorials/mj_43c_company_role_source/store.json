@@ -397,6 +397,63 @@
         "CREATE TRIGGER role_grants_start BEFORE INSERT ON dsor.role_grants FOR EACH ROW EXECUTE FUNCTION dsor.role_grant_starts()"
       ]
     },
+    "dsor.directory_clients": {
+      "kind": "shared-read",
+      "tenant": null,
+      "runtime": {
+        "table": ["SELECT"]
+      }
+    },
+    "dsor.scim_users": {
+      "kind": "control-moved",
+      "tenant": "tenant_id",
+      "runtime": {
+        "table": ["SELECT"],
+        "columns": {
+          "INSERT": [
+            "tenant_id",
+            "external_id",
+            "principal_id",
+            "user_name",
+            "display_name",
+            "active"
+          ],
+          "UPDATE": ["user_name", "display_name", "active", "deleted_at"]
+        }
+      },
+      "triggers": [
+        "CREATE TRIGGER scim_users_move BEFORE UPDATE ON dsor.scim_users FOR EACH ROW EXECUTE FUNCTION dsor.scim_user_moves()",
+        "CREATE TRIGGER scim_users_start BEFORE INSERT ON dsor.scim_users FOR EACH ROW EXECUTE FUNCTION dsor.scim_user_starts()"
+      ]
+    },
+    "dsor.scim_groups": {
+      "kind": "control-moved",
+      "tenant": "tenant_id",
+      "runtime": {
+        "table": ["SELECT"],
+        "columns": {
+          "INSERT": ["tenant_id", "external_id", "name"],
+          "UPDATE": ["name", "deleted_at"]
+        }
+      },
+      "triggers": [
+        "CREATE TRIGGER scim_groups_move BEFORE INSERT OR UPDATE ON dsor.scim_groups FOR EACH ROW EXECUTE FUNCTION dsor.scim_group_moves()"
+      ]
+    },
+    "dsor.scim_members": {
+      "kind": "control-moved",
+      "tenant": "tenant_id",
+      "runtime": {
+        "table": ["SELECT"],
+        "columns": {
+          "INSERT": ["tenant_id", "group_id", "user_id"],
+          "UPDATE": ["removed_at"]
+        }
+      },
+      "triggers": [
+        "CREATE TRIGGER scim_members_move BEFORE INSERT OR UPDATE ON dsor.scim_members FOR EACH ROW EXECUTE FUNCTION dsor.scim_member_moves()"
+      ]
+    },
     "dsor.logins": {
       "kind": "shared-moved",
       "tenant": null,

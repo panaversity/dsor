@@ -67,7 +67,8 @@ describe("the shipped map", () => {
   // Changed in step 40: and dsor.outbox, a twenty-first (step 40's README, decision D2).
   // Changed in step 40c: and dsor.outbox_tries and dsor.event_alerts, a twenty-second and a
   //   twenty-third (step 40c's README, decisions D4 and D5).
-  it("step 16's decision 1: it names three schemas and twenty-four tables", () => {
+  // Changed in step 43c: and the four tables of a company's directory (migration 050).
+  it("step 16's decision 1: it names three schemas and the shipped tables", () => {
     const { map } = checkStore(SHIPPED);
     expect([...map.schemas.keys()]).toStrictEqual(["app", "dsor", "public"]);
     expect([...map.tables.keys()]).toStrictEqual([
@@ -97,6 +98,12 @@ describe("the shipped map", () => {
       // Changed in step 43b: DSoR's table of people (migration 049; step 43b's README, claim C8).
       "dsor.people",
       "dsor.role_grants",
+      // Changed in step 43c: the copy of each company's directory and the directories' credentials
+      //   (migration 050; step 43c's README, claim C8).
+      "dsor.directory_clients",
+      "dsor.scim_users",
+      "dsor.scim_groups",
+      "dsor.scim_members",
       // Changed in step 43: and dsor.logins, the links of logins to principals (step 43's README, D5).
       "dsor.logins",
       // Changed in step 39: and dsor.audit_heads, a twentieth (step 39's README, decision D8).
@@ -589,7 +596,8 @@ describe("C7: the map itself is checked", () => {
       // 19b's control-written a sixth.
       // And step 22's control-moved.
       // And step 40c's append-only-watched.
-      'store.json: dsor.migrations has the kind "ledger", which is not business, business-written, append-only, append-only-chained, append-only-watched, control-read, control-written, control-claimed, control-moved, shared-moved, or bookkeeping',
+      // Changed in step 43c: and shared-read, the directories' credentials (step 43c's README, D3).
+      'store.json: dsor.migrations has the kind "ledger", which is not business, business-written, append-only, append-only-chained, append-only-watched, control-read, control-written, control-claimed, control-moved, shared-moved, shared-read, or bookkeeping',
     ]);
   });
 

@@ -19,7 +19,8 @@
     "verify-audit": "node src/verify-audit.ts",
     "checkpoint-keys": "node src/checkpoint-keys.ts",
     "checkpoint-audit": "node src/checkpoint-audit.ts",
-    "send-events": "node src/send-events.ts"
+    "send-events": "node src/send-events.ts",
+    "directory-token": "node src/directory-token.ts"
   },
   "dependencies": {
     "@marcbachmann/cel-js": "8.0.0",

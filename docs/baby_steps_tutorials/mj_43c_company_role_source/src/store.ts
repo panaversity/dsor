@@ -134,6 +134,10 @@ export const KINDS: ReadonlyMap<string, Kind> = new Map<string, Kind>([
     "shared-moved",
     { side: "dsor", table: ["SELECT"], columns: ["INSERT", "UPDATE"], key: false, triggers: true },
   ],
+  // NEW IN STEP 43c: DSoR's own records that are no company's and that dsor_runtime only reads, such
+  //   as the hashes of the directories' credentials, read at the SCIM door before any company is
+  //   known. Only the owner writes them (step 43c's README, decision D3).
+  ["shared-read", { side: "dsor", table: ["SELECT"], columns: [], key: false, triggers: false }],
   // The owner's own records, such as the list of migrations: dsor_runtime has no business
   // there at all.
   ["bookkeeping", { side: "dsor", table: [], columns: [], key: false, triggers: false }],

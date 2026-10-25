@@ -5,7 +5,10 @@
 // own administrators (step 43b's README, claim C7, decision L3).
 import { randomUUID } from "node:crypto";
 import pg from "pg";
+import { checkRoleSettings, readRoleSettings } from "./authority.ts";
+import { fromItsDirectory } from "./company-people.ts";
 import { loadDotEnv, requireEnv } from "./postgres.ts";
+import { logins } from "./principals.ts";
 
 /** Stops with this message, and exit code 1. */
 function refuse(message: string): never {
@@ -20,7 +23,13 @@ if (!company || !person || !role || !reason || more.length > 0) {
 if (role !== "tenant_admin") {
   refuse("pnpm grant gives tenant_admin only: every other role is role.grant's");
 }
-loadDotEnv(["DSOR_MIGRATION_URL"]);
+loadDotEnv(["DSOR_MIGRATION_URL", "DSOR_ROLE_SOURCES_FILE"]);
+// NEW IN STEP 43c: a company whose people come from its own directory takes no grant from DSoR, the
+//   owner's included: the next push would undo it (the learner's L10; step 43c's README, claim C7).
+const sources = readRoleSettings(process.env["DSOR_ROLE_SOURCES_FILE"] || undefined);
+if (checkRoleSettings(sources, logins.values()).settings.get(company as string)?.kind === "scim") {
+  refuse(fromItsDirectory(company as string).message);
+}
 
 const owner = new pg.Pool({ connectionString: requireEnv("DSOR_MIGRATION_URL"), max: 1 });
 const client = await owner.connect();

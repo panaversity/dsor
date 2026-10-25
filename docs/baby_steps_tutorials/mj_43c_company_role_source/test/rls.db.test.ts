@@ -113,7 +113,7 @@ describe("C1: every table with a company column has its lock", () => {
   // And dsor.intents, the notes (step 36's README, decision D1).
   // Changed in step 40: and dsor.outbox, the events (step 40's README, decision D2).
   // Changed in step 40c: and dsor.event_alerts and dsor.outbox_tries (step 40c's README, D4, D5).
-  it("DSOR-RP-01b: app.invoices, app.payments, app.vendors, dsor.alerts, dsor.approvals, dsor.audit, dsor.brakes, dsor.controls, dsor.decision_bundles, dsor.delegations, dsor.event_alerts, dsor.holds, dsor.idempotency, dsor.intents, dsor.invitations, dsor.limit_counters, dsor.notices, dsor.outbox, dsor.outbox_tries, dsor.people, dsor.proposals, dsor.rates, dsor.reservations, and dsor.role_grants have row-level security enabled, forced, and policies", async () => {
+  it("DSOR-RP-01b: app.invoices, app.payments, app.vendors, dsor.alerts, dsor.approvals, dsor.audit, dsor.brakes, dsor.controls, dsor.decision_bundles, dsor.delegations, dsor.event_alerts, dsor.holds, dsor.idempotency, dsor.intents, dsor.invitations, dsor.limit_counters, dsor.notices, dsor.outbox, dsor.outbox_tries, dsor.people, dsor.proposals, dsor.rates, dsor.reservations, dsor.role_grants, and the three tables of a directory's copy have row-level security enabled, forced, and policies", async () => {
     const { rows } = await observer.query(TENANT_TABLES);
     expect(rows).toStrictEqual([
       { table: "app.invoices", enabled: true, forced: true, policies: 1 },
@@ -156,6 +156,11 @@ describe("C1: every table with a company column has its lock", () => {
       { table: "dsor.rates", enabled: true, forced: true, policies: 1 },
       { table: "dsor.reservations", enabled: true, forced: true, policies: 3 },
       { table: "dsor.role_grants", enabled: true, forced: true, policies: 3 },
+      // Changed in step 43c: the copy of each company's directory, three policies each, as the
+      //   people's (migration 050; step 43c's README, claim C8).
+      { table: "dsor.scim_groups", enabled: true, forced: true, policies: 3 },
+      { table: "dsor.scim_members", enabled: true, forced: true, policies: 3 },
+      { table: "dsor.scim_users", enabled: true, forced: true, policies: 3 },
     ]);
   });
 
@@ -539,6 +544,37 @@ describe("C1: every table with a company column has its lock", () => {
         check: null,
         kind: "PERMISSIVE",
       },
+      // Changed in step 43c: the copy of each company's directory, read across companies and written
+      //   inside one, as the people are (migration 050; step 43c's README, claim C8).
+      ...["scim_groups", "scim_members", "scim_users"].flatMap((table) => [
+        {
+          table: `dsor.${table}`,
+          name: `${table}_add`,
+          command: "INSERT",
+          roles: ["public"],
+          using: null,
+          check: `(tenant_id = ${company})`,
+          kind: "PERMISSIVE",
+        },
+        {
+          table: `dsor.${table}`,
+          name: `${table}_change`,
+          command: "UPDATE",
+          roles: ["public"],
+          using: `(tenant_id = ${company})`,
+          check: `(tenant_id = ${company})`,
+          kind: "PERMISSIVE",
+        },
+        {
+          table: `dsor.${table}`,
+          name: `${table}_read`,
+          command: "SELECT",
+          roles: ["public"],
+          using: "true",
+          check: null,
+          kind: "PERMISSIVE",
+        },
+      ]),
     ]);
   });
 

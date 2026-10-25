@@ -153,6 +153,10 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
       // And change a slip's status, and nothing else, to suspend it
       // (step 19b's README, decision 3).
       { object: "dsor.delegations UPDATE", held: "status" },
+      // Changed in step 43c: the directories' credentials, read only (migration 050; step 43c's README,
+      //   decision D3).
+      { object: "dsor.directory_clients", held: "SELECT" },
+      { object: "dsor.directory_clients SELECT", held: "token_hash company made_at ended_at" },
       // Step 37: the holds. Read every column, and add a hold through three named columns. Nothing
       //   on placed_at, which the database fills, and no change or removal (step 37's README, D1).
       // Step 40c: the event alerts, read only (step 40c's README, claim C6).
@@ -317,6 +321,32 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
         held: "id tenant_id principal_id role asked_by reason needs_confirm asked_at expires_at confirmed_by confirmed_at ended_by ended_at",
       },
       { object: "dsor.role_grants UPDATE", held: "confirmed_by ended_by" },
+      // Changed in step 43c: the copy of each company's directory: add through named columns, change
+      //   through named columns, and never delete (migration 050; step 43c's README, claim C8).
+      { object: "dsor.scim_groups", held: "SELECT" },
+      { object: "dsor.scim_groups INSERT", held: "tenant_id external_id name" },
+      {
+        object: "dsor.scim_groups SELECT",
+        held: "id tenant_id external_id name created_at deleted_at",
+      },
+      { object: "dsor.scim_groups UPDATE", held: "name deleted_at" },
+      { object: "dsor.scim_members", held: "SELECT" },
+      { object: "dsor.scim_members INSERT", held: "tenant_id group_id user_id" },
+      {
+        object: "dsor.scim_members SELECT",
+        held: "id tenant_id group_id user_id added_at removed_at",
+      },
+      { object: "dsor.scim_members UPDATE", held: "removed_at" },
+      { object: "dsor.scim_users", held: "SELECT" },
+      {
+        object: "dsor.scim_users INSERT",
+        held: "tenant_id external_id principal_id user_name display_name active",
+      },
+      {
+        object: "dsor.scim_users SELECT",
+        held: "id tenant_id external_id principal_id user_name display_name active created_at changed_at deleted_at",
+      },
+      { object: "dsor.scim_users UPDATE", held: "user_name display_name active deleted_at" },
       { object: "schema app", held: "USAGE" },
       { object: "schema dsor", held: "USAGE" },
       { object: "schema public", held: "USAGE" },

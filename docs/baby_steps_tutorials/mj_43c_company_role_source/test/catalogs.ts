@@ -146,6 +146,47 @@ export const LOGIN_TRIGGERS: string[] = [
   "CREATE TRIGGER logins_end BEFORE UPDATE ON dsor.logins FOR EACH ROW EXECUTE FUNCTION dsor.login_ends()",
   "CREATE TRIGGER logins_link BEFORE INSERT ON dsor.logins FOR EACH ROW EXECUTE FUNCTION dsor.login_links()",
 ];
+// NEW IN STEP 43c: the copy of each company's directory and the credentials (migration 050; step
+//   43c's README, claim C8).
+export const SCIM_TRIGGERS: { users: string[]; groups: string[]; members: string[] } = {
+  users: [
+    "CREATE TRIGGER scim_users_move BEFORE UPDATE ON dsor.scim_users FOR EACH ROW EXECUTE FUNCTION dsor.scim_user_moves()",
+    "CREATE TRIGGER scim_users_start BEFORE INSERT ON dsor.scim_users FOR EACH ROW EXECUTE FUNCTION dsor.scim_user_starts()",
+  ],
+  groups: [
+    "CREATE TRIGGER scim_groups_move BEFORE INSERT OR UPDATE ON dsor.scim_groups FOR EACH ROW EXECUTE FUNCTION dsor.scim_group_moves()",
+  ],
+  members: [
+    "CREATE TRIGGER scim_members_move BEFORE INSERT OR UPDATE ON dsor.scim_members FOR EACH ROW EXECUTE FUNCTION dsor.scim_member_moves()",
+  ],
+};
+/** One table of the copy: its columns, those dsor_runtime adds and changes, and those the database fills. */
+function copyTable(
+  name: string,
+  columns: string[],
+  added: string[],
+  changed: string[],
+  filled: string[],
+  triggers: string[],
+) {
+  return {
+    name,
+    kind: "table" as const,
+    held: ["SELECT"],
+    columns: columns.map((column) => ({
+      name: column,
+      held: [
+        "SELECT",
+        ...(added.includes(column) ? ["INSERT"] : []),
+        ...(changed.includes(column) ? ["UPDATE"] : []),
+      ],
+      filled: filled.includes(column),
+    })),
+    rowSecurity: { enabled: true, forced: true },
+    rules: [],
+    triggers,
+  };
+}
 export const INTENT_TRIGGER =
   "CREATE TRIGGER intents_end BEFORE UPDATE ON dsor.intents FOR EACH ROW EXECUTE FUNCTION dsor.intent_ends()";
 // Step 40: the outbox's guard, which lets an event be marked sent once and changes nothing else.
@@ -624,6 +665,21 @@ export function today(): Catalog {
         rules: [],
         triggers: [],
       },
+      // Changed in step 43c: the directories' credentials, which dsor_runtime only reads, before any
+      //   company is known: no company key, no row-level security (migration 050).
+      {
+        name: "dsor.directory_clients",
+        kind: "table",
+        held: ["SELECT"],
+        columns: ["token_hash", "company", "made_at", "ended_at"].map((name) => ({
+          name,
+          held: ["SELECT"],
+          filled: name === "made_at",
+        })),
+        rowSecurity: { enabled: false, forced: false },
+        rules: [],
+        triggers: [],
+      },
       // Step 37: the holds, behind the company's lock, added and never changed.
       // Step 40c: the alerts of events that failed three times, raised and closed by the database.
       {
@@ -865,6 +921,43 @@ export function today(): Catalog {
         rules: [],
         triggers: [...GRANT_TRIGGERS],
       },
+      // Changed in step 43c: the copy of each company's directory, readable across companies, written
+      //   inside one, and never deleted from (migration 050).
+      copyTable(
+        "dsor.scim_groups",
+        ["id", "tenant_id", "external_id", "name", "created_at", "deleted_at"],
+        ["tenant_id", "external_id", "name"],
+        ["name", "deleted_at"],
+        ["id", "created_at"],
+        SCIM_TRIGGERS.groups,
+      ),
+      copyTable(
+        "dsor.scim_members",
+        ["id", "tenant_id", "group_id", "user_id", "added_at", "removed_at"],
+        ["tenant_id", "group_id", "user_id"],
+        ["removed_at"],
+        ["id", "added_at"],
+        SCIM_TRIGGERS.members,
+      ),
+      copyTable(
+        "dsor.scim_users",
+        [
+          "id",
+          "tenant_id",
+          "external_id",
+          "principal_id",
+          "user_name",
+          "display_name",
+          "active",
+          "created_at",
+          "changed_at",
+          "deleted_at",
+        ],
+        ["tenant_id", "external_id", "principal_id", "user_name", "display_name", "active"],
+        ["user_name", "display_name", "active", "deleted_at"],
+        ["id", "created_at", "changed_at"],
+        SCIM_TRIGGERS.users,
+      ),
     ],
     // The counter behind each payment's number. dsor_runtime holds nothing on it: an
     // identity column takes its next number without a privilege on the counter.

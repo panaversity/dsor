@@ -12,7 +12,11 @@ import { readInputs } from "./inputs.ts";
 import { storeDifferences } from "./inspector.ts";
 import { readClassifications } from "./labels.ts";
 import { handlersFor } from "./operations.ts";
-import { readRoles } from "./permissions.ts";
+import { checkRoles, readRoles } from "./permissions.ts";
+import { companyPeople, copyLogins } from "./company-people.ts";
+import { createDbClients, createDbCopy, createDbHeard } from "./postgres-copy.ts";
+import { checkRoleMaps, readRoleMaps } from "./role-maps.ts";
+import { scimDoorOver } from "./scim-door.ts";
 import { checkIssuers, readIssuers } from "./issuers.ts";
 import { realLogins } from "./logins.ts";
 import { logins } from "./principals.ts";
@@ -51,6 +55,10 @@ loadDotEnv([
   "DSOR_ISSUERS_FILE",
   "DSOR_STAND_IN",
   "DSOR_ROLE_SOURCES_FILE",
+  // NEW IN STEP 43c: each company's role map, the SCIM door's port, and the host names it answers.
+  "DSOR_ROLE_MAPS_FILE",
+  "DSOR_SCIM_PORT",
+  "DSOR_SCIM_HOSTS",
 ]);
 // No database named, no door: it never falls back to a log in memory (step 09's README, decision 15).
 try {
@@ -70,18 +78,27 @@ const pool = openPool(process.env["DSOR_DB_URL"] ?? "");
 //   so a company whose role source is idp_lookup is refused here, at start-up, not at its first
 //   agent call (the code review of step 43b, finding 4).
 const roleSources = readRoleSettings(process.env["DSOR_ROLE_SOURCES_FILE"] || undefined);
-const askingNobody = [...checkRoleSettings(roleSources, logins.values()).settings.entries()].filter(
-  ([, setting]) => setting.kind !== "dsor_assignments",
-);
+// Changed in step 43c: or scim, the copy its own directory pushes through the SCIM door.
+const settings = checkRoleSettings(roleSources, logins.values()).settings;
+const askingNobody = [...settings.entries()].filter(([, setting]) => setting.kind === "idp_lookup");
 for (const [tenant, setting] of askingNobody) {
   refuse(
-    `role-sources.json: ${tenant}'s role source is ${setting.kind}, and pnpm serve has no directory to ask: name dsor_assignments`,
+    `role-sources.json: ${tenant}'s role source is ${setting.kind}, and pnpm serve has no directory to ask: name dsor_assignments or scim`,
   );
 }
 
 // Changed in step 43b: no fake directory. Each company's role source is DSoR's own table of people,
 //   dsor.people and dsor.role_grants, as role-sources.json says (step 43b's README, claim C2).
-const people = createDbPeople(pool);
+// NEW IN STEP 43c: or, for a company on scim, its directory's copy, through its role map, while its
+//   directory has spoken within max_staleness (step 43c's README, claims C4 and C5).
+const roleTable = readRoles(fileURLToPath(new URL("../roles.json", import.meta.url)));
+const roleMaps = readRoleMaps(process.env["DSOR_ROLE_MAPS_FILE"] || undefined);
+const maps = checkRoleMaps(roleMaps, settings, checkRoles(roleTable, logins.values()).roles).maps;
+const people = companyPeople(createDbPeople(pool), createDbCopy(pool), {
+  settings,
+  maps,
+  heard: createDbHeard(pool),
+});
 
 // The registry over the database, with the company's rules in dsor.controls, which the claims read
 //   inside their own transactions, as the database tests of step 28 on have it.
@@ -91,7 +108,7 @@ try {
   registry = buildRegistry(
     readContracts(fileURLToPath(new URL("../contracts", import.meta.url))),
     handlersFor(),
-    readRoles(fileURLToPath(new URL("../roles.json", import.meta.url))),
+    roleTable,
     readInputs(),
     readClassifications(),
     createDbInvoices(pool),
@@ -99,7 +116,8 @@ try {
     createDbSlips(pool),
     new Map(),
     roleSources,
-    createDbClaims(pool, "database"),
+    // Changed in step 43c: and the companies on their own directories, so a claim reads their copies.
+    createDbClaims(pool, "database", { settings, maps }),
     ownWorkFor(),
     createDbBrakes(pool),
     undefined,
@@ -113,6 +131,8 @@ try {
     undefined,
     // Since step 43b: and the table of people, which line ① and the role source read.
     people,
+    // NEW IN STEP 43c: and the role maps, which start-up checks with the role sources.
+    roleMaps,
   );
   const { problems } = checkStore(readStore());
   if (problems.length > 0)
@@ -140,7 +160,15 @@ try {
     console.log(`DSOR_STAND_IN=on: trusting ${standIns.join(", ")}, to learn only`);
   registry = {
     ...registry,
-    logins: realLogins(issuers.issuers, createDbBook(pool), remoteKeys()),
+    // Changed in step 43c: and a login no link names may be a person a directory pushed, by her uuid
+    //   (step 43c's README, claim C6).
+    logins: realLogins(
+      issuers.issuers,
+      createDbBook(pool),
+      remoteKeys(),
+      Date.now,
+      copyLogins(createDbCopy(pool), settings, issuers.issuers),
+    ),
   };
 } catch (error) {
   refuse((error as Error).message);
@@ -169,7 +197,28 @@ try {
   const server = doorOver(registry, createDbLog(pool));
   const bound = await listen(server, "127.0.0.1", port);
   console.log(`DSoR's door listens on http://127.0.0.1:${bound}`);
+  // NEW IN STEP 43c: and, when a company is on its own directory, the SCIM door, for directories only,
+  //   on 127.0.0.1 too, answering the host names DSOR_SCIM_HOSTS gives, such as host.lima.internal:8044
+  //   (step 43c's README, claim C2, decision D7).
+  const onDirectories = [...settings.values()].some((setting) => setting.kind === "scim");
+  const scim = onDirectories
+    ? scimDoorOver(
+        registry,
+        createDbLog(pool),
+        createDbClients(pool),
+        (process.env["DSOR_SCIM_HOSTS"] ?? "").split(",").filter((host) => host !== ""),
+      )
+    : undefined;
+  if (scim !== undefined) {
+    const scimPort = await listen(
+      scim,
+      "127.0.0.1",
+      Number(process.env["DSOR_SCIM_PORT"] ?? "8044"),
+    );
+    console.log(`DSoR's SCIM door listens on http://127.0.0.1:${scimPort}/scim/v2/`);
+  }
   process.once("SIGINT", () => {
+    scim?.close();
     server.close(() => void pool.end());
   });
 } catch (error) {

@@ -4,6 +4,10 @@
 import type { Alert } from "./alerts.ts";
 import type { HoldStore, KeptHold } from "./holds.ts";
 import { NO_COPY } from "./directory-copy.ts";
+import { companyPeople } from "./company-people.ts";
+import { copyThrough, createDbCopy, createDbHeard, heardThrough } from "./postgres-copy.ts";
+import type { RoleSettings } from "./authority.ts";
+import type { RoleMaps } from "./role-maps.ts";
 import { outboxIn } from "./outbox.ts";
 import {
   unknownFromNote,
@@ -208,10 +212,12 @@ export async function inCompany<T>(
 // claim's own transaction, which has set the company already, so the claim, the code's reads
 // and writes, and the answer commit together (step 20's README, decision 6).
 /** Runs one piece of a store's work inside a company. */
-type Runner = <T>(tenant: string, work: (client: pg.PoolClient) => Promise<T>) => Promise<T>;
+// Changed in step 43c: exported, so the copy of a directory runs its statements the same way
+//   (src/postgres-copy.ts).
+export type Runner = <T>(tenant: string, work: (client: pg.PoolClient) => Promise<T>) => Promise<T>;
 
 // Each piece in a transaction of its own, as every store did before step 20.
-function onPool(pool: pg.Pool): Runner {
+export function onPool(pool: pg.Pool): Runner {
   return <T>(tenant: string, work: (client: pg.PoolClient) => Promise<T>): Promise<T> =>
     inCompany(pool, tenant, work);
 }
@@ -1111,10 +1117,15 @@ export function createDbClaims(
   // it gives one, so a world of an earlier step's idea reads no rule (step 28's README, decision
   // D18).
   controls: ControlStore | "database" = NO_CONTROLS,
+  // NEW IN STEP 43c: and each company's role source and map, where a company is on its own
+  //   directory: its people are then read from its copy, through its map, in the claim's own
+  //   transaction too. None, unless the caller gives them, so the earlier worlds read DSoR's table
+  //   only (step 43c's README, claims C4 and C8).
+  directory?: { settings: RoleSettings; maps: RoleMaps },
 ): ClaimStore {
   return Object.freeze({
-    // NEW IN STEP 43c: no copy of a directory yet on PostgreSQL (claim C8).
-    copy: NO_COPY,
+    // NEW IN STEP 43c: the copy of each company's directory, which DSoR's own read of it reads.
+    copy: directory === undefined ? NO_COPY : createDbCopy(pool),
     // The reservations, each piece in a transaction of its own, for a dry run.
     reservations: createDbReservations(pool),
     // And the sheets of rates, for a dry run's line ⑩ (step 26's README, claim C3).
@@ -1126,7 +1137,14 @@ export function createDbClaims(
     // And the holds, each look in a transaction of its own, for a dry run.
     holds: createDbHolds(pool),
     // Since step 43b: and the table of people, which the registry reads unless it is given another.
-    people: createDbPeople(pool),
+    // Changed in step 43c: and, for a company on its directory, its copy (claim C4).
+    people:
+      directory === undefined
+        ? createDbPeople(pool)
+        : companyPeople(createDbPeople(pool), createDbCopy(pool), {
+            ...directory,
+            heard: createDbHeard(pool),
+          }),
     run: async (
       scope: ClaimScope,
       payloadHash: string,
@@ -1170,7 +1188,7 @@ export function createDbClaims(
           if (added.rowCount === 0) return replay(client, ids, payloadHash, mode, supersedes);
           if (added.rowCount !== 1)
             throw new Error(`the claim added ${added.rowCount} rows, not 1`);
-          const stores = storesIn(client, scope.tenant, controls, noted);
+          const stores = storesIn(client, scope.tenant, controls, noted, directory);
           // Line ⑪ for this first call, after its outcome is kept and before the
           //   COMMIT, through this transaction. If it throws, inCompany rolls back the claim, the
           //   proposal, the work, and the record together (decisions D1 to D3).
@@ -1303,12 +1321,16 @@ function storesIn(
   controls: ControlStore | "database",
   // Set once the checkpoint has committed.
   noted: { yes: boolean } = { yes: false },
+  // NEW IN STEP 43c: and each company's role source and map, as the claims were given them.
+  directory?: { settings: RoleSettings; maps: RoleMaps },
 ): WorkStores {
   const run = inClaim(client, tenant);
+  // NEW IN STEP 43c: the copy, through the claim's own connection, and when DSoR last heard, through
+  //   it too: a second connection inside a claim starves the pool (step 43b's README, "Found while
+  //   building").
+  const copy = directory === undefined ? NO_COPY : copyThrough(client, run);
   return {
-    // NEW IN STEP 43c: no copy of a directory yet on PostgreSQL; migration 050 brings it (step 43c's
-    //   README, claim C8).
-    copy: NO_COPY,
+    copy,
     invoices: invoicesThrough(run),
     payments: paymentsThrough(run),
     proposals: proposalsThrough(run),
@@ -1338,7 +1360,14 @@ function storesIn(
     logins: bookThrough(client, run),
     // Since step 43b: and the table of people, so the five commands write in the claim's
     //   transaction, with their record (step 43b's README, claims C3 to C6).
-    people: peopleThrough(client, run),
+    // Changed in step 43c: and, for a company on its directory, its copy.
+    people:
+      directory === undefined
+        ? peopleThrough(client, run)
+        : companyPeople(peopleThrough(client, run), copy, {
+            ...directory,
+            heard: heardThrough(client),
+          }),
     // And the claim's own connection, so the record is written in its
     //   transaction (decision D1).
     transaction: client,
@@ -2907,8 +2936,11 @@ function peopleThrough(reader: pg.Pool | pg.ClientBase, run: Runner): PeopleStor
             "SELECT pg_advisory_xact_lock(hashtextextended('dsor.people/' || $1, 0))",
             [person],
           );
+          // Changed in step 43c: or a directory's copy of another company has, or had, it (the
+          //   learner's L5): the same lock as a push of the id takes.
           const elsewhere = await client.query(
-            "SELECT 1 FROM dsor.people WHERE principal_id = $1 AND tenant_id <> $2 LIMIT 1",
+            `SELECT 1 FROM dsor.people WHERE principal_id = $1 AND tenant_id <> $2
+             UNION ALL SELECT 1 FROM dsor.scim_users WHERE principal_id = $1 AND tenant_id <> $2 LIMIT 1`,
             [person, tenant],
           );
           if (elsewhere.rowCount !== 0) throw taken(person);

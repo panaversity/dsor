@@ -21,6 +21,7 @@ import {
   INVITATION_PERSON_TRIGGER,
   PEOPLE_TRIGGER,
   GRANT_TRIGGERS,
+  SCIM_TRIGGERS,
   OUTBOX_KEEP_TRIGGER,
   OUTBOX_STAMP_TRIGGER,
   OUTBOX_STAY_TRIGGER,
@@ -399,6 +400,10 @@ describe("C8 and C11: the version in a read, and the triggers in the catalog", (
       PROPOSAL_TRIGGER,
       // Changed in step 43b: DSoR's table of people (migration 049; step 43b's README, claim C8): and a grant's two guards.
       ...GRANT_TRIGGERS,
+      // Changed in step 43c: and the copy's guards (migration 050; step 43c's README, claim C8).
+      ...SCIM_TRIGGERS.groups,
+      ...SCIM_TRIGGERS.members,
+      ...SCIM_TRIGGERS.users,
       // And a vendor's (step 32's README, decision D1).
       VENDOR_TRIGGER,
     ]);

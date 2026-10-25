@@ -54,6 +54,9 @@ describe("the suite, on the database", () => {
       "control.lift",
       "control.suspend",
       "delegation.revoke",
+      // Changed in step 43c: a company's directory's two (step 43c's README, claim C3).
+      "directory.push",
+      "directory.read",
       "invoice.get",
       "invoice.issue",
       "invoice.list",
@@ -109,7 +112,9 @@ describe("the suite, on the database", () => {
     // Changed in step 43: and login.invite's and login.unlink's 12, admin_100 and admin_700, 3
     //   swaps each (step 43's README, revisions R2 and R7).
     // Changed in step 43b: the five commands of people and roles (step 43b's README, claims C3 to C6): and 30, admin_100 and admin_700, 3 swaps each.
-    expect(report.attacks).toHaveLength(315);
+    // Changed in step 43c: and 18, the directory logins' 3 swaps each of directory.push,
+    //   directory.read, and proposal.execute, in each company (step 43c's README, claim C3).
+    expect(report.attacks).toHaveLength(333);
     // And the in-company pair, from org_456's four readers and org_789's two, through the
     // database's store. Found by the Stage 2 review, and fixed from step 12 on.
     expect(report.pairs).toHaveLength(6);
@@ -172,7 +177,8 @@ describe("the suite, on the database", () => {
       // Changed in step 43: and login.invite and login.unlink, admin_100 in org_456 and admin_700 in
       //   org_789, 2 × 3 each (step 43's README, revisions R2 and R7).
       // Changed in step 43b: the five commands of people and roles (step 43b's README, claims C3 to C6): and 15 in each company.
-      expect(made).toHaveLength(home === "org_456" ? 177 : 138);
+      // Changed in step 43c: and 9 in each, the company's directory login (claim C3).
+      expect(made).toHaveLength(home === "org_456" ? 186 : 147);
       const ids = made.map((attack) => attack.request_id);
       expect(await recordsIn(home, ids)).toStrictEqual(
         made.map(({ operation, request_id }) => ({
