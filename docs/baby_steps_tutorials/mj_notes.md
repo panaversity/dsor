@@ -2500,6 +2500,42 @@ push delay, the copy's age, or a token's age.
   leavers (`active: false` or a delete, at once or at next use, a missed push); and whether a powerful
   role granted in the company's directory still needs DSoR's second administrator.
 
+### Step 43c's design, the learner's answers (2026-10-26)
+
+Not built. Asked one decision at a time, each with its trade-off and a recommendation. The learner
+took the recommendation each time. Claude Code first checked authentik's documentation: it pushes
+each change at once and every object again once an hour, a SCIM mapping can send a group's uuid as
+`externalId` and a user's `active`, and `sub_mode` sets which id a token carries.
+
+- **L1. The SSO server is authentik,** run locally, so all three kinds of source could run on one
+  machine and authentik reaches DSoR without a public tunnel.
+- **L2. A SCIM copy only.** authentik pushes users and groups to DSoR, and the copy lands in step
+  43b's tables, which line ① and the role source already read. No lookup, and no roles from the
+  token: the token says who is calling, never what they may do.
+- **L3. The role map names a group by its uuid,** never its name. A group the map does not name
+  gives no role.
+- **L4. The map is a file per company,** `role-maps.json`, changed by a pull request and a restart.
+- **L5. A person's DSoR id is their authentik username at the first push.** After that the row is
+  keyed by the uuid, so a rename changes nothing. Step 43b's rule holds: an id another company has
+  or had is taken, and the push is refused.
+- **L6. A login links by the uuid, with no invitation.** authentik is the issuer for its company
+  only, and a token whose `sub` is a pushed person's uuid in that company is that person.
+- **L7. `max_staleness` is PT2H.** One hourly sync and an hour of slack. It meets L2 (24 hours), not
+  L3 (one hour), and the README must say so.
+- **L8. `active: false` suspends; a DELETE deprovisions.** Either way the next call is refused, and
+  the slips are suspended at their next use, through step 43b's path (DSOR-IDN-07).
+- **L9. A mapped group's role counts at once.** The second person's check moves to the map's pull
+  request; the spec trusts the role source (§10, out of scope: a compromised role source).
+- **L10. Step 43b's five commands are refused for a company on a directory.** One truth per
+  company, chosen in `role-sources.json`.
+- **Still to check in a real run first:** whether authentik's hourly sync sends a request when
+  nothing changed. DSoR measures a copy's age as the time since that company's authentik last spoke,
+  so a quiet company must still be heard from, or L7 refuses it.
+- **Still to design (Claude Code's, in Phase A):** the SCIM endpoint's own credential per company,
+  and that it binds the company, never the URL alone; that the endpoint is a back door for
+  authentik only, never on the agent's doors; and how a test stands in for authentik while the real
+  run uses it.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.
