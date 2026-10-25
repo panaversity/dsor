@@ -1,0 +1,18 @@
+{
+  "org_456": [
+    {
+      "issuer": "https://ep-mute-hall-b5uk82zn.neonauth.c-7.us-east-2.aws.neon.tech",
+      "audience": "https://ep-mute-hall-b5uk82zn.neonauth.c-7.us-east-2.aws.neon.tech",
+      "dedicated_to_dsor": true,
+      "jwks": "https://ep-mute-hall-b5uk82zn.neonauth.c-7.us-east-2.aws.neon.tech/neondb/auth/.well-known/jwks.json"
+    }
+  ],
+  "org_789": [
+    {
+      "issuer": "https://ep-mute-hall-b5uk82zn.neonauth.c-7.us-east-2.aws.neon.tech",
+      "audience": "https://ep-mute-hall-b5uk82zn.neonauth.c-7.us-east-2.aws.neon.tech",
+      "dedicated_to_dsor": true,
+      "jwks": "https://ep-mute-hall-b5uk82zn.neonauth.c-7.us-east-2.aws.neon.tech/neondb/auth/.well-known/jwks.json"
+    }
+  ]
+}

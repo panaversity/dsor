@@ -1,0 +1,883 @@
+// The map itself is checked at start-up, before the database is (step 16's
+// README, C4 and C7). No database: these read store.json, and copies of it with one change.
+import { describe, expect, it } from "vitest";
+import { checkStore, readStore, type StoreSource } from "../src/store.ts";
+import {
+  EVENT_ALERTS_MOVE,
+  EVENT_ALERTS_STAY,
+  EVENT_CHANGE_TRIGGER,
+  INVOICE_TRIGGER,
+  OUTBOX_CLOSE_ALERT,
+  OUTBOX_NEXT_NUMBER,
+  TRIES_STAY,
+  TRIES_WRITTEN,
+  TRY_ALERT,
+  OUTBOX_KEEP_TRIGGER,
+  OUTBOX_STAMP_TRIGGER,
+  OUTBOX_STAY_TRIGGER,
+  OUTBOX_TRIGGER,
+  PAYMENT_EVENT_TRIGGER,
+  PAYMENT_STAYS_TRIGGER,
+  PAYMENT_TRIGGER,
+  PROPOSAL_ALERT,
+  PROPOSAL_TRIGGER,
+} from "./catalogs.ts";
+
+const SHIPPED: StoreSource = readStore();
+
+/** The shipped map with one change, as the file a test starts the program with. */
+function mapWith(change: (map: any) => void): StoreSource {
+  const map = JSON.parse(SHIPPED.text);
+  change(map);
+  return { file: "store.json", text: JSON.stringify(map, null, 2) };
+}
+
+// The slips' line as step 18 shipped it, control-read and never written, for
+// the tests of that kind (step 19b's README, decision 3).
+/** Turns the map's dsor.delegations back into a control-read table. */
+function asControlRead(map: any): void {
+  map.tables["dsor.delegations"].kind = "control-read";
+  map.tables["dsor.delegations"].runtime = { table: ["SELECT"] };
+}
+
+function problemsOf(source: StoreSource): string[] {
+  return checkStore(source).problems;
+}
+
+describe("the shipped map", () => {
+  it("step 16's decision 1: store.json passes its own checks", () => {
+    expect(problemsOf(SHIPPED)).toStrictEqual([]);
+  });
+
+  // Step 17 adds app.payments (step 17's README, outcome 1).
+  // Step 18 adds a fifth table, the slips (step 18's README, decision 3).
+  // And a sixth, the claims of idempotency keys (step 20's README, decision 12).
+  // And a seventh, the proposals (step 22's README, decision 3).
+  // Nine, with the day's totals and the reservations (step 24's README, decision 13).
+  // Ten, with the brakes (step 25b's README, decision D5).
+  // Eleven, with the sheets of rates (step 26's README, decisions L1 and D6).
+  // Changed in step 28: twelve, with dsor.controls (step 28's README, decision D2).
+  // Changed in step 28b: and dsor.notices (step 28b's README, decision D5).
+  // Changed in step 29: and a fourteenth, dsor.approvals (step 29's README, decision D8).
+  // Changed in step 32: and app.vendors (step 32's README, decision D1).
+  // Changed in step 33: and dsor.decision_bundles, a sixteenth (step 33's README, decision D3).
+  // Changed in step 36: and dsor.intents, a seventeenth (step 36's README, decision D1).
+  // Changed in step 37: and dsor.holds, an eighteenth (step 37's README, decision D1).
+  // Changed in step 38b: and dsor.alerts, a nineteenth (step 38b's README, decision D1).
+  // Changed in step 40: and dsor.outbox, a twenty-first (step 40's README, decision D2).
+  // Changed in step 40c: and dsor.outbox_tries and dsor.event_alerts, a twenty-second and a
+  //   twenty-third (step 40c's README, decisions D4 and D5).
+  it("step 16's decision 1: it names three schemas and twenty-four tables", () => {
+    const { map } = checkStore(SHIPPED);
+    expect([...map.schemas.keys()]).toStrictEqual(["app", "dsor", "public"]);
+    expect([...map.tables.keys()]).toStrictEqual([
+      "app.invoices",
+      "app.vendors",
+      "app.payments",
+      "dsor.audit",
+      "dsor.delegations",
+      "dsor.idempotency",
+      "dsor.proposals",
+      "dsor.limit_counters",
+      "dsor.reservations",
+      "dsor.brakes",
+      "dsor.rates",
+      "dsor.controls",
+      "dsor.notices",
+      "dsor.approvals",
+      "dsor.decision_bundles",
+      "dsor.holds",
+      "dsor.alerts",
+      "dsor.intents",
+      "dsor.outbox",
+      "dsor.outbox_tries",
+      "dsor.event_alerts",
+      // Changed in step 43, the learner's R1: and dsor.invitations (migration 048).
+      "dsor.invitations",
+      // Changed in step 43b: DSoR's table of people (migration 049; step 43b's README, claim C8).
+      "dsor.people",
+      "dsor.role_grants",
+      // Changed in step 43: and dsor.logins, the links of logins to principals (step 43's README, D5).
+      "dsor.logins",
+      // Changed in step 39: and dsor.audit_heads, a twentieth (step 39's README, decision D8).
+      "dsor.audit_heads",
+      "dsor.migrations",
+    ]);
+  });
+
+  // The log of failed tries is read inside its company, added to through three
+  //   columns, and watched by its triggers; the alerts are read only (step 40c's README, D4 to D7).
+  it("DSOR-EVT-01a: C3: dsor.outbox_tries is append-only and watched, added to through three named columns", () => {
+    const { map } = checkStore(SHIPPED);
+    expect(map.tables.get("dsor.outbox_tries")).toStrictEqual({
+      kind: "append-only-watched",
+      tenant: "tenant_id",
+      runtime: { table: ["SELECT"], columns: { INSERT: ["tenant_id", "event_id", "reason"] } },
+      triggers: [TRIES_STAY, TRIES_WRITTEN, TRY_ALERT],
+    });
+  });
+
+  it("DSOR-EVT-01a: C6: dsor.event_alerts is read inside its company, and dsor_runtime writes no column of it", () => {
+    const { map } = checkStore(SHIPPED);
+    expect(map.tables.get("dsor.event_alerts")).toStrictEqual({
+      kind: "control-moved",
+      tenant: "tenant_id",
+      runtime: { table: ["SELECT"], columns: {} },
+      triggers: [EVENT_ALERTS_MOVE, EVENT_ALERTS_STAY],
+    });
+  });
+
+  // Step 36: a note is read inside its company, added through nine named columns, and ended
+  //   through one, guarded by its trigger. Nothing removes one (step 36's README, decision D1).
+  it("DSOR-EXE-03a: dsor.intents is read inside its company, added through named columns, ended through its outcome only, and guarded by its trigger", () => {
+    const { map } = checkStore(SHIPPED);
+    expect(map.tables.get("dsor.intents")).toStrictEqual({
+      kind: "control-moved",
+      tenant: "tenant_id",
+      runtime: {
+        table: ["SELECT"],
+        columns: {
+          INSERT: [
+            "proposal_id",
+            "tenant_id",
+            "operation",
+            "payload_hash",
+            "principal",
+            "claim_operation",
+            "idempotency_key",
+            "connector",
+            "security_context",
+          ],
+          UPDATE: ["outcome"],
+        },
+      },
+      triggers: [
+        "CREATE TRIGGER intents_end BEFORE UPDATE ON dsor.intents FOR EACH ROW EXECUTE FUNCTION dsor.intent_ends()",
+      ],
+    });
+  });
+
+  // Step 40: an event is read inside its company, added through six named columns, and marked sent
+  //   through one, guarded by its trigger. Nothing removes one (step 40's README, decision D2).
+  it("DSOR-EVT-01a: dsor.outbox is read inside its company, added through named columns, marked sent through sent_at only, and guarded by its trigger", () => {
+    const { map } = checkStore(SHIPPED);
+    expect(map.tables.get("dsor.outbox")).toStrictEqual({
+      kind: "control-moved",
+      tenant: "tenant_id",
+      runtime: {
+        table: ["SELECT"],
+        columns: {
+          INSERT: ["event_id", "tenant_id", "type", "resource", "ordering_key", "event"],
+          UPDATE: ["sent_at"],
+        },
+      },
+      // Changed in step 40b: and the check that an event about a payment has its change (step
+      //   40b's README, decision D2).
+      // And, since its review, M1, the guards that stamp each event and keep it (decision D9).
+      // And, since step 40c, the trigger that closes an event's alert when it is sent.
+      triggers: [
+        EVENT_CHANGE_TRIGGER,
+        OUTBOX_CLOSE_ALERT,
+        OUTBOX_KEEP_TRIGGER,
+        OUTBOX_NEXT_NUMBER,
+        OUTBOX_TRIGGER,
+        OUTBOX_STAMP_TRIGGER,
+        OUTBOX_STAY_TRIGGER,
+      ],
+    });
+  });
+
+  // Step 33: a bundle is read inside its company, added through three named columns, and never
+  //   changed or removed. Its time is the database's to fill (step 33's README, decision D3).
+  it("step 33's decision D3: dsor.decision_bundles is read inside its company and added through named columns, and nothing changes one", () => {
+    const { map } = checkStore(SHIPPED);
+    expect(map.tables.get("dsor.decision_bundles")).toStrictEqual({
+      kind: "append-only",
+      tenant: "tenant_id",
+      runtime: { table: ["SELECT"], columns: { INSERT: ["decision_id", "tenant_id", "bundle"] } },
+      triggers: [],
+    });
+    expect(map.tables.get("dsor.audit")?.runtime.columns["INSERT"]).toContain("decision_bundle");
+  });
+
+  // A version of a rule is read inside its company, added as a draft through six
+  // named columns, and moved through three. Nothing deletes one, and nothing changes its text or
+  // who wrote it (step 28's README, decisions D2 and D11).
+  // Changed in step 28b: and moved through a fourth, the version in force that the sweep's mark
+  // names (step 28b's README, decision D5).
+  it("step 28's decision D2: dsor.controls is read inside its company, added through named columns, moved through named columns, and guarded by its trigger", () => {
+    const { map } = checkStore(SHIPPED);
+    expect(map.tables.get("dsor.controls")).toStrictEqual({
+      kind: "control-moved",
+      tenant: "tenant_id",
+      runtime: {
+        table: ["SELECT"],
+        columns: {
+          INSERT: ["tenant_id", "id", "version", "status", "rule", "compiled_by"],
+          UPDATE: ["status", "reviewed_by", "effective_from", "in_force"],
+        },
+      },
+      // And the trigger that draws each move, as the proposals' does (step 28's review, finding L14).
+      triggers: [
+        "CREATE TRIGGER controls_move BEFORE UPDATE ON dsor.controls FOR EACH ROW EXECUTE FUNCTION dsor.control_moves()",
+      ],
+    });
+  });
+
+  // A notice to a rule's owner is read inside its company and added through seven named columns.
+  // Nothing changes or removes one (step 28b's README, decision D5).
+  it("step 28b's decision D5: dsor.notices is read inside its company, added through named columns, and never changed", () => {
+    const { map } = checkStore(SHIPPED);
+    expect(map.tables.get("dsor.notices")).toStrictEqual({
+      kind: "append-only",
+      tenant: "tenant_id",
+      runtime: {
+        table: ["SELECT"],
+        columns: {
+          INSERT: [
+            "notice_id",
+            "tenant_id",
+            "to_person",
+            "rule_id",
+            "version",
+            "words",
+            "correlation",
+          ],
+        },
+      },
+      triggers: [],
+    });
+  });
+
+  // A sheet of rates is read inside its company and added through six named columns.
+  // Nothing changes or removes one: a correction is a newer sheet (step 26's README, decision D6).
+  it("step 26's decision D6: dsor.rates is read inside its company, added through named columns, and never changed", () => {
+    const { map } = checkStore(SHIPPED);
+    expect(map.tables.get("dsor.rates")).toStrictEqual({
+      kind: "append-only",
+      tenant: "tenant_id",
+      runtime: {
+        table: ["SELECT"],
+        columns: {
+          INSERT: ["tenant_id", "source", "published_at", "base", "currency", "per_base"],
+        },
+      },
+      triggers: [],
+    });
+  });
+
+  // A brake is read inside its company, added through five named columns, and lifted through
+  // three (step 25b's README, decision D5). Nothing deletes one, and nothing changes who pulled it, when, or why.
+  it("step 25b's decision D5: dsor.brakes is read inside its company, added through named columns, and lifted through named columns", () => {
+    const { map } = checkStore(SHIPPED);
+    expect(map.tables.get("dsor.brakes")).toStrictEqual({
+      kind: "control-claimed",
+      tenant: "tenant_id",
+      runtime: {
+        table: ["SELECT"],
+        columns: {
+          INSERT: ["tenant_id", "id", "agent", "pulled_by", "reason"],
+          UPDATE: ["lifted_by", "lifted_at", "lift_reason"],
+        },
+      },
+      // And no trigger: DSoR's own records never have one, except the proposals' guard.
+      triggers: [],
+    });
+  });
+
+  // The proposals are read inside their company, added through named columns,
+  // and moved through their state alone, with the trigger that guards each move (step 22's
+  // README, decision 3).
+  it("step 22's decision 3: dsor.proposals is read inside its company, added through named columns, moved through its state, and guarded by its trigger", () => {
+    const { map } = checkStore(SHIPPED);
+    expect(map.tables.get("dsor.proposals")).toStrictEqual({
+      kind: "control-moved",
+      tenant: "tenant_id",
+      runtime: {
+        table: ["SELECT"],
+        columns: {
+          INSERT: [
+            "tenant_id",
+            "id",
+            "operation",
+            "mode",
+            "state",
+            "payload",
+            "payload_hash",
+            "resources",
+            "requester",
+            "idempotency_key",
+            // And its expiry, which the database's clock sets, and which the
+            // trigger never lets change (step 25c's README, decisions D6 and D7).
+            "expires_at",
+            // Step 32: and the record its operation is exclusive over, written once (step 32's
+            // README, decision D7).
+            "exclusive_over",
+            // Step 41: and a line's run and a run's fingerprint, written once (step 41's README,
+            //   claim C5).
+            "run",
+            "manifest_hash",
+            // Changed in step 41b: and the proposal it replaces, written once (step 41b's README,
+            //   decision D4).
+            "supersedes",
+          ],
+          // Changed in step 29: and what a waiting proposal waits for, which the move to
+          // PENDING_APPROVAL writes once (step 29's README, decision D4).
+          // Changed in step 41: and a run's totals, which the move that starts its wait writes once.
+          UPDATE: ["state", "requires", "totals", "vendor_totals"],
+        },
+      },
+      // Changed in step 38b: and the trigger that raises and closes its alert (step 38b's README,
+      //   decision D9).
+      triggers: [PROPOSAL_ALERT, PROPOSAL_TRIGGER],
+    });
+  });
+
+  it("step 22's decision 3: a control-moved table needs a company key, and allows no DELETE", () => {
+    const keyless = mapWith((m) => (m.tables["dsor.proposals"].tenant = null));
+    expect(problemsOf(keyless)).toStrictEqual([
+      "store.json: dsor.proposals is control-moved, which needs a company key, and names none",
+    ]);
+    const deleting = mapWith((m) => m.tables["dsor.proposals"].runtime.table.push("DELETE"));
+    expect(problemsOf(deleting)).toStrictEqual([
+      "store.json: dsor.proposals lists DELETE, which a control-moved table does not allow",
+    ]);
+  });
+
+  // The claims are read inside their company, added through named columns, and
+  // finished through the answer alone (step 20's README, decision 12).
+  it("step 20's decision 12: dsor.idempotency is read inside its company, added through named columns, and finished through its answer", () => {
+    const { map } = checkStore(SHIPPED);
+    expect(map.tables.get("dsor.idempotency")).toStrictEqual({
+      kind: "control-claimed",
+      tenant: "tenant_id",
+      runtime: {
+        table: ["SELECT"],
+        columns: {
+          INSERT: [
+            "tenant_id",
+            "principal",
+            "operation",
+            "idempotency_key",
+            "payload_hash",
+            "request_id",
+            // And the mode of the call (step 23's README, decision 13).
+            "mode",
+            // Changed in step 41b: and what the call replaces (step 41b's README, decision D9).
+            "supersedes",
+          ],
+          UPDATE: ["answer"],
+        },
+      },
+      triggers: [],
+    });
+  });
+});
+
+// A table's line may name triggers, in full, where its kind allows one (step
+// 21's README, decision 11).
+describe("C11: the map names each trigger", () => {
+  it("step 21's decision 11: app.invoices and app.payments have the triggers that raise a row's version", () => {
+    const { map } = checkStore(SHIPPED);
+    expect(map.tables.get("app.invoices")!.triggers).toStrictEqual([INVOICE_TRIGGER]);
+    // Changed in step 40b: and the check that a payment's change has its event, first in the
+    //   order of their text (step 40b's README, decision D1).
+    // And, since its review, H1, the guard that keeps paid final (decision D8).
+    expect(map.tables.get("app.payments")!.triggers).toStrictEqual([
+      PAYMENT_EVENT_TRIGGER,
+      PAYMENT_STAYS_TRIGGER,
+      PAYMENT_TRIGGER,
+    ]);
+  });
+
+  it.each([
+    // Changed in step 39: the log is append-only-chained, so another append-only table stands in.
+    ["dsor.holds", "an append-only"],
+    ["dsor.delegations", "a control-written"],
+    ["dsor.idempotency", "a control-claimed"],
+    ["dsor.migrations", "a bookkeeping"],
+  ])("step 21's decision 11: %s, DSoR's own, may have no trigger", (table, kind) => {
+    const source = mapWith((m) => {
+      m.tables[table].triggers = [
+        "CREATE TRIGGER t BEFORE INSERT ON x FOR EACH ROW EXECUTE FUNCTION f()",
+      ];
+    });
+    expect(problemsOf(source)).toStrictEqual([
+      `store.json: ${table} names a trigger, which ${kind} table does not allow`,
+    ]);
+  });
+
+  it("step 21's decision 11: triggers must be a list of text", () => {
+    const source = mapWith((m) => {
+      m.tables["app.invoices"].triggers = "invoices_version";
+    });
+    expect(problemsOf(source)[0]).toMatch(
+      /^store\.json: app\.invoices is not written as a table line/,
+    );
+  });
+});
+
+describe("C4: each kind allows only its own privileges, on its own side", () => {
+  it("step 16's decision 3: a business table may only be read, so UPDATE on app.invoices is refused", () => {
+    const source = mapWith((m) => m.tables["app.invoices"].runtime.table.push("UPDATE"));
+    expect(problemsOf(source)).toStrictEqual([
+      "store.json: app.invoices lists UPDATE, which a business table does not allow",
+    ]);
+  });
+
+  it("step 16's decision 3: a business table may not be written column by column either", () => {
+    const source = mapWith(
+      (m) => (m.tables["app.invoices"].runtime.columns = { UPDATE: ["status"] }),
+    );
+    expect(problemsOf(source)).toStrictEqual([
+      "store.json: app.invoices lists UPDATE on columns, which a business table does not allow",
+    ]);
+  });
+
+  // The log's own rule, written into its kind: one wrong line in the map cannot open it.
+  it.each(["UPDATE", "DELETE", "TRUNCATE"])(
+    "DSOR-AUD-04a: %s on the log is refused, because an append-only table allows it never",
+    (privilege) => {
+      const source = mapWith((m) => m.tables["dsor.audit"].runtime.table.push(privilege));
+      expect(problemsOf(source)).toStrictEqual([
+        `store.json: dsor.audit lists ${privilege}, which an append-only-chained table does not allow`,
+      ]);
+    },
+  );
+
+  it("DSOR-AUD-04a: UPDATE on one column of the log is refused too", () => {
+    const source = mapWith((m) => (m.tables["dsor.audit"].runtime.columns.UPDATE = ["result"]));
+    expect(problemsOf(source)).toStrictEqual([
+      "store.json: dsor.audit lists UPDATE on columns, which an append-only-chained table does not allow",
+    ]);
+  });
+
+  // Found by step 40c's review, K1: no test needed the kind of the log of tries to refuse a change
+  //   or a removal. One wrong line in the map cannot open that log either.
+  it.each(["UPDATE", "DELETE", "TRUNCATE"])(
+    "DSOR-EVT-01a: K1: %s on the log of tries is refused, because an append-only-watched table allows it never",
+    (privilege) => {
+      const source = mapWith((m) => m.tables["dsor.outbox_tries"].runtime.table.push(privilege));
+      expect(problemsOf(source)).toStrictEqual([
+        `store.json: dsor.outbox_tries lists ${privilege}, which an append-only-watched table does not allow`,
+      ]);
+    },
+  );
+
+  it("DSOR-EVT-01a: K1: UPDATE on one column of the log of tries is refused too", () => {
+    const source = mapWith(
+      (m) => (m.tables["dsor.outbox_tries"].runtime.columns.UPDATE = ["reason"]),
+    );
+    expect(problemsOf(source)).toStrictEqual([
+      "store.json: dsor.outbox_tries lists UPDATE on columns, which an append-only-watched table does not allow",
+    ]);
+  });
+
+  // INSERT on the whole table would include sequence and at, which the database fills in
+  // (step 09's README, decision 6). So append-only adds rows column by column only.
+  it("step 16's decision 3: an append-only table adds rows column by column, never by the whole table", () => {
+    const source = mapWith((m) => m.tables["dsor.audit"].runtime.table.push("INSERT"));
+    expect(problemsOf(source)).toStrictEqual([
+      "store.json: dsor.audit lists INSERT, which an append-only-chained table does not allow",
+    ]);
+  });
+
+  it("step 16's decision 3: a bookkeeping table may not be touched, not even read", () => {
+    const source = mapWith((m) => m.tables["dsor.migrations"].runtime.table.push("SELECT"));
+    expect(problemsOf(source)).toStrictEqual([
+      "store.json: dsor.migrations lists SELECT, which a bookkeeping table does not allow",
+    ]);
+  });
+
+  it("step 16's decision 3: DSoR's paperwork cannot be put in the company's schema", () => {
+    const source = mapWith(
+      (m) =>
+        (m.tables["app.notes"] = { kind: "append-only", tenant: null, runtime: { table: [] } }),
+    );
+    expect(problemsOf(source)).toStrictEqual([
+      "store.json: app.notes is append-only, which lives on DSoR's side, and the schema app is the company's",
+    ]);
+  });
+
+  it("step 16's decision 3: the company's data cannot be put in DSoR's schema", () => {
+    const source = mapWith(
+      (m) =>
+        (m.tables["dsor.invoices"] = { kind: "business", tenant: null, runtime: { table: [] } }),
+    );
+    expect(problemsOf(source)).toStrictEqual([
+      "store.json: dsor.invoices is business, which lives on the company's side, and the schema dsor is DSoR's",
+    ]);
+  });
+
+  it("step 16's decision 3: no kind lives in public, which is nobody's", () => {
+    const source = mapWith(
+      (m) =>
+        (m.tables["public.notes"] = { kind: "bookkeeping", tenant: null, runtime: { table: [] } }),
+    );
+    expect(problemsOf(source)).toStrictEqual([
+      "store.json: public.notes is bookkeeping, which lives on DSoR's side, and the schema public is nobody's",
+    ]);
+  });
+
+  // CREATE in a schema lets dsor_runtime make a table of its own, and own it (step 09's
+  // README, decision 5).
+  it("step 16's decision 3: a schema allows USAGE and never CREATE", () => {
+    const source = mapWith((m) => m.schemas.dsor.runtime.push("CREATE"));
+    expect(problemsOf(source)).toStrictEqual([
+      "store.json: the schema dsor lists CREATE, and a schema allows only USAGE",
+    ]);
+  });
+});
+
+// Found by the review: a company column named org_id would get no lock check, because only
+// tenant_id and tenant are recognised. A kind whose rows belong to a company must say which
+// column says so.
+describe("C4: a business or append-only table names its company key", () => {
+  it.each([
+    ["app.invoices", "business"],
+    // Changed in step 39: the log is append-only-chained (step 39's README, decision D2).
+    ["dsor.audit", "append-only-chained"],
+  ])("DSOR-RP-01b: %s (%s) with no company key is refused", (name, kind) => {
+    const source = mapWith((m) => (m.tables[name].tenant = null));
+    expect(problemsOf(source)).toStrictEqual([
+      `store.json: ${name} is ${kind}, which needs a company key, and names none`,
+    ]);
+  });
+
+  // Found by the sweep: the bookkeeping kind's column list was never pinned.
+  it("step 16's decision 3: a bookkeeping table may not be written column by column", () => {
+    const source = mapWith(
+      (m) => (m.tables["dsor.migrations"].runtime.columns = { INSERT: ["name"] }),
+    );
+    expect(problemsOf(source)).toStrictEqual([
+      "store.json: dsor.migrations lists INSERT on columns, which a bookkeeping table does not allow",
+    ]);
+  });
+});
+
+describe("C7: the map itself is checked", () => {
+  // Found by the sweep: with the check that the column lists are lists gone, the map passed,
+  // and the inspector would have thrown later, with a stack trace instead of a problem.
+  it("step 16's decision 1: a column list that is not a list is refused", () => {
+    const source = mapWith((m) => (m.tables["dsor.audit"].runtime.columns.INSERT = "record_id"));
+    expect(problemsOf(source)).toStrictEqual([
+      'store.json: dsor.audit is not written as a table line: {"kind", "tenant", "runtime": {"table": [...], "columns": {...}}}',
+    ]);
+  });
+
+  // Found by the sweep: no test pinned "exactly these fields", so a field nobody reads
+  // passed. Each line says all it means, or it is refused.
+  it("step 16's decision 1: a field the map does not know is refused, at each level", () => {
+    const top = mapWith((m) => (m.owner = "neondb_owner"));
+    const schema = mapWith((m) => (m.schemas.app.owner = "neondb_owner"));
+    const table = mapWith((m) => (m.tables["app.invoices"].runtime.delete = ["*"]));
+    expect(problemsOf(top)).toStrictEqual([
+      'store.json: must be {"schemas": {...}, "tables": {...}}',
+    ]);
+    expect(problemsOf(schema)).toStrictEqual([
+      'store.json: the schema app is not written as a schema line: {"side", "runtime": [...]}',
+    ]);
+    expect(problemsOf(table)).toStrictEqual([
+      'store.json: app.invoices is not written as a table line: {"kind", "tenant", "runtime": {"table": [...], "columns": {...}}}',
+    ]);
+  });
+
+  it("step 16's decision 1: a kind the map does not know is refused", () => {
+    const source = mapWith((m) => (m.tables["dsor.migrations"].kind = "ledger"));
+    expect(problemsOf(source)).toStrictEqual([
+      // Step 17's business-written is a fourth kind, step 18's control-read a fifth, and step
+      // 19b's control-written a sixth.
+      // And step 22's control-moved.
+      // And step 40c's append-only-watched.
+      'store.json: dsor.migrations has the kind "ledger", which is not business, business-written, append-only, append-only-chained, append-only-watched, control-read, control-written, control-claimed, control-moved, shared-moved, or bookkeeping',
+    ]);
+  });
+
+  it("step 16's decision 1: a side the map does not know is refused", () => {
+    const source = mapWith((m) => (m.schemas.app.side = "partner"));
+    expect(problemsOf(source)).toStrictEqual([
+      'store.json: the schema app has the side "partner", which is not company, dsor, or none',
+    ]);
+  });
+
+  // JSON.parse keeps the second line and drops the first, without a word (src/json.ts).
+  it("step 16's decision 1: a table written twice is refused", () => {
+    const twice = SHIPPED.text.replace(
+      '"dsor.migrations": {',
+      '"app.invoices": { "kind": "business", "tenant": "tenant_id", "runtime": { "table": ["SELECT", "UPDATE"] } },\n    "dsor.migrations": {',
+    );
+    expect(problemsOf({ file: "store.json", text: twice })).toContain(
+      'store.json: "app.invoices" is written twice in one object',
+    );
+  });
+
+  it("step 16's decision 1: a table in a schema the map does not name is refused", () => {
+    const source = mapWith(
+      (m) => (m.tables["crm.leads"] = { kind: "business", tenant: null, runtime: { table: [] } }),
+    );
+    expect(problemsOf(source)).toStrictEqual([
+      "store.json: crm.leads is in the schema crm, which the map does not name",
+    ]);
+  });
+
+  // A misspelled "tenant" must not quietly mean "this table has no company key".
+  it("step 16's decision 1: a table line with a missing or misspelled field is refused", () => {
+    const source = mapWith((m) => {
+      const line = m.tables["app.invoices"];
+      line.tenent = line.tenant;
+      delete line.tenant;
+    });
+    expect(problemsOf(source)).toStrictEqual([
+      'store.json: app.invoices is not written as a table line: {"kind", "tenant", "runtime": {"table": [...], "columns": {...}}}',
+    ]);
+  });
+
+  it("step 16's decision 1: a schema line with a missing field is refused", () => {
+    const source = mapWith((m) => delete m.schemas.app.runtime);
+    expect(problemsOf(source)).toStrictEqual([
+      'store.json: the schema app is not written as a schema line: {"side", "runtime": [...]}',
+    ]);
+  });
+
+  it("step 16's decision 1: a table named without its schema is refused", () => {
+    const source = mapWith(
+      (m) => (m.tables.invoices = { kind: "business", tenant: null, runtime: { table: [] } }),
+    );
+    expect(problemsOf(source)).toStrictEqual(['store.json: "invoices" must be named schema.table']);
+  });
+
+  it("step 16's decision 1: a file that is not JSON is refused", () => {
+    expect(problemsOf({ file: "store.json", text: "{ schemas:" })).toStrictEqual([
+      "store.json: not valid JSON",
+    ]);
+  });
+
+  it("step 16's decision 1: a file without schemas and tables is refused", () => {
+    expect(problemsOf({ file: "store.json", text: "[]" })).toStrictEqual([
+      'store.json: must be {"schemas": {...}, "tables": {...}}',
+    ]);
+  });
+
+  it("names every problem at once, not only the first", () => {
+    const source = mapWith((m) => {
+      m.schemas.dsor.runtime.push("CREATE");
+      m.tables["app.invoices"].runtime.table.push("UPDATE");
+    });
+    expect(problemsOf(source)).toHaveLength(2);
+  });
+});
+
+// A fourth kind, for a company table that DSoR writes (step 17's README,
+// C7 and decision 3).
+describe("step 17's C7: the kind business-written", () => {
+  it("step 17's decision 3: app.payments is read, gets rows by named columns, and changes only its status", () => {
+    const { map } = checkStore(SHIPPED);
+    expect(map.tables.get("app.payments")).toStrictEqual({
+      kind: "business-written",
+      tenant: "tenant_id",
+      runtime: {
+        table: ["SELECT"],
+        columns: {
+          INSERT: [
+            "tenant_id",
+            "invoice_id",
+            "vendor_id",
+            "amount_value",
+            "amount_currency",
+            "status",
+          ],
+          UPDATE: ["status"],
+        },
+      },
+      // Changed in step 40b: and the check that a payment's change has its event.
+      triggers: [PAYMENT_EVENT_TRIGGER, PAYMENT_STAYS_TRIGGER, PAYMENT_TRIGGER],
+    });
+  });
+
+  // Whole-table INSERT would include number and id, which the database writes.
+  it.each(["INSERT", "UPDATE", "DELETE", "TRUNCATE"])(
+    "step 17's decision 3: %s on the whole of a business-written table is refused",
+    (privilege) => {
+      const source = mapWith((m) => m.tables["app.payments"].runtime.table.push(privilege));
+      expect(problemsOf(source)).toStrictEqual([
+        `store.json: app.payments lists ${privilege}, which a business-written table does not allow`,
+      ]);
+    },
+  );
+
+  it("step 17's decision 3: a business-written table may not list REFERENCES on columns", () => {
+    const source = mapWith(
+      (m) => (m.tables["app.payments"].runtime.columns.REFERENCES = ["invoice_id"]),
+    );
+    expect(problemsOf(source)).toStrictEqual([
+      "store.json: app.payments lists REFERENCES on columns, which a business-written table does not allow",
+    ]);
+  });
+
+  it("step 17's decision 3: a business-written table lives on the company's side", () => {
+    const source = mapWith((m) => {
+      m.tables["dsor.payments"] = m.tables["app.payments"];
+      delete m.tables["app.payments"];
+    });
+    expect(problemsOf(source)).toStrictEqual([
+      "store.json: dsor.payments is business-written, which lives on the company's side, and the schema dsor is DSoR's",
+    ]);
+  });
+
+  it("DSOR-RP-01b: a business-written table needs a company key", () => {
+    const source = mapWith((m) => (m.tables["app.payments"].tenant = null));
+    expect(problemsOf(source)).toStrictEqual([
+      "store.json: app.payments is business-written, which needs a company key, and names none",
+    ]);
+  });
+});
+
+// The kind control-read, for DSoR's own records that it reads and never
+// writes, such as the permission slips (step 18's README, decision 3). Found by step 18's
+// sweep: the kind, and the slips' line, could change with every test green.
+describe("step 18's decision 3: the kind control-read", () => {
+  // dsor.delegations is control-written now, so these tests plant a
+  // control-read table of their own, as step 18 shipped it (step 19b's README, decision 3).
+  it("step 19b's decision 3: dsor.delegations is read inside its company, and changed through its status only", () => {
+    const { map } = checkStore(SHIPPED);
+    expect(map.tables.get("dsor.delegations")).toStrictEqual({
+      kind: "control-written",
+      tenant: "tenant_id",
+      runtime: { table: ["SELECT"], columns: { UPDATE: ["status"] } },
+      triggers: [],
+    });
+  });
+
+  it.each(["INSERT", "UPDATE", "DELETE", "TRUNCATE"])(
+    "step 18's decision 3: %s on the whole of a control-read table is refused",
+    (privilege) => {
+      const source = mapWith((m) => {
+        asControlRead(m);
+        m.tables["dsor.delegations"].runtime.table.push(privilege);
+      });
+      expect(problemsOf(source)).toStrictEqual([
+        `store.json: dsor.delegations lists ${privilege}, which a control-read table does not allow`,
+      ]);
+    },
+  );
+
+  it("step 18's decision 3: a control-read table is not written column by column either", () => {
+    const source = mapWith((m) => {
+      asControlRead(m);
+      m.tables["dsor.delegations"].runtime.columns = { INSERT: ["status"] };
+    });
+    expect(problemsOf(source)).toStrictEqual([
+      "store.json: dsor.delegations lists INSERT on columns, which a control-read table does not allow",
+    ]);
+  });
+
+  it("DSOR-RP-01b: a control-read table needs a company key", () => {
+    const source = mapWith((m) => {
+      asControlRead(m);
+      m.tables["dsor.delegations"].tenant = null;
+    });
+    expect(problemsOf(source)).toStrictEqual([
+      "store.json: dsor.delegations is control-read, which needs a company key, and names none",
+    ]);
+  });
+});
+
+// The kind control-written, for DSoR's own records that it reads, and changes
+// through named columns only, such as a slip's status (step 19b's README, decision 3). Found by
+// step 19b's sweep: the kind could allow INSERT under columns, or UPDATE on the whole table, with
+// every test green.
+describe("step 19b's decision 3: the kind control-written", () => {
+  it.each(["INSERT", "UPDATE", "DELETE", "TRUNCATE"])(
+    "step 19b's decision 3: %s on the whole of a control-written table is refused",
+    (privilege) => {
+      const source = mapWith((m) => m.tables["dsor.delegations"].runtime.table.push(privilege));
+      expect(problemsOf(source)).toStrictEqual([
+        `store.json: dsor.delegations lists ${privilege}, which a control-written table does not allow`,
+      ]);
+    },
+  );
+
+  it.each(["INSERT", "DELETE", "REFERENCES"])(
+    "step 19b's decision 3: %s under a control-written table's columns is refused",
+    (privilege) => {
+      const source = mapWith(
+        (m) => (m.tables["dsor.delegations"].runtime.columns[privilege] = ["status"]),
+      );
+      expect(problemsOf(source)).toStrictEqual([
+        `store.json: dsor.delegations lists ${privilege} on columns, which a control-written table does not allow`,
+      ]);
+    },
+  );
+
+  it("step 19b's decision 3: a control-written table lives on DSoR's side", () => {
+    const source = mapWith((m) => {
+      m.tables["app.delegations"] = m.tables["dsor.delegations"];
+      delete m.tables["dsor.delegations"];
+    });
+    expect(problemsOf(source)).toStrictEqual([
+      "store.json: app.delegations is control-written, which lives on DSoR's side, and the schema app is the company's",
+    ]);
+  });
+
+  it("DSOR-RP-01b: a control-written table needs a company key", () => {
+    const source = mapWith((m) => (m.tables["dsor.delegations"].tenant = null));
+    expect(problemsOf(source)).toStrictEqual([
+      "store.json: dsor.delegations is control-written, which needs a company key, and names none",
+    ]);
+  });
+});
+
+// The kind control-claimed, for DSoR's own claims, which it reads, adds through
+// named columns, and finishes once through a named column (step 20's README, decision 12). Each
+// refusal is tested, as step 19b's sweep showed a kind needs.
+describe("step 20's decision 12: the kind control-claimed", () => {
+  it.each(["INSERT", "UPDATE", "DELETE", "TRUNCATE"])(
+    "step 20's decision 12: %s on the whole of a control-claimed table is refused",
+    (privilege) => {
+      const source = mapWith((m) => m.tables["dsor.idempotency"].runtime.table.push(privilege));
+      expect(problemsOf(source)).toStrictEqual([
+        `store.json: dsor.idempotency lists ${privilege}, which a control-claimed table does not allow`,
+      ]);
+    },
+  );
+
+  it.each(["DELETE", "REFERENCES"])(
+    "step 20's decision 12: %s under a control-claimed table's columns is refused",
+    (privilege) => {
+      const source = mapWith(
+        (m) => (m.tables["dsor.idempotency"].runtime.columns[privilege] = ["answer"]),
+      );
+      expect(problemsOf(source)).toStrictEqual([
+        `store.json: dsor.idempotency lists ${privilege} on columns, which a control-claimed table does not allow`,
+      ]);
+    },
+  );
+
+  it("step 20's decision 12: a control-claimed table lives on DSoR's side", () => {
+    const source = mapWith((m) => {
+      m.tables["app.idempotency"] = m.tables["dsor.idempotency"];
+      delete m.tables["dsor.idempotency"];
+    });
+    expect(problemsOf(source)).toStrictEqual([
+      "store.json: app.idempotency is control-claimed, which lives on DSoR's side, and the schema app is the company's",
+    ]);
+  });
+
+  it("DSOR-RP-01b: a control-claimed table needs a company key", () => {
+    const source = mapWith((m) => (m.tables["dsor.idempotency"].tenant = null));
+    expect(problemsOf(source)).toStrictEqual([
+      "store.json: dsor.idempotency is control-claimed, which needs a company key, and names none",
+    ]);
+  });
+});
+
+// Found by the review's sweep. DELETE is never a column privilege, so a kind
+// that let it in under columns would pass every other test.
+describe("the review: business-written lists only INSERT and UPDATE under columns", () => {
+  it("step 17's decision 3: DELETE under a business-written table's columns is refused", () => {
+    const source = mapWith((m) => (m.tables["app.payments"].runtime.columns.DELETE = ["status"]));
+    expect(problemsOf(source)).toStrictEqual([
+      "store.json: app.payments lists DELETE on columns, which a business-written table does not allow",
+    ]);
+  });
+});
