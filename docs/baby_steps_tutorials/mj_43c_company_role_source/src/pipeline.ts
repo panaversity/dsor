@@ -84,6 +84,7 @@ import { clearanceOf, maskRefusal, show } from "./masking.ts";
 import { callerIds, callerOf, checkNamedPrincipals } from "./principals.ts";
 import { NO_PEOPLE, withPeople } from "./people.ts";
 import { NO_COPY } from "./directory-copy.ts";
+import { StaleCopy } from "./company-people.ts";
 import {
   callerMover,
   closeProposal,
@@ -308,8 +309,10 @@ export async function call(
     const login =
       signedIn === undefined || "unavailable" in signedIn
         ? signedIn
-        : await withPeople(signedIn, registry.people).catch(() => ({
-            unavailable: "DSoR's table of people",
+        : await withPeople(signedIn, registry.people).catch((error: unknown) => ({
+            // Changed in step 43c: a copy too old to use says so, never "a table could not be read"
+            //   (the real run of 2026-10-26; step 43c's README, claim C5).
+            unavailable: error instanceof StaleCopy ? error.message : "DSoR's table of people",
           }));
     const { caller, copy, key, named, supersedes } = line(1, () => {
       // The caller's own request id labels every answer, when DSoR can use it (step 05's

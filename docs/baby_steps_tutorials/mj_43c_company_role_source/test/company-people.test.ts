@@ -148,8 +148,12 @@ describe("Step 43c, C5: a copy whose directory has not spoken within two hours i
 
   it("DSOR-IDN-06: a person on the call, with an old copy, is refused as an outage, never as a stranger", async () => {
     const w = await scimWorldOnTuesday(spokeMinutesAgo(121));
+    // Changed by the real run of 2026-10-26: and it says which copy is old, not that a table could not
+    //   be read.
     expect(await as(w, CFO, "invoice.get", INV_1008)).toMatchObject({
       code: "CONNECTOR_UNAVAILABLE",
+      message:
+        "the sign-in service could not be checked now (DSoR has not heard from the directory of org_456 recently enough): try again",
     });
   });
 
