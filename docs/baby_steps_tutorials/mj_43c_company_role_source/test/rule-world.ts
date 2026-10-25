@@ -7,10 +7,16 @@ import { memoryHolds, type MemoryHolds } from "../src/holds.ts";
 import { memoryIntents, type MemoryIntents } from "../src/intents.ts";
 import { memoryOutbox, type MemoryOutbox } from "../src/outbox.ts";
 import {
+  checkRoleSettings,
   readRoleSettings,
   STEP_19_ROLE_SOURCES,
   type RoleSettingsSource,
 } from "../src/authority.ts";
+import { companyPeople, heardFrom, type Heard } from "../src/company-people.ts";
+import { memoryCopy, type DirectoryCopy } from "../src/directory-copy.ts";
+import { checkRoles } from "../src/permissions.ts";
+import { logins } from "../src/principals.ts";
+import { checkRoleMaps, readRoleMaps } from "../src/role-maps.ts";
 import { storyPeople, type PeopleStore } from "../src/people.ts";
 import { memoryBrakes } from "../src/brakes.ts";
 import { memoryClaims } from "../src/claims.ts";
@@ -118,6 +124,9 @@ export type RuleWorld = {
   // Changed in step 43b: and the table of people, which line ① reads, and which a world of the
   //   shipped role-sources.json reads for an absent signer too (step 43b's README, claims C1, C2).
   people: PeopleStore;
+  // NEW IN STEP 43c: and the copy of each company's directory, which a world on role-sources.scim.json
+  //   reads for org_456, and directory.push writes (step 43c's README, claims C3 and C4).
+  copy: DirectoryCopy;
 };
 
 /** A world in memory: the story's slips, del_100 with step 24's limits, and these rules. */
@@ -151,6 +160,9 @@ export function ruleWorld(
   // Changed in step 43b: and each company's role source. Step 19's fake directory, idp_lookup,
   //   which the earlier stories drive, unless a test gives the shipped file, DSoR's own table.
   roleSettings: RoleSettingsSource = readRoleSettings(STEP_19_ROLE_SOURCES),
+  // NEW IN STEP 43c: and the copy of each company's directory, an empty one unless a test gives one,
+  //   and when each directory last spoke: the log's record unless a test gives another (decision D2).
+  directory: { copy?: DirectoryCopy; heard?: Heard } = {},
 ): RuleWorld {
   const clock = { now: T0 };
   const bills = [...structuredClone(invoices), ...structuredClone(BILLS)];
@@ -174,7 +186,25 @@ export function ruleWorld(
   const intents = memoryIntents();
   const holds = memoryHolds();
   const book = memoryLoginBook([]);
-  const people = storyPeople(() => clock.now);
+  // Changed in step 43c: the table of people, and for a company on scim its directory's copy, read
+  //   through its role map (step 43c's README, claim C4).
+  const log = createLog();
+  const copy = directory.copy ?? memoryCopy();
+  const settings = checkRoleSettings(roleSettings, logins.values()).settings;
+  const maps = checkRoleMaps(
+    readRoleMaps(),
+    settings,
+    checkRoles(roles, logins.values()).roles,
+  ).maps;
+  const people = companyPeople(
+    storyPeople(() => clock.now),
+    copy,
+    {
+      settings,
+      maps,
+      heard: directory.heard ?? heardFrom(log),
+    },
+  );
   const rules = memoryControls(controls);
   const given = around(rules);
   const registry = buildRegistry(
@@ -216,7 +246,6 @@ export function ruleWorld(
     undefined,
     people,
   );
-  const log = createLog();
   const ask = (who: RequestEnvelope, name: string, input: unknown): Promise<Answer> =>
     call(registry, log, who, name, input);
   /** The agent, or another caller, drafts a payment of one of org_456's bills, with a fresh key. */
@@ -246,6 +275,7 @@ export function ruleWorld(
     outbox,
     book,
     people,
+    copy,
   };
 }
 

@@ -536,7 +536,9 @@ export function buildRegistry(
 function withTable(settings: RoleSettings, given: Directories, people: PeopleStore): Directories {
   const directories = new Map(given);
   for (const [tenant, setting] of settings) {
-    if (setting.kind === "dsor_assignments")
+    // Changed in step 43c: and where it is the company's own directory's copy, which the same store
+    //   reads (step 43c's README, claim C4).
+    if (setting.kind === "dsor_assignments" || setting.kind === "scim")
       directories.set(tenant, peopleDirectory(tenant, people));
   }
   return directories;

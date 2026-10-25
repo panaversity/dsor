@@ -217,7 +217,9 @@ export function createRoleSource(
       let at: number;
       // Since step 43b: DSoR's own table is never kept from: a table that cannot be read gives no
       //   answer, and nothing older counts (step 43b's README, decision D4).
-      const keeps = setting.kind !== "dsor_assignments";
+      // Changed in step 43c: nor a company's copy of its directory: the copy's age is the people
+      //   store's to check, and a copy too old gives no answer (step 43c's README, claim C5).
+      const keeps = setting.kind === "idp_lookup";
       if (asked.answered) {
         // One copy, read once, and every check and every use reads that copy, as line ①
         // copies the input (step 07's README, decision 9; step 19's README, decision 17).
