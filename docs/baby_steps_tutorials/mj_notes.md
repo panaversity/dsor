@@ -2536,6 +2536,28 @@ each change at once and every object again once an hour, a SCIM mapping can send
   authentik only, never on the agent's doors; and how a test stands in for authentik while the real
   run uses it.
 
+### Step 43c, built (2026-10-26)
+
+- **L7 was asked again** after the real check found authentik's full sync runs every four hours by
+  default; the learner kept PT2H and set authentik hourly.
+- **Built in seven pieces, each red first**, then run for real: authentik 2026.8.5 pushing to `pnpm
+  serve`'s SCIM door, cfo_100 signing in through authentik with no invitation, user_123's
+  deactivation refusing the agent's payment within seconds, and a stopped directory refusing calls
+  after `max_staleness`.
+- **The real run found three gaps the tests had not:** a provider that had pushed elsewhere kept that
+  server's ids, so every push failed and the empty copy still counted as current; the SCIM door left
+  no record of a dead token; an old copy was reported as a table outage. Each fixed red first.
+  Lesson: a claim about freshness must be checked with a directory that fails, not only one that
+  goes quiet.
+- **Earlier steps' rules decided three shapes:** no argument named `user` (step 05), lists of
+  records in answers (step 14), no `SECURITY DEFINER` and no tenant column without row-level security
+  (step 16).
+- **Breaks:** nine, each caught. The learner predicted B1, B3, and B6. B1's question named the person
+  who signed the slip, so separation of duties decided it: a badly asked question, now said so in
+  the README.
+- **Follow-up for step 43 and its copies:** `test/invitations.db.test.ts` reads `DSOR_MIGRATION_URL`
+  from the shell, not `.env`.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.
