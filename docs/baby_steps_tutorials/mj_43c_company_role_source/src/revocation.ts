@@ -33,6 +33,7 @@ import { parseUri } from "./uri.ts";
 import type { PeopleStore } from "./people.ts";
 import { peopleWorkFor } from "./people-commands.ts";
 import { directoryWorkFor } from "./directory-push.ts";
+import { fromItsDirectory } from "./company-people.ts";
 import type { Roles } from "./permissions.ts";
 
 /** What DSoR's own check reads at line ⑨: the company, the caller and the caller's roles there, and the slips, read only. */
@@ -132,12 +133,34 @@ export function ownWorkFor(): Record<string, OwnWork> {
     // And the escalation sweep (step 38b's README, decision D3).
     ...escalationWorkFor(),
     // And the invitations and unlinks of logins (step 43's README, R2 and R7).
-    ...invitationWorkFor(),
+    // Changed in step 43c: for a company on DSoR's own table only (the learner's L10).
+    ...onTableOnly(invitationWorkFor()),
     // Since step 43b: and the commands of people and roles (step 43b's README, C3 to C6).
-    ...peopleWorkFor(),
+    // Changed in step 43c: for a company on DSoR's own table only (the learner's L10).
+    ...onTableOnly(peopleWorkFor()),
     // NEW IN STEP 43c: and directory.push, the push of a company's directory (step 43c's README, C3).
     ...directoryWorkFor(),
   };
+}
+
+/**
+ * NEW IN STEP 43c: the same work, refused at line ⑨ for a company whose people come from its own
+ * directory: one truth per company, and a change made in DSoR would be undone by the next push (the
+ * learner's L10; step 43c's README, claim C7).
+ */
+function onTableOnly(work: Record<string, OwnWork>): Record<string, OwnWork> {
+  return Object.fromEntries(
+    Object.entries(work).map(([name, { check, change }]) => [
+      name,
+      {
+        check: async (input: unknown, look: OwnLook): Promise<void> => {
+          if (look.roleKind === "scim") throw fromItsDirectory(look.tenant);
+          await check(input, look);
+        },
+        change,
+      },
+    ]),
+  );
 }
 
 /** What line ⑨ gives DSoR's own check: the caller's roles in this company only, and stores that can only read. */
