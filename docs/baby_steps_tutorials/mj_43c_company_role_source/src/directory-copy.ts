@@ -116,6 +116,16 @@ export function memoryCopy(): DirectoryCopy {
       const person = input.user_name;
       // An id another company has, or had, is taken; the answer names no company (L5).
       if (users.some((u) => u.person === person && u.tenant !== tenant)) throw taken(person);
+      // Changed by the review of step 43c, finding 1: and an id this company had under another
+      //   externalId is taken too. Slips and approvals name the id, so a new hire under a leaver's
+      //   username would inherit them. Only the same person, by her externalId, comes back.
+      if (
+        users.some(
+          (u) => u.tenant === tenant && u.person === person && u.external_id !== input.external_id,
+        )
+      ) {
+        throw taken(person);
+      }
       if (live(tenant).some((u) => u.person === person || u.external_id === input.external_id)) {
         throw new Refusal("CONFLICT", `${person} is in ${tenant}'s copy already`, "internal");
       }

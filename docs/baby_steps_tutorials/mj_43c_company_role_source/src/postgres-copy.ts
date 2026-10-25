@@ -123,10 +123,13 @@ export function copyThrough(reader: pg.Pool | pg.ClientBase, run: Runner): Direc
           "SELECT pg_advisory_xact_lock(hashtextextended('dsor.people/' || $1, 0))",
           [person],
         );
+        // Changed by the review of step 43c, finding 1: and an id this company had under another
+        //   externalId, so a new hire never inherits a leaver's slips and approvals.
         const elsewhere = await client.query(
-          `SELECT 1 FROM dsor.scim_users WHERE principal_id = $1 AND tenant_id <> $2
+          `SELECT 1 FROM dsor.scim_users WHERE principal_id = $1
+              AND (tenant_id <> $2 OR external_id::text <> $3)
            UNION ALL SELECT 1 FROM dsor.people WHERE principal_id = $1 AND tenant_id <> $2 LIMIT 1`,
-          [person, tenant],
+          [person, tenant, input.external_id],
         );
         if (elsewhere.rowCount !== 0) throw taken(person);
         const here = await client.query(

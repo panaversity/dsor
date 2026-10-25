@@ -60,14 +60,25 @@ describe("Step 43c, C3: the copy keeps each company's users, groups, and members
     expect(await copy.users("org_456", { field: "userName", value: "jane_200" })).toHaveLength(1);
   });
 
-  it("DSOR-IDN-05: a user deleted from org_456 may come back as a new row, with a new externalId", async () => {
+  // Changed by the review of step 43c, finding 1: a new person under a deleted person's id inherited
+  //   her slips and her approvals, which name the id. An id this company had is hers for good.
+  it("DSOR-IDN-07: an id this company had under another externalId is taken: a new hire never inherits a leaver's slips", async () => {
     const copy = memoryCopy();
     const first = await copy.createUser("org_456", JANE);
     await copy.deleteUser("org_456", first.id);
-    const back = await copy.createUser("org_456", {
-      ...JANE,
-      external_id: "fc9b026d-0000-4000-8000-000000000201",
+    await expect(
+      copy.createUser("org_456", { ...JANE, external_id: "fc9b026d-0000-4000-8000-000000000201" }),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      message: "the id jane_200 is taken: choose another",
     });
+  });
+
+  it("DSOR-IDN-05: the same person, by the same externalId, may come back after a delete, as a new row", async () => {
+    const copy = memoryCopy();
+    const first = await copy.createUser("org_456", JANE);
+    await copy.deleteUser("org_456", first.id);
+    const back = await copy.createUser("org_456", JANE);
     expect(back.id).not.toBe(first.id);
     expect(await copy.standing("org_456", "jane_200")).toMatchObject({ status: "active" });
   });

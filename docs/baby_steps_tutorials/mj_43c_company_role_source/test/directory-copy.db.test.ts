@@ -203,6 +203,26 @@ describe("Step 43c, C8: the database's own rules on the copy", () => {
     ).rejects.toThrow("the id cfo_100 is taken");
   });
 
+  it("DSOR-IDN-07: the database refuses an id this company had under another uuid (the review of step 43c, finding 1)", async () => {
+    const p = fresh();
+    const user = dataOf(
+      await push({
+        kind: "user.create",
+        account: { user_name: p.name, external_id: p.uuid, active: true },
+      }),
+    );
+    dataOf(await push({ kind: "user.delete", id: user["id"] }));
+    await expect(
+      tryThenRollBack(
+        pool,
+        `INSERT INTO dsor.scim_users (tenant_id, external_id, principal_id, user_name, active)
+         VALUES ('org_456', $1, $2, $2, true)`,
+        "org_456",
+        [randomUUID(), p.name],
+      ),
+    ).rejects.toThrow(`the id ${p.name} is taken`);
+  });
+
   it.each(["principal_id", "external_id", "tenant_id"])(
     "DSOR-IDN-05: the learner's L5: dsor_runtime may never change a user's %s",
     async (column) => {

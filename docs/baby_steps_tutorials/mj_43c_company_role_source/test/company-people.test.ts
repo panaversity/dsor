@@ -89,6 +89,20 @@ describe("Step 43c, C4: a company on scim is read from its directory's copy", ()
     expect(await del100(w)).toBe("suspended");
   });
 
+  // From the review of step 43c, finding 1: a new user123 under the leaver's id paid under her slip.
+  it("DSOR-IDN-07: user_123 deleted, and a new hire pushed as user_123 with another uuid: refused as taken, and the agent pays nothing under del_100", async () => {
+    const w = await scimWorldOnTuesday(spokeMinutesAgo(30));
+    await w.copy.deleteUser("org_456", (await rowOf(w, "user_123")).id);
+    await expect(
+      w.copy.createUser("org_456", {
+        user_name: "user_123",
+        external_id: "99999999-0000-4000-8000-000000000123",
+        active: true,
+      }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(await w.draft("INV-2002")).toMatchObject({ code: "DELEGATION_REQUIRED" });
+  });
+
   it("DSOR-IDN-01: the learner's L8: user_123, suspended and then active again, is a caller again", async () => {
     const w = await scimWorldOnTuesday(spokeMinutesAgo(30));
     const row = await rowOf(w, "user_123");

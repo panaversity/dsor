@@ -47,8 +47,11 @@ CREATE FUNCTION dsor.scim_user_starts() RETURNS trigger LANGUAGE plpgsql
   SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
   PERFORM pg_advisory_xact_lock(hashtextextended('dsor.people/' || NEW.principal_id, 0));
+  -- Changed by the review of step 43c, finding 1: or this company had it under another uuid. Slips
+  --   and approvals name the id, so a new hire must never inherit a leaver's.
   IF EXISTS (SELECT 1 FROM dsor.scim_users u
-              WHERE u.principal_id = NEW.principal_id AND u.tenant_id <> NEW.tenant_id)
+              WHERE u.principal_id = NEW.principal_id
+                AND (u.tenant_id <> NEW.tenant_id OR u.external_id <> NEW.external_id))
      OR EXISTS (SELECT 1 FROM dsor.people p
                  WHERE p.principal_id = NEW.principal_id AND p.tenant_id <> NEW.tenant_id) THEN
     RAISE EXCEPTION 'the id % is taken', NEW.principal_id USING ERRCODE = 'unique_violation';
