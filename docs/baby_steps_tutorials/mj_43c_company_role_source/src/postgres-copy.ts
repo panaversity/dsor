@@ -325,7 +325,8 @@ export function createDbClients(pool: pg.Pool): DirectoryClients {
 
 /**
  * When DSoR last heard from each company's directory, from the audit, by the database's clock: the age
- * of the latest ALLOW record of the directory's login, and DSoR's time is now less that age, so two
+ * of the latest ALLOW record of the directory's login that succeeded (changed by the real run of
+ * 2026-10-26: a push refused in its work is an ALLOW record too), and DSoR's time is now less that age, so two
  * clocks never disagree about how old the copy is. Read as dsor_runtime, inside a transaction that
  * sets the company, so row-level security shows that company's records only (decision D2).
  */
@@ -347,7 +348,8 @@ async function heardOn(client: pg.ClientBase, tenant: string): Promise<number | 
   const { rows } = await client.query<{ ms: number | null }>(
     `SELECT extract(epoch FROM clock_timestamp() - max(at)) * 1000 AS ms
        FROM dsor.audit
-      WHERE tenant = $1 AND "authorization" = 'ALLOW' AND correlation->>'principal_id' = $2`,
+      WHERE tenant = $1 AND "authorization" = 'ALLOW' AND result = 'ok'
+        AND correlation->>'principal_id' = $2`,
     [tenant, directoryLoginOf(tenant)],
   );
   const ms = rows[0]?.ms;

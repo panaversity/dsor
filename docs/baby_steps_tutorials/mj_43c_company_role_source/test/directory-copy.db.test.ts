@@ -146,6 +146,28 @@ describe("Step 43c, C8: the copy on PostgreSQL, read by line ① through the map
     expect(await heard("org_999")).toBeUndefined();
   });
 
+  // From the real run of 2026-10-26: pushes that all failed kept an empty copy "current".
+  it("DSOR-IDN-06: decision D2: a push refused in its work leaves when DSoR last heard where it was", async () => {
+    const p = fresh();
+    dataOf(
+      await push({
+        kind: "user.create",
+        account: { user_name: p.name, external_id: p.uuid, active: true },
+      }),
+    );
+    const heard = createDbHeard(pool);
+    const before = (await heard("org_456")) as number;
+    expect(
+      await push({
+        kind: "group.create",
+        group: { name: "x", external_id: randomUUID(), members: [randomUUID()] },
+      }),
+    ).toMatchObject({ code: "VALIDATION_FAILED" });
+    const after = (await heard("org_456")) as number;
+    // The same moment, the successful push's, give or take the two clocks' reading.
+    expect(Math.abs(after - before)).toBeLessThan(250);
+  });
+
   it("DSOR-IDN-03a: an id DSoR's table gives a person of org_789 is taken for org_456's directory", async () => {
     expect(
       await push({

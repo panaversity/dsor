@@ -141,6 +141,26 @@ describe("Step 43c, C3: org_456's directory login keeps org_456's copy", () => {
     expect(await w.draft("INV-2002")).toMatchObject({ outcome: "COMMITTED" });
   });
 
+  // From the real run of 2026-10-26: authentik, pointed at a fresh copy, sent pushes that all failed,
+  //   and each was an ALLOW record, so DSoR called the empty copy current.
+  it("DSOR-IDN-06: decision D2: a push refused in its work is no word from the directory: the copy stays as old as it was", async () => {
+    const w = await emptyScimWorld(readRoleSettings(SCIM_ROLE_SOURCES), await storyCopy());
+    const nobody = "00000000-0000-4000-8000-00000000dead";
+    const finance = (
+      await w.copy.groups("org_456", { field: "externalId", value: UUIDS.finance })
+    )[0]!;
+    expect(
+      await push(w, DIRECTORY_456, {
+        change: "group.change",
+        id: finance.id,
+        add: [nobody],
+        remove: [],
+      }),
+    ).toMatchObject({ code: "VALIDATION_FAILED" });
+    expect((await w.log.records()).at(-1)).toMatchObject({ authorization: "ALLOW" });
+    expect(await w.draft("INV-2002")).toMatchObject({ code: "FRESHNESS_UNSATISFIABLE" });
+  });
+
   it("DSOR-IDN-03a: decision D4: a search by org_456's directory shows org_456's copy only", async () => {
     const both = await emptyScimWorld(BOTH);
     await push(both, DIRECTORY_789, {

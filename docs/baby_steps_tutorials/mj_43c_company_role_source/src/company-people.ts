@@ -29,7 +29,7 @@ export function directoryLoginOf(tenant: string): string {
 
 /**
  * When DSoR last heard from each company's directory, as its log says: the time of the latest ALLOW
- * record of that directory's login in that company. The program's log is the database's audit, and
+ * record of that directory's login in that company that succeeded. The program's log is the database's audit, and
  * reads it there (postgres.ts); this is the same question, of records in memory (decision D2).
  */
 export function heardFrom(log: { records: () => Promise<DecisionRecord[]> }): Heard {
@@ -37,9 +37,12 @@ export function heardFrom(log: { records: () => Promise<DecisionRecord[]> }): He
     const login = directoryLoginOf(tenant);
     const times = (await log.records())
       .filter(
+        // Changed by the real run of 2026-10-26: and that succeeded. A push refused in its work is
+        //   an ALLOW record too, and a directory whose every push failed kept an empty copy "current".
         (r) =>
           r.tenant === tenant &&
           r.authorization === "ALLOW" &&
+          r.result === "ok" &&
           r.correlation.principal_id === login,
       )
       .map((r) => Date.parse(r.at));
