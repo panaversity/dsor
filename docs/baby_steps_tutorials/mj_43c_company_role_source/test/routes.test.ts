@@ -12,8 +12,12 @@ describe("C2: the routes, checked against the contracts", () => {
     // Changed in step 43: login.invite and login.unlink, DSoR's own commands (step 43's README, revisions R2 and R7): POST /invitations and POST /logins/unlink.
     // Changed in step 43b: the five commands of people and roles (step 43b's README, claims C3 to C6).
     expect(ROUTES).toHaveLength(25);
+    // Changed in step 43c: and the two of a company's directory, which only the SCIM door reaches
+    //   (step 43c's README, decision D7).
     expect([...INSIDE].sort()).toStrictEqual([
       "alert.escalate_due",
+      "directory.push",
+      "directory.read",
       "proposal.expire_due",
       "rate.load",
       "rule.check_authority",

@@ -204,6 +204,8 @@ export const STARTING_ROLES: Record<string, string[]> = {
   // Changed in step 38b: and alert:escalate (step 38b's README, decision D3).
   scheduler: ["proposal:expire", "rule:check", "payment:reconcile", "alert:escalate"],
   rate_loader: ["rate:load"],
+  // Changed in step 43c: and each company's directory login's one role (step 43c's README, D1).
+  directory_sync: ["directory:push", "directory:read"],
 };
 
 /** A role table as a file would hold it. */

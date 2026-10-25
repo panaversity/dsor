@@ -156,6 +156,9 @@ export type Registry = {
   // NEW IN STEP 43c: each company's role map, for a company on its own directory: which group gives
   //   which role (step 43c's README, claim C1).
   roleMaps: RoleMaps;
+  // NEW IN STEP 43c: and each company's role source setting, so DSoR's own commands know which
+  //   companies are on their own directory (the learner's L10).
+  roleSettings: RoleSettings;
 };
 
 // The specification's own schemas, copied byte for byte (step 03's README, decision 3).
@@ -529,6 +532,7 @@ export function buildRegistry(
     logins: loginSource,
     people,
     roleMaps,
+    roleSettings: settings,
   };
 }
 

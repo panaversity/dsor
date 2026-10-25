@@ -65,6 +65,29 @@ export type DirectoryCopy = {
   tenantsOf: (person: string) => Promise<string[]>;
 };
 
+/** No copy: nobody was ever pushed, and nothing can be. A query's stores, and a dry run's, hold this. */
+export const NO_COPY: DirectoryCopy = Object.freeze({
+  createUser: async (): Promise<never> => {
+    throw new Error("this call keeps no copy of a directory");
+  },
+  replaceUser: async () => undefined,
+  deleteUser: async () => false,
+  createGroup: async (): Promise<never> => {
+    throw new Error("this call keeps no copy of a directory");
+  },
+  replaceGroup: async () => undefined,
+  changeGroup: async () => undefined,
+  deleteGroup: async () => false,
+  users: async () => [],
+  user: async () => undefined,
+  groups: async () => [],
+  group: async () => undefined,
+  standing: async () => undefined,
+  personOf: async () => undefined,
+  companiesOf: async () => [],
+  tenantsOf: async () => [],
+});
+
 type Row = CopyUser & { tenant: string; deleted: boolean };
 type GroupRow = CopyGroup & { tenant: string };
 

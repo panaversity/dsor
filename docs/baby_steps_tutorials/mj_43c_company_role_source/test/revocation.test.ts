@@ -738,7 +738,8 @@ describe("from step 25's review", () => {
     const without = Object.keys(shipped).filter(
       (role) => !shipped[role]!.includes("delegation:revoke"),
     );
-    expect(without).toStrictEqual(["scheduler", "rate_loader"]);
+    // Changed in step 43c: and directory_sync, the directory logins' (step 43c's README, D1).
+    expect(without).toStrictEqual(["scheduler", "rate_loader", "directory_sync"]);
     const people = [...logins.values()].filter((login) => login.type === "human");
     const theirs = people.flatMap((person) => person.memberships.flatMap((m) => m.roles));
     expect(theirs).not.toContain("scheduler");

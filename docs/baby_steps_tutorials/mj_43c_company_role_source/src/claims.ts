@@ -30,6 +30,7 @@ import { NO_RATES, type RateStore } from "./rates.ts";
 import { NO_CONTROLS, type ControlStore } from "./rulebook.ts";
 import { NO_SLIPS, type SlipStore } from "./slips.ts";
 import { NO_BOOK, type LoginBook } from "./logins.ts";
+import { memoryCopy, type DirectoryCopy } from "./directory-copy.ts";
 import { storyPeople, type PeopleStore } from "./people.ts";
 
 /**
@@ -83,6 +84,9 @@ export type WorkStores = {
   // Since step 43b: and the table of people, so person.add, person.remove, and the role commands
   //   write in the claim's transaction, with their record (step 43b's README, claims C3 to C6).
   people: PeopleStore;
+  // NEW IN STEP 43c: and the copy of each company's directory, so directory.push writes in the
+  //   claim's transaction, with its record (step 43c's README, claim C3).
+  copy: DirectoryCopy;
   // And the claim's transaction itself, so the record commits with the work.
   transaction?: ClaimTransaction;
   // And a part of the work that a refusal undoes alone, while the claim keeps the
@@ -145,6 +149,9 @@ export type ClaimStore = {
   //   given another. One table, so a change one command makes is what line ① reads next. Found by
   //   the code review of step 43b, finding 1: each made its own copy of the story's people.
   people: PeopleStore;
+  // NEW IN STEP 43c: and the copy of each company's directory, which the people store reads for a
+  //   company on scim, and which DSoR's own read of it reads outside any claim.
+  copy: DirectoryCopy;
   /**
    * Claims the key and runs the work, or gives back the outcome recorded for the same request,
    * or refuses a different request with IDEMPOTENCY_CONFLICT.
@@ -346,6 +353,9 @@ export function memoryClaims(
   //   that changes people gives the registry and the claims one table, so a change is what line ①
   //   reads next; a world that only reads, such as pnpm start's, has the story's people in both.
   people: PeopleStore = storyPeople(),
+  // NEW IN STEP 43c: and this copy of each company's directory, an empty one unless the caller gives
+  //   one. A world on scim gives the registry's people store and the claims one copy.
+  copy: DirectoryCopy = memoryCopy(),
 ): ClaimStore {
   // Each claim by its scope, written as one text.
   const claims = new Map<string, MemoryClaim>();
@@ -504,6 +514,7 @@ export function memoryClaims(
         outbox,
         logins,
         people,
+        copy,
         // Memory has no transaction to commit, and keeps the note as it is written. From here
         //   on the claim is kept, as the database's is once its checkpoint commits.
         checkpoint: async () => {
@@ -651,7 +662,7 @@ export function memoryClaims(
     if (held.supersedes !== supersedes) throw usedToReplaceAnother(scope.operation);
     return { ...fresh(ended), replay_of: held.requestId };
   };
-  return Object.freeze({ run, reservations, rates, proposals, intents, holds, people });
+  return Object.freeze({ run, reservations, rates, proposals, intents, holds, people, copy });
 }
 
 // The outcome, with a copy of its value, so no caller can change what the claim keeps.

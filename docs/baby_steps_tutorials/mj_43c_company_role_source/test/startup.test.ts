@@ -57,13 +57,16 @@ describe("reading the contracts folder", () => {
   // Changed in step 41: twenty-two, with payment.run (step 41's README, claim C1).
   // Changed in step 43: login.invite and login.unlink, DSoR's own commands (step 43's README, revisions R2 and R7): twenty-four.
   // Changed in step 43b: the five commands of people and roles (step 43b's README, claims C3 to C6): twenty-nine.
-  it("the shipped folder holds the twenty-nine contracts", () => {
+  // Changed in step 43c: directory.push and directory.read (step 43c's README, claim C3): thirty-one.
+  it("the shipped folder holds the thirty-one contracts", () => {
     expect(shipped.map((s) => s.file)).toEqual([
       "alert.escalate_due.json",
       "alert.list.json",
       "control.lift.json",
       "control.suspend.json",
       "delegation.revoke.json",
+      "directory.push.json",
+      "directory.read.json",
       "invoice.get.json",
       "invoice.issue.json",
       "invoice.list.json",

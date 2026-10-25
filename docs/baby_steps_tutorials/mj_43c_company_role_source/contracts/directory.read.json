@@ -1,0 +1,29 @@
+{
+  "id": "directory.read",
+  "version": 1,
+  "kind": "query",
+  "effect": "read",
+  "input": {
+    "schema": "DirectoryReadRequest"
+  },
+  "output": {
+    "schema": "DirectoryPage"
+  },
+  "authorization": {
+    "permission": "directory:read"
+  },
+  "tenancy": {
+    "required": true
+  },
+  "risk": {
+    "level": "low"
+  },
+  "audit": {
+    "level": "standard"
+  },
+  "extensions": {
+    "org.panaversity.steps": {
+      "system_only": true
+    }
+  }
+}

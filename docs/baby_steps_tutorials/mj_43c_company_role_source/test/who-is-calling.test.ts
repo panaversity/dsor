@@ -137,7 +137,8 @@ describe("C3: every principal has a type and at least one tenant membership", ()
     // Seven, with dsor-scheduler, of type system (step 25c's README, decision D1).
     // Eight, with dsor-rates, of type system too (step 26's README, decision D1).
     // Nine, with admin_700, org_789's tenant administrator (step 28's README, decision D19).
-    expect(principals).toHaveLength(9);
+    // Eleven, with directory-org_456 and directory-org_789, of type system (step 43c's README, D1).
+    expect(principals).toHaveLength(11);
     for (const principal of principals) {
       expect(["human", "agent", "application", "system"]).toContain(principal.type);
       expect(principal.memberships.length).toBeGreaterThan(0);
@@ -221,6 +222,17 @@ describe("C3: every principal has a type and at least one tenant membership", ()
           { tenant_id: "org_456", roles: ["rate_loader"] },
           { tenant_id: "org_789", roles: ["rate_loader"] },
         ],
+      },
+      // Changed in step 43c: each company's directory login, one role in one company (D1).
+      tok_5c1a: {
+        id: "directory-org_456",
+        type: "system",
+        memberships: [{ tenant_id: "org_456", roles: ["directory_sync"] }],
+      },
+      tok_5c7b: {
+        id: "directory-org_789",
+        type: "system",
+        memberships: [{ tenant_id: "org_789", roles: ["directory_sync"] }],
       },
     });
   });

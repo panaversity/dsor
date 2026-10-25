@@ -3,6 +3,7 @@
 // specs/dsor/03-execution.md, section 30). The invoices are the table app.invoices.
 import type { Alert } from "./alerts.ts";
 import type { HoldStore, KeptHold } from "./holds.ts";
+import { NO_COPY } from "./directory-copy.ts";
 import { outboxIn } from "./outbox.ts";
 import {
   unknownFromNote,
@@ -1112,6 +1113,8 @@ export function createDbClaims(
   controls: ControlStore | "database" = NO_CONTROLS,
 ): ClaimStore {
   return Object.freeze({
+    // NEW IN STEP 43c: no copy of a directory yet on PostgreSQL (claim C8).
+    copy: NO_COPY,
     // The reservations, each piece in a transaction of its own, for a dry run.
     reservations: createDbReservations(pool),
     // And the sheets of rates, for a dry run's line ⑩ (step 26's README, claim C3).
@@ -1303,6 +1306,9 @@ function storesIn(
 ): WorkStores {
   const run = inClaim(client, tenant);
   return {
+    // NEW IN STEP 43c: no copy of a directory yet on PostgreSQL; migration 050 brings it (step 43c's
+    //   README, claim C8).
+    copy: NO_COPY,
     invoices: invoicesThrough(run),
     payments: paymentsThrough(run),
     proposals: proposalsThrough(run),

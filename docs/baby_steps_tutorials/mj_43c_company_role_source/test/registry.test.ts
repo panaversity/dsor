@@ -162,6 +162,7 @@ describe("C1: nothing can be called without a contract", () => {
       people: storyPeople(),
       // Changed in step 43c: and no role map: no company is on its own directory.
       roleMaps: new Map(),
+      roleSettings: new Map(),
     };
     // The refusal is an envelope, not a throw.
     expect(await call(handMade, log, AGENT, "invoice.delete", {})).toMatchObject({
@@ -257,7 +258,8 @@ describe("C7: a loaded contract is exactly what was written", () => {
     // Changed in step 41: and payment.run (step 41's README, claim C1).
     // Changed in step 43: login.invite and login.unlink, DSoR's own commands (step 43's README, revisions R2 and R7).
     // Changed in step 43b: the five commands of people and roles (step 43b's README, claims C3 to C6).
-    expect(shipped).toHaveLength(29);
+    // Changed in step 43c: directory.push and directory.read (step 43c's README, claim C3).
+    expect(shipped).toHaveLength(31);
     for (const s of shipped) {
       const written = JSON.parse(s.text) as { id: string };
       expect(registry.contracts.get(written.id)).toStrictEqual(written);

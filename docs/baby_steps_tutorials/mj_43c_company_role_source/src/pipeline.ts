@@ -83,6 +83,7 @@ import { checkPermission, effectivePermissions, permissionsOf } from "./permissi
 import { clearanceOf, maskRefusal, show } from "./masking.ts";
 import { callerIds, callerOf, checkNamedPrincipals } from "./principals.ts";
 import { NO_PEOPLE, withPeople } from "./people.ts";
+import { NO_COPY } from "./directory-copy.ts";
 import {
   callerMover,
   closeProposal,
@@ -720,6 +721,8 @@ export async function call(
               permissionsOf(caller, registry.roles, tenant),
               registry.people,
               registry.roles,
+              // NEW IN STEP 43c: and the kind of the company's role source.
+              registry.roleSettings.get(tenant)?.kind,
             ),
           );
         // Line ⑩ reads what DSoR read, never the count: the company's rules and the limits judge
@@ -1397,6 +1400,8 @@ export async function call(
             // Since step 43b: and the table of people, which a dry run only reads: the approvers
             //   and the asker of the release it checks.
             people: registry.people,
+            // NEW IN STEP 43c: and no copy to write: a dry run of a release pushes nothing.
+            copy: NO_COPY,
             invoices: registry.invoices,
             reservations: registry.claims.reservations,
             slips: registry.delegations,
@@ -1540,6 +1545,8 @@ export async function call(
                 caller,
                 registry.alerts.get(tenant),
                 reads,
+                // NEW IN STEP 43c: and the copy of each company's directory.
+                registry.claims.copy,
               );
         if (ownRead !== undefined && look !== undefined) await ownRead.check(job.input, look);
         allowed = true;
@@ -2037,6 +2044,8 @@ export async function call(
           logins: NO_BOOK,
           // Since step 43b: and no table of people to write: a query changes nobody.
           people: NO_PEOPLE,
+          // NEW IN STEP 43c: and no copy to write: a query pushes nothing.
+          copy: NO_COPY,
           invoices: registry.invoices,
           payments: registry.payments,
           proposals: NO_PROPOSALS,

@@ -148,5 +148,33 @@
     "person": "internal",
     "role": "internal",
     "ended": "internal"
+  },
+  "DirectoryPushed": {
+    "kind": "internal",
+    "id": "internal",
+    "external_id": "internal",
+    "person": "internal",
+    "user_name": "internal",
+    "display_name": "internal",
+    "active": "internal",
+    "name": "internal",
+    "members": "DirectoryMember[]",
+    "deleted": "internal"
+  },
+  "DirectoryPage": {
+    "kind": "internal",
+    "id": "internal",
+    "external_id": "internal",
+    "person": "internal",
+    "user_name": "internal",
+    "display_name": "internal",
+    "active": "internal",
+    "name": "internal",
+    "members": "DirectoryMember[]",
+    "deleted": "internal",
+    "items": "DirectoryPushed[]"
+  },
+  "DirectoryMember": {
+    "id": "internal"
   }
 }

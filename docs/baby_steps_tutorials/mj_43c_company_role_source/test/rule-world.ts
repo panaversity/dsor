@@ -16,7 +16,7 @@ import { companyPeople, heardFrom, type Heard } from "../src/company-people.ts";
 import { memoryCopy, type DirectoryCopy } from "../src/directory-copy.ts";
 import { checkRoles } from "../src/permissions.ts";
 import { logins } from "../src/principals.ts";
-import { checkRoleMaps, readRoleMaps } from "../src/role-maps.ts";
+import { checkRoleMaps, readRoleMaps, type RoleMapsSource } from "../src/role-maps.ts";
 import { storyPeople, type PeopleStore } from "../src/people.ts";
 import { memoryBrakes } from "../src/brakes.ts";
 import { memoryClaims } from "../src/claims.ts";
@@ -162,7 +162,7 @@ export function ruleWorld(
   roleSettings: RoleSettingsSource = readRoleSettings(STEP_19_ROLE_SOURCES),
   // NEW IN STEP 43c: and the copy of each company's directory, an empty one unless a test gives one,
   //   and when each directory last spoke: the log's record unless a test gives another (decision D2).
-  directory: { copy?: DirectoryCopy; heard?: Heard } = {},
+  directory: { copy?: DirectoryCopy; heard?: Heard; maps?: RoleMapsSource } = {},
 ): RuleWorld {
   const clock = { now: T0 };
   const bills = [...structuredClone(invoices), ...structuredClone(BILLS)];
@@ -191,11 +191,8 @@ export function ruleWorld(
   const log = createLog();
   const copy = directory.copy ?? memoryCopy();
   const settings = checkRoleSettings(roleSettings, logins.values()).settings;
-  const maps = checkRoleMaps(
-    readRoleMaps(),
-    settings,
-    checkRoles(roles, logins.values()).roles,
-  ).maps;
+  const mapSource = directory.maps ?? readRoleMaps();
+  const maps = checkRoleMaps(mapSource, settings, checkRoles(roles, logins.values()).roles).maps;
   const people = companyPeople(
     storyPeople(() => clock.now),
     copy,
@@ -232,6 +229,8 @@ export function ruleWorld(
       outbox,
       book,
       people,
+      // Changed in step 43c: and the copy the people store reads, so a push is what line ① reads next.
+      copy,
     ),
     ownWorkFor(),
     brakes,
@@ -245,6 +244,7 @@ export function ruleWorld(
     undefined,
     undefined,
     people,
+    mapSource,
   );
   const ask = (who: RequestEnvelope, name: string, input: unknown): Promise<Answer> =>
     call(registry, log, who, name, input);

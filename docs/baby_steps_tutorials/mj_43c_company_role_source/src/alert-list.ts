@@ -11,6 +11,14 @@ import { pageOf, pageSize } from "./pages.ts";
 import type { Principal } from "./principals.ts";
 import type { Proposal, ProposalStore } from "./proposals.ts";
 import type { Contract } from "./registry.ts";
+import {
+  memoryCopy,
+  type CopyGroup,
+  type CopyUser,
+  type DirectoryCopy,
+  type Filter,
+} from "./directory-copy.ts";
+import { directoryReadsFor } from "./directory-push.ts";
 
 /** DSoR's own store, read only and bound to one company, for a query of DSoR's own. */
 export type OwnReadLook = {
@@ -27,6 +35,14 @@ export type OwnReadLook = {
     count: number,
   ) => Promise<Alert[]>;
   proposal: (id: string) => Promise<Proposal | undefined>;
+  // NEW IN STEP 43c: and the company's copy of its directory, bound to this company: users and groups,
+  //   one by its id, all, or a search (step 43c's README, claim C3, decision D4).
+  copy: {
+    users: (filter?: Filter) => Promise<CopyUser[]>;
+    user: (id: string) => Promise<CopyUser | undefined>;
+    groups: (filter?: Filter) => Promise<CopyGroup[]>;
+    group: (id: string) => Promise<CopyGroup | undefined>;
+  };
 };
 
 /**
@@ -53,6 +69,8 @@ export function ownReadOf(
   caller: Principal,
   alerting: Alerting | undefined,
   reads: Reads,
+  // NEW IN STEP 43c: and the copy of each company's directory, of which the look reads this one's.
+  copy: DirectoryCopy = memoryCopy(),
 ): OwnReadLook {
   const open = (): void => {
     if (reads.closed) throw new Error("this call has ended, so DSoR's store reads nothing more");
@@ -62,6 +80,15 @@ export function ownReadOf(
     reads.labels.push(checkedLabel({ mode: "current", observed_at, connector: OWN_STORE }));
   };
   const roles = caller.memberships.find((m) => m.tenant_id === tenant)?.roles ?? [];
+  // One read of this company's copy, noted as the others are.
+  const noted = async <T>(read: () => Promise<T>): Promise<T> => {
+    open();
+    const observed_at = new Date().toISOString();
+    const found = await read();
+    open();
+    note(observed_at);
+    return found;
+  };
   return Object.freeze({
     tenant,
     caller,
@@ -82,6 +109,12 @@ export function ownReadOf(
       open();
       note(observed_at);
       return found;
+    },
+    copy: {
+      users: (filter) => noted(() => copy.users(tenant, filter)),
+      user: (id) => noted(() => copy.user(tenant, id)),
+      groups: (filter) => noted(() => copy.groups(tenant, filter)),
+      group: (id) => noted(() => copy.group(tenant, id)),
     },
   });
 }
@@ -147,7 +180,8 @@ async function listAlerts(input: unknown, look: OwnReadLook): Promise<unknown> {
 
 /** DSoR's own reads: alert.list. */
 export function ownReadsFor(): Record<string, OwnRead> {
-  return { "alert.list": { check: mayList, read: listAlerts } };
+  // NEW IN STEP 43c: and directory.read (step 43c's README, claim C3).
+  return { "alert.list": { check: mayList, read: listAlerts }, ...directoryReadsFor() };
 }
 
 /** Every problem with DSoR's own reads: a read with no contract, with company code, or a command. */

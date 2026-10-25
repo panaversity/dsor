@@ -125,6 +125,25 @@ export const logins: ReadonlyMap<string, Principal> = new Map([
       ],
     },
   ],
+  // NEW IN STEP 43c: each company's directory, which pushes that company's copy and nothing else: one
+  //   role, in one company. Its tokens here are for the tests, as every token in this table is; the
+  //   SCIM door takes only the token the owner made, kept as a hash (step 43c's README, D1 and D3).
+  [
+    "tok_5c1a",
+    {
+      id: "directory-org_456",
+      type: "system",
+      memberships: [{ tenant_id: "org_456", roles: ["directory_sync"] }],
+    },
+  ],
+  [
+    "tok_5c7b",
+    {
+      id: "directory-org_789",
+      type: "system",
+      memberships: [{ tenant_id: "org_789", roles: ["directory_sync"] }],
+    },
+  ],
 ]);
 
 // The person who signed a slip, found by name in DSoR's own table (step

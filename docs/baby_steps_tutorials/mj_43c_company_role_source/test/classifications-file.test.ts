@@ -100,6 +100,36 @@ const LABELS = {
     expires_at: "internal",
   },
   RoleRevoked: { person: "internal", role: "internal", ended: "internal" },
+  // Changed in step 43c: a row of a company's copy of its directory, a page of them, and a member,
+  //   each a record, as every list in an answer is (step 43c's README, claim C3).
+  DirectoryPushed: {
+    kind: "internal",
+    id: "internal",
+    external_id: "internal",
+    person: "internal",
+    user_name: "internal",
+    display_name: "internal",
+    active: "internal",
+    name: "internal",
+    members: "DirectoryMember[]",
+    deleted: "internal",
+  },
+  DirectoryPage: {
+    ...{
+      kind: "internal",
+      id: "internal",
+      external_id: "internal",
+      person: "internal",
+      user_name: "internal",
+      display_name: "internal",
+      active: "internal",
+      name: "internal",
+      members: "DirectoryMember[]",
+      deleted: "internal",
+    },
+    items: "DirectoryPushed[]",
+  },
+  DirectoryMember: { id: "internal" },
   ProposalExpiry: { tenant_id: "internal", expired: "internal" },
   // The sheet that rate.load wrote, and how many currencies it holds (step 26's
   // README, decision L2).

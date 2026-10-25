@@ -56,11 +56,15 @@ export const ROUTES: readonly Route[] = [
 
 // The four operations only DSoR's own system logins call. They stay inside the program, run by
 //   dsor-scheduler and dsor-rates, and get no route (decision D1).
+// Changed in step 43c: and the two of a company's directory, which the SCIM door reaches, never this
+//   door, so the agent has no route to them (step 43c's README, decision D7).
 export const INSIDE: readonly string[] = [
   "proposal.expire_due",
   "alert.escalate_due",
   "rule.check_authority",
   "rate.load",
+  "directory.push",
+  "directory.read",
 ];
 
 /**

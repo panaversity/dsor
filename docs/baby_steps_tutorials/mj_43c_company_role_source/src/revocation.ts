@@ -32,6 +32,7 @@ import type { Slip, SlipStore } from "./slips.ts";
 import { parseUri } from "./uri.ts";
 import type { PeopleStore } from "./people.ts";
 import { peopleWorkFor } from "./people-commands.ts";
+import { directoryWorkFor } from "./directory-push.ts";
 import type { Roles } from "./permissions.ts";
 
 /** What DSoR's own check reads at line ⑨: the company, the caller and the caller's roles there, and the slips, read only. */
@@ -68,6 +69,10 @@ export type OwnLook = {
   //   change people and roles (step 43b's README, claims C3 to C6).
   people: Pick<PeopleStore, "memberOf" | "companiesOf" | "grantOf">;
   roleTable: Roles;
+  // NEW IN STEP 43c: and the kind of the company's role source, so a push into a company on DSoR's
+  //   own table is refused, and step 43b's commands into a company on its directory (the learner's
+  //   L10).
+  roleKind: string | undefined;
 };
 
 /** What DSoR's own change gets after line ⑩: the company, the caller, DSoR's stores, and the call. */
@@ -130,6 +135,8 @@ export function ownWorkFor(): Record<string, OwnWork> {
     ...invitationWorkFor(),
     // Since step 43b: and the commands of people and roles (step 43b's README, C3 to C6).
     ...peopleWorkFor(),
+    // NEW IN STEP 43c: and directory.push, the push of a company's directory (step 43c's README, C3).
+    ...directoryWorkFor(),
   };
 }
 
@@ -158,6 +165,8 @@ export function lookFor(
   // Since step 43b: and the table of people, read only too, and the role table.
   people: PeopleStore,
   roleTable: Roles,
+  // NEW IN STEP 43c: and the kind of the company's role source.
+  roleKind?: string,
 ): OwnLook {
   // The roles of this company only: a tenant administrator of org_789 is no tenant
   // administrator in org_456.
@@ -189,6 +198,7 @@ export function lookFor(
       grantOf: (company, grant) => people.grantOf(company, grant),
     },
     roleTable,
+    roleKind,
   };
 }
 
