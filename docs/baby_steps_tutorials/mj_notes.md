@@ -3008,6 +3008,84 @@ first.
 - **Where each answer lands:** R1 and R2 in step 44's token checks; R3 and R5 in step 45's lookup;
   R4 in the SSO, already built; R6 in step 49.
 
+### Step 44's claims, tests, and breaks (2026-10-27)
+
+Not built: the design before any code. It becomes the step's README section "The design, before
+any code" when the folder is made. Rules: DSOR-RP-02b is new; DSOR-IDN-01, DSOR-IDN-04a,
+DSOR-IDN-04b, and DSOR-EXE-02 are met again, the new way. The rest are this tutorial's decisions,
+named by their answer (44-1 to 44-10, Q2, R1, R2).
+
+**The claims:**
+
+- **C1. A person's call counts only with a token made for DSoR** (DSOR-IDN-01, DSOR-RP-02b). All
+  of these hold at once: signed with an allowed algorithm (RS256 for the Panaversity SSO) by a key
+  that the trusted issuer publishes; `iss` exactly the trusted issuer; `aud` names DSoR's address,
+  and any other audience is the SSO's own userinfo address (44-9); `scope` includes `dsor` (R2);
+  the client, from `client_id` or `azp` and the same in both when both are present, is on DSoR's
+  list (R1, R2); `sub` and `iat` present; not expired; `iat` at most one hour ago (Q2); five seconds
+  of clock slack (44-1).
+- **C2. Every refused token hears one answer** (DSOR-IDN-01, DSOR-EXE-02):
+  `AUTHENTICATION_REQUIRED` at line ①, before any company's code runs, with the decision and its
+  reason recorded before the answer (44-1, 44-10).
+- **C3. A person's companies and roles come only from step 42's table, read by the token's `sub`**
+  (DSOR-IDN-04a, DSOR-IDN-04b; 44-4, 44-5). A role or company claim in the token is never read. A
+  good token whose `sub` is nobody in the table hears `AUTHENTICATION_REQUIRED` (44-10).
+- **C4. In `pnpm serve`, a person's step-42 key is refused, and an agent's key still works** (44-6,
+  44-7). The two are told apart by form. `pnpm start` and the earlier tests keep the fake table.
+- **C5. Start-up refuses settings that trust too much** (44-1, 44-2, Q2): `none` or a shared-secret
+  algorithm, an age over one hour, no audience, no `dsor` scope, an empty client list, or an issuer
+  that is not an absolute address.
+- **C6. Keys that cannot be fetched are an outage, not a bad token** (44-1):
+  `CONNECTOR_UNAVAILABLE`, retry `safe_same_key`, recorded with the cause, never "log in first". A
+  token whose key the issuer does not publish is still a bad token.
+
+**The tests, by claim** (titles start with the rule id or the answer; the tests sign tokens with a
+test-only key, 44-8):
+
+| Claim | Tests |
+| --- | --- |
+| C1 | `DSOR-IDN-01`: cfo_100's token from the trusted SSO, made for DSoR, with `dsor` and a listed client, makes cfo_100 the caller, a person, who reads INV-1008 whole. `DSOR-RP-02b`: a token made for DSoR's test copy at `http://127.0.0.1:8043`, every other check passing, is refused; one whose `aud` lists DSoR and the class app is refused; one whose `aud` lists DSoR and the SSO's userinfo address counts. `R2`: no `dsor` scope, every other check passing, is refused; a client not on DSoR's list is refused. `R1`: `azp` alone counts; `client_id` alone counts; both and equal count; both and different are refused; neither is refused. `Q2`: 59 minutes after `iat` counts; 61 minutes is refused, though `exp` is days away. Carried from step 43: another key, another issuer (a trailing slash), HS256 signed with the public key, `none`, ES256 when only RS256 is allowed, no `sub`, no `iat` or one in the future, expired 10 seconds (refused) and 3 seconds (counts), and a key that stops being published |
+| C2 | `DSOR-IDN-01`: a refused token never reaches the company's code, and line ① refuses it. `DSOR-EXE-02`: the refusal is recorded, with its reason, before the answer. `DSOR-IDN-01`: every kind of bad token hears the same `AUTHENTICATION_REQUIRED` |
+| C3 | `DSOR-IDN-04b`: user_700's token claims `tenant_id` org_456 and `org_role` CFO; DSoR reads neither, and user_700 is refused in org_456. `DSOR-IDN-04a`: user_123's roles come from the table by `sub`: ap_supervisor in org_456. `44-10`: a good token for user_555, a student nobody listed, hears `AUTHENTICATION_REQUIRED`, and the log says why |
+| C4 | `44-6`: in `pnpm serve`'s world, `tok_d4e8` is refused at line ①, and the agent's `tok_7f3a` still works. `44-6`: `pnpm start`'s world keeps step 42's table, where `tok_d4e8` is cfo_100. `44-7`: a three-part string that is not a valid token is refused and never looked up as a key; a key no agent holds is refused |
+| C5 | `44-2`: the shipped settings pass and name the local SSO. Start-up refuses `none`, HS256, an age over one hour, a missing audience, a missing `dsor` scope, an empty client list, and an issuer that is not an absolute address |
+| C6 | `44-1`: the issuer's keys cannot be fetched: `CONNECTOR_UNAVAILABLE`, retry `safe_same_key`, recorded with the cause. `44-1`: a token whose key the issuer does not publish is still a bad token, not an outage |
+
+The real run: `pnpm serve` against the SSO branch on `127.0.0.1:3011`, with the story's ids seeded.
+cfo_100's token from DSoR's listed client counts; another client's token for DSoR's audience is
+refused; `tok_d4e8` is refused.
+
+**The breaks** (each made for real at build time, in a copy, and its output put in the README; the
+learner's prediction is recorded first):
+
+- **B1. The audience check is deleted.** DSoR's test copy at `http://127.0.0.1:8043` trusts the
+  same SSO, with the same client and the `dsor` scope. A token made for the test copy reaches the
+  real DSoR at `8042`. *The learner's prediction:* accepted as cfo_100, with an ALLOW recorded.
+- **B2. The `dsor` scope check is deleted.** DSoR's own sign-in app forgets to ask for `dsor`, so
+  the SSO gives cfo_100 a token that lives 14 days. It reaches DSoR 90 minutes after its `iat`.
+  *The learner's prediction:* accepted.
+- **B3. The client-list check is deleted.** An SSO administrator registers a new "reports" client
+  with the `dsor` scope, without DSoR's say. cfo_100 signs in to it, and its token for DSoR's
+  audience asks DSoR to approve PAY-901. *The learner's prediction:* the approval counts, and the
+  record names cfo_100 as approver.
+- **B4. Roles are read from the token.** user_700, ap_supervisor in org_789, holds a token whose
+  claims say `tenant_id` org_456 and `org_role` CFO. It asks DSoR to approve PAY-901 in org_456.
+  *The learner's prediction:* the approval counts, as a CFO's.
+- **B5. People's step-42 keys work again in `pnpm serve`.** `tok_d4e8` is found in a log file, and
+  someone sends it to `pnpm serve` to approve PAY-901. *The learner's prediction:* the approval
+  counts as cfo_100's.
+- **B6. The one-hour age check is deleted,** and the SSO's setting has changed so `dsor` tokens live
+  14 days. A token stolen three hours ago reaches DSoR. *The learner's prediction:* accepted as its
+  owner.
+- **B7. An outage of the keys is reported as a bad token.** DSoR restarts at 09:00 while the SSO is
+  down, so no keys are cached. cfo_100's good token arrives. *The learner's prediction:* cfo_100
+  hears "log in first".
+- **B8 (R1). The client is read only from `client_id`.** The Panaversity SSO writes only `azp`.
+  cfo_100's good token arrives on Monday morning. *The learner's prediction:* refused for everyone,
+  a lock that stays locked.
+- **Settled at build time,** each by a real run of the broken copy beside the whole one. No
+  prediction is judged before then.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.
