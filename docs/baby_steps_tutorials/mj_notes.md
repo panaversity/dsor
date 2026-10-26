@@ -230,6 +230,18 @@ still hold. Neon Auth's OAuth path offers only this flow, because it has no `cli
 grant. To raise: does the spec accept this token as an agent's own credential, at L1 and L2, and
 what must DSoR check before it does?
 
+### Should a suspension cancel the slip's waiting work?
+
+Found in step 43d's part 5 (2026-10-26). A revocation or an expiry moves the slip's
+`PENDING_APPROVAL` and `APPROVED` proposals to `CANCELLED` (DSOR-DEL-04c). A suspension, when the
+role source reports the signer gone (DSOR-IDN-07), says nothing about them. In step 43c, after
+user_123 left, the agent's release of the approved PAY-901 was refused at line ③. So the proposal
+stayed `APPROVED`, with 31,400.00 USD booked, until its expiry seven days later. Nothing makes a
+suspended slip active again: no command does it, and step 19b keeps a suspension when the signer
+returns. So the waiting work can never run, and it fills approval queues and holds bookings. Only
+an administrator's tear-up cancels it. To raise: should a suspension under DSOR-IDN-07 also cancel
+the slip's waiting work, as DSOR-DEL-04c does for a revocation?
+
 ## Our builds, compared with another learner's
 
 Another learner builds the same steps on the branch `wania/dev-DSoR-in-baby-steps`
@@ -2602,8 +2614,8 @@ steps' identity design, and the session paused on four design questions. **None 
   design in steps 43 and 43b. The specification states only the goals: DSOR-IDN-01, DSOR-IDN-03a,
   DSOR-IDN-04a, DSOR-IDN-04b, and DSOR-IDN-05. An independent review by a read-only architect agent
   kept three of the four tables and called `invitations` a duplicate.
-- **Still open from the lesson:** part 4's prediction. Ali, an operator, leaves, and ops keeps its
-  roles in DSoR's own table: what does DSoR do with Ali's slip at 2 a.m.? Its run is ready.
+- **From the lesson, settled later:** part 4's prediction about Ali was asked again after these
+  questions. See the session's close below.
 
 **Q1. The identity boundary: which side owns each thing?**
 
@@ -2721,6 +2733,49 @@ of algorithms, the age cap), which are the resource server's half of DSOR-RP-02b
 with its real-check findings F1 to F9; every README and review. Any option can drop: `invitations`,
 `dedicated_to_dsor`, and step 43's own shape for `issuers.json`. Open: whether to settle the target
 (Q1 to Q3) before the way back.
+
+### Understanding step 43d, closed (2026-10-26)
+
+Not built. Six parts, each settled by a real run on step 43c's code from the scratchpad, and each
+told from two stories: the finance story and Panaversity ops. The session paused after part 3 for
+the identity questions above, and closed after part 6.
+
+| Part | The idea in one line |
+| --- | --- |
+| 1. Three ways to know a role | A token is a photo from sign-in, absent at 2 a.m.; a pushed copy is as late as its last push; asking is fresh at each call |
+| 2. The door and the key | DSoR asks a route made for programs, with its own key, and uses only an answer that names the company and the person it asked about. The Panaversity SSO has no such route |
+| 3. Same person, two names | The person, the company, and the role each need a translation. In ops, students are data, not principals |
+| 4. Slow, down, or strange | No answer: the kept answer counts until the company's bound. Nonsense: a fault, and the kept answer goes. With DSoR's own table nothing is asked, so a leaver's slips live on until an administrator removes the leaver |
+| 5. Work in flight | A tear-up cancels waiting work at once; a move invalidates it at its release; a leave leaves approved work `APPROVED` and booked until it expires or someone tears up the slip |
+| 6. The cost of asking | Each agent call asks once: load, time, and dependence on the server. A rate limit is absorbed by the kept answer within the bound, when the caller code reads an error as no answer |
+
+- **The habits found:** "when unsure, let it through" (parts 1, 2, and 5: a token, a strong role,
+  or an approval read as enough); "DSoR knows what the story knows" again (parts 1 and 4: a token in
+  the story, Ali's sessions that ended); substitution (part 2: "a powerful, active person" in place
+  of "an answer about user_123"); and a new one in part 6, "fresh means asked just now". In DSoR,
+  fresh means younger than the company's bound.
+- **What helped:** each run put the learner's answer beside the right one. The ops story, whose
+  domain the learner owns, questioned the design itself and paused the session for Q1 to Q4. An
+  independent architect review, and the MCP specification and vendors' documents read live, not
+  from memory, settled facts that the lesson alone could not.
+- **Found on the way:** an approved proposal outlives its signer's leaving (a question for the
+  specification, above); `escalate_to` in `alerts.json` is checked at start-up only; Better Auth's
+  ban deletes browser sessions only, and its OAuth provider never reads `banned`. The last two are
+  from reading the code, not from a run.
+- **Design questions for Phase A,** besides Q1 to Q4 above. None is decided:
+  - **Q5.** Ask at every call, as step 19 does, or reuse an answer younger than a short time? The
+    specification bounds only an answer's age (§44).
+  - **Q6.** What the lookup answers, and how DSoR's caller code reads a failure: a `429`, a `5xx`,
+    or a timeout as no answer, and a body that DSoR cannot read as a fault (part 6's third run).
+  - **Q7.** Whether a person's own call asks too. Step 19 asks only about an agent's absent signer.
+    If the roles move to the sign-in server (Q1), a person's own roles come from the lookup or from
+    the token.
+  - **Q8.** `max_staleness` for each story with a lookup, and the alert when
+    `FRESHNESS_UNSATISFIABLE` starts.
+  - **Q9.** A leaver's waiting work: leave it until it expires, cancel it at the suspension (the
+    question for the specification), or ask an administrator to tear up the slip.
+  - **Q10.** Who gets an escalation when the person named in `escalate_to` leaves: a check at each
+    sweep, or a role in place of a person.
 
 ## Still unknown
 
