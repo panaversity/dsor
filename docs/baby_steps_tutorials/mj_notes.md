@@ -217,6 +217,19 @@ say how DSoR knows one. Options found, none chosen:
   the approval door;
 - an agent always holds an exchanged token with `act` (RFC 8693), never a plain one.
 
+### Is an MCP token for a person, held by an agent, the agent's own credential?
+
+Found while the learner questioned step 43d (2026-10-26). In MCP's usual flow, a person connects an
+agent once, and the agent's client keeps a refresh token. At 2 a.m. the agent's token says `sub` is
+the person and `client_id` is the agent, though the person is absent. That is neither of
+[§37](../../specs/dsor/05-bindings.md#37-identity-binding)'s two shapes: `on_behalf_of` (RFC 8693,
+with `act`) or `unattended` (`sub` is the agent, DSOR-RP-10 and DSOR-RP-11). DSOR-IDN-02a says an
+agent authenticates with its own credentials, never a human's session. If DSoR records `client_id`
+as the actor (DSOR-IDN-02b) and takes the authority from the slip, the purpose of DSOR-IDN-02a may
+still hold. Neon Auth's OAuth path offers only this flow, because it has no `client_credentials`
+grant. To raise: does the spec accept this token as an agent's own credential, at L1 and L2, and
+what must DSoR check before it does?
+
 ## Our builds, compared with another learner's
 
 Another learner builds the same steps on the branch `wania/dev-DSoR-in-baby-steps`
@@ -2626,23 +2639,69 @@ built them: `rules-met.md` names DSOR-RP-01a to DSOR-RP-01d only. Step 43 made i
 settings instead, because Neon Auth cannot make a token for DSoR's audience (step 43's review,
 finding M2).
 
-| Item | Source | Panaversity SSO, local, checked 2026-10-26 | Neon Auth |
+| Item | Source | Panaversity SSO, local, checked 2026-10-26 | Neon Auth, from Neon's docs, read 2026-10-26, not tested |
 | --- | --- | --- | --- |
-| 1. A token names DSoR as its audience (RFC 8707) | MCP, MUST; DSOR-RP-02b | Yes: `validAudiences`, and 43c's run refused an everyday-audience token | No: finding M2 |
-| 2. Server metadata (RFC 8414 or OpenID Connect Discovery) | MCP, MUST | Yes | Not checked |
-| 3. PKCE with S256, and `iss` in the answer (RFC 9207) | MCP; DSOR-RP-02e, DSOR-RP-02c | Yes, and yes | Not checked |
-| 4. Client ids by metadata document, with dynamic registration off | MCP, SHOULD; DSOR-RP-02d | Yes, and off | Not checked |
-| 5. An agent with nobody present signs with its own key: `client_credentials` with `private_key_jwt` (RFC 7523) | MCP extension "OAuth Client Credentials"; DSOR-RP-10 | Not turned on. Grants: `authorization_code`, `refresh_token`. Client methods: a secret or none. Better Auth 1.6.23 has code for both, not checked | Not checked |
-| 6. An agent for a person who is present: token exchange with `act` (RFC 8693) | DSOR-RP-03 | Not advertised | Not checked |
-| 7. Tokens bound to their sender (DPoP, RFC 9449), and step-up by `acr` (RFC 9470) | §37, SHOULD | Not advertised | Not checked |
-| 8. A short token life | §37, SHOULD for unattended tokens | 14 days, so DSoR would cap a token's age itself | 15 minutes |
-| 9. The company's own identity provider decides which agents reach DSoR | MCP extension "Enterprise-Managed Authorization" (RFC 8693, then RFC 7523) | Not advertised | Not checked |
+| 1. A token names DSoR as its audience (RFC 8707) | MCP, MUST; DSOR-RP-02b | Yes: `validAudiences`, and 43c's run refused an everyday-audience token | Session token: no (finding M2). OAuth Provider plugin: yes, a `resource` "becomes the token's `aud` claim" |
+| 2. Server metadata (RFC 8414 or OpenID Connect Discovery) | MCP, MUST | Yes | Yes, `openid-configuration` |
+| 3. PKCE with S256, and `iss` in the answer (RFC 9207) | MCP; DSOR-RP-02e, DSOR-RP-02c | Yes, and yes | PKCE yes; `iss` not stated |
+| 4. Client ids by metadata document, with dynamic registration off | MCP, SHOULD; DSOR-RP-02d | Yes, and off | Yes, on by default; dynamic registration off by default |
+| 5. An agent with nobody present signs with its own key: `client_credentials` with `private_key_jwt` (RFC 7523) | MCP extension "OAuth Client Credentials"; DSOR-RP-10 | Not turned on. Grants: `authorization_code`, `refresh_token`. Client methods: a secret or none. Better Auth 1.6.23 has code for both, not checked | No: "No `client_credentials` grant" |
+| 6. An agent for a person who is present: token exchange with `act` (RFC 8693) | DSOR-RP-03 | Not advertised | Not stated |
+| 7. Tokens bound to their sender (DPoP, RFC 9449), and step-up by `acr` (RFC 9470) | §37, SHOULD | Not advertised | Not stated; no two-factor plugin in Neon's list of supported plugins |
+| 8. A short token life | §37, SHOULD for unattended tokens | 14 days, so DSoR would cap a token's age itself | 15 minutes (session token); 1 hour (OAuth Provider), not configurable |
+| 9. The company's own identity provider decides which agents reach DSoR | MCP extension "Enterprise-Managed Authorization" (RFC 8693, then RFC 7523) | Not advertised | Not stated |
 
-Open: which items DSoR makes MUST, and at which level; whether Neon Auth stays in the steps as a
-stand-in that fails item 1; whether the Panaversity Better Auth server is published as a separate
-sign-in server that meets the list, with items 5, 6, 7, and 9 as its gap list. SCIM is not on this
-list: it is a role source (DSOR-IDN-05) that each company may choose, and §41's reference profile
-names it.
+Open: which items DSoR makes MUST, and at which level; whether Neon Auth stays in the steps (see
+the findings below); whether the Panaversity Better Auth server is published as a separate sign-in
+server that meets the list, with items 5, 6, 7, and 9 as its gap list. SCIM is not on this list: it
+is a role source (DSOR-IDN-05) that each company may choose, and §41's reference profile names it.
+
+**Q2, Claude Code's recommendation, not a decision.** The list is right in content and wrong in
+shape. One list for every server mixes jobs. Split it by door, and by kind of agent:
+
+| Door | Required | Optional |
+| --- | --- | --- |
+| A. The agent door (MCP), for an agent that acts for a person who connected it | Items 1 to 4 (MCP's own rules, so MCP clients can connect at all); a token no older than one hour by `iat`, checked by DSoR itself; Q3's rule that `client_id` names the actor | Items 6, 7, 9 |
+| B. The agent door, for an agent with nobody present | Door A, and item 5. Item 5 is required for the reference profile; for other deployments it waits on the spec question [Is an MCP token for a person, held by an agent, the agent's own credential?](#is-an-mcp-token-for-a-person-held-by-an-agent-the-agents-own-credential) | Item 7 |
+| C. The approval door, for people | Item 1 for the approval door itself; the one-hour cap; DSoR's own approval app as `client_id`; a second factor within five minutes when owner-approval mode is on (DSOR-SOD-06) | None |
+
+**Neon Auth findings,** from Neon's docs, read 2026-10-26, not tested:
+
+- Neon's OAuth Provider plugin is "available to all Managed Better Auth projects". It serves MCP's
+  protected resource metadata, takes clients by metadata document by default, uses PKCE, puts a
+  `resource` into the token's `aud`, and issues one-hour access tokens and 30-day refresh tokens
+  that rotate. Its options are not configurable.
+- It has "No `client_credentials` grant". Neon's list of supported plugins has no two-factor plugin.
+- Step 43's finding M2 holds for Neon's session token, whose `aud` is Neon's own address. It does
+  not hold for the OAuth path. On that path, `dedicated_to_dsor` is not needed.
+- By door: A, yes; B, no; C, yes for sign-in and no for owner-approval step-up.
+- So the finance story can run on Neon: the CFO is not the requester, so no owner step-up is
+  needed. Ops cannot: one operator means owner-approval mode, which needs a second factor. Ops
+  needs the Panaversity SSO, which has two-factor sign-in. Whether its tokens carry `amr` or
+  `auth_time` is not checked.
+- A managed sign-in server takes no new routes, so no lookup route can be added to Neon. DSoR-held
+  roles (step 43b) fit it. Neon keeps its auth tables in the customer's own database. Whether DSoR
+  may read a ban there is not checked, and a table is not a promise.
+- **The rule this suggests:** the right role source depends on whether the company controls its
+  sign-in server. A server it can extend holds the roles, and DSoR asks it. A managed one cannot,
+  so DSoR holds the roles.
+
+**Agent Auth, Claude Code's recommendation: watch it, and leave it open.** Better Auth's Agent Auth
+Protocol is "v1.0-draft", and its plugin is "not yet stable". It gives agents their own identity
+and grants capabilities with constraints, so it overlaps DSoR's slips.
+
+- For now, DSoR builds only on what MCP has made stable: OAuth 2.1, and the extensions "OAuth Client
+  Credentials" and "Enterprise-Managed Authorization" (MCP 2026-07-28). Agent sign-in is the
+  sign-in server's job. DSoR checks tokens against the list above.
+- The slip stays in DSoR's own store (DSOR-DEL-01a). An outside grant can only narrow it, never
+  widen it (DSOR-DEL-01b).
+- A trial of Agent Auth belongs in the Panaversity SSO, never inside DSoR. DSoR accepts its tokens
+  only when they meet the list.
+- Revisit when MCP adds an agent-identity extension, or when an IETF agent draft becomes a working
+  group document with two independent implementations. Today none is adopted:
+  `draft-klrc-aiagent-auth` (Okta, OpenAI, Ping, Zscaler) is informational; the "On-Behalf-Of User
+  Authorization for AI Agents" draft and `draft-ni-wimse-ai-agent-identity` are individual drafts.
+  `draft-ietf-wimse-aims` is a working group document, but a model, not a protocol.
 
 **Q3. How does DSoR tell an agent's token from a person's own login?** In MCP's normal flow, an
 agent's client holds a token for its user. This is also a question for the specification:
