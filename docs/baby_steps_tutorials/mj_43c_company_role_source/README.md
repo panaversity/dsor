@@ -450,8 +450,8 @@ docs/baby_steps_tutorials/mj_notes.md, "Step 43c's design".
   its own.
 - **A test of step 43 reads the shell, not `.env`.** `test/invitations.db.test.ts` reads
   `DSOR_MIGRATION_URL` from the environment, and `test/db-setup.ts` loads only `DSOR_DB_URL`; it
-  passed in step 43b's runs because the shell had exported it. The fix belongs in step 43, then each
-  later copy.
+  passed in step 43b's runs because the shell had exported it. Fixed in step 43, and repeated in 43b
+  and here: the test loads it from the step's `.env`.
 - **The B1 prediction asked about the wrong person.** user_123 signed the agent's slip, so separation
   of duties refuses him whatever his roles. The break is about anyone else, such as jane_200.
 

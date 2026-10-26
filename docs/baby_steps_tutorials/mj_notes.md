@@ -2555,8 +2555,8 @@ each change at once and every object again once an hour, a SCIM mapping can send
 - **Breaks:** nine, each caught. The learner predicted B1, B3, and B6. B1's question named the person
   who signed the slip, so separation of duties decided it: a badly asked question, now said so in
   the README.
-- **Follow-up for step 43 and its copies:** `test/invitations.db.test.ts` reads `DSOR_MIGRATION_URL`
-  from the shell, not `.env`.
+- **Fixed in step 43 and its copies:** `test/invitations.db.test.ts` read `DSOR_MIGRATION_URL` from
+  the shell, not `.env`; it loads it from the step's `.env` now.
 
 ## Still unknown
 
