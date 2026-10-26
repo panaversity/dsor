@@ -2969,6 +2969,45 @@ answers above. Each reopened answer needs a fresh decision before its step; none
   that issuer, or the main checkout's server on `127.0.0.1:3001` stops first and the branch serves
   there.
 
+### The reopened answers, decided (2026-10-27)
+
+Asked one at a time through the ask tool, each with its trade-off and Claude Code's recommendation
+first.
+
+- **R1. The client is `client_id` or `azp`, and the two must agree** (the recommendation). Reopened
+  Q3 and Q2's door A. DSoR reads `client_id` (RFC 9068, the spec's own example) or `azp` (OpenID
+  Connect's authorized party). When both are present they must be the same; when neither is, the
+  token is refused. It works with Better Auth today and with servers that follow RFC 9068.
+  *Downside:* two claim names to explain and to test.
+- **R2. A token carries the `dsor` scope and comes from a client DSoR knows** (the
+  recommendation). Reopened 44-1 and 44-9. The SSO lets any of its clients ask for DSoR's audience,
+  so `aud` alone does not prove a token was meant for DSoR's own clients. The scope must include
+  `dsor`: only a client registered with `dsor` can get it, and its tokens live one hour. The client
+  (R1) must be on DSoR's own short list of clients in its settings. So the class app, holding a
+  token with DSoR's audience, is refused. *Downside:* one more list in DSoR's settings, kept in
+  step with the SSO's registrations.
+- **R3. DSoR translates the SSO's words** (the recommendation). Reopened Q6. DSoR's code for this
+  server turns `banned` into `suspended`, so the signer's slips are suspended (DSOR-IDN-07).
+  `no_account` always comes with `listed: false`, which step 42 already reads as "not a person
+  here", and that suspends the slips too. Any other word stays a fault. DSoR's own rules do not
+  change. *Downside:* a small table of words to keep in step with the SSO.
+- **R4. DSoR's roles are one static list in every org, granted by the org's owner only** (the
+  recommendation). Reopened Q1's detail. The names are exactly as `roles.json` spells them, so
+  `CFO` stays `CFO`. *Downside:* a new DSoR role means a change to the SSO's code and a deploy.
+- **R5. DSoR stays under the SSO's limit itself** (the recommendation). Reopened Q6 and Q8. Each
+  company has its own SSO key, and DSoR counts its own lookups for each company. At the key's
+  budget, DSoR refuses further calls itself, as `RATE_LIMITED`, and uses nothing it kept, instead
+  of meeting a 429. A real 429, from trouble on the SSO's side, still counts as no answer. So a
+  flood cannot keep a removed role alive on a kept answer. *Downside:* during a flood, the other
+  agents of that company are refused until the minute passes.
+- **R6. Step 49 waits for Better Auth 1.7** (the recommendation). Reopened Q2b and step 49. Steps
+  44 to 48 are built now. Step 49 waits until the SSO moves to Better Auth 1.7.x (branch
+  `feat/sso-ba-172`); then a real test checks that `private_key_jwt` works and whether an agent's
+  token carries `sub` (DSOR-RP-10, DSOR-RP-11). *Downside:* the 2 a.m. agent has no real token until
+  then; it keeps step 42's key.
+- **Where each answer lands:** R1 and R2 in step 44's token checks; R3 and R5 in step 45's lookup;
+  R4 in the SSO, already built; R6 in step 49.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.
