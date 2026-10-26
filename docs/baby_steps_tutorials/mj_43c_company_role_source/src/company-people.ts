@@ -89,6 +89,32 @@ export function copyLogins(
   };
 }
 
+/**
+ * Every company on its own directory whose issuer another company lists too, named. The learner's L6
+ * makes a company's directory the issuer of that company alone: shared, one company's directory could
+ * push a user with another company's person's uuid, and lock her out of signing in (the review of step
+ * 43c, finding 6). pnpm serve refuses to start with any.
+ */
+export function issuerProblems(
+  settings: RoleSettings,
+  issuers: ReadonlyMap<string, readonly { issuer: string }[]>,
+): string[] {
+  const problems: string[] = [];
+  for (const [tenant, list] of issuers) {
+    if (settings.get(tenant)?.kind !== "scim") continue;
+    for (const { issuer } of list) {
+      const others = [...issuers]
+        .filter(([other, theirs]) => other !== tenant && theirs.some((i) => i.issuer === issuer))
+        .map(([other]) => other);
+      if (others.length > 0) {
+        const why = `takes its people from its own directory, so its issuer ${issuer} is its own`;
+        problems.push(`issuers.json: ${tenant} ${why}: ${others.join(", ")} lists it too`);
+      }
+    }
+  }
+  return problems;
+}
+
 /** The error of a copy too old to use. Line ① answers it as an outage; the role source as no answer. */
 export class StaleCopy extends Error {}
 

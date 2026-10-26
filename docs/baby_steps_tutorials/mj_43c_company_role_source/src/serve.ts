@@ -13,7 +13,7 @@ import { storeDifferences } from "./inspector.ts";
 import { readClassifications } from "./labels.ts";
 import { handlersFor } from "./operations.ts";
 import { checkRoles, readRoles } from "./permissions.ts";
-import { companyPeople, copyLogins } from "./company-people.ts";
+import { companyPeople, copyLogins, issuerProblems } from "./company-people.ts";
 import { createDbClients, createDbCopy, createDbHeard } from "./postgres-copy.ts";
 import { checkRoleMaps, readRoleMaps } from "./role-maps.ts";
 import { scimDoorOver } from "./scim-door.ts";
@@ -141,8 +141,11 @@ try {
   //   DSoR's own links in dsor.logins. Agents and system logins keep step 05's table until step 44
   //   (step 43's README, decisions D1, D3, and D8).
   const issuers = checkIssuers(readIssuers(process.env["DSOR_ISSUERS_FILE"]), logins.values());
-  if (issuers.problems.length > 0) {
-    refuse(`the issuers refused to start:\n  ${issuers.problems.join("\n  ")}`);
+  // Changed in step 43c: and a company on its own directory has an issuer of its own (the review of
+  //   step 43c, finding 6).
+  const issuerRefusals = [...issuers.problems, ...issuerProblems(settings, issuers.issuers)];
+  if (issuerRefusals.length > 0) {
+    refuse(`the issuers refused to start:\n  ${issuerRefusals.join("\n  ")}`);
   }
   // A stand-in on this computer is plain http, and anyone here who can sign in through it is anyone.
   //   So pnpm serve trusts one only when DSOR_STAND_IN=on says so, to learn with (the review's H1).

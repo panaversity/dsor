@@ -3,7 +3,7 @@
 // invitation. Nothing else in the token names anyone (DSOR-IDN-01, DSOR-IDN-04a, DSOR-IDN-04b;
 // step 43c's README, claim C6, the learner's L6).
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { copyLogins } from "../src/company-people.ts";
+import { copyLogins, issuerProblems } from "../src/company-people.ts";
 import type { Issuers } from "../src/issuers.ts";
 import { realLogins } from "../src/logins.ts";
 import { call } from "../src/pipeline.ts";
@@ -103,5 +103,60 @@ describe("Step 43c, C6: a login links by the uuid its directory pushed", () => {
         { proposal: drafted.proposal, payload_hash: drafted.payload_hash },
       ),
     ).toMatchObject({ code: "AUTHORIZATION_DENIED" });
+  });
+});
+
+// From the review of step 43c, finding 6: with one issuer for two companies, org_789's directory could
+//   push a user with cfo_100's uuid, and cfo_100 could sign in no more.
+describe("Step 43c, the review's finding 6: a company on its directory has an issuer of its own", () => {
+  it("DSOR-IDN-04a: the learner's L6: start-up refuses org_456 on scim when org_789 lists the same issuer", () => {
+    const one = { issuer: authentik.issuer, audience: authentik.audience, jwks: authentik.jwks };
+    const scim = new Map([
+      ["org_456", { kind: "scim" as const, max_staleness: "PT2H", ms: 7_200_000 }],
+      ["org_789", { kind: "dsor_assignments" as const, max_staleness: "PT1H", ms: 3_600_000 }],
+    ]);
+    expect(
+      issuerProblems(
+        scim,
+        new Map([
+          ["org_456", [one]],
+          ["org_789", [one]],
+        ]),
+      ),
+    ).toStrictEqual([
+      `issuers.json: org_456 takes its people from its own directory, so its issuer ${authentik.issuer} is its own: org_789 lists it too`,
+    ]);
+    expect(
+      issuerProblems(
+        scim,
+        new Map([
+          ["org_456", [one]],
+          ["org_789", []],
+        ]),
+      ),
+    ).toStrictEqual([]);
+  });
+
+  it("DSOR-IDN-04a: a uuid two companies' copies name, under one shared issuer, names nobody", async () => {
+    const w = await scimWorldOnTuesday(spokeMinutesAgo(30));
+    await w.copy.createUser("org_789", {
+      user_name: "mallory_1",
+      external_id: UUIDS.cfo_100,
+      active: true,
+    });
+    const shared = [
+      { issuer: authentik.issuer, audience: authentik.audience, jwks: authentik.jwks },
+    ];
+    const issuers: Issuers = new Map([
+      ["org_456", shared],
+      ["org_789", shared],
+    ]);
+    const both = new Map([
+      ["org_456", { kind: "scim" as const, max_staleness: "PT2H", ms: 7_200_000 }],
+      ["org_789", { kind: "scim" as const, max_staleness: "PT2H", ms: 7_200_000 }],
+    ]);
+    expect(
+      await copyLogins(w.copy, both, issuers)(authentik.issuer, UUIDS.cfo_100),
+    ).toBeUndefined();
   });
 });
