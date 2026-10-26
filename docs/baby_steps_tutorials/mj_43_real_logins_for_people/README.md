@@ -472,6 +472,10 @@ against the final code and `test/issuers.test.ts`, `test/tokens.test.ts`, and `t
 - **Two runs on one database spoil each other.** The README's run was first made while the full
   database suite ran on the same database, after it had been rebuilt under the suite. The suite's
   tear-ups cancelled the story's proposal. The run above is on a database of its own.
+- **A test read the shell, not `.env`** (found 2026-10-26, building step 43c).
+  `test/invitations.db.test.ts` read `DSOR_MIGRATION_URL` at load, and `test/db-setup.ts` loads only
+  `DSOR_DB_URL`, so the file passed only when the shell had exported it. It loads the variable from
+  this step's `.env` now, as the owner's programs do.
 
 ### What the review found
 
