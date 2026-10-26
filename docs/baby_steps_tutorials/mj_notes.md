@@ -2946,6 +2946,29 @@ Panaversity SSO (Q2b), at most one hour by `iat` (Q2), no link table and no invi
   learner's predictions; and, outside DSoR, the seed of the story's people into the local SSO with
   their story ids (44-4).
 
+### What the SSO fix list changed in the design (2026-10-27)
+
+The Panaversity SSO's fix list is built on branch `feat/sso-dsor-fix-list` of the SSO repository
+(11 commits, worktree `tutorsgpt/ag2-sso-dsor`, server on `127.0.0.1:3011`), not pushed and not
+deployed. Its hand-over note and the branch's `apps/sso/docs/dsor.md` found six things that change
+answers above. Each reopened answer needs a fresh decision before its step; none is decided here.
+
+| Finding | Reopens | What still stands |
+| --- | --- | --- |
+| **`azp`, not `client_id`.** Better Auth 1.6.23 names a token's client in `azp` and writes no `client_id` claim. An agent's `client_credentials` token has no `sub` either | Q3 ("every token must carry `client_id`") and Q2's door A ("`client_id` names the actor"): DSoR would read `azp` instead. DSOR-RP-11's `sub` for an agent cannot be met on 1.6.23 | The rule itself: every client but DSoR's own approval app is an agent |
+| **The `dsor` scope.** Token life is set per scope, not per audience: a token with the `dsor` scope lives one hour, and only a client registered with `dsor` can get it. A DSoR-audience token without it still lives 14 days, and a refresh token lives 30 days | 44-1 and 44-9, what a token must carry: add the `dsor` scope, and an `azp` on DSoR's own list of clients | Q2's cap of one hour by `iat`, checked by DSoR itself |
+| **`status: "no_account"`.** The lookup's `status` has a third value beside `active` and `banned`: an id with no user at all, always with `listed: false` | Q6, what the lookup answers: DSoR's reading must accept `no_account`, or the SSO changes it | The answer still names the company and the person it is about |
+| **Static DSoR roles.** `ap_clerk`, `ap_supervisor`, `CFO`, `tenant_admin`, `ops_operator`, and `ops_admin` exist in every org, and only an org's owner may grant them. Not `dynamicAccessControl`, because Better Auth lowercases a dynamic role's name (`CFO` would become `cfo`) | Q1's "roles per org", in its detail: one list of roles for every org, held per org | Q1's boundary: the sign-in server holds who has which role |
+| **The 429 flood.** DSoR's key allows 100 lookups a minute, counted across every company and caller on that key. An agent that floods DSoR pushes its lookups into 429s; under Q6 a 429 is no answer, so DSoR falls back on kept answers, and a role removed meanwhile works until the bound | Q6 (a 429 as no answer) and Q8 (the bound). Options found: one key per company (the SSO's admin route cannot set a key's limit yet); no authority granted from a kept answer after a 429; a limit per agent inside DSoR | Q5: DSoR still asks at every call |
+| **No `private_key_jwt` until Better Auth 1.7.** The 1.6.23 token endpoint never reads `client_assertion`, and `client_credentials` works only with a shared secret, which DSOR-RP-10 forbids for an unattended agent. The unmerged upgrade branch `feat/sso-ba-172` adds keys for clients | Q2b's claim that the SSO can serve `client_credentials` for step 49, and step 49's place in the chain: it waits on that upgrade | Steps 44 to 48, which do not need it |
+
+- **Not reopened, but moved forward:** 44-4's seed is partly done. On the branch's own database,
+  `sso_dsor`, org_456 holds user_123 (ap_supervisor), cfo_100 (CFO), a banned user_900, and a
+  non-member user_700.
+- **A practical note for 44's real run:** the branch serves on `127.0.0.1:3011`. The run must name
+  that issuer, or the main checkout's server on `127.0.0.1:3001` stops first and the branch serves
+  there.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.
