@@ -2777,6 +2777,89 @@ the identity questions above, and closed after part 6.
   - **Q10.** Who gets an escalation when the person named in `escalate_to` leaves: a check at each
     sweep, or a role in place of a person.
 
+### Step 43d's design, the learner's answers (2026-10-26)
+
+Not built. Asked one decision at a time through the ask tool, each with its trade-off and Claude
+Code's recommendation first. The problem: with people and roles in DSoR's own table, a leaver's
+slips keep working until someone removes the leaver in DSoR too (part 4's run), and DSoR's copy
+drifts from the sign-in server, which already knows who holds which role.
+
+- **Q1. The sign-in server holds the roles** (the recommendation). It owns people, membership,
+  invitations, leavers, and who holds which role in which org. DSoR owns what a role may do
+  (`roles.json`, with approval limits), slips, rules, approvals, and evidence. A person's id is the
+  issuer and `sub`; an agent is an OAuth client of the server. DSoR asks the server (a lookup) or is
+  told (SCIM). DSoR's own table stays only as the fallback for a server that nobody can extend.
+  *Downside:* DSoR depends on that server at each call, and whoever runs the org there can grant
+  money roles.
+- **Q1b. Admin power and money power split** (the recommendation). `tenant_admin` keeps the
+  administration: rules, brakes, slips, and people where DSoR still holds them. Approving money
+  stays only with approver roles such as CFO. A one-person company approves under owner-approval
+  mode (§16.2). *Downside:* one more role to assign, and the shipped `roles.json` and its tests
+  change.
+- **Q1c. Ops: an email change is refused for anyone who holds a DSoR role** (the recommendation),
+  and no DSoR command ever writes the SSO's member or role tables. Without this, the agent could
+  take over the login of the person whose authority it uses (DSOR-SRC-01a). *Downside:* an
+  operator's own email changes by hand, outside DSoR.
+- **Q2. The sign-in server checklist is split by door** (the recommendation). Door A, an agent for
+  a person who connected it: items 1 to 4, tokens no older than one hour by `iat`, and `client_id`
+  names the actor. Door B, an agent with nobody present: door A and item 5, required for the
+  reference profile, and otherwise waiting on the question for the specification about MCP's
+  person tokens. Door C, the approval door: a token made for that door, DSoR's own approval app as
+  the client, and a second factor within five minutes in owner-approval mode. Items 6, 7, and 9 are
+  optional. *Downside:* three profiles to explain and to test.
+- **Q2b. The Panaversity SSO is the main sign-in server for both stories** (the recommendation),
+  run locally. It can take the lookup route, roles per org, two-factor sign-in, and
+  `client_credentials`. Neon Auth stays in step 43 as history. *Downside:* we run and fix our own
+  server (its fix list), and the steps depend on a second repository.
+- **Q2c. Agent Auth: watch it, and leave it open** (the recommendation). DSoR builds only on what
+  MCP has made stable. The slip stays in DSoR; an outside grant can only narrow it. Revisit when MCP
+  adds an agent-identity extension, or when an IETF agent draft is adopted with two independent
+  implementations. *Downside:* DSoR may adopt late if Agent Auth wins.
+- **Q2d. The Panaversity Better Auth server is published later, as its own product**
+  (the recommendation). First its fix list closes: the lookup route, roles per org, grants by the
+  org's owner only, history that survives a deletion, `client_credentials` with `private_key_jwt`,
+  and short tokens for DSoR. Then it is published as one server that meets the checklist, never as
+  part of DSoR. *Downside:* a second product to maintain.
+- **Q3. `client_id` and an approval door** (the recommendation). Every token must carry
+  `client_id`. DSoR treats every client as an agent except its own approval app. Approvals count
+  only at the approval door, from that app, with a token made for that door, so an agent's token
+  for the MCP door cannot approve (DSOR-APR-05b). *Downside:* DSoR needs its own approval app, with
+  its own client id.
+- **Q4. The new steps branch from step 42** (the recommendation). Steps 43 to 43c stay as an
+  explored path, marked so in the map and in `docs/status.md`. With Q1 to Q3 the work holds several
+  ideas, so it becomes several steps: tokens made for DSoR, then asking the sign-in server, then the
+  approval door. The new chain brings over step 43's token checks and, later, step 43c's SCIM copy
+  and step 43b's table as the fallback kind. Their names and numbers are still to choose.
+  *Downside:* the chain of steps forks, and the numbering needs care.
+- **Q5. DSoR asks at every call** (the recommendation), as step 19 does. The kept answer counts only
+  when no answer comes, so a leaver is caught at the very next call. *Downside:* one lookup per
+  agent call, in load and in time. Fine for ops; in finance's month-end the kept answer absorbs a
+  rate limit.
+- **Q6. The answer names whom it is about, and an error is no answer** (the recommendation). The
+  SSO's route answers the company, the person, whether the person is listed, their status, and
+  their roles, and DSoR calls it with its own narrowly scoped key. DSoR uses an answer only when it
+  names the company and the person that DSoR asked about. A `429`, a `5xx`, a timeout, or no
+  connection is no answer, so the kept answer counts until the bound. Any other body is a fault:
+  `INTERNAL_ERROR`, and the kept answer is dropped. *Downside:* a server bug that returns a wrong
+  body stops the agent at once (it fails closed).
+- **Q7. A person's own call asks too** (the recommendation). A person's call, such as cfo_100's
+  approval at the approval door, also takes the roles from the lookup. The token says only who is
+  calling. One rule for every caller. *Downside:* one lookup per person call too, and an outage
+  longer than the bound stops approvals as well as agents.
+- **Q8. `max_staleness` is PT1H for both stories, with an alert at once** (the recommendation).
+  One hour meets L3's limit. At the first `FRESHNESS_UNSATISFIABLE`, the company's alert receivers
+  hear (`alerts.json`). *Downside:* an outage of the sign-in server longer than an hour stops
+  agents and approvals until it ends.
+- **Q9. A suspended slip with waiting work alerts the administrators** (the recommendation). One
+  tear-up then cancels the work and frees its bookings. No change to the specification; its
+  question stays raised. *Downside:* the work waits until an administrator acts.
+- **Q10. `escalate_to` names a role, not a person** (the recommendation). Each sweep asks the role
+  source who holds that role now. When nobody holds it, the sweep says so to the receivers.
+  *Downside:* `alerts.json` changes shape, and its tests change.
+- **Still to decide before any code:** the new steps' names, numbers, and order (Q4), each with one
+  idea; which step takes Q1b, Q1c, Q9, and Q10; and the Panaversity SSO's fix list, which is work
+  in that repository, not in a step.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.
