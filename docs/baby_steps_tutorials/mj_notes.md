@@ -2885,6 +2885,67 @@ drifts from the sign-in server, which already knows who holds which role.
   Graphiti, KSoR) move after step 50; the map, `docs/status.md`, and `rules-met.md` are the
   human's to update. The working names stay open until each step's own design.
 
+### Step 44's design, the learner's answers (2026-10-26)
+
+Not built: no code until the learner says go. Step 44, tokens made for DSoR, copies step 42. The
+problem: in step 42 a caller proves who they are with a fixed key that never expires, so
+`tok_d4e8` in a log file makes its reader cfo_100 for good; and step 43 took any token from the
+sign-in service, whatever app it was made for (its review's finding M2). The idea: a person is who
+a token made for DSoR says, from the one trusted sign-in server. Already decided for this step: the
+Panaversity SSO (Q2b), at most one hour by `iat` (Q2), no link table and no invitations (Q1).
+
+- **44-1. Step 43's token checks come over** (the recommendation): `jose` 6.2.12; the rule for a
+  token (an allowed algorithm, `iss` exactly the trusted issuer, a key from its JWKS, `sub` and
+  `iat` present, not expired, five seconds of clock slack); start-up that refuses `none`,
+  shared-secret algorithms, and ages over 24 hours; `CONNECTOR_UNAVAILABLE` when the keys cannot be
+  fetched; one answer, `AUTHENTICATION_REQUIRED`, for every bad token. Dropped: `dedicated_to_dsor`
+  (the audience check replaces it), the link table, and invitations. *Downside:* step 43's choices
+  come along without a fresh look.
+- **44-2. One trusted issuer for every company** (the recommendation), in one small settings file:
+  the issuer, its JWKS address, the allowed algorithms, and the one-hour age. Companies are told
+  apart by the request's company and, from step 45, by the server's orgs. *Downside:* a company that
+  brings its own Okta later needs the file to grow into a list.
+- **44-3. The audience is DSoR's own address** (the recommendation): `http://127.0.0.1:8042`, where
+  `pnpm serve` listens, the same string the SSO lists in its `validAudiences`, as 43c's run used.
+  MCP calls it the server's canonical URI. Step 47's approval door gets an address of its own.
+  *Downside:* when DSoR moves to another address, both ends change together.
+- **44-4. A person's id is the token's `sub`, with the story's ids seeded** (the recommendation).
+  The id is the `sub` under the one trusted issuer. For the real run, the story's people are created
+  in the local SSO's database with their story ids as user ids (user_123, cfo_100, admin_100,
+  user_700), so slips and audit keep the story's names, as the spec's own example token does
+  (`"sub": "user_123"`). *Downside:* a seed in the local SSO's database, done outside DSoR, and only
+  one issuer per deployment.
+- **44-5. Until step 45, a person's companies and roles come from step 42's table, by id**
+  (the recommendation). user_123 is ap_supervisor in org_456 and cfo_100 is CFO, as in step 42, but
+  the table is read by the person's id from the token, not by a fake key. Step 45 replaces it with
+  the lookup. *Downside:* a table in the code for one step, which step 45 removes.
+- **44-6. People's step-42 keys are gone from `pnpm serve`** (the recommendation). There, a person's
+  only credential is a token made for DSoR, and `tok_2c91` and `tok_d4e8` are refused. `pnpm start`
+  and the earlier tests keep the fake table as their world's choice, as step 43's D8 did.
+  *Downside:* the old tests still prove things with fake people.
+- **44-7. DSoR tells a token from an agent's key by its form** (the recommendation). Three
+  dot-separated parts is a token, and it goes to the token check; a known agent key goes to step
+  42's agent table; anything else is refused with `AUTHENTICATION_REQUIRED`. The request's shape
+  does not change. *Downside:* two kinds of credential share one header until steps 48 and 49 give
+  agents tokens.
+- **44-8. Tests sign tokens with a test-only key; the real run uses the local SSO**
+  (the recommendation). Unit tests sign tokens in the test itself, shaped like the Panaversity
+  SSO's: RS256, `aud` DSoR, `sub` a story id. The test key exists only inside the tests, and
+  `pnpm serve` trusts only the configured issuer's JWKS. No stand-in server, because the SSO is
+  local and free, unlike Neon. *Downside:* the real run needs the SSO repository running on this
+  computer.
+- **44-9. A token's audiences are DSoR and, at most, the SSO's own userinfo address**
+  (the recommendation). The SSO lists both when the `openid` scope is asked for (43c's run). A token
+  that also names another app, such as the class app, is refused, because that app received the
+  same token and could hand it on. *Downside:* a rule shaped by how Better Auth fills `aud`.
+- **44-10. A good token for nobody in DSoR's table hears `AUTHENTICATION_REQUIRED`**
+  (the recommendation), the same as any bad token, so DSoR tells a stranger, such as a student who
+  signed in, nothing about who is a DSoR person. The log records the reason. *Downside:* a real
+  person missing from the table sees "log in first" and must ask an administrator why.
+- **Still to do before code:** the step's claims, its tests by claim, and its breaks with the
+  learner's predictions; and, outside DSoR, the seed of the story's people into the local SSO with
+  their story ids (44-4).
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.
