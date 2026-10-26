@@ -200,6 +200,23 @@ Found while designing step 41 (2026-10-20). DSOR-BAT-02a binds a run's approval 
 currency and per counterparty, and `proposal.schema.json` has a field only for the first. Step 41
 keeps the second in `vendor_totals`, a field of its own. This is open question 159.
 
+### How does DSoR tell an agent's token from a person's own login?
+
+Found while the learner questioned step 43d (2026-10-26). An approval counts only from the
+approver's own `direct` login (DSOR-APR-05a), never through anything that travels via the
+requesting agent (DSOR-APR-05b). But in MCP's normal flow (MCP 2026-07-28), an agent's MCP client
+asks for a token for its user: `sub` names the person, and `client_id` names the agent's client. A
+DSoR that reads only `sub` takes the agent's call for the person's own.
+[§37](../../specs/dsor/05-bindings.md#37-identity-binding) shows a token for `on_behalf_of` (with
+`act`) and one for `unattended` (`sub` is the agent). It shows none for `direct`, and it does not
+say how DSoR knows one. Options found, none chosen:
+
+- every token carries `client_id`, and DSoR treats each client as an agent unless DSoR lists it as
+  its own approval app;
+- the approval app is a resource of its own (RFC 8707), so a token for the MCP door does not work at
+  the approval door;
+- an agent always holds an exchanged token with `act` (RFC 8693), never a plain one.
+
 ## Our builds, compared with another learner's
 
 Another learner builds the same steps on the branch `wania/dev-DSoR-in-baby-steps`
@@ -2557,6 +2574,94 @@ each change at once and every object again once an hour, a SCIM mapping can send
   the README.
 - **Fixed in step 43 and its copies:** `test/invitations.db.test.ts` read `DSOR_MIGRATION_URL` from
   the shell, not `.env`; it loads it from the step's `.env` now.
+
+### Step 43d, paused: where identity ends and authority begins (2026-10-26)
+
+Not built. The understanding session taught parts 1 to 4: three ways to know a role; the door and
+the key; one person, two names; slow, down, or strange. Then the learner asked that every step be
+questioned from two stories, the finance one and Panaversity ops. The ops story questioned the
+steps' identity design, and the session paused on four design questions. **None is decided.**
+
+- **How it came up.** In ops, two or three operators hold DSoR roles. The students are data that
+  the commands act on, not principals. Seen from there, steps 43 to 43c keep a second copy of what a
+  sign-in server keeps already: Better Auth has its own `account`, `invitation`, and `member`
+  tables. The split into `logins`, `invitations`, `people`, and `role_grants` is Claude Code's
+  design in steps 43 and 43b. The specification states only the goals: DSOR-IDN-01, DSOR-IDN-03a,
+  DSOR-IDN-04a, DSOR-IDN-04b, and DSOR-IDN-05. An independent review by a read-only architect agent
+  kept three of the four tables and called `invitations` a duplicate.
+- **Still open from the lesson:** part 4's prediction. Ali, an operator, leaves, and ops keeps its
+  roles in DSoR's own table: what does DSoR do with Ali's slip at 2 a.m.? Its run is ready.
+
+**Q1. The identity boundary: which side owns each thing?**
+
+| Thing | Today | The open question |
+| --- | --- | --- |
+| A person's account, password, second factor, and email | The sign-in server | None: [§12](../../specs/dsor/02-security.md#12-identity-and-principals) delegates authentication |
+| Invitations and their emails | `dsor.invitations`, beside the SSO's own `invitation` | Keep DSoR's, or leave invitations to the sign-in server? |
+| Company membership | `dsor.people` | DSoR's table, which keeps who left (DSOR-IDN-07 acts on that), or the SSO's `member`, whose rows go with no history? |
+| The link from (issuer, `sub`) to a person | `dsor.logins` | A link to DSoR's own ids, or the issuer and `sub` as the id? |
+| An agent's identity | Fake tokens in `src/principals.ts` | An OAuth client of the sign-in server, with its own key (DSOR-RP-10)? |
+| Money roles, such as "may approve 31,400 USD" | `dsor.role_grants` | DSoR, the sign-in server's org roles, or each company's choice? |
+| Slips, approvals, rules, and audit | DSoR | None: §37 says authentication "never replaces" them |
+
+Facts found on the way:
+
+- **`logins` is the wrong name.** The table holds links, not sign-ins. A second sign-in adds no row:
+  in the live 43c database, user_700 made three calls and has one row.
+- **In the Panaversity SSO, owner, admin, manager, and supervisor all hold the admin permissions.**
+  If money roles lived there, a teacher or a coordinator could change them.
+- **`tenant_admin` holds `role:grant` and also `payment:approve` and `proposal:approve`**
+  (`roles.json`). One role carries admin power and money power.
+- **In ops, an email change through DSoR could take over an operator's login,** because a password
+  reset goes to the new address.
+- **Considered and set aside:** DSoR ships its own sign-in server, and every company signs in
+  through it. The learner: adding an auth server to DSoR "can be messy", and it makes DSoR own
+  identity.
+
+**Q2. A checklist for any sign-in server that DSoR trusts.** The learner's idea: state DSoR's
+requirements as RFCs, as MCP does, and accept any sign-in server that meets them. MCP 2026-07-28
+makes an MCP server an OAuth 2.1 resource server and puts the sign-in server's details "beyond the
+scope". [§37](../../specs/dsor/05-bindings.md#37-identity-binding) already lists most items. No step
+built them: `rules-met.md` names DSOR-RP-01a to DSOR-RP-01d only. Step 43 made its own issuer
+settings instead, because Neon Auth cannot make a token for DSoR's audience (step 43's review,
+finding M2).
+
+| Item | Source | Panaversity SSO, local, checked 2026-10-26 | Neon Auth |
+| --- | --- | --- | --- |
+| 1. A token names DSoR as its audience (RFC 8707) | MCP, MUST; DSOR-RP-02b | Yes: `validAudiences`, and 43c's run refused an everyday-audience token | No: finding M2 |
+| 2. Server metadata (RFC 8414 or OpenID Connect Discovery) | MCP, MUST | Yes | Not checked |
+| 3. PKCE with S256, and `iss` in the answer (RFC 9207) | MCP; DSOR-RP-02e, DSOR-RP-02c | Yes, and yes | Not checked |
+| 4. Client ids by metadata document, with dynamic registration off | MCP, SHOULD; DSOR-RP-02d | Yes, and off | Not checked |
+| 5. An agent with nobody present signs with its own key: `client_credentials` with `private_key_jwt` (RFC 7523) | MCP extension "OAuth Client Credentials"; DSOR-RP-10 | Not turned on. Grants: `authorization_code`, `refresh_token`. Client methods: a secret or none. Better Auth 1.6.23 has code for both, not checked | Not checked |
+| 6. An agent for a person who is present: token exchange with `act` (RFC 8693) | DSOR-RP-03 | Not advertised | Not checked |
+| 7. Tokens bound to their sender (DPoP, RFC 9449), and step-up by `acr` (RFC 9470) | §37, SHOULD | Not advertised | Not checked |
+| 8. A short token life | §37, SHOULD for unattended tokens | 14 days, so DSoR would cap a token's age itself | 15 minutes |
+| 9. The company's own identity provider decides which agents reach DSoR | MCP extension "Enterprise-Managed Authorization" (RFC 8693, then RFC 7523) | Not advertised | Not checked |
+
+Open: which items DSoR makes MUST, and at which level; whether Neon Auth stays in the steps as a
+stand-in that fails item 1; whether the Panaversity Better Auth server is published as a separate
+sign-in server that meets the list, with items 5, 6, 7, and 9 as its gap list. SCIM is not on this
+list: it is a role source (DSOR-IDN-05) that each company may choose, and §41's reference profile
+names it.
+
+**Q3. How does DSoR tell an agent's token from a person's own login?** In MCP's normal flow, an
+agent's client holds a token for its user. This is also a question for the specification:
+[How does DSoR tell an agent's token from a person's own login?](#how-does-dsor-tell-an-agents-token-from-a-persons-own-login)
+
+**Q4. What to do with steps 43 to 43c.** The learner asked whether to archive them and rebuild.
+
+| Option | How | Cost |
+| --- | --- | --- |
+| A. Branch from 42 | A new step copies step 42. Steps 43 to 43c stay, marked as replaced in the map and in `docs/status.md` | Nothing goes and CI stays the same; the chain of steps forks |
+| B. Archive and rebuild | Move steps 43 to 43c to an archive folder, and rebuild 43 from 42 | A straight chain; CI, `pnpm guard`, `rules-met.md`, and `docs/status.md` all change |
+| C. A step that removes | A new step copies 43c, takes the invitations out, and adopts §37 | A straight chain, but it carries 43c's weight, and a removal is hard to teach |
+
+Any option can keep: step 43's token checks (signature by JWKS, issuer, audience, expiry, the list
+of algorithms, the age cap), which are the resource server's half of DSOR-RP-02b; step 43b's
+`role_grants` as the kind "DSoR-held role assignments"; step 43c's SCIM copy as one role source,
+with its real-check findings F1 to F9; every README and review. Any option can drop: `invitations`,
+`dedicated_to_dsor`, and step 43's own shape for `issuers.json`. Open: whether to settle the target
+(Q1 to Q3) before the way back.
 
 ## Still unknown
 
