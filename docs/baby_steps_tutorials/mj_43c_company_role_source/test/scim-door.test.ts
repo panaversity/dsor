@@ -451,7 +451,11 @@ describe("Step 43c, the review's findings 2 to 4: the door reads what it reads, 
           result: "VALIDATION_FAILED",
         }),
       ]);
-      expect((await g.w.people.memberOf("org_456", "cfo_100"))?.roles).toStrictEqual(["CFO"]);
+      // The copy is as it was. And, by the learner's L7b, the company is stopped until a push succeeds.
+      expect((await g.w.copy.standing("org_456", "cfo_100"))?.groups).toStrictEqual([
+        UUIDS.finance,
+      ]);
+      await expect(g.w.people.memberOf("org_456", "cfo_100")).rejects.toThrow("recently enough");
     },
   );
 
@@ -470,7 +474,7 @@ describe("Step 43c, the review's findings 2 to 4: the door reads what it reads, 
       );
       const reply = await scim(g.base, "PUT", `/scim/v2/Users/${g.cfo}`, body);
       expect(reply).toMatchObject({ status: 400, body: { scimType: "invalidValue" } });
-      expect((await g.w.people.memberOf("org_456", "cfo_100"))?.status).toBe("suspended");
+      expect((await g.w.copy.standing("org_456", "cfo_100"))?.status).toBe("suspended");
     },
   );
 

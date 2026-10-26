@@ -153,7 +153,22 @@ describe("Step 43c, C8: the copy on PostgreSQL, read by line ① through the map
   });
 
   // From the real run of 2026-10-26: pushes that all failed kept an empty copy "current".
-  it("DSOR-IDN-06: decision D2: a push refused in its work leaves when DSoR last heard where it was", async () => {
+  // Changed by the learner's L7b, after the review of step 43c, finding 5: a refused push stops the
+  //   copy until a push succeeds, whatever reads come between.
+  it("DSOR-IDN-06: the learner's L7b: after a refused push DSoR has heard nothing, even after a read; a push that succeeds brings the copy back", async () => {
+    const heard = createDbHeard(pool);
+    expect(
+      await push({
+        kind: "group.create",
+        group: { name: "x", external_id: randomUUID(), members: [randomUUID()] },
+      }),
+    ).toMatchObject({ code: "VALIDATION_FAILED" });
+    expect(await heard("org_456")).toBeUndefined();
+    await call(registry, createDbLog(pool), DIRECTORY_456, "directory.read", {
+      company,
+      what: "users",
+    });
+    expect(await heard("org_456")).toBeUndefined();
     const p = fresh();
     dataOf(
       await push({
@@ -161,17 +176,7 @@ describe("Step 43c, C8: the copy on PostgreSQL, read by line ① through the map
         account: { user_name: p.name, external_id: p.uuid, active: true },
       }),
     );
-    const heard = createDbHeard(pool);
-    const before = (await heard("org_456")) as number;
-    expect(
-      await push({
-        kind: "group.create",
-        group: { name: "x", external_id: randomUUID(), members: [randomUUID()] },
-      }),
-    ).toMatchObject({ code: "VALIDATION_FAILED" });
-    const after = (await heard("org_456")) as number;
-    // The same moment, the successful push's, give or take the two clocks' reading.
-    expect(Math.abs(after - before)).toBeLessThan(250);
+    expect(Date.now() - ((await heard("org_456")) as number)).toBeLessThan(60_000);
   });
 
   it("DSOR-IDN-03a: an id DSoR's table gives a person of org_789 is taken for org_456's directory", async () => {

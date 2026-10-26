@@ -350,10 +350,17 @@ export function heardThrough(client: pg.ClientBase): Heard {
 
 async function heardOn(client: pg.ClientBase, tenant: string): Promise<number | undefined> {
   const { rows } = await client.query<{ ms: number | null }>(
-    `SELECT extract(epoch FROM clock_timestamp() - max(at)) * 1000 AS ms
-       FROM dsor.audit
-      WHERE tenant = $1 AND "authorization" = 'ALLOW' AND result = 'ok'
-        AND correlation->>'principal_id' = $2`,
+    // Changed by the learner's L7b, after the review of step 43c, finding 5: none at all while the
+    //   latest push was refused, whatever reads came after it.
+    `WITH mine AS (
+       SELECT sequence, at, operation, "authorization", result FROM dsor.audit
+        WHERE tenant = $1 AND correlation->>'principal_id' = $2 AND "authorization" IS NOT NULL),
+     last_push AS (
+       SELECT result FROM mine WHERE operation = 'directory.push@1' ORDER BY sequence DESC LIMIT 1)
+     SELECT CASE WHEN (SELECT result FROM last_push) IS DISTINCT FROM 'ok'
+                  AND EXISTS (SELECT 1 FROM last_push) THEN NULL
+                 ELSE extract(epoch FROM clock_timestamp() - max(at)) * 1000 END AS ms
+       FROM mine WHERE "authorization" = 'ALLOW' AND result = 'ok'`,
     [tenant, directoryLoginOf(tenant)],
   );
   const ms = rows[0]?.ms;

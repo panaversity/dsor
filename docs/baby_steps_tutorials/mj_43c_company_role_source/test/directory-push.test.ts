@@ -143,8 +143,13 @@ describe("Step 43c, C3: org_456's directory login keeps org_456's copy", () => {
 
   // From the real run of 2026-10-26: authentik, pointed at a fresh copy, sent pushes that all failed,
   //   and each was an ALLOW record, so DSoR called the empty copy current.
-  it("DSOR-IDN-06: decision D2: a push refused in its work is no word from the directory: the copy stays as old as it was", async () => {
+  // Changed by the learner's L7b, after the review of step 43c, finding 5: and a refused push makes
+  //   the copy stale at once, whatever reads follow, until a later push succeeds. Otherwise a refused
+  //   deactivation kept a leaver's power for as long as authentik retried.
+  it("DSOR-IDN-06: the learner's L7b: a refused push stops the copy at once; reads after it do not bring it back; a push that succeeds does", async () => {
     const w = await emptyScimWorld(readRoleSettings(SCIM_ROLE_SOURCES), await storyCopy());
+    await read(w, DIRECTORY_456, { what: "users" });
+    expect(await w.draft("INV-2002")).toMatchObject({ outcome: "COMMITTED" });
     const nobody = "00000000-0000-4000-8000-00000000dead";
     const finance = (
       await w.copy.groups("org_456", { field: "externalId", value: UUIDS.finance })
@@ -156,7 +161,25 @@ describe("Step 43c, C3: org_456's directory login keeps org_456's copy", () => {
         operations: [{ op: "add", members: [nobody] }],
       }),
     ).toMatchObject({ code: "VALIDATION_FAILED" });
-    expect((await w.log.records()).at(-1)).toMatchObject({ authorization: "ALLOW" });
+    expect(await w.draft("INV-2007")).toMatchObject({ code: "FRESHNESS_UNSATISFIABLE" });
+    await read(w, DIRECTORY_456, { what: "groups" });
+    expect(await w.draft("INV-2007")).toMatchObject({ code: "FRESHNESS_UNSATISFIABLE" });
+    expect(
+      await push(w, DIRECTORY_456, {
+        change: "group.change",
+        id: finance.id,
+        operations: [{ op: "add", members: [] }],
+      }),
+    ).toMatchObject({ outcome: "COMMITTED" });
+    expect(await w.draft("INV-2007")).toMatchObject({ outcome: "COMMITTED" });
+  });
+
+  it("DSOR-IDN-06: decision D2: only org_456's own directory login is org_456's directory: another company's directory, and the agent's own calls, are no word from it (the review of step 43c)", async () => {
+    const w = await emptyScimWorld(BOTH, await storyCopy());
+    await read(w, DIRECTORY_789, { what: "users" });
+    await w.ask({ token: "tok_7f3a", tenant: "org_456" }, "invoice.get", {
+      invoice: "dsor://org_456/invoice/INV-1008",
+    });
     expect(await w.draft("INV-2002")).toMatchObject({ code: "FRESHNESS_UNSATISFIABLE" });
   });
 

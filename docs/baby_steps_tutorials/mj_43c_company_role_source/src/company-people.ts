@@ -35,16 +35,19 @@ export function directoryLoginOf(tenant: string): string {
 export function heardFrom(log: { records: () => Promise<DecisionRecord[]> }): Heard {
   return async (tenant) => {
     const login = directoryLoginOf(tenant);
-    const times = (await log.records())
-      .filter(
-        // Changed by the real run of 2026-10-26: and that succeeded. A push refused in its work is
-        //   an ALLOW record too, and a directory whose every push failed kept an empty copy "current".
-        (r) =>
-          r.tenant === tenant &&
-          r.authorization === "ALLOW" &&
-          r.result === "ok" &&
-          r.correlation.principal_id === login,
-      )
+    // The decisions of this company's directory login, in this company, oldest first.
+    const decided = (await log.records()).filter(
+      (r) => r.tenant === tenant && r.correlation.principal_id === login,
+    );
+    // Changed by the learner's L7b, after the review of step 43c, finding 5: when the latest push was
+    //   refused, the copy may lack what it said, such as a leaver's deactivation, so no read after it
+    //   makes the copy current; only a push that succeeds does.
+    const pushes = decided.filter((r) => r.operation === "directory.push@1");
+    if (pushes.length > 0 && pushes.at(-1)?.result !== "ok") return undefined;
+    // Changed by the real run of 2026-10-26: and that succeeded. A push refused in its work is an
+    //   ALLOW record too, and a directory whose every push failed kept an empty copy "current".
+    const times = decided
+      .filter((r) => r.authorization === "ALLOW" && r.result === "ok")
       .map((r) => Date.parse(r.at));
     return times.length === 0 ? undefined : Math.max(...times);
   };
