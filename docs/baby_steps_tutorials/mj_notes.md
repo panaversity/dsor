@@ -2856,9 +2856,34 @@ drifts from the sign-in server, which already knows who holds which role.
 - **Q10. `escalate_to` names a role, not a person** (the recommendation). Each sweep asks the role
   source who holds that role now. When nobody holds it, the sweep says so to the receivers.
   *Downside:* `alerts.json` changes shape, and its tests change.
-- **Still to decide before any code:** the new steps' names, numbers, and order (Q4), each with one
-  idea; which step takes Q1b, Q1c, Q9, and Q10; and the Panaversity SSO's fix list, which is work
-  in that repository, not in a step.
+- **The new chain, confirmed** (the recommended order, and numbers that continue at 44). Each step
+  copies the one before it, and step 44 copies step 42. Steps 43 to 43c stay as the explored path.
+  "Again" marks a rule an earlier step met, now met the new way; "new" marks a rule no step has
+  met.
+
+| Step | Its one idea | Rule ids | Takes |
+| --- | --- | --- | --- |
+| 44 · Tokens made for DSoR | A person is who a token made for DSoR says: signature, issuer, audience, expiry, at most one hour old. The person's id is the issuer and `sub`; no link table, no invitations. Agents keep step 42's keys | New: DSOR-RP-02b. Again: DSOR-IDN-01, DSOR-IDN-04a, DSOR-IDN-04b | Applies Q1, Q2, Q2b |
+| 45 · Ask the sign-in server | At every call, DSoR asks the SSO who this person is in this company now. A leaver's next call is refused, and the leaver's slips are suspended | Again, against a real server: DSOR-IDN-05, DSOR-IDN-06, DSOR-IDN-07, DSOR-IDN-03a, DSOR-DEL-02, DSOR-BND-02 | Applies Q5, Q6, Q7, and Q8's bound |
+| 46 · Who may approve, and up to how much | Approving money belongs to approver roles, each with an approval limit; `tenant_admin` cannot approve. "CFO" is resolved to people at approval time | New: DSOR-SOD-04a, DSOR-SOD-04b | Q1b |
+| 47 · The approval door | Approvals count only at the approval door, from DSoR's own approval app, with a token made for that door. The app is a client with PKCE and an issuer check | Again: DSOR-APR-05a, DSOR-APR-05b, DSOR-SOD-01a. New: DSOR-RP-02c, DSOR-RP-02e | Applies Q3 |
+| 48 · The agent door (MCP) | Agents reach DSoR through MCP, one tool per command and never a general tool. Every client but the approval app is an agent, and audit names it as the actor | New: DSOR-RP-02a, DSOR-RP-02d, DSOR-OPR-03a, DSOR-IDN-02b | None |
+| 49 · An agent with nobody present | The agent signs with its own key, and its token names only the agent; the person comes from the slip | New: DSOR-RP-10, DSOR-RP-11, DSOR-IDN-02a, DSOR-DEL-09. Again: DSOR-DEL-07, DSOR-DEL-08 | None |
+| 50 · The right people hear | `escalate_to` names a role; the first freshness refusal raises an alert; a suspended slip with waiting work alerts the administrators | Again: DSOR-UNK-04c. Q8's and Q9's alerts are this tutorial's decisions | Q9, Q10, and Q8's alert |
+| Later | A directory that pushes (step 43c's SCIM copy); a sign-in server nobody can extend (step 43b's table as the fallback kind); owner-approval mode for a one-operator company | Again: DSOR-IDN-05 for each kind. New: DSOR-SOD-05 to DSOR-SOD-13 | None |
+
+- **Why this order:** step 44 lets people sign in while agents keep their old keys; step 45 closes
+  the leaver gap early; step 46 needs step 45's roles; step 47 comes before step 48, so an agent
+  that holds a person's token can never approve; step 49 needs the SSO's grant for agents; step 50
+  needs the role source to name a role.
+- **Q1c lands in none of these.** The finance chain has no command that writes the sign-in server.
+  The first step that adds an ops command touching the SSO takes it, as a rule on that command's
+  contract (DSOR-SRC-01a).
+- **Outside the steps:** the Panaversity SSO's fix list comes before step 45 (the lookup route,
+  roles per org, grants by the org's owner only, history) and before step 49 (`client_credentials`
+  with `private_key_jwt`). That work is in the SSO's repository. The map's later rows (OpenViking,
+  Graphiti, KSoR) move after step 50; the map, `docs/status.md`, and `rules-met.md` are the
+  human's to update. The working names stay open until each step's own design.
 
 ## Still unknown
 
