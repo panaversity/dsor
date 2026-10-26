@@ -14,7 +14,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Answer } from "../src/envelope.ts";
 import { hashOf, newCode, realLogins } from "../src/logins.ts";
 import { call } from "../src/pipeline.ts";
-import { createDbBook, createDbLog, requireEnv } from "../src/postgres.ts";
+import { createDbBook, createDbLog, loadDotEnv, requireEnv } from "../src/postgres.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import { remoteKeys, type Login } from "../src/tokens.ts";
 import { dbRegistry, newPool, tryThenRollBack } from "./db.ts";
@@ -22,6 +22,10 @@ import { keyed } from "./helpers.ts";
 import { startIssuer, type TestIssuer } from "./issuer.ts";
 
 const pool = newPool();
+// Changed by step 43's fix, repeated here: the owner's URL from this step's .env, as the owner's
+//   programs read it: test/db-setup.ts loads only DSOR_DB_URL. Found 2026-10-26, building step 43c:
+//   the file passed only when the shell had exported DSOR_MIGRATION_URL.
+loadDotEnv(["DSOR_MIGRATION_URL"]);
 const owner = new pg.Pool({ connectionString: requireEnv("DSOR_MIGRATION_URL"), max: 1 });
 let a: TestIssuer;
 let issuersFile: string;
