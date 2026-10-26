@@ -1,4 +1,4 @@
-// NEW IN STEP 42: the HTTP status of each answer. The body is always call()'s answer, unchanged;
+// The HTTP status of each answer. The body is always call()'s answer, unchanged;
 //   the status is one number in front of it, from one table. The table follows each code's retry
 //   class, so a caller's tools never repeat what DSoR says not to (step 42's README, claim C6,
 //   decisions D4 and A3).

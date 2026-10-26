@@ -1,4 +1,4 @@
-// NEW IN STEP 42: how the door turns an HTTP request into the three things call() takes: the
+// How the door turns an HTTP request into the three things call() takes: the
 //   operation's name, the request envelope, and the input. It only translates. Every value is
 //   handed over as it came, and anything odd is left for the checklist to refuse, after line ① has
 //   asked who calls (DSOR-OPR-04b, DSOR-IDN-01; step 42's README, claims C3 to C5, decisions D3,

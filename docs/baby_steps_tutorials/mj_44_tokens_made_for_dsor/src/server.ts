@@ -1,4 +1,4 @@
-// NEW IN STEP 42: the front door, an HTTP server on Node's own node:http. Each request is read,
+// The front door, an HTTP server on Node's own node:http. Each request is read,
 //   translated (door.ts), and answered by one call of call(), with the registry and the log the
 //   program gives. The server holds no store, no log, and no rule of who may do what, and it has no
 //   answer of its own: what call() answers is the body, and statuses.ts gives its status
@@ -58,7 +58,7 @@ export function createDoor(
     // Nothing a request does may stop the program: an error here would end every call in flight.
     //   translate and readBody never throw, and call() never throws; this is the last guard, and it
     //   only closes the one connection (the review's H1).
-    // NEW IN STEP 42: a request meant for another name is refused before anything else: a web page
+    // A request meant for another name is refused before anything else: a web page
     //   that made its own name point at 127.0.0.1 (DNS rebinding) must not reach the fake logins. A
     //   check of the wire, not of who may do what, so DSOR-OPR-04b allows it. The one answer the door
     //   makes by itself, and it leaves no record (the learner's D8, answering the review's M4).

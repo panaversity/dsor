@@ -1,4 +1,4 @@
-// NEW IN STEP 42: the door's table of routes. Each route is one HTTP method and one path, and names
+// The door's table of routes. Each route is one HTTP method and one path, and names
 //   one operation. The table only names; it decides nothing about who may call what, which stays
 //   the checklist's (DSOR-OPR-04b; step 42's README, claim C2, decisions D1, D2, and A1).
 

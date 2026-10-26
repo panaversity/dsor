@@ -1,4 +1,4 @@
-// NEW IN STEP 42: run with  pnpm serve
+// Run with  pnpm serve
 // The front door as a program. It makes the same start-up checks as pnpm start: the contracts, the
 // role table, the input schemas, the labels, the map of the store, the login, the database against
 // the map, and the rules in dsor.controls. Then the routes against the contracts, and the notes a
