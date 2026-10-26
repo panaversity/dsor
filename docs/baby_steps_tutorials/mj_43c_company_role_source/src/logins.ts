@@ -215,6 +215,10 @@ export function realLogins(
   // NEW IN STEP 43c: and who a login is by the uuid its company's directory pushed, for a login no
   //   link names (step 43c's README, claim C6, the learner's L6). None, unless the caller gives it.
   byUuid: (issuer: string, subject: string) => Promise<string | undefined> = async () => undefined,
+  // NEW IN STEP 43c: and whether, in a company on its own directory, its copy names this login's sub
+  //   as this person. Every company, unless the caller gives it (the review of step 43c, finding 7).
+  confirms: (tenant: string, subject: string, person: string) => Promise<boolean> = async () =>
+    true,
 ): LoginSource {
   return Object.freeze({
     find: async (
@@ -261,7 +265,16 @@ export function realLogins(
       const trusted = [...issuers.entries()]
         .filter(([, list]) => list.some((i) => i.issuer === login.issuer))
         .map(([tenant]) => ({ tenant_id: tenant, roles: [] }));
-      return { id, type: "human", memberships: trusted };
+      // Changed in step 43c: in a company on its own directory, only where its copy names this sub as
+      //   this person. A link made by step 43's invitation, before the company moved to its directory,
+      //   names no one there, and login.unlink is refused for it (the review of step 43c, finding 7).
+      const kept: typeof trusted = [];
+      try {
+        for (const m of trusted) if (await confirms(m.tenant_id, login.subject, id)) kept.push(m);
+      } catch {
+        return { unavailable: "DSoR's copy of a company's directory" };
+      }
+      return { id, type: "human", memberships: kept };
     },
   });
 }

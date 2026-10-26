@@ -13,7 +13,7 @@ import { storeDifferences } from "./inspector.ts";
 import { readClassifications } from "./labels.ts";
 import { handlersFor } from "./operations.ts";
 import { checkRoles, readRoles } from "./permissions.ts";
-import { companyPeople, copyLogins, issuerProblems } from "./company-people.ts";
+import { companyPeople, copyConfirms, copyLogins, issuerProblems } from "./company-people.ts";
 import { createDbClients, createDbCopy, createDbHeard } from "./postgres-copy.ts";
 import { checkRoleMaps, readRoleMaps } from "./role-maps.ts";
 import { scimDoorOver } from "./scim-door.ts";
@@ -171,6 +171,7 @@ try {
       remoteKeys(),
       Date.now,
       copyLogins(createDbCopy(pool), settings, issuers.issuers),
+      copyConfirms(createDbCopy(pool), settings),
     ),
   };
 } catch (error) {

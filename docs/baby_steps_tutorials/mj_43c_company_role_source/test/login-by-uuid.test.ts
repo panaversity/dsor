@@ -3,7 +3,7 @@
 // invitation. Nothing else in the token names anyone (DSOR-IDN-01, DSOR-IDN-04a, DSOR-IDN-04b;
 // step 43c's README, claim C6, the learner's L6).
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { copyLogins, issuerProblems } from "../src/company-people.ts";
+import { copyConfirms, copyLogins, issuerProblems } from "../src/company-people.ts";
 import type { Issuers } from "../src/issuers.ts";
 import { realLogins } from "../src/logins.ts";
 import { call } from "../src/pipeline.ts";
@@ -34,7 +34,14 @@ function signedIn(w: RuleWorld) {
   const byUuid = copyLogins(w.copy, w.registry.roleSettings, issuers);
   return {
     ...w.registry,
-    logins: realLogins(issuers, w.book, remoteKeys(), Date.now, byUuid),
+    logins: realLogins(
+      issuers,
+      w.book,
+      remoteKeys(),
+      Date.now,
+      byUuid,
+      copyConfirms(w.copy, w.registry.roleSettings),
+    ),
   };
 }
 
@@ -158,5 +165,36 @@ describe("Step 43c, the review's finding 6: a company on its directory has an is
     expect(
       await copyLogins(w.copy, both, issuers)(authentik.issuer, UUIDS.cfo_100),
     ).toBeUndefined();
+  });
+});
+
+// From the review of step 43c, finding 7: a login linked by step 43's invitation, before org_456 moved
+//   to its directory, still named its person, and login.unlink is refused for org_456 now.
+describe("Step 43c, the review's finding 7: for a company on its directory, the copy decides who a login is", () => {
+  it("DSOR-IDN-04a: an old link of cfo_100, under a sub her directory never pushed, counts in no company on scim", async () => {
+    const w = await scimWorldOnTuesday(spokeMinutesAgo(30));
+    const oldSub = "neon-user-0001";
+    await w.book.link({ issuer: authentik.issuer, subject: oldSub, principal: "cfo_100" });
+    const token = await authentik.sign(oldSub);
+    const answer = await call(
+      signedIn(w),
+      w.log,
+      { token, tenant: "org_456" },
+      "invoice.get",
+      INV_1008,
+    );
+    expect(answer).not.toHaveProperty("data");
+    expect(answer).toMatchObject({
+      code: expect.stringMatching(/AUTHENTICATION_REQUIRED|AUTHORIZATION_DENIED/),
+    });
+  });
+
+  it("DSOR-IDN-01: her link under her own uuid counts as before", async () => {
+    const w = await scimWorldOnTuesday(spokeMinutesAgo(30));
+    await w.book.link({ issuer: authentik.issuer, subject: UUIDS.cfo_100, principal: "cfo_100" });
+    const token = await authentik.sign(UUIDS.cfo_100);
+    expect(
+      await call(signedIn(w), w.log, { token, tenant: "org_456" }, "invoice.get", INV_1008),
+    ).toMatchObject({ correlation: { principal_id: "cfo_100" }, data: { id: "INV-1008" } });
   });
 });

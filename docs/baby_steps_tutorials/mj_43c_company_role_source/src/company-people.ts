@@ -90,6 +90,19 @@ export function copyLogins(
 }
 
 /**
+ * Whether a login's sub is this person in this company: always, for a company on DSoR's own table;
+ * for a company on its own directory, only when its copy names that sub as this same person (the
+ * review of step 43c, finding 7).
+ */
+export function copyConfirms(
+  copy: Pick<DirectoryCopy, "personOf">,
+  settings: RoleSettings,
+): (tenant: string, subject: string, person: string) => Promise<boolean> {
+  return async (tenant, subject, person) =>
+    settings.get(tenant)?.kind !== "scim" || (await copy.personOf(tenant, subject)) === person;
+}
+
+/**
  * Every company on its own directory whose issuer another company lists too, named. The learner's L6
  * makes a company's directory the issuer of that company alone: shared, one company's directory could
  * push a user with another company's person's uuid, and lock her out of signing in (the review of step
