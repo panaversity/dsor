@@ -329,6 +329,47 @@ The refusal at 22:58:16 named the wrong thing; it now says the directory has not
 recently enough ("Think it through"). Not "suspended": DSoR does not know user_123 left, only that
 its copy is too old to say.
 
+**A second real sign-in server, for org_789.** On 2026-10-26 org_789, which stays on DSoR's own table,
+signed in through Panaversity SSO: a Next.js server with Better Auth 1.6.23 and its OAuth provider
+plugin, run on this computer against a database of its own (nothing of production touched). Its
+tokens are RS256, live 14 days, and carry its own `role`, `org_role`, and `tenant_id` claims. One test
+person signed in by its PKCE flow twice: once as any Panaversity app's sign-in does, whose audience is
+the SSO's own address; once with `resource=http://127.0.0.1:8042`, a token minted for DSoR. The owner's
+`pnpm invite org_789 user_700` made the invitation. org_789's issuer names DSoR's address as its
+audience, RS256, and a `max_age` of one hour.
+
+```text
+1. the SSO's everyday token, the one any Panaversity app gets, with the invitation
+   401 AUTHENTICATION_REQUIRED: log in first: the call has no login token that DSoR gave
+2. a token minted for DSoR's address, with the invitation
+   200 {"by":"user_700","invoice":"INV-1008","tenant":"org_789"}
+3. the same token again, with no invitation
+   200 {"by":"user_700","invoice":"INV-1008","tenant":"org_789"}
+4. the same token, asking for org_456, which trusts only its own authentik
+   403 AUTHORIZATION_DENIED: the caller may not work in the tenant it named
+```
+
+DSoR's own bound, not the issuer's. With org_789's `max_age` at one minute, for this run only:
+
+```text
+token age 86 s; the SSO says it expires in 14 days
+   401 AUTHENTICATION_REQUIRED: log in first: the call has no login token that DSoR gave
+```
+
+And an issuer shared with the company on its directory, refused at start-up (the review's finding 6):
+
+```text
+the issuers refused to start:
+  issuers.json: org_456 takes its people from its own directory, so its issuer http://127.0.0.1:3001 is its own: org_789 lists it too
+```
+
+A sign-in server that serves many apps is safe for DSoR only with an audience that names DSoR: with
+the SSO's everyday audience, every Panaversity app's token would be a DSoR token, which is what
+`dedicated_to_dsor` (step 43's R4) asks the company to promise against. This server cannot be a
+company's directory in this step's sense: it pushes nobody; its people and roles are read only from
+its tokens, which DSoR does not trust for roles (L2). A role source that asks its organization API is
+step 43d's idea.
+
 **Set up authentik for a company.** Its mapping must send `externalId` (`str(request.user.uuid)` for
 a user, `str(group.pk)` for a group; F8). Its SCIM provider's full sync must run hourly, not every
 four hours (L7). Its OIDC provider's `sub_mode` must be `user_uuid` (L6). And a provider that
