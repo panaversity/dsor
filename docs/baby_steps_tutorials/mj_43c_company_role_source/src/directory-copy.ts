@@ -32,8 +32,40 @@ export type UserInput = {
 /** What a push says about a group, whole. */
 export type GroupInput = { name: string; external_id: string; members: string[] };
 
-/** A change to a group's members, or its name, as a PATCH sends it. */
-export type GroupChange = { add: string[]; remove: string[]; replace?: string[]; name?: string };
+/** One operation of a PATCH of a group: members added, removed, or made exactly these; or a new name. */
+export type GroupOperation =
+  | { op: "add" | "remove" | "replace"; members: string[] }
+  | { op: "rename"; name: string };
+
+// Changed by the review of step 43c, finding 2: the operations, in the order the PATCH gave them.
+//   Applied always as replace, then add, then remove, an add followed by a replace kept the added
+//   member, and made him CFO.
+/** A change to a group, as a PATCH sends it: its operations, in their order. */
+export type GroupChange = { operations: GroupOperation[] };
+
+/** The members after these operations, applied one by one in their order. */
+export function membersAfter(
+  start: readonly string[],
+  operations: readonly GroupOperation[],
+): string[] {
+  let members = [...start];
+  for (const o of operations) {
+    if (o.op === "add") members = [...new Set([...members, ...o.members])];
+    if (o.op === "remove") members = members.filter((m) => !o.members.includes(m));
+    if (o.op === "replace") members = [...new Set(o.members)];
+  }
+  return members;
+}
+
+/** The group's name after these operations, the last rename's. */
+export function nameAfter(name: string, operations: readonly GroupOperation[]): string {
+  return operations.reduce((now, o) => (o.op === "rename" ? o.name : now), name);
+}
+
+/** Every member an operation adds or names as the whole group: each must be a user of the copy. */
+export function membersNamed(operations: readonly GroupOperation[]): string[] {
+  return operations.flatMap((o) => (o.op === "add" || o.op === "replace" ? o.members : []));
+}
 
 /** A search, as authentik asks after a conflict: one field equal to one value. */
 export type Filter = { field: "userName" | "externalId" | "displayName"; value: string };
@@ -183,10 +215,11 @@ export function memoryCopy(): DirectoryCopy {
     changeGroup: async (tenant, id, change) => {
       const row = groups.find((g) => g.tenant === tenant && g.id === id);
       if (row === undefined) return undefined;
-      mustBeUsers(tenant, [...change.add, ...(change.replace ?? [])]);
-      let members = change.replace ?? row.members;
-      members = [...new Set([...members, ...change.add])].filter((m) => !change.remove.includes(m));
-      Object.assign(row, { members, ...(change.name === undefined ? {} : { name: change.name }) });
+      mustBeUsers(tenant, membersNamed(change.operations));
+      Object.assign(row, {
+        members: membersAfter(row.members, change.operations),
+        name: nameAfter(row.name, change.operations),
+      });
       return shownGroup(row);
     },
     deleteGroup: async (tenant, id) => {

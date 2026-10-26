@@ -105,20 +105,44 @@
             "id": {
               "$ref": "#/$defs/id"
             },
-            "add": {
-              "$ref": "#/$defs/members"
-            },
-            "remove": {
-              "$ref": "#/$defs/members"
-            },
-            "replace": {
-              "$ref": "#/$defs/members"
-            },
-            "name": {
-              "$ref": "#/$defs/name"
+            "operations": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 100,
+              "description": "The PATCH's operations, in its order: members added, removed, or made exactly these; or a new name (the review of step 43c, finding 2).",
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "op": {
+                        "enum": ["add", "remove", "replace"]
+                      },
+                      "members": {
+                        "$ref": "#/$defs/members"
+                      }
+                    },
+                    "required": ["op", "members"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "op": {
+                        "const": "rename"
+                      },
+                      "name": {
+                        "$ref": "#/$defs/name"
+                      }
+                    },
+                    "required": ["op", "name"],
+                    "additionalProperties": false
+                  }
+                ]
+              }
             }
           },
-          "required": ["kind", "id", "add", "remove"],
+          "required": ["kind", "id", "operations"],
           "additionalProperties": false
         }
       ]

@@ -96,32 +96,42 @@ export function scimDoorOver(
         send(res, { status: 200, body: CONFIG });
         return;
       }
+      const company = `dsor://${tenant}/tenant/${tenant}`;
+      const name = req.method === "GET" ? "directory.read" : "directory.push";
+      // A push carries a key of its own: authentik's retry of a refused push is a new request.
+      const envelope = (asked: string) =>
+        asked === "directory.push"
+          ? { token, tenant, idempotency_key: `scim-${crypto.randomUUID()}` }
+          : { token, tenant };
+      // A request the door cannot read is still a call: it is given as an input the schema refuses,
+      //   so line ⑥ records the refusal before the door answers. Changed by the review of step 43c,
+      //   finding 4: these refusals left no record, as an unknown token's did.
+      const refuse = async (answer: ScimReply): Promise<void> => {
+        const said = String((answer.body as { detail?: unknown } | undefined)?.detail ?? "");
+        await call(door, log, envelope(name), name, { company, unreadable: said });
+        send(res, answer);
+      };
       const read = await readBody(req);
       let body: unknown;
       if (read !== undefined && "text" in read) {
         try {
           body = JSON.parse(read.text);
         } catch {
-          send(res, scimError(400, "the body is not JSON", "invalidSyntax"));
+          await refuse(scimError(400, "the body is not JSON", "invalidSyntax"));
           return;
         }
       } else if (read !== undefined) {
-        send(res, scimError(400, "the body could not be read", "invalidSyntax"));
+        await refuse(scimError(400, "the body could not be read", "invalidSyntax"));
         return;
       }
       const request = { method: req.method ?? "", path, query: url.searchParams, body };
       const asked = translate(request);
       if (!("name" in asked)) {
-        send(res, asked);
+        await refuse(asked);
         return;
       }
-      const input = { company: `dsor://${tenant}/tenant/${tenant}`, ...asked.input };
-      // A push carries a key of its own: authentik's retry of a refused push is a new request.
-      const envelope =
-        asked.name === "directory.push"
-          ? { token, tenant, idempotency_key: `scim-${crypto.randomUUID()}` }
-          : { token, tenant };
-      const answer = await call(door, log, envelope, asked.name, input);
+      const input = { company, ...asked.input };
+      const answer = await call(door, log, envelope(asked.name), asked.name, input);
       send(res, reply(request, { ...asked, input }, answer));
     } catch {
       res.destroy();

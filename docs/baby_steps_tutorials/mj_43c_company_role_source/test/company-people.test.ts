@@ -47,8 +47,7 @@ describe("Step 43c, C4: a company on scim is read from its directory's copy", ()
       await w.copy.groups("org_456", { field: "externalId", value: UUIDS.finance })
     )[0]!;
     await w.copy.changeGroup("org_456", finance.id, {
-      add: [],
-      remove: [(await rowOf(w, "cfo_100")).id],
+      operations: [{ op: "remove", members: [(await rowOf(w, "cfo_100")).id] }],
     });
     expect(await w.people.memberOf("org_456", "cfo_100")).toStrictEqual({
       status: "active",

@@ -7,13 +7,16 @@
 import type pg from "pg";
 import { directoryLoginOf, type Heard } from "./company-people.ts";
 import type { DirectoryClients } from "./directory-clients.ts";
-import type {
-  CopyGroup,
-  CopyUser,
-  DirectoryCopy,
-  Filter,
-  GroupInput,
-  UserInput,
+import {
+  membersAfter,
+  membersNamed,
+  nameAfter,
+  type CopyGroup,
+  type CopyUser,
+  type DirectoryCopy,
+  type Filter,
+  type GroupInput,
+  type UserInput,
 } from "./directory-copy.ts";
 import { Refusal } from "./envelope.ts";
 import { taken } from "./people.ts";
@@ -216,17 +219,15 @@ export function copyThrough(reader: pg.Pool | pg.ClientBase, run: Runner): Direc
     changeGroup: async (tenant, id, change) =>
       run(tenant, async (client) => {
         if ((await live(client, tenant, id, "scim_groups")) === undefined) return undefined;
-        await mustBeUsers(client, tenant, [...change.add, ...(change.replace ?? [])]);
+        await mustBeUsers(client, tenant, membersNamed(change.operations));
         const now = (await oneGroup(client, tenant, id)) as CopyGroup;
-        const start = change.replace ?? now.members;
-        const want = [...new Set([...start, ...change.add])].filter(
-          (m) => !change.remove.includes(m),
-        );
-        await setMembers(client, tenant, id, want);
-        if (change.name !== undefined) {
+        // In the PATCH's order (the review of step 43c, finding 2).
+        await setMembers(client, tenant, id, membersAfter(now.members, change.operations));
+        const name = nameAfter(now.name, change.operations);
+        if (name !== now.name) {
           await client.query(
             "UPDATE dsor.scim_groups SET name = $3 WHERE tenant_id = $1 AND id::text = $2",
-            [tenant, id, change.name],
+            [tenant, id, name],
           );
         }
         return oneGroup(client, tenant, id);

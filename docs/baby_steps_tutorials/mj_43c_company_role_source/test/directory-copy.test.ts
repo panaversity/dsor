@@ -125,9 +125,13 @@ describe("Step 43c, C3: the copy keeps each company's users, groups, and members
     const finance = (
       await copy.groups("org_456", { field: "externalId", value: UUIDS.finance })
     )[0]!;
-    await copy.changeGroup("org_456", finance.id, { add: [jane.id], remove: [] });
+    await copy.changeGroup("org_456", finance.id, {
+      operations: [{ op: "add", members: [jane.id] }],
+    });
     expect((await copy.standing("org_456", "jane_200"))?.groups).toStrictEqual([UUIDS.finance]);
-    await copy.changeGroup("org_456", finance.id, { add: [], remove: [jane.id] });
+    await copy.changeGroup("org_456", finance.id, {
+      operations: [{ op: "remove", members: [jane.id] }],
+    });
     expect((await copy.standing("org_456", "jane_200"))?.groups).toStrictEqual([]);
   });
 
@@ -138,7 +142,7 @@ describe("Step 43c, C3: the copy keeps each company's users, groups, and members
     )[0]!;
     const nobody = "00000000-0000-4000-8000-00000000dead";
     await expect(
-      copy.changeGroup("org_456", finance.id, { add: [nobody], remove: [] }),
+      copy.changeGroup("org_456", finance.id, { operations: [{ op: "add", members: [nobody] }] }),
     ).rejects.toMatchObject({
       code: "VALIDATION_FAILED",
       message: `member ${nobody} is no user in org_456's copy`,
@@ -164,7 +168,7 @@ describe("Step 43c, C3: the copy keeps each company's users, groups, and members
       members: [],
     });
     await expect(
-      copy.changeGroup("org_789", theirs.id, { add: [cfo.id], remove: [] }),
+      copy.changeGroup("org_789", theirs.id, { operations: [{ op: "add", members: [cfo.id] }] }),
     ).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
   });
 

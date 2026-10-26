@@ -153,8 +153,7 @@ describe("Step 43c, C3: org_456's directory login keeps org_456's copy", () => {
       await push(w, DIRECTORY_456, {
         change: "group.change",
         id: finance.id,
-        add: [nobody],
-        remove: [],
+        operations: [{ op: "add", members: [nobody] }],
       }),
     ).toMatchObject({ code: "VALIDATION_FAILED" });
     expect((await w.log.records()).at(-1)).toMatchObject({ authorization: "ALLOW" });

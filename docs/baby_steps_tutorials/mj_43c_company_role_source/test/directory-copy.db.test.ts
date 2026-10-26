@@ -124,7 +124,13 @@ describe("Step 43c, C8: the copy on PostgreSQL, read by line ① through the map
       roles: ["CFO"],
     });
     // Out of the group, and then deleted: the change is what line ① reads next.
-    dataOf(await push({ kind: "group.change", id: group["id"], add: [], remove: [user["id"]] }));
+    dataOf(
+      await push({
+        kind: "group.change",
+        id: group["id"],
+        operations: [{ op: "remove", members: [user["id"]] }],
+      }),
+    );
     expect((await registry.people.memberOf("org_456", p.name))?.roles).toStrictEqual([]);
     dataOf(await push({ kind: "user.delete", id: user["id"] }));
     expect((await registry.people.memberOf("org_456", p.name))?.status).toBe("deprovisioned");

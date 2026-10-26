@@ -34,15 +34,35 @@ const record = (body: unknown): Record<string, unknown> =>
   typeof body === "object" && body !== null && !Array.isArray(body)
     ? (body as Record<string, unknown>)
     : {};
-const values = (list: unknown): unknown =>
-  Array.isArray(list) ? list.map((m) => record(m)["value"]) : list;
+// A list of members, each { "value": "<id>" } and nothing else, or why it is not one. Changed by the
+//   review of step 43c, finding 2: a value that was no list threw, and the door dropped the connection.
+function memberIds(list: unknown): string[] | string {
+  if (!Array.isArray(list)) return "members must be a list of { value }";
+  const ids: string[] = [];
+  for (const member of list) {
+    const fields = record(member);
+    const keys = Object.keys(fields);
+    if (keys.length !== 1 || keys[0] !== "value" || typeof fields["value"] !== "string") {
+      return "each member must be { value } and nothing else";
+    }
+    ids.push(fields["value"]);
+  }
+  return ids;
+}
+const values = (list: unknown): unknown => {
+  const ids = memberIds(list);
+  // Not a list of members: left as it came, so the input schema refuses it.
+  return typeof ids === "string" ? list : ids;
+};
 function account(body: unknown): Record<string, unknown> {
   const { userName, externalId, displayName, active } = record(body);
   return {
     user_name: userName,
     external_id: externalId,
     ...(displayName === undefined ? {} : { display_name: displayName }),
-    active: active ?? true,
+    // Changed by the review of step 43c, finding 3: never a default. A user with no active, or null,
+    //   is refused by the input schema: a missing word read as "active" brought a leaver back.
+    ...(active === undefined ? {} : { active }),
   };
 }
 function group(body: unknown): Record<string, unknown> {
@@ -57,34 +77,54 @@ const FILTER = /^(userName|externalId|displayName) eq "([^"]*)"$/;
 // not copied: RFC 7644's value path, in the one form authentik sent.
 const MEMBER = /^members\[value eq "([^"]+)"\]$/;
 
-/** A PATCH of a group, as one change, or the reason it cannot be read. */
+/**
+ * A PATCH of a group, as its operations in their order, or the reason it cannot be read. Changed by the
+ * review of step 43c, finding 2: the operations were applied as replace, then add, then remove,
+ * whatever their order; and a key the door did not read was dropped in silence. Only what authentik
+ * sends, and RFC 7644's remove of every member, is read; anything else is refused, never guessed.
+ */
 function groupChange(id: string, body: unknown): Record<string, unknown> | string {
-  const change: { add: unknown[]; remove: unknown[]; replace?: unknown; name?: unknown } = {
-    add: [],
-    remove: [],
-  };
-  const operations = record(body)["Operations"];
-  if (!Array.isArray(operations)) return "a PATCH needs its Operations";
-  for (const raw of operations) {
-    const { op, path, value } = record(raw);
-    const verb = String(op).toLowerCase();
+  const raw = record(body)["Operations"];
+  if (!Array.isArray(raw) || raw.length === 0) return "a PATCH needs its Operations, a list";
+  const operations: Record<string, unknown>[] = [];
+  for (const one of raw) {
+    const { op, path, value, ...more } = record(one);
+    if (Object.keys(more).length > 0)
+      return `the door does not read ${Object.keys(more).join(", ")}`;
+    const verb = typeof op === "string" ? op.toLowerCase() : "";
     const member = typeof path === "string" ? MEMBER.exec(path) : null;
-    if (verb === "add" && path === "members") change.add.push(...(values(value) as unknown[]));
-    else if (verb === "remove" && member !== null) change.remove.push(member[1]);
-    else if (verb === "remove" && path === "members")
-      change.remove.push(...(values(value) as unknown[]));
-    else if (verb === "replace" && path === "members") change.replace = values(value);
-    else if (verb === "replace" && path === "displayName") change.name = value;
-    else if (verb === "replace" && path === undefined && record(value)["displayName"] !== undefined)
-      change.name = record(value)["displayName"];
-    else
-      return `the door does not read the operation ${JSON.stringify(op)} of ${JSON.stringify(path)}`;
+    const said = `the door does not read the operation ${JSON.stringify(op)} of ${JSON.stringify(path)}`;
+    if (verb === "remove" && member !== null && value === undefined) {
+      operations.push({ op: "remove", members: [member[1]] });
+    } else if (verb === "remove" && path === "members" && value === undefined) {
+      // RFC 7644, 3.5.2.2: a remove of the attribute, with no value, removes every member.
+      operations.push({ op: "replace", members: [] });
+    } else if ((verb === "add" || verb === "remove" || verb === "replace") && path === "members") {
+      const ids = memberIds(value);
+      if (typeof ids === "string") return ids;
+      operations.push({ op: verb, members: ids });
+    } else if (verb === "replace" && path === "displayName") {
+      operations.push({ op: "rename", name: value });
+    } else if (verb === "replace" && path === undefined) {
+      const { displayName, members, ...rest } = record(value);
+      if (Object.keys(rest).length > 0 || (displayName === undefined && members === undefined)) {
+        return `the door reads displayName and members in a replace, and nothing else`;
+      }
+      if (displayName !== undefined) operations.push({ op: "rename", name: displayName });
+      if (members !== undefined) {
+        const ids = memberIds(members);
+        if (typeof ids === "string") return ids;
+        operations.push({ op: "replace", members: ids });
+      }
+    } else {
+      return said;
+    }
   }
-  return { kind: "group.change", id, ...change };
+  return { kind: "group.change", id, operations };
 }
 
 /** What the door asks DSoR for this request, or the SCIM error that answers it at once. */
-export function translate(request: ScimRequest): Asked | ScimReply {
+function readRequest(request: ScimRequest): Asked | ScimReply {
   const parts = request.path.split("/").filter(Boolean);
   const [what, id, ...rest] = parts;
   const kind = what === "Users" ? "user" : what === "Groups" ? "group" : undefined;
@@ -134,6 +174,18 @@ export function translate(request: ScimRequest): Asked | ScimReply {
       return push({ kind: `${kind}.delete`, id });
     default:
       return scimError(405, `the door does not take ${request.method}`);
+  }
+}
+
+/**
+ * What the door asks DSoR for this request, or the SCIM error that answers it at once. It never throws:
+ * a request it cannot read is a refusal, which the door records (the review of step 43c, finding 4).
+ */
+export function translate(request: ScimRequest): Asked | ScimReply {
+  try {
+    return readRequest(request);
+  } catch {
+    return scimError(400, "the door cannot read this request", "invalidSyntax");
   }
 }
 

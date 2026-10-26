@@ -74,7 +74,8 @@ async function scim(
   const headers: Record<string, string> = { "content-type": "application/scim+json" };
   if (token !== NONE) headers["authorization"] = `Bearer ${token}`;
   headers["host"] = host ?? url.host;
-  const text = body === undefined ? undefined : JSON.stringify(body);
+  const text =
+    body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body);
   return new Promise((done, fail) => {
     const req = request(
       { host: url.hostname, port: url.port, path: url.pathname + url.search, method, headers },
@@ -359,4 +360,148 @@ describe("Step 43c, C3: authentik's requests, as the real check recorded them", 
       ["directory.read@1", "ALLOW", "directory-org_456"],
     ]);
   });
+});
+
+// From the review of step 43c, findings 2 to 4: the door read PATCH out of order, guessed at what it
+//   did not read, took a missing active as true, and left its own refusals out of the evidence.
+describe("Step 43c, the review's findings 2 to 4: the door reads what it reads, in order, and records what it refuses", () => {
+  /** org_456's copy with cfo_100 and user_123, and Finance-Approvers holding cfo_100. */
+  async function withGroup() {
+    const door = await doorOf();
+    const cfo = await scim(door.base, "POST", "/scim/v2/Users", userBody("cfo_100", UUIDS.cfo_100));
+    const sup = await scim(
+      door.base,
+      "POST",
+      "/scim/v2/Users",
+      userBody("user_123", UUIDS.user_123),
+    );
+    const group = await scim(door.base, "POST", "/scim/v2/Groups", {
+      schemas: [GROUP],
+      displayName: "Finance-Approvers",
+      externalId: UUIDS.finance,
+      members: [{ value: cfo.body["id"] }],
+    });
+    return {
+      ...door,
+      cfo: String(cfo.body["id"]),
+      sup: String(sup.body["id"]),
+      group: `/scim/v2/Groups/${String(group.body["id"])}`,
+    };
+  }
+  const patch = (Operations: unknown[]) => ({
+    schemas: ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+    Operations,
+  });
+
+  it("DSOR-IDN-05: finding 2: operations apply in their order: an add, then a replace, leaves only the replace's members", async () => {
+    const g = await withGroup();
+    const reply = await scim(
+      g.base,
+      "PATCH",
+      g.group,
+      patch([
+        { op: "add", path: "members", value: [{ value: g.sup }] },
+        { op: "replace", path: "members", value: [{ value: g.cfo }] },
+      ]),
+    );
+    expect(reply).toMatchObject({ status: 200, body: { members: [{ value: g.cfo }] } });
+    expect((await g.w.people.memberOf("org_456", "user_123"))?.roles).toStrictEqual([]);
+  });
+
+  it("DSOR-IDN-05: finding 2: a replace with no path reads its members too: an empty list empties the group", async () => {
+    const g = await withGroup();
+    const reply = await scim(
+      g.base,
+      "PATCH",
+      g.group,
+      patch([{ op: "replace", value: { displayName: "Finance-Approvers", members: [] } }]),
+    );
+    expect(reply).toMatchObject({ status: 200, body: { members: [] } });
+    expect((await g.w.people.memberOf("org_456", "cfo_100"))?.roles).toStrictEqual([]);
+  });
+
+  it("DSOR-IDN-05: finding 4: a remove of members with no value is RFC 7644's remove of every member", async () => {
+    const g = await withGroup();
+    const reply = await scim(g.base, "PATCH", g.group, patch([{ op: "Remove", path: "members" }]));
+    expect(reply).toMatchObject({ status: 200, body: { members: [] } });
+  });
+
+  it.each([
+    [
+      "a key it does not read",
+      [{ op: "replace", value: { displayName: "x", owner: "admin_100" } }],
+    ],
+    ["members as one object, not a list", [{ op: "add", path: "members", value: { value: "x" } }]],
+    [
+      "a member with a key it does not read",
+      [{ op: "add", path: "members", value: [{ value: "x", primary: true }] }],
+    ],
+    ["an operation it does not know", [{ op: "move", path: "members", value: [] }]],
+  ])(
+    "DSOR-EXE-02: finding 2: a PATCH with %s is refused 400 and recorded, never guessed, and changes nothing",
+    async (_case, operations) => {
+      const g = await withGroup();
+      const before = (await g.w.log.records()).length;
+      const reply = await scim(g.base, "PATCH", g.group, patch(operations));
+      expect(reply.status).toBe(400);
+      expect((await g.w.log.records()).slice(before)).toStrictEqual([
+        expect.objectContaining({
+          operation: "directory.push@1",
+          authorization: "DENY",
+          result: "VALIDATION_FAILED",
+        }),
+      ]);
+      expect((await g.w.people.memberOf("org_456", "cfo_100"))?.roles).toStrictEqual(["CFO"]);
+    },
+  );
+
+  it.each([
+    ["no active", { schemas: [USER], userName: "cfo_100", externalId: UUIDS.cfo_100 }],
+    ["active: null", { ...userBody("cfo_100", UUIDS.cfo_100), active: null }],
+  ])(
+    "DSOR-IDN-07: finding 3: a PUT with %s is refused, never read as active",
+    async (_case, body) => {
+      const g = await withGroup();
+      await scim(
+        g.base,
+        "PUT",
+        `/scim/v2/Users/${g.cfo}`,
+        userBody("cfo_100", UUIDS.cfo_100, false),
+      );
+      const reply = await scim(g.base, "PUT", `/scim/v2/Users/${g.cfo}`, body);
+      expect(reply).toMatchObject({ status: 400, body: { scimType: "invalidValue" } });
+      expect((await g.w.people.memberOf("org_456", "cfo_100"))?.status).toBe("suspended");
+    },
+  );
+
+  it.each([
+    [
+      "a PATCH of a user",
+      "PATCH",
+      "/scim/v2/Users/0b6f1d1e-3c3a-4a52-9a43-000000000001",
+      patch([]),
+    ],
+    ["a body that is not JSON", "POST", "/scim/v2/Users", "{ not json"],
+    ["a path the door does not know", "GET", "/scim/v2/Schemas", undefined],
+    [
+      "a filter the door does not read",
+      "GET",
+      `/scim/v2/Users?filter=${encodeURIComponent('userName co "a"')}`,
+      undefined,
+    ],
+  ])(
+    "DSOR-EXE-02: finding 4: %s, from org_456's directory, is refused and recorded",
+    async (_case, method, path, body) => {
+      const { w, base } = await doorOf();
+      const before = (await w.log.records()).length;
+      const reply = await scim(base, method, path, body);
+      expect(reply.status).toBeGreaterThanOrEqual(400);
+      expect((await w.log.records()).slice(before)).toStrictEqual([
+        expect.objectContaining({
+          authorization: "DENY",
+          correlation: expect.objectContaining({ principal_id: "directory-org_456" }),
+        }),
+      ]);
+    },
+  );
 });
