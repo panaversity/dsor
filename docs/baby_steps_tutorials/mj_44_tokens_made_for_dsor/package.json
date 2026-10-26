@@ -21,6 +21,7 @@
   "dependencies": {
     "@marcbachmann/cel-js": "8.0.0",
     "ajv": "8.20.0",
+    "jose": "6.2.12",
     "pg": "8.23.0"
   },
   "devDependencies": {
