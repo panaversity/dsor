@@ -271,6 +271,25 @@ describe("Step 43c, C8: the database's own rules on the copy", () => {
     ).rejects.toThrow(`the id ${p.name} is taken`);
   });
 
+  // From the review of step 43c, finding 8: the backstop worked one way only.
+  it("DSOR-IDN-03a: the database refuses a person of DSoR's table under an id another company's copy has", async () => {
+    const p = fresh();
+    dataOf(
+      await push({
+        kind: "user.create",
+        account: { user_name: p.name, external_id: p.uuid, active: true },
+      }),
+    );
+    await expect(
+      tryThenRollBack(
+        pool,
+        "INSERT INTO dsor.people (tenant_id, principal_id, added_by, reason) VALUES ('org_789', $1, 'owner', 'x')",
+        "org_789",
+        [p.name],
+      ),
+    ).rejects.toThrow(`the id ${p.name} is taken`);
+  });
+
   it.each(["principal_id", "external_id", "tenant_id"])(
     "DSOR-IDN-05: the learner's L5: dsor_runtime may never change a user's %s",
     async (column) => {

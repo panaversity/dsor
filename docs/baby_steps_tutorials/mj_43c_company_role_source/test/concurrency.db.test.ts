@@ -20,6 +20,7 @@ import {
   OUTBOX_TRIGGER,
   INVITATION_PERSON_TRIGGER,
   PEOPLE_TRIGGER,
+  PEOPLE_COPY_TRIGGER,
   GRANT_TRIGGERS,
   SCIM_TRIGGERS,
   OUTBOX_KEEP_TRIGGER,
@@ -395,6 +396,8 @@ describe("C8 and C11: the version in a read, and the triggers in the catalog", (
       PAYMENT_TRIGGER,
       // Changed in step 43b: DSoR's table of people (migration 049; step 43b's README, claim C8): a person leaves once.
       PEOPLE_TRIGGER,
+      // Changed in step 43c: and the check against the copies (the review of step 43c, finding 8).
+      PEOPLE_COPY_TRIGGER,
       // Changed in step 38b: and the proposals' trigger that raises and closes an alert.
       PROPOSAL_ALERT,
       PROPOSAL_TRIGGER,

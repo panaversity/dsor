@@ -87,6 +87,23 @@ $$;
 CREATE TRIGGER scim_users_move BEFORE UPDATE ON dsor.scim_users
   FOR EACH ROW EXECUTE FUNCTION dsor.scim_user_moves();
 
+-- And the same backstop the other way: a person of DSoR's own table under an id another company's copy
+--   has, or had, is taken, under the same lock. Found by the review of step 43c, finding 8: only the
+--   copy's side checked.
+CREATE FUNCTION dsor.person_not_in_copies() RETURNS trigger LANGUAGE plpgsql
+  SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  PERFORM pg_advisory_xact_lock(hashtextextended('dsor.people/' || NEW.principal_id, 0));
+  IF EXISTS (SELECT 1 FROM dsor.scim_users u
+              WHERE u.principal_id = NEW.principal_id AND u.tenant_id <> NEW.tenant_id) THEN
+    RAISE EXCEPTION 'the id % is taken', NEW.principal_id USING ERRCODE = 'unique_violation';
+  END IF;
+  RETURN NEW;
+END
+$$;
+CREATE TRIGGER people_not_in_copies BEFORE INSERT ON dsor.people
+  FOR EACH ROW EXECUTE FUNCTION dsor.person_not_in_copies();
+
 -- One group of one company's copy, keyed by its directory's uuid, the id the role map names (L3).
 --   Its name may change; a deleted group is kept, ended at a time.
 CREATE TABLE dsor.scim_groups (

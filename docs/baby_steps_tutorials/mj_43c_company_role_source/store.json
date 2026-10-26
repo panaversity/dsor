@@ -371,7 +371,8 @@
         }
       },
       "triggers": [
-        "CREATE TRIGGER people_leave BEFORE UPDATE ON dsor.people FOR EACH ROW EXECUTE FUNCTION dsor.person_leaves()"
+        "CREATE TRIGGER people_leave BEFORE UPDATE ON dsor.people FOR EACH ROW EXECUTE FUNCTION dsor.person_leaves()",
+        "CREATE TRIGGER people_not_in_copies BEFORE INSERT ON dsor.people FOR EACH ROW EXECUTE FUNCTION dsor.person_not_in_copies()"
       ]
     },
     "dsor.role_grants": {

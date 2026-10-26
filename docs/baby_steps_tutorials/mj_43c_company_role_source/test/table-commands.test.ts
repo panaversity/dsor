@@ -61,3 +61,21 @@ describe("Step 43c, C7: a company on its directory takes no change to its people
     ).toMatchObject({ outcome: "COMMITTED", data: { person: "jane_789", status: "active" } });
   });
 });
+
+// From the review of step 43c: person.add of an id that lives only in another company's copy.
+describe("Step 43c, the review: an id in a directory's copy is taken for DSoR's own table too", () => {
+  it("DSOR-IDN-03a: admin_700 adds jane_456, a person only org_456's copy has, to org_789: taken", async () => {
+    const w = await scimWorldOnTuesday(spokeMinutesAgo(30));
+    await w.copy.createUser("org_456", {
+      user_name: "jane_456",
+      external_id: "0b6f1d1e-3c3a-4a52-9a43-000000000456",
+      active: true,
+    });
+    expect(
+      await as(w, ADMIN_789, "person.add", {
+        person: "dsor://org_789/person/jane_456",
+        reason: "x",
+      }),
+    ).toMatchObject({ code: "CONFLICT", message: "the id jane_456 is taken: choose another" });
+  });
+});

@@ -181,3 +181,46 @@ describe("Step 43c, C3: the copy keeps each company's users, groups, and members
     expect(await copy.personOf("org_456", UUIDS.cfo_100)).toBeUndefined();
   });
 });
+
+// From the review of step 43c: decision D4 was tested for users only.
+describe("Step 43c, the review: decision D4 for groups too", () => {
+  it("DSOR-IDN-03a: org_789 can neither see, list, change, replace, nor delete org_456's group", async () => {
+    const copy = await storyCopy();
+    const finance = (
+      await copy.groups("org_456", { field: "externalId", value: UUIDS.finance })
+    )[0]!;
+    expect(await copy.group("org_789", finance.id)).toBeUndefined();
+    expect(await copy.groups("org_789")).toStrictEqual([]);
+    expect(
+      await copy.groups("org_789", { field: "externalId", value: UUIDS.finance }),
+    ).toStrictEqual([]);
+    expect(
+      await copy.changeGroup("org_789", finance.id, {
+        operations: [{ op: "replace", members: [] }],
+      }),
+    ).toBeUndefined();
+    expect(
+      await copy.replaceGroup("org_789", finance.id, {
+        name: "x",
+        external_id: UUIDS.finance,
+        members: [],
+      }),
+    ).toBeUndefined();
+    expect(await copy.deleteGroup("org_789", finance.id)).toBe(false);
+    expect((await copy.group("org_456", finance.id))?.members).toHaveLength(1);
+  });
+
+  it("DSOR-IDN-04a: a group's externalId never changes: the map's id stays the id it reviewed", async () => {
+    const copy = await storyCopy();
+    const finance = (
+      await copy.groups("org_456", { field: "externalId", value: UUIDS.finance })
+    )[0]!;
+    await expect(
+      copy.replaceGroup("org_456", finance.id, {
+        name: "Finance-Approvers",
+        external_id: UUIDS.admins,
+        members: [],
+      }),
+    ).rejects.toMatchObject({ code: "CONFLICT", message: "a group's externalId never changes" });
+  });
+});

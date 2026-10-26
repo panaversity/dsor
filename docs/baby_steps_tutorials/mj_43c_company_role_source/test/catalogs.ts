@@ -113,6 +113,10 @@ const PEOPLE_COLUMNS = [
 const PEOPLE_WRITTEN = ["tenant_id", "principal_id", "added_by", "reason"];
 export const PEOPLE_TRIGGER =
   "CREATE TRIGGER people_leave BEFORE UPDATE ON dsor.people FOR EACH ROW EXECUTE FUNCTION dsor.person_leaves()";
+// Changed in step 43c: and the check that a person's id is no other company's copy's (the review of
+//   step 43c, finding 8).
+export const PEOPLE_COPY_TRIGGER =
+  "CREATE TRIGGER people_not_in_copies BEFORE INSERT ON dsor.people FOR EACH ROW EXECUTE FUNCTION dsor.person_not_in_copies()";
 const GRANT_COLUMNS = [
   "id",
   "tenant_id",
@@ -860,7 +864,7 @@ export function today(): Catalog {
         }),
         rowSecurity: { enabled: true, forced: true },
         rules: [],
-        triggers: [PEOPLE_TRIGGER],
+        triggers: [PEOPLE_TRIGGER, PEOPLE_COPY_TRIGGER],
       },
       {
         name: "dsor.proposals",
