@@ -132,10 +132,21 @@ it changed people in authentik and read what arrived. What it found:
   leaves authentik's default of four hours, DSoR refuses its calls: loudly, never by trusting an old
   copy. *Downside:* a setting outside DSoR that DSoR cannot check at start-up. It meets L2 (24
   hours), not L3 (1 hour).
+- **L7b. A refused push stops the copy at once (the learner's, after the review's finding 5).** A
+  refused deactivation, say for a display name too long, left the copy current while authentik's
+  quiet reads succeeded: a leaver kept her roles for as long as authentik retried. Now, while the
+  directory's latest push was refused, the copy is no answer, whatever reads follow, until a push
+  succeeds. *Downside:* one bad change in authentik stops every call of the company's people, and its
+  agents' slips, until it is fixed there.
 - **L8. `active: false` suspends; `DELETE` deprovisions (the learner's).** Either way the person's
-  next call is refused, and their slips are suspended at their next use, by step 19b's path
-  (DSOR-IDN-07). A suspended person can come back. *Downside:* until that next use, a listing still
-  shows the slips as active.
+  next call is refused. A suspended person can come back. Her slips were to be suspended at their
+  next use, by step 19b's path; L8b changed that.
+- **L8b. The push itself suspends her slips (the learner's, asked again after the review's finding
+  1).** At the next use, a person suspended and made active again before the agent next called never
+  had her slips suspended, though her directory had reported it. Now the push that says
+  `active: false`, or deletes her, suspends every active slip she signed in that company, in its own
+  transaction, with one record each (DSOR-IDN-07). *Downside:* a push writes delegations too, a second
+  path beside step 19b's; a person who comes back needs new slips.
 - **L9. A mapped group's role counts at once (the learner's).** The second person's check moves to
   the map's pull request: which group makes a CFO is reviewed; who is in the group is the company's
   own process. *Downside:* one authentik administrator can make a CFO alone.
@@ -151,9 +162,9 @@ it changed people in authentik and read what arrived. What it found:
 - **D2. The copy's age is the time since the company's directory last spoke, read from the audit
   (Claude Code).** The latest `ALLOW` record of the directory login in that company **that
   succeeded**, by the database's clock. The quiet sync's reads count (F3); a push refused in its
-  work does not (changed by the real run, below). No new timestamp that anything could set by hand.
-  *Downside:* reading the audit at each call of a person of that company; an index keeps it short.
-  And a directory whose reads succeed while its pushes all fail still counts as heard.
+  work does not (changed by the real run, below), and since L7b a refused push stops the copy until a
+  later one succeeds. No new timestamp that anything could set by hand. *Downside:* reading the audit
+  at each call of a person of that company; an index keeps it short.
 - **D3. The directory's credential names its company (Claude Code).** A random token, made by the
   owner's `pnpm directory-token org_456`, shown once to paste into authentik. DSoR keeps its SHA-256
   only, in `dsor.directory_clients`, which `dsor_runtime` reads and never writes. The company comes
@@ -398,8 +409,8 @@ docs/baby_steps_tutorials/mj_notes.md, "Step 43c's design".
 <details>
 <summary>Answers</summary>
 
-1. `DELEGATION_REQUIRED`, and `del_100` is suspended (DSOR-IDN-07). authentik pushed a PUT of
-   user_123 with `active: false` within seconds; the copy says suspended.
+1. `DELEGATION_REQUIRED`. authentik pushed a PUT of user_123 with `active: false` within seconds;
+   that push suspended `del_100` at once (L8b, DSOR-IDN-07), and the copy says he is suspended.
 2. No. The map names a group by its uuid (L3). A new group has a new uuid, which no line of
    `role-maps.json` names, and only a reviewed pull request adds one (L4).
 3. `FRESHNESS_UNSATISFIABLE` (DSOR-IDN-06). DSoR has not heard from the directory within
@@ -446,13 +457,35 @@ docs/baby_steps_tutorials/mj_notes.md, "Step 43c's design".
 
 ### What the review found
 
-Written when the review ends.
+A reviewer who had not seen the conversation read the step against DSOR-IDN-01, IDN-03a, IDN-04a,
+IDN-04b, IDN-05, IDN-06, IDN-07, TEN-02b, and EXE-02, attacked it as an agent and a directory's network
+would, and broke it in copies. Each finding was fixed red first, or decided again by the learner:
+
+| # | Finding | Fixed |
+|---|---|---|
+| 1 | A username reused after a delete, under a new uuid, inherited the leaver's slips and approvals: the agent paid under `del_100`, a departed CFO's approval released a payment. And a person suspended and made active again before her slip's next use never had it suspended | An id this company had under another uuid is taken (memory, store, trigger); the push suspends slips itself (L8b) |
+| 2 | PATCH operations applied as replace, add, remove whatever their order: an add before a replace made user_123 CFO. A replace whose value carried members dropped them in silence | Operations in their order; anything the door does not read is refused |
+| 3 | A user with no `active`, or `null`, was read as active, and brought a leaver back | `active` is required |
+| 4 | Refusals the door made itself left no record; a value that was no list threw, and the door dropped the connection | The translation never throws; every refusal goes to `call()` and is recorded |
+| 5 | "Last heard" said the directory was alive, not that the copy matched it: a refused deactivation kept a leaver's roles while authentik retried | A refused push stops the copy until a push succeeds (L7b) |
+| 6 | One issuer for two companies let one company's directory lock the other's person out of signing in | `pnpm serve` refuses a company on scim whose issuer another lists |
+| 7 | A login linked before the company moved to its directory still named its person, and could not be unlinked | In a company on scim, the copy decides who a login is |
+| 8 | The database refused a copy's user under another company's id, but not a person of DSoR's table under a copy's id | A trigger on `dsor.people` too |
+
+And tests it asked for, which pass: another company's directory, and the agent's own calls, are no word
+from org_456's directory; decision D4 for groups; `person.add` of an id only another company's copy
+has. Mutations that had stayed green before (records of any company or any login counting as heard,
+groups across companies, a group's `externalId` changing) now fail a test.
 
 ### Left open on purpose
 
-- **A directory whose reads succeed and pushes fail still counts as heard.** Its refused pushes are
-  in the audit, and authentik shows them as errors. Counting only writes would refuse a quiet
-  company, whose full sync only reads (F3).
+- **One bad change in authentik stops a company (L7b).** By design: the lock stays locked. Its
+  refused push is in the audit, and authentik shows the error.
+- **Step 05's tokens of the directory logins (`tok_5c1a`, `tok_5c7b`) work on the agent's door.**
+  For the tests, as every token of that table does; each route refuses them, and the SCIM door takes
+  only the owner's hashed token (D3). Step 44 ends step 05's table.
+- **Members sent as plain strings, not `{ value }`,** are refused with the input schema's message,
+  which names a field the door did not send.
 - **A credential is the owner's to make.** A company cannot rotate its own token.
 - **Usernames must be DSoR ids.** A directory whose usernames are e-mail addresses is refused (D5).
 - **L7 needs a setting outside DSoR.** authentik's default four-hour sync with PT2H refuses a quiet
