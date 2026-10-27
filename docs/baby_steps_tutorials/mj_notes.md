@@ -3318,6 +3318,12 @@ and in 1.7.2's own code from the local pnpm store. The SSO runs 1.6.23. Its upgr
     that signs in through the SSO, and tries the migrations on a copy of production data.
 
   *Downside:* the upgrade and the DSoR work must be separated again by hand, file by file.
+- **PR A opened the same day: panaversity/agentfactory#1333.** It has four commits: the 1.7.14 code
+  and schema, the migrations, the repeated-parameter fix, and the probes with the rig. Each commit
+  was proven on this computer, with CI's own settings and PostgreSQL 16, and broken on purpose. On
+  a 1.6.23 database taken through 0011, 0011b and 0012, the account table did not change, and the
+  schema then equals a fresh 1.7.14 schema. #1288 and #1332 are closed with a link to it. Two things
+  are not done: the two Redis probes, and the checks that need production access. PR B is next.
 
 ## Still unknown
 
