@@ -3104,6 +3104,37 @@ put to the learner, each with Claude Code's recommendation, and the learner took
 - **The breaks came out in the step's README, under "Break it".** The habit behind the misses:
   "one check gone, the token gets in". A token must pass every check, and the others still run.
 
+### Why the chain diverged from the map (2026-10-27)
+
+The learner asked why the chain left the map's Part 6, whose steps look sensible. The map's goals
+stay: real logins, agents with tokens of their own, an MCP door, and safe approvals. What changed
+is who holds identity.
+
+- **The map has two sign-in systems, because of one platform limit.** People sign in through
+  Managed Better Auth (Neon Auth). It gives agents no tokens (no `client_credentials`), so the map
+  adds a second Better Auth server, run by us, for agents and MCP (its "why two").
+- **Two systems mean two logins per person.** So DSoR keeps a table that links each login to a
+  person: the map's step 43, which gains a second row for user_123 in its step 45. Steps 43b and
+  43c went further: people and roles in DSoR's own tables, then a SCIM copy from authentik.
+- **43d's understanding session questioned where that leads.** In the learner's words: "we are
+  just adding more and more tables illogically", "A role gets updated in sso and all will fail",
+  "too complex for anyone to setup and use dsor", and "we are reinventing the role of sso".
+- **The spec does not ask DSoR to own identity.** §37 asks that a token was made for DSoR and that
+  DSoR checked it. §12.1 lets the sign-in server be the role source. MCP leaves the sign-in server
+  "beyond the scope".
+- **One server removes the need for two.** The Panaversity SSO is a Better Auth server we run, and
+  the ops story already uses it. It can sign in people and agents, answer lookups, hold roles per
+  company, and ask for two-factor sign-in (Q2b). With one server, a person has one login, whose id
+  is the issuer and `sub`. No link table, and no invitations (Q1).
+- **The boundary (Q1).** The sign-in server says who someone is and which roles they hold. DSoR
+  decides what a role may do, and keeps slips, rules, approvals, and evidence. From step 45, DSoR
+  asks at every call, so no copy goes stale (Q5, Q7).
+- **Doors by purpose (Q2, Q3).** An agent door (MCP), and an approval door reached only from DSoR's
+  own approval app. An agent's token then cannot approve at all. The map's step 47 treats the same
+  danger as a trap to refuse.
+- **The cost.** The map and `docs/status.md` are out of date. The chain depends on our own SSO's fix
+  list. And some of the map's rules had no step until the decisions in the next section.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.
