@@ -5,6 +5,7 @@
 // A refused token names its cause, and, when its signature checked, who it speaks for: the record
 // keeps both, and the caller hears neither (step 44's README, decision 44-11).
 import { createHmac } from "node:crypto";
+import type { JWTPayload } from "jose";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { checkedLogin, remoteKeys } from "../src/tokens.ts";
 import { DSOR, PEOPLE_APP, startIssuer, type TestIssuer } from "./issuer.ts";
@@ -223,7 +224,9 @@ describe("C1, from step 43: what a token must be", () => {
   it("Step 44, 44-1: a subject that is empty, or not text, is refused, and never named", async () => {
     // jose checks only that a sub is there (the review's mutation sweep).
     for (const sub of ["", 42]) {
-      const token = await a.sign(undefined, { sub });
+      // 42 is no text, which the type of sub does not allow, so it goes in as any claim would.
+      const claims: Record<string, unknown> = { sub };
+      const token = await a.sign(undefined, claims as JWTPayload);
       expect(await checkedLogin(token, a.signIn, keys)).toStrictEqual(
         refused("subject", { issuer: a.issuer, client: PEOPLE_APP }),
       );
