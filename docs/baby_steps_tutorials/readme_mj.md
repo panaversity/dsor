@@ -9,6 +9,8 @@ do. Steps 00 to 42 are the official map's.
 - Why the plan changed: [`mj_notes.md`](mj_notes.md), "Why the chain diverged from the map".
 - The decisions behind each step: [`mj_notes.md`](mj_notes.md), from "Step 43d, paused" on.
 - What is built: [`docs/status.md`](../status.md). Only step 44 of this chain is built.
+- What Better Auth gives each step, and what stays our own code: [`mj_notes.md`](mj_notes.md),
+  "Better Auth 1.7 against the chain".
 
 ## The explored path: steps 43 to 43c
 
@@ -21,27 +23,32 @@ keeps: links from logins to people, invitations, people and their roles, and a S
 | [43b · People and roles in DSoR's table](mj_43b_people_and_roles/README.md) | DSoR holds each company's people and their roles |
 | [43c · A company's own role source](mj_43c_company_role_source/README.md) | A company's directory, authentik, sends its people to DSoR over SCIM |
 
-The chain brought back step 43's token checks in step 44. It may later bring back 43c's SCIM copy
-and 43b's table as kinds of role source, for a sign-in server that cannot answer a lookup (Q1, Q4).
+The chain brought back step 43's token checks in step 44. A company whose people live in another
+directory (Okta, Entra, authentik) sends them to the SSO through Better Auth's SCIM plugin, so the
+chain needs no SCIM copy in DSoR. 43c's copy and 43b's table stay kinds of role source for a
+sign-in server that cannot answer a lookup (Q1, Q4).
 
 ## The chain
 
 | Step | Idea | Rules | Status |
 |---|---|---|---|
 | [44 · Tokens made for DSoR](mj_44_tokens_made_for_dsor/README.md) | A person is who a token made for DSoR says | New: DSOR-RP-02b. Again: DSOR-IDN-01, DSOR-IDN-04a, DSOR-IDN-04b | Built |
-| 45 · Ask the sign-in server | DSoR asks the SSO, at every call, who a person is in a company now | Again, against a real server: DSOR-IDN-05, DSOR-IDN-06, DSOR-IDN-07, DSOR-IDN-03a, DSOR-DEL-02, DSOR-BND-02 | Next |
+| Before 45 · The SSO on Better Auth 1.7 | The SSO's fix list moves onto its 1.7 upgrade, locally. Not a DSoR step | None in DSoR. It gives 47, 48, and 49 the standard parts they need | Next |
+| 45 · Ask the sign-in server | DSoR asks the SSO, at every call, who a person is in a company now | Again, against a real server: DSOR-IDN-05, DSOR-IDN-06, DSOR-IDN-07, DSOR-IDN-03a, DSOR-DEL-02, DSOR-BND-02 | Planned |
 | 46 · Who may approve, and up to how much | Approver roles, each with a limit | New: DSOR-SOD-04a, DSOR-SOD-04b | Planned |
 | 47 · The approval door | Approvals only from DSoR's own approval app | Again: DSOR-APR-05a, DSOR-APR-05b, DSOR-SOD-01a. New: DSOR-RP-02c, DSOR-RP-02e | Planned |
 | 48 · The agent door (MCP), door A | An agent acting for a person who connected it | New: DSOR-RP-02a, DSOR-RP-02d, DSOR-OPR-03a, DSOR-IDN-02b, DSOR-RP-04, DSOR-RP-05a, DSOR-RP-06a, DSOR-RP-07a, DSOR-RP-07b, DSOR-DEL-03a, DSOR-DEL-03b, DSOR-RP-03, and the rest of DSOR-DEL-10 | Planned |
 | 48b · Two MCP traps | Attacks on the agent door | New: DSOR-RP-08, DSOR-RP-09a, DSOR-RP-09b | Planned |
 | 48c · A real agent | An injection test suite, then a real agent | New: DSOR-SRC-01a, DSOR-SRC-01b | Planned |
-| 49 · An agent with nobody present, door B | The agent signs in with its own key | New: DSOR-RP-10, DSOR-RP-11, DSOR-IDN-02a, DSOR-DEL-09. Again: DSOR-DEL-07, DSOR-DEL-08 | Waits on Better Auth 1.7 |
+| 49 · An agent with nobody present, door B | The agent signs in with its own key | New: DSOR-RP-10, DSOR-RP-11, DSOR-IDN-02a, DSOR-DEL-09. Again: DSOR-DEL-07, DSOR-DEL-08 | Planned |
 | 50 · The right people hear | Alerts go to a role, not a fixed name | Again: DSOR-UNK-04c | Planned |
 | 51 · Skills with OpenViking | The official map's step 49 | DSOR-CTX-05a, DSOR-CTX-05b, DSOR-CTX-05c | Planned |
 | 52 · Memory with Graphiti | The official map's step 50 | DSOR-CTX-01, DSOR-CTX-02, DSOR-CTX-07, DSOR-CTX-08 | Planned |
 | 53 · The whole digital employee | The official map's step 51 | DSOR-CNF-01, DSOR-MOD-02, DSOR-BND-01 | Planned |
 
-Letters after 48 keep the numbers 45 and 49, which the SSO's pull request and these notes use.
+Letters after 48 keep the numbers 45 and 49, which the SSO's pull request and these notes use. The
+row before 45 is work on the SSO, decided on 2026-10-27, so that steps 45 to 49 use one version of
+Better Auth.
 
 ### 44 · Tokens made for DSoR (built)
 
@@ -62,7 +69,11 @@ once its signature checked, whose token it was. See the step's README.
 - It replaces the people's rows in `src/principals.ts` and the fake staff directory in
   `src/serve.ts`.
 - It uses the Panaversity SSO's lookup route, on its branch `feat/sso-dsor-fix-list` (draft pull
-  request [panaversity/agentfactory#1331](https://github.com/panaversity/agentfactory/pull/1331)).
+  request [panaversity/agentfactory#1331](https://github.com/panaversity/agentfactory/pull/1331)),
+  moved onto Better Auth 1.7 first.
+- No standard serves this lookup. Better Auth's organization plugin answers a signed-in member, its
+  SCIM plugin only receives people, and introspection needs the person's own token, which a slip's
+  signer never sends.
 - Open design questions: whose contract the lookup is, how the system logins sign in, and whether
   the people's rows stay ([`mj_notes.md`](mj_notes.md), "Questions for step 45's design").
 
@@ -75,7 +86,8 @@ the administration but cannot approve (Q1b). "CFO" will be resolved to people at
 
 Approvals will count only at the approval door, from DSoR's own approval app, with a token made for
 that door. The app is a client with PKCE and an issuer check (Q3). An agent's token will not be able
-to approve at all.
+to approve at all. On Better Auth 1.7, the SSO always requires S256 PKCE and sends `iss` in every
+authorization response (RFC 9207), which the app's issuer check reads.
 
 ### 48 · The agent door (MCP), door A
 
@@ -84,9 +96,13 @@ to approve at all.
 - The tools will follow MCP's binding rules: names from operation ids, `tools/list` showing only
   what the caller may do, every tool's four hints, "needs approval" as a normal result with the
   proposal's address, and `proposal_get` for anyone who can run a command.
+- On the SSO's side, `@better-auth/cimd` will identify agents by their client metadata documents
+  (DSOR-RP-02d). DSoR will publish its own protected resource metadata (RFC 9728, DSOR-RP-02a), so
+  it needs no `@better-auth/mcp`.
 - Acting for a person: the design will settle whether the agent shows as the token's app
-  (`client_id`, as Q3 chose) or as `act` (RFC 8693, as DSOR-RP-03 requires). A change to DSOR-RP-03
-  goes through the `change-the-spec` skill. Until then, step 44 refuses `act`.
+  (`client_id`, as Q3 chose) or as `act` (RFC 8693, as DSOR-RP-03 requires). Better Auth has no
+  token exchange, so `act` would need a grant written in the SSO. A change to DSOR-RP-03 goes
+  through the `change-the-spec` skill. Until then, step 44 refuses `act`.
 
 ### 48b · Two MCP traps
 
@@ -106,9 +122,12 @@ to approve at all.
 ### 49 · An agent with nobody present, door B
 
 The agent will get its own token with `client_credentials`, proving who it is with its own key
-(`private_key_jwt`, RFC 7523). The token names only the agent, and the person comes from the slip.
-It waits on the SSO's upgrade to Better Auth 1.7: 1.6.23 has no `private_key_jwt`, and its tokens
-for machines carry no `sub`.
+(`private_key_jwt`, RFC 7523). The token names only the agent, as its `sub`, and the person comes
+from the slip. Better Auth 1.7 gives both: 1.7.2's code sets a machine token's `sub` to the agent's
+client id, where 1.6.23 had no `private_key_jwt` and no `sub`. It also offers DPoP (RFC 9449), which
+the spec recommends for these tokens, and 49's design decides whether to use it. Step 44 already
+accepts a person's token only from the `dsor-people` app, so an agent's token cannot pass as a
+person's.
 
 ### 50 · The right people hear
 
