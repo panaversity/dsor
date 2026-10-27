@@ -3241,6 +3241,17 @@ and in 1.7.2's own code from the local pnpm store. The SSO runs 1.6.23. Its upgr
   The fix-list branch goes on top of the upgrade branch, locally, on a 1.7 release at least 48 hours
   old, and the SSO's DSoR tests run again. Nothing reaches production. Steps 45 to 49 then use one
   version, and the lookup is tested once. *Downside:* SSO work comes before step 45 starts.
+- **Done the same day, on 1.7.2.** The SSO's branch `feat/sso-dsor-on-ba17` passes its tests and
+  the 1.7 probes, and step 44's real call gives the same answers as on 1.6.23. One change for
+  DSoR's apps: on 1.7 an app asks for DSoR's audience at `/oauth2/authorize`, or `/oauth2/token`
+  answers `400 invalid_target`.
+- **Better Auth 1.7.3 and later removed `account.issuer`,** a required column that the 1.7.2
+  upgrade adds, so 1.7.12 refused to start on that branch. A rework for 1.7.12, without the
+  column, is on `feat/sso-dsor-on-ba1712` and passes the same proofs.
+- **Decision: step 45 builds on 1.7.2 for now.** Claude Code recommended 1.7.12, the version more
+  likely to ship. The learner kept 1.7.2 on port 3011, and the 1.7.12 branch waits for the decision
+  on the SSO's upgrade pull request, panaversity/agentfactory#1288. *Downside:* if 1.7.12 ships,
+  step 45's runs against the SSO are made again on it.
 
 ## Still unknown
 

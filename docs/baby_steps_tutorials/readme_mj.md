@@ -68,8 +68,10 @@ once its signature checked, whose token it was. See the step's README.
 - On 1.7, an app asks for DSoR's audience at `/oauth2/authorize`, not only at `/oauth2/token`.
   An app that asks only at `/token` gets `400 invalid_target`. Steps 47 and 48 build apps that
   must do this.
-- Better Auth 1.7.3 and later removed a column that the 1.7.2 upgrade adds, so a newer version
-  needs the SSO's upgrade reworked first. That decision belongs to the SSO's owner.
+- Better Auth 1.7.3 and later removed a column that the 1.7.2 upgrade adds. A rework for 1.7.12
+  is on the SSO's branch `feat/sso-dsor-on-ba1712` and passes the same proofs. It waits for the
+  decision on the SSO's upgrade pull request, panaversity/agentfactory#1288. Until then step 45
+  builds on 1.7.2, on port 3011 (decided 2026-10-27).
 
 ### 45 · Ask the sign-in server
 
