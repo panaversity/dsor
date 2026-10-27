@@ -175,6 +175,19 @@ function clientsProblem(value: unknown): string | undefined {
   return twice === undefined ? undefined : `clients names ${JSON.stringify(twice)} twice`;
 }
 
+/**
+ * What is wrong when the settings' audience is not this DSoR's own address: 127.0.0.1, where the
+ * door listens (step 42's D7), at its port. A copy started on another port with these settings
+ * would take tokens made for another DSoR (DSOR-RP-02b, "this DSoR deployment"; step 44's README,
+ * decision 44-12, the learner's answer to the review's finding).
+ */
+export function audienceProblem(signIn: SignIn, port: number): string | undefined {
+  const own = `http://127.0.0.1:${port}`;
+  return signIn.audience === own
+    ? undefined
+    : `sign-in.json: audience is ${signIn.audience}, but this DSoR listens on ${own}`;
+}
+
 /** A token's most age in seconds, from a form such as 1h, or nothing when it is not one hour or less. */
 export function ageSeconds(value: unknown): number | undefined {
   const found = typeof value === "string" ? AGE.exec(value) : null;

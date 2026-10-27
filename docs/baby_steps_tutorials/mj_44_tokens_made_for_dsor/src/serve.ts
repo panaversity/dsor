@@ -15,7 +15,7 @@ import { readClassifications } from "./labels.ts";
 import { handlersFor } from "./operations.ts";
 import { readRoles } from "./permissions.ts";
 import { realLogins } from "./logins.ts";
-import { checkSignIn, readSignIn } from "./sign-in.ts";
+import { audienceProblem, checkSignIn, readSignIn } from "./sign-in.ts";
 import { remoteKeys } from "./tokens.ts";
 import {
   createDbBrakes,
@@ -103,6 +103,9 @@ try {
   const { signIn, problems: signInProblems } = checkSignIn(readSignIn());
   if (signIn === undefined)
     refuse(`sign-in.json refused to start:\n  ${signInProblems.join("\n  ")}`);
+  // NEW IN STEP 44: and made for this DSoR, at the port it listens on (decision 44-12).
+  const elsewhere = audienceProblem(signIn, port);
+  if (elsewhere !== undefined) refuse(`sign-in.json refused to start:\n  ${elsewhere}`);
   registry = { ...registry, logins: realLogins(signIn, remoteKeys()) };
 } catch (error) {
   refuse((error as Error).message);

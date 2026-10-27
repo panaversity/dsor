@@ -1,7 +1,7 @@
 // NEW IN STEP 44: the one sign-in server DSoR trusts, in sign-in.json, checked at start-up
 // (DSOR-RP-02b, DSOR-IDN-04a; step 44's README, claim C5, decisions 44-1, 44-2, 44-3, 44-9, Q2, R2).
 import { describe, expect, it } from "vitest";
-import { checkSignIn, readSignIn } from "../src/sign-in.ts";
+import { audienceProblem, checkSignIn, readSignIn, type SignIn } from "../src/sign-in.ts";
 
 // The Panaversity SSO's branch feat/sso-dsor-fix-list, served on this computer. Its own discovery
 //   document names its issuer http://localhost:3011 (found live 2026-10-27), so that is the issuer.
@@ -153,6 +153,19 @@ describe("C5: sign-in.json, checked at start-up", () => {
     ]);
     const { jwks: _gone, ...none } = GOOD;
     expect(problemsOf(none)).toStrictEqual(["sign-in.json: jwks is missing"]);
+  });
+
+  it("DSOR-RP-02b: a DSoR starts only when its audience is its own address, so a copy on 8043 takes no token made for 8042 (44-12)", () => {
+    const shipped = checkSignIn(readSignIn()).signIn as SignIn;
+    expect(audienceProblem(shipped, 8042)).toBeUndefined();
+    expect(audienceProblem(shipped, 8043)).toBe(
+      "sign-in.json: audience is http://127.0.0.1:8042, but this DSoR listens on http://127.0.0.1:8043",
+    );
+    // The door listens on 127.0.0.1 only (step 42's D7), so localhost is another address.
+    const named = { ...shipped, audience: "http://localhost:8042" };
+    expect(audienceProblem(named, 8042)).toBe(
+      "sign-in.json: audience is http://localhost:8042, but this DSoR listens on http://127.0.0.1:8042",
+    );
   });
 
   it("Step 44: a file that is not JSON, or not one object, is refused", () => {

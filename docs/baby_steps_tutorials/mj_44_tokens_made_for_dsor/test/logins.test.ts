@@ -304,6 +304,8 @@ describe("C4: in pnpm serve, a person signs in with a token, and an agent keeps 
     //   42's table would answer in pnpm serve, tok_d4e8 included (break B5).
     const serve = readFileSync(new URL("../src/serve.ts", import.meta.url), "utf8");
     expect(serve).toMatch(/if \(signIn === undefined\)\s*refuse\(/);
+    // And it refuses settings made for another address than its own (decision 44-12).
+    expect(serve).toMatch(/audienceProblem\(signIn, port\)/);
     const wired = serve.indexOf("logins: realLogins(signIn, remoteKeys())");
     expect(wired).toBeGreaterThan(-1);
     expect(wired).toBeLessThan(serve.indexOf("doorOver(registry, createDbLog(pool))"));
