@@ -33,8 +33,8 @@ sign-in server that cannot answer a lookup (Q1, Q4).
 | Step | Idea | Rules | Status |
 |---|---|---|---|
 | [44 · Tokens made for DSoR](mj_44_tokens_made_for_dsor/README.md) | A person is who a token made for DSoR says | New: DSOR-RP-02b. Again: DSOR-IDN-01, DSOR-IDN-04a, DSOR-IDN-04b | Built |
-| Before 45 · The SSO on Better Auth 1.7 | The SSO's fix list moves onto its 1.7 upgrade, locally. Not a DSoR step | None in DSoR. It gives 47, 48, and 49 the standard parts they need | Next |
-| 45 · Ask the sign-in server | DSoR asks the SSO, at every call, who a person is in a company now | Again, against a real server: DSOR-IDN-05, DSOR-IDN-06, DSOR-IDN-07, DSOR-IDN-03a, DSOR-DEL-02, DSOR-BND-02 | Planned |
+| Before 45 · The SSO on Better Auth 1.7 | The SSO's fix list moves onto its 1.7 upgrade, locally. Not a DSoR step | None in DSoR. It gives 47, 48, and 49 the standard parts they need | Done locally, on 1.7.2 |
+| 45 · Ask the sign-in server | DSoR asks the SSO, at every call, who a person is in a company now | Again, against a real server: DSOR-IDN-05, DSOR-IDN-06, DSOR-IDN-07, DSOR-IDN-03a, DSOR-DEL-02, DSOR-BND-02 | Next |
 | 46 · Who may approve, and up to how much | Approver roles, each with a limit | New: DSOR-SOD-04a, DSOR-SOD-04b | Planned |
 | 47 · The approval door | Approvals only from DSoR's own approval app | Again: DSOR-APR-05a, DSOR-APR-05b, DSOR-SOD-01a. New: DSOR-RP-02c, DSOR-RP-02e | Planned |
 | 48 · The agent door (MCP), door A | An agent acting for a person who connected it | New: DSOR-RP-02a, DSOR-RP-02d, DSOR-OPR-03a, DSOR-IDN-02b, DSOR-RP-04, DSOR-RP-05a, DSOR-RP-06a, DSOR-RP-07a, DSOR-RP-07b, DSOR-DEL-03a, DSOR-DEL-03b, DSOR-RP-03, and the rest of DSOR-DEL-10 | Planned |
@@ -57,6 +57,19 @@ names. The token must be made for DSoR's own address, carry the `dsor` scope, co
 DSoR's list, and be at most one hour old. A person's companies and roles still come from step 42's
 table, by the token's `sub`. Agents keep their keys. A refused token's record keeps the cause, and,
 once its signature checked, whose token it was. See the step's README.
+
+### Before 45 · The SSO on Better Auth 1.7 (done locally)
+
+- The SSO's fix list now runs on Better Auth 1.7.2, on the SSO's local branch
+  `feat/sso-dsor-on-ba17`. Its tests and the 1.7 upgrade's probes pass. Nothing is pushed or
+  deployed.
+- Step 44's real call gives the same answers as on 1.6.23: cfo_100's token from `dsor-people` is
+  answered with 200.
+- On 1.7, an app asks for DSoR's audience at `/oauth2/authorize`, not only at `/oauth2/token`.
+  An app that asks only at `/token` gets `400 invalid_target`. Steps 47 and 48 build apps that
+  must do this.
+- Better Auth 1.7.3 and later removed a column that the 1.7.2 upgrade adds, so a newer version
+  needs the SSO's upgrade reworked first. That decision belongs to the SSO's owner.
 
 ### 45 · Ask the sign-in server
 
