@@ -34,8 +34,8 @@ sign-in server that cannot answer a lookup (Q1, Q4).
 |---|---|---|---|
 | [44 · Tokens made for DSoR](mj_44_tokens_made_for_dsor/README.md) | A person is who a token made for DSoR says | New: DSOR-RP-02b. Again: DSOR-IDN-01, DSOR-IDN-04a, DSOR-IDN-04b | Built |
 | Before 45 · The SSO on Better Auth 1.7 | The SSO's fix list moves onto its 1.7 upgrade. Not a DSoR step | None in DSoR. It gives 47, 48, and 49 the standard parts they need | Done on 1.7.2, in a draft pull request |
-| Before 45 (b) · The latest Better Auth, and a key for each company | One upgrade from `main` to 1.7.14, then the DSoR fix list on top of it, with a key from each company's owner. Not a DSoR step | None in DSoR. Step 45 keeps one key for each company | PR A open; PR B next |
-| 45 · Ask the sign-in server | DSoR asks the SSO, at every call, who a person is in a company now | Again, against a real server: DSOR-IDN-05, DSOR-IDN-06, DSOR-IDN-07, DSOR-IDN-03a, DSOR-DEL-02, DSOR-BND-02 | Planned |
+| Before 45 (b) · The latest Better Auth, and a key for each company | One upgrade from `main` to 1.7.14, then the DSoR fix list on top of it, with a key from each company's owner. Not a DSoR step | None in DSoR. Step 45 keeps one key for each company | Done, in two draft pull requests |
+| 45 · Ask the sign-in server | DSoR asks the SSO, at every call, who a person is in a company now | Again, against a real server: DSOR-IDN-05, DSOR-IDN-06, DSOR-IDN-07, DSOR-IDN-03a, DSOR-DEL-02, DSOR-BND-02 | Next |
 | 46 · Who may approve, and up to how much | Approver roles, each with a limit | New: DSOR-SOD-04a, DSOR-SOD-04b | Planned |
 | 47 · The approval door | Approvals only from DSoR's own approval app | Again: DSOR-APR-05a, DSOR-APR-05b, DSOR-SOD-01a. New: DSOR-RP-02c, DSOR-RP-02e | Planned |
 | 48 · The agent door (MCP), door A | An agent acting for a person who connected it | New: DSOR-RP-02a, DSOR-RP-02d, DSOR-OPR-03a, DSOR-IDN-02b, DSOR-RP-04, DSOR-RP-05a, DSOR-RP-06a, DSOR-RP-07a, DSOR-RP-07b, DSOR-DEL-03a, DSOR-DEL-03b, DSOR-RP-03, and the rest of DSOR-DEL-10 | Planned |
@@ -99,7 +99,11 @@ Decided by the learner on 2026-10-28 ([`mj_notes.md`](mj_notes.md), the last two
   [panaversity/agentfactory#1333](https://github.com/panaversity/agentfactory/pull/1333), opened on
   2026-10-28. It holds the upgrade alone, in four commits. Each commit was proven on this computer
   and broken on purpose. panaversity/agentfactory#1288 and #1332 are closed with a link to it.
-  PR B is next.
+- PR B is [panaversity/agentfactory#1331](https://github.com/panaversity/agentfactory/pull/1331)
+  itself, moved onto #1333 the same day. It has the company keys, and the fixes from a second
+  hostile review. A company's owner makes DSoR's key at `/api/dsor/keys`. The lookup answers only
+  about the key's own company. DSoR keys have no per-key rate limit. Both pull requests are drafts:
+  nothing is merged or deployed.
 
 ### 45 · Ask the sign-in server
 
@@ -112,13 +116,14 @@ Decided by the learner on 2026-10-28 ([`mj_notes.md`](mj_notes.md), the last two
 - It replaces the people's rows in `src/principals.ts` and the fake staff directory in
   `src/serve.ts`.
 - It uses the Panaversity SSO's lookup route from draft pull request
-  [panaversity/agentfactory#1331](https://github.com/panaversity/agentfactory/pull/1331). Before step
-  45, the SSO moves to Better Auth 1.7.14, and DSoR gets one key from each company (the row before).
+  [panaversity/agentfactory#1331](https://github.com/panaversity/agentfactory/pull/1331), now on Better
+  Auth 1.7.14 (#1333). DSoR holds one key for each company, made by that company's owner.
 - No standard serves this lookup. Better Auth's organization plugin answers a signed-in member. Its
   SCIM plugin lists people only to the directory that sent them. Introspection needs the person's
   own token, which a slip's signer never sends.
-- Open design questions: whose contract the lookup is, how the system logins sign in, and whether
-  the people's rows stay ([`mj_notes.md`](mj_notes.md), "Questions for step 45's design").
+- Open design questions: whose contract the lookup is, how the system logins sign in, whether the
+  people's rows stay, and who can make DSoR hear "no answer"
+  ([`mj_notes.md`](mj_notes.md), "Questions for step 45's design").
 
 ### 46 · Who may approve, and up to how much
 

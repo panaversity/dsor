@@ -3197,6 +3197,14 @@ Raised while explaining step 44's architecture. No decision: Phase A of step 45 
     SSO would then need its own way to say which companies the token may ask about.
   - **Decided on 2026-10-28: (b).** Only a company's owner makes or takes back its key. See the
     decision at the end of "Better Auth 1.7 against the chain".
+- **Who can make DSoR hear "no answer"?** (Added 2026-10-28, from the SSO's second hostile review.)
+  DSoR reads a 429 as "no answer" and keeps its last answer for up to an hour. The SSO no longer
+  limits a DSoR key, but a per-IP limiter in front of it can still answer 429, and whoever drives
+  DSoR's calls can push it there. During that hour, a role that was just removed still works.
+  Options found:
+  - (a) Keep the hour.
+  - (b) Shorten the bound for 429 only.
+  - (c) Treat repeated 429s as a fault, which refuses the call and raises an alert.
 - **How do the system logins sign in?** dsor-scheduler and dsor-rates are DSoR's own timer jobs,
   with keys in `src/principals.ts`. No step in the chain plans their credential. Options found:
   - (a) Run them inside DSoR, never through the door.
@@ -3324,6 +3332,22 @@ and in 1.7.2's own code from the local pnpm store. The SSO runs 1.6.23. Its upgr
   a 1.6.23 database taken through 0011, 0011b and 0012, the account table did not change, and the
   schema then equals a fresh 1.7.14 schema. #1288 and #1332 are closed with a link to it. Two things
   are not done: the two Redis probes, and the checks that need production access. PR B is next.
+- **PR B the same day: panaversity/agentfactory#1331, moved onto #1333.** It is a merge with no
+  force-push, so #1331 keeps its number. Its base is now #1333's branch. It has nine new commits:
+  - the token test on 1.7;
+  - `drizzle/0014`, a database link from each API key to its owner;
+  - keys owned by each company, which only the company's owner makes or takes back at
+    `/api/dsor/keys`;
+  - a lookup that answers only about the key's own company;
+  - the docs, and four fixes from a second hostile review.
+
+  The review found no way for anyone but the owner to manage a key, and no way for a key to read
+  another company. It did find that Better Auth's per-key rate limit resets only after a full idle
+  minute: a busy company would get 429 after 100 lookups, and an agent could time it. So DSoR keys
+  have no per-key limit. Making and taking back a key are recorded. Only the SSO's own origin may
+  do either, and `/api-key/get` is closed. On a 1.6.23 database taken through every migration, the
+  schema equals a fresh one, and all of the tests pass: lookup 25 checks, roles 17, keys 20, audit
+  11, tokens 18.
 
 ## Still unknown
 
