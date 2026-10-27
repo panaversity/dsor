@@ -292,6 +292,25 @@ describe("C6: keys that cannot be fetched are an outage, not a bad token", () =>
     });
   });
 
+  // The review's mutation sweep: only a 503 and a closed port were tested, so a timeout, a page, or
+  //   JSON that is not a key set could each be answered "log in first" with every test passing.
+  it.each([
+    ["answers after three seconds, past the two DSoR waits", "slow"],
+    ["answers 200 with a page that is not JSON", "page"],
+    ["answers 200 with JSON that is not a key set", "not-keys"],
+  ] as const)(
+    "Step 44, 44-1: a server that %s is unavailable; its tokens are not bad",
+    async (_how, how) => {
+      const b = await startIssuer();
+      const token = await b.sign("cfo_100");
+      b.answer(how);
+      expect(await checkedLogin(token, b.signIn, remoteKeys())).toStrictEqual({
+        unavailable: b.issuer,
+      });
+      await b.close();
+    },
+  );
+
   it("Step 44, 44-1: a token whose key the server does not publish is still a bad token, not an outage", async () => {
     const forged = await stranger.sign("cfo_100", { iss: a.issuer }, { kid: "no-such-key" });
     expect(await checkedLogin(forged, a.signIn, keys)).toStrictEqual(unsigned("signature"));

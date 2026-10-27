@@ -39,6 +39,12 @@ export type TestIssuer = {
   rotate: () => Promise<void>;
   /** Stops publishing keys: the address answers 503. */
   down: (isDown: boolean) => void;
+  /**
+   * How the keys address answers: with the keys; with them after three seconds, past the two DSoR
+   * waits; with a page that is not JSON; or with JSON that is not a key set. Each of the last three
+   * is an outage of the server, not a bad token (the review's finding on C6).
+   */
+  answer: (how: "keys" | "slow" | "page" | "not-keys") => void;
   close: () => Promise<void>;
 };
 
@@ -54,14 +60,29 @@ async function newKey(kid: string, alg: string): Promise<Key> {
 export async function startIssuer(alg = "RS256"): Promise<TestIssuer> {
   let key = await newKey("key-1", alg);
   let isDown = false;
+  let how: "keys" | "slow" | "page" | "not-keys" = "keys";
   let rotations = 1;
   const server: Server = createServer((req, res) => {
     if (isDown || req.url !== "/api/auth/jwks") {
       res.writeHead(isDown ? 503 : 404).end();
       return;
     }
-    res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ keys: [key.publicJwk] }));
+    if (how === "page") {
+      res.writeHead(200, { "content-type": "text/html" }).end("<html><body>Sign in</body></html>");
+      return;
+    }
+    if (how === "not-keys") {
+      res.writeHead(200, { "content-type": "application/json" }).end('{"hello":"world"}');
+      return;
+    }
+    const send = (): void => {
+      // A caller that stopped waiting has closed the connection: nothing is sent.
+      if (res.destroyed) return;
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ keys: [key.publicJwk] }));
+    };
+    if (how === "slow") setTimeout(send, 3000);
+    else send();
   });
   await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
   const address = server.address();
@@ -114,6 +135,9 @@ export async function startIssuer(alg = "RS256"): Promise<TestIssuer> {
     },
     down: (value) => {
       isDown = value;
+    },
+    answer: (value) => {
+      how = value;
     },
     close: () => new Promise((done) => server.close(() => done())),
   };
