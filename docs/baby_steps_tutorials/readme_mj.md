@@ -34,7 +34,7 @@ sign-in server that cannot answer a lookup (Q1, Q4).
 |---|---|---|---|
 | [44 · Tokens made for DSoR](mj_44_tokens_made_for_dsor/README.md) | A person is who a token made for DSoR says | New: DSOR-RP-02b. Again: DSOR-IDN-01, DSOR-IDN-04a, DSOR-IDN-04b | Built |
 | Before 45 · The SSO on Better Auth 1.7 | The SSO's fix list moves onto its 1.7 upgrade. Not a DSoR step | None in DSoR. It gives 47, 48, and 49 the standard parts they need | Done on 1.7.2, in a draft pull request |
-| Before 45 (b) · The latest Better Auth, and a key for each company | One upgrade from `main` to 1.7.14, then the DSoR fix list on top of it, with a key from each company's owner. Not a DSoR step | None in DSoR. Step 45 keeps one key for each company | Done, in two draft pull requests |
+| Before 45 (b) · The latest Better Auth, and a key for each company | One upgrade from `main` to 1.7.14, then the DSoR fix list on top of it, with a key from each company's owner. Not a DSoR step | None in DSoR. Step 45 keeps one key for each company | #1333 merged and live; #1331 in draft |
 | 45 · Ask the sign-in server | DSoR asks the SSO, at every call, who a person is in a company now | Again, against a real server: DSOR-IDN-05, DSOR-IDN-06, DSOR-IDN-07, DSOR-IDN-03a, DSOR-DEL-02, DSOR-BND-02 | Next |
 | 46 · Who may approve, and up to how much | Approver roles, each with a limit | New: DSOR-SOD-04a, DSOR-SOD-04b | Planned |
 | 47 · The approval door | Approvals only from DSoR's own approval app | Again: DSOR-APR-05a, DSOR-APR-05b, DSOR-SOD-01a. New: DSOR-RP-02c, DSOR-RP-02e | Planned |
@@ -102,8 +102,10 @@ Decided by the learner on 2026-10-28 ([`mj_notes.md`](mj_notes.md), the last two
 - PR B is [panaversity/agentfactory#1331](https://github.com/panaversity/agentfactory/pull/1331)
   itself, moved onto #1333 the same day. It has the company keys, and the fixes from a second
   hostile review. A company's owner makes DSoR's key at `/api/dsor/keys`. The lookup answers only
-  about the key's own company. DSoR keys have no per-key rate limit. Both pull requests are drafts:
-  nothing is merged or deployed.
+  about the key's own company. DSoR keys have no per-key rate limit.
+- #1333 was merged on 2026-10-27 and is live: the SSO now runs Better Auth 1.7.14. A later review
+  fix went in with it. At the cutover, 0011b deletes the refresh tokens that 1.6 issued, so each
+  app signs its user in once more. #1331 is still a draft, based on #1333's branch.
 
 ### 45 · Ask the sign-in server
 

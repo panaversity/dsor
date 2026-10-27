@@ -3348,6 +3348,18 @@ and in 1.7.2's own code from the local pnpm store. The SSO runs 1.6.23. Its upgr
   do either, and `/api-key/get` is closed. On a 1.6.23 database taken through every migration, the
   schema equals a fresh one, and all of the tests pass: lookup 25 checks, roles 17, keys 20, audit
   11, tokens 18.
+- **#1333 merged and live (2026-10-27, 22:23 UTC, merge `6f36bef31`).** It includes a review fix
+  made in another session, `dac8f1210`:
+  - 0011b now deletes every refresh token that 1.6 issued, instead of binding it to the SSO, so each
+    app signs its user in once more at its next refresh.
+  - 0011b runs again 10 minutes after the last 1.6 instance stops.
+  - 0012 refuses while a token with no resource is left.
+
+  Claude Code checked that design on this computer before the merge. 1.7.14 bound a resource on all
+  48 refresh tokens it wrote. 0011b deleted only the 1.6 tokens and a late one, and every 1.7 token
+  survived. The schema then equals a fresh one, and the tests and probes pass. The live SSO's
+  discovery document shows S256 as the only PKCE method, and `iss` in authorization responses.
+  #1331 is next: it merges `main`, and 0013 and 0014 go to production before it deploys.
 
 ## Still unknown
 
