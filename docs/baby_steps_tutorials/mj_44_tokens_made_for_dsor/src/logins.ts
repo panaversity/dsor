@@ -58,7 +58,8 @@ function hasTokenForm(token: unknown): token is string {
 /**
  * pnpm serve's logins. A token must be made for DSoR (tokens.ts), and its subject must be a person
  * in the table, whose companies and roles come from the table, never from the token. A key counts
- * only for an agent or a system login: a person's key is refused (decisions 44-5 and 44-6).
+ * for anyone in the table who is not a person, an agent, an application, or a system login: a
+ * person's key is refused (decisions 44-5 and 44-6; worded so by step 44's review).
  */
 export function realLogins(
   signIn: SignIn,

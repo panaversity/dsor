@@ -3,6 +3,7 @@
 // agent keeps its key. Every refused login hears one answer, recorded before the answer leaves
 // (DSOR-IDN-01, DSOR-IDN-04a, DSOR-IDN-04b, DSOR-EXE-02; step 44's README, claims C1 to C4 and C6,
 // decisions 44-1, 44-5, 44-6, 44-7, and 44-10).
+import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { Answer } from "../src/envelope.ts";
 import { createLog, type DecisionLog } from "../src/log.ts";
@@ -286,13 +287,26 @@ describe("C4: in pnpm serve, a person signs in with a token, and an agent keeps 
     const agent = logins.get("tok_7f3a") as Principal;
     const table = new Map([
       ["x.y.z", agent],
-      ["tok_7f3a", agent],
+      ["tok_only_here", agent],
     ]);
     const world: Registry = { ...registry, logins: realLogins(sso.signIn, remoteKeys(), table) };
     const as = (token: string): Promise<Answer> =>
       call(world, log, { token, tenant: "org_456" }, "invoice.get", INV_1008);
     expect(await as("x.y.z")).toStrictEqual(NO_LOGIN);
-    expect((await as("tok_7f3a")).correlation).toStrictEqual(correlationFor(THE_AGENT));
+    // A key that only this table holds works, so this table is the one asked (found by step 44's
+    //   review: with tok_7f3a, which step 42's table holds too, its logins passed this test as well).
+    expect((await as("tok_only_here")).correlation).toStrictEqual(correlationFor(THE_AGENT));
+  });
+
+  it("Step 44, 44-6: pnpm serve stops on settings with any problem, and gives its door real logins", () => {
+    // serve.ts starts a server on import, so its wiring is read as text, as test/no-checks.test.ts
+    //   reads it. Found by step 44's review: either line could go with every test green, and step
+    //   42's table would answer in pnpm serve, tok_d4e8 included (break B5).
+    const serve = readFileSync(new URL("../src/serve.ts", import.meta.url), "utf8");
+    expect(serve).toMatch(/if \(signIn === undefined\)\s*refuse\(/);
+    const wired = serve.indexOf("logins: realLogins(signIn, remoteKeys())");
+    expect(wired).toBeGreaterThan(-1);
+    expect(wired).toBeLessThan(serve.indexOf("doorOver(registry, createDbLog(pool))"));
   });
 });
 
