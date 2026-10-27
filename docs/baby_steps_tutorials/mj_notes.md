@@ -3252,6 +3252,11 @@ and in 1.7.2's own code from the local pnpm store. The SSO runs 1.6.23. Its upgr
   likely to ship. The learner kept 1.7.2 on port 3011, and the 1.7.12 branch waits for the decision
   on the SSO's upgrade pull request, panaversity/agentfactory#1288. *Downside:* if 1.7.12 ships,
   step 45's runs against the SSO are made again on it.
+- **Pushed the same day, at the learner's request.** `feat/sso-dsor-on-ba17` is now draft pull
+  request panaversity/agentfactory#1332, against `main`. It holds the fix list (#1331) and the
+  1.7.2 upgrade (#1288) together, and both of those stay open. `feat/sso-dsor-on-ba1712` is pushed
+  as a branch, without a pull request. Nothing is merged or deployed: the SSO deploys only from
+  `main`.
 
 ## Still unknown
 

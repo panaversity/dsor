@@ -33,7 +33,7 @@ sign-in server that cannot answer a lookup (Q1, Q4).
 | Step | Idea | Rules | Status |
 |---|---|---|---|
 | [44 · Tokens made for DSoR](mj_44_tokens_made_for_dsor/README.md) | A person is who a token made for DSoR says | New: DSOR-RP-02b. Again: DSOR-IDN-01, DSOR-IDN-04a, DSOR-IDN-04b | Built |
-| Before 45 · The SSO on Better Auth 1.7 | The SSO's fix list moves onto its 1.7 upgrade, locally. Not a DSoR step | None in DSoR. It gives 47, 48, and 49 the standard parts they need | Done locally, on 1.7.2 |
+| Before 45 · The SSO on Better Auth 1.7 | The SSO's fix list moves onto its 1.7 upgrade. Not a DSoR step | None in DSoR. It gives 47, 48, and 49 the standard parts they need | Done on 1.7.2, in a draft pull request |
 | 45 · Ask the sign-in server | DSoR asks the SSO, at every call, who a person is in a company now | Again, against a real server: DSOR-IDN-05, DSOR-IDN-06, DSOR-IDN-07, DSOR-IDN-03a, DSOR-DEL-02, DSOR-BND-02 | Next |
 | 46 · Who may approve, and up to how much | Approver roles, each with a limit | New: DSOR-SOD-04a, DSOR-SOD-04b | Planned |
 | 47 · The approval door | Approvals only from DSoR's own approval app | Again: DSOR-APR-05a, DSOR-APR-05b, DSOR-SOD-01a. New: DSOR-RP-02c, DSOR-RP-02e | Planned |
@@ -58,20 +58,23 @@ DSoR's list, and be at most one hour old. A person's companies and roles still c
 table, by the token's `sub`. Agents keep their keys. A refused token's record keeps the cause, and,
 once its signature checked, whose token it was. See the step's README.
 
-### Before 45 · The SSO on Better Auth 1.7 (done locally)
+### Before 45 · The SSO on Better Auth 1.7 (done, in a draft pull request)
 
-- The SSO's fix list now runs on Better Auth 1.7.2, on the SSO's local branch
-  `feat/sso-dsor-on-ba17`. Its tests and the 1.7 upgrade's probes pass. Nothing is pushed or
-  deployed.
+- The SSO's fix list now runs on Better Auth 1.7.2, on the SSO's branch `feat/sso-dsor-on-ba17`.
+  It is draft pull request
+  [panaversity/agentfactory#1332](https://github.com/panaversity/agentfactory/pull/1332), which
+  holds the fix list and the 1.7.2 upgrade together. Its tests and the 1.7 upgrade's probes pass
+  on a local database. Nothing is merged or deployed.
 - Step 44's real call gives the same answers as on 1.6.23: cfo_100's token from `dsor-people` is
   answered with 200.
 - On 1.7, an app asks for DSoR's audience at `/oauth2/authorize`, not only at `/oauth2/token`.
   An app that asks only at `/token` gets `400 invalid_target`. Steps 47 and 48 build apps that
   must do this.
 - Better Auth 1.7.3 and later removed a column that the 1.7.2 upgrade adds. A rework for 1.7.12
-  is on the SSO's branch `feat/sso-dsor-on-ba1712` and passes the same proofs. It waits for the
-  decision on the SSO's upgrade pull request, panaversity/agentfactory#1288. Until then step 45
-  builds on 1.7.2, on port 3011 (decided 2026-10-27).
+  is on the SSO's branch `feat/sso-dsor-on-ba1712`, pushed without a pull request, and passes the
+  same proofs. It waits for the decision on the SSO's upgrade pull request,
+  panaversity/agentfactory#1288. Until then step 45 builds on 1.7.2, on port 3011 (decided
+  2026-10-27).
 
 ### 45 · Ask the sign-in server
 
@@ -83,9 +86,10 @@ once its signature checked, whose token it was. See the step's README.
 - A leaver will be refused at the next call, and their slips suspended.
 - It replaces the people's rows in `src/principals.ts` and the fake staff directory in
   `src/serve.ts`.
-- It uses the Panaversity SSO's lookup route, on its branch `feat/sso-dsor-fix-list` (draft pull
-  request [panaversity/agentfactory#1331](https://github.com/panaversity/agentfactory/pull/1331)),
-  moved onto Better Auth 1.7 first.
+- It uses the Panaversity SSO's lookup route from draft pull request
+  [panaversity/agentfactory#1331](https://github.com/panaversity/agentfactory/pull/1331), now on
+  Better Auth 1.7.2 in draft pull request
+  [panaversity/agentfactory#1332](https://github.com/panaversity/agentfactory/pull/1332).
 - No standard serves this lookup. Better Auth's organization plugin answers a signed-in member, its
   SCIM plugin only receives people, and introspection needs the person's own token, which a slip's
   signer never sends.
