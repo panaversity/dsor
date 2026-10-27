@@ -5,7 +5,13 @@
 //   DSOR-IDN-04b; step 44's README, claims C3 and C4, decisions 44-5, 44-6, 44-7, and 44-10).
 import { logins as STEP_42, type Principal } from "./principals.ts";
 import type { SignIn } from "./sign-in.ts";
-import { checkedLogin, type KeySets, type Login, type Unavailable } from "./tokens.ts";
+import {
+  checkedLogin,
+  type KeySets,
+  type Login,
+  type Refused,
+  type Unavailable,
+} from "./tokens.ts";
 
 /**
  * A good token made for DSoR, whose subject DSoR's table lists as no person. Line ① refuses it as
@@ -18,7 +24,7 @@ export type Unlisted = { unlisted: Login };
  * line ① refuses a call with no caller, and answers an outage as one.
  */
 export type LoginSource = {
-  find: (token: unknown) => Promise<Principal | Unavailable | Unlisted | undefined>;
+  find: (token: unknown) => Promise<Principal | Unavailable | Unlisted | Refused | undefined>;
 };
 
 // Step 42's table, as every world had it until now (decision 44-6).
@@ -49,13 +55,15 @@ export function realLogins(
     [...table.values()].filter((p) => p.type === "human").map((p) => [p.id, p]),
   );
   return Object.freeze({
-    find: async (token: unknown): Promise<Principal | Unavailable | Unlisted | undefined> => {
+    find: async (
+      token: unknown,
+    ): Promise<Principal | Unavailable | Unlisted | Refused | undefined> => {
       if (!hasTokenForm(token)) {
         const holder = typeof token === "string" ? table.get(token) : undefined;
         return holder === undefined || holder.type === "human" ? undefined : holder;
       }
       const login = await checkedLogin(token, signIn, keys);
-      if (login === undefined || "unavailable" in login) return login;
+      if ("unavailable" in login || "refused" in login) return login;
       return people.get(login.subject) ?? { unlisted: login };
     },
   });

@@ -15,6 +15,36 @@ export type Login = { issuer: string; subject: string; client: string };
  */
 export type Unavailable = { unavailable: string };
 
+/**
+ * Why a token was refused, from a short list. The caller never hears it: every bad token hears the
+ * same answer (44-1). The record keeps it, so an administrator can tell an app replaying the CFO's
+ * token from a token that is only old (step 44's README, decision 44-11). "unlisted" is the one
+ * src/logins.ts gives: a good token for nobody in DSoR's table (44-10).
+ */
+export type Cause =
+  | "form"
+  | "algorithm"
+  | "signature"
+  | "issuer"
+  | "audience"
+  | "expired"
+  | "too_old"
+  | "not_yet"
+  | "claims"
+  | "scope"
+  | "client"
+  | "subject"
+  | "unlisted";
+
+/**
+ * Who a refused token speaks for, once its signature checked: the server whose key signed it, and
+ * the person and the client it names, when each is a name short enough to keep. Never the token.
+ */
+export type Signer = { issuer: string; subject?: string; client?: string };
+
+/** A refused token: why, and who it speaks for when its signature checked (decision 44-11). */
+export type Refused = { refused: Cause; signer?: Signer };
+
 /** The published keys of a server, fetched and kept by their address. */
 export type KeySets = (jwks: string) => JWTVerifyGetKey;
 
@@ -43,21 +73,27 @@ export function remoteKeys(options: { cacheMaxAge?: number } = {}): KeySets {
 //   (RFC 7519), checked before jose reads it (step 43's README, decision D4).
 const JWT = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*$/;
 const LONGEST = 8192;
+// The longest person or client name a record keeps, in bytes, so a record always fits the
+//   database's 1 KiB for this tutorial's own fields (migration 003b; the review's finding on 44-10).
+const LONGEST_NAME = 200;
 
 /**
  * Who signed in, when the token was made for DSoR: signed by a key the trusted server publishes,
  * with an allowed algorithm, its iss that server, its aud DSoR (and nothing else but the server's
  * own userinfo address), not expired and at most max_age after its iat (5 seconds for clocks), with
- * the scope, a client on DSoR's list, and a subject. Else none. It never throws: every reason a
- * token fails is the same "no login" (decision 44-1).
+ * the scope, a client on DSoR's list, and a subject. Else the cause, and who the token speaks for
+ * once its signature checked. It never throws: the caller hears one "no login" for every cause
+ * (decisions 44-1 and 44-11).
  */
 export async function checkedLogin(
   token: unknown,
   signIn: SignIn,
   keys: KeySets,
   now: () => number = Date.now,
-): Promise<Login | Unavailable | undefined> {
-  if (typeof token !== "string" || token.length > LONGEST || !JWT.test(token)) return undefined;
+): Promise<Login | Unavailable | Refused> {
+  if (typeof token !== "string" || token.length > LONGEST || !JWT.test(token)) {
+    return { refused: "form" };
+  }
   let payload: JWTPayload;
   try {
     ({ payload } = await jwtVerify(token, keys(signIn.jwks), {
@@ -74,14 +110,68 @@ export async function checkedLogin(
   } catch (error) {
     // Keys that did not come, or came broken, are an outage of the server, not a bad token. A key
     //   the server does not publish, a wrong signature, or a wrong claim is a bad token.
-    return keysUnreachable(error) ? { unavailable: signIn.issuer } : undefined;
+    if (keysUnreachable(error)) return { unavailable: signIn.issuer };
+    return refusal(causeOf(error), signIn, checkedPayload(error));
   }
-  if (!onlyAllowedAudiences(payload.aud, signIn)) return undefined;
-  if (!hasScope(payload["scope"], signIn.scope)) return undefined;
+  if (!onlyAllowedAudiences(payload.aud, signIn)) return refusal("audience", signIn, payload);
+  if (!hasScope(payload["scope"], signIn.scope)) return refusal("scope", signIn, payload);
   const client = clientOf(payload);
-  if (client === undefined || !signIn.clients.includes(client)) return undefined;
-  if (typeof payload.sub !== "string" || payload.sub === "") return undefined;
-  return { issuer: signIn.issuer, subject: payload.sub, client };
+  if (client === undefined || !signIn.clients.includes(client)) {
+    return refusal("client", signIn, payload);
+  }
+  const subject = nameOf(payload.sub);
+  if (subject === undefined) return refusal("subject", signIn, payload);
+  return { issuer: signIn.issuer, subject, client };
+}
+
+// A refusal, and, for a token whose signature checked, who it speaks for. The person and the client
+//   are kept only as names short enough for the record; the token itself never is (44-11).
+function refusal(cause: Cause, signIn: SignIn, payload: JWTPayload | undefined): Refused {
+  if (payload === undefined) return { refused: cause };
+  const subject = nameOf(payload.sub);
+  const client = nameOf(clientOf(payload));
+  return {
+    refused: cause,
+    signer: {
+      issuer: signIn.issuer,
+      ...(subject === undefined ? {} : { subject }),
+      ...(client === undefined ? {} : { client }),
+    },
+  };
+}
+
+// A name, not empty, and at most LONGEST_NAME bytes in UTF-8, or none.
+function nameOf(value: unknown): string | undefined {
+  if (typeof value !== "string" || value === "") return undefined;
+  return Buffer.byteLength(value, "utf8") <= LONGEST_NAME ? value : undefined;
+}
+
+// jose checks the signature before any claim, so a claim it refused belongs to a token whose
+//   signature checked, and its error carries the claims. Any other error has none to name.
+function checkedPayload(error: unknown): JWTPayload | undefined {
+  const claimFailed =
+    error instanceof errors.JWTClaimValidationFailed || error instanceof errors.JWTExpired;
+  return claimFailed ? error.payload : undefined;
+}
+
+// Why jose refused a token, by the kind of its error and the claim it names.
+function causeOf(error: unknown): Cause {
+  if (error instanceof errors.JOSEAlgNotAllowed) return "algorithm";
+  if (
+    error instanceof errors.JWKSNoMatchingKey ||
+    error instanceof errors.JWSSignatureVerificationFailed
+  ) {
+    return "signature";
+  }
+  if (error instanceof errors.JWTExpired) return error.claim === "iat" ? "too_old" : "expired";
+  if (error instanceof errors.JWTClaimValidationFailed) {
+    if (error.claim === "aud") return "audience";
+    if (error.claim === "iss") return "issuer";
+    if (error.claim === "sub") return "subject";
+    const timed = error.claim === "iat" || error.claim === "nbf";
+    return timed && error.reason === "check_failed" ? "not_yet" : "claims";
+  }
+  return "form";
 }
 
 // Every audience the token names is DSoR's, or one the settings allow beside it: a token also made

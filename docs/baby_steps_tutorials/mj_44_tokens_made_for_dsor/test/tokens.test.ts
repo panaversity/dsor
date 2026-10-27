@@ -2,6 +2,8 @@
 // for DSoR's audience, with the dsor scope, from a client DSoR knows, and at most an hour old. Each
 // test changes one thing, and every other check passes, so it proves that one check (DSOR-IDN-01,
 // DSOR-RP-02b, DSOR-IDN-04a; step 44's README, claims C1 and C6, decisions 44-1, 44-9, Q2, R1, R2).
+// A refused token names its cause, and, when its signature checked, who it speaks for: the record
+// keeps both, and the caller hears neither (step 44's README, decision 44-11).
 import { createHmac } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { checkedLogin, remoteKeys } from "../src/tokens.ts";
@@ -32,6 +34,11 @@ const cfo = (): { issuer: string; subject: string; client: string } => ({
   client: PEOPLE_APP,
 });
 
+/** A refused token whose signature checked: its cause, and who it speaks for (44-11). */
+const refused = (cause: string, signer: object = cfo()): object => ({ refused: cause, signer });
+/** A refused token whose signature did not check: its cause, and nobody (44-11). */
+const unsigned = (cause: string): object => ({ refused: cause });
+
 describe("C1: a token made for DSoR, and only one", () => {
   it("DSOR-IDN-01: cfo_100's token, made for DSoR, with dsor and a listed client, gives the issuer, cfo_100, and the client", async () => {
     expect(await checkedLogin(await a.sign("cfo_100"), a.signIn, keys)).toStrictEqual(cfo());
@@ -39,17 +46,17 @@ describe("C1: a token made for DSoR, and only one", () => {
 
   it("DSOR-RP-02b: a token made for DSoR's test copy at http://127.0.0.1:8043, every other check passing, is refused", async () => {
     const token = await a.sign("cfo_100", { aud: ["http://127.0.0.1:8043", a.userinfo] });
-    expect(await checkedLogin(token, a.signIn, keys)).toBeUndefined();
+    expect(await checkedLogin(token, a.signIn, keys)).toStrictEqual(refused("audience"));
   });
 
   it("DSOR-RP-02b: a token with no audience is refused", async () => {
     const token = await a.sign("cfo_100", { aud: undefined });
-    expect(await checkedLogin(token, a.signIn, keys)).toBeUndefined();
+    expect(await checkedLogin(token, a.signIn, keys)).toStrictEqual(refused("audience"));
   });
 
   it("DSOR-RP-02b: a token whose aud lists DSoR and the class app is refused, because the class app could hand it on (44-9)", async () => {
     const token = await a.sign("cfo_100", { aud: [DSOR, "http://localhost:3020"] });
-    expect(await checkedLogin(token, a.signIn, keys)).toBeUndefined();
+    expect(await checkedLogin(token, a.signIn, keys)).toStrictEqual(refused("audience"));
   });
 
   it("DSOR-RP-02b: a token whose aud is DSoR alone, or DSoR and the server's own userinfo address, counts (44-9)", async () => {
@@ -62,7 +69,7 @@ describe("C1: a token made for DSoR, and only one", () => {
   it("Step 44, R2: a token without the dsor scope is refused, every other check passing", async () => {
     for (const scope of ["openid profile", "openid dsor-admin", "", undefined]) {
       const token = await a.sign("cfo_100", { scope });
-      expect(await checkedLogin(token, a.signIn, keys)).toBeUndefined();
+      expect(await checkedLogin(token, a.signIn, keys)).toStrictEqual(refused("scope"));
     }
     const among = await a.sign("cfo_100", { scope: "openid dsor profile" });
     expect(await checkedLogin(among, a.signIn, keys)).toStrictEqual(cfo());
@@ -70,7 +77,9 @@ describe("C1: a token made for DSoR, and only one", () => {
 
   it("Step 44, R2: a token from a client not on DSoR's list is refused, though made for DSoR with the dsor scope", async () => {
     const token = await a.sign("cfo_100", { azp: "reports" });
-    expect(await checkedLogin(token, a.signIn, keys)).toBeUndefined();
+    expect(await checkedLogin(token, a.signIn, keys)).toStrictEqual(
+      refused("client", { ...cfo(), client: "reports" }),
+    );
   });
 
   it("Step 44, R1: a client named by azp alone, by client_id alone, or by both and the same, counts", async () => {
@@ -91,7 +100,9 @@ describe("C1: a token made for DSoR, and only one", () => {
       await a.sign("cfo_100", { azp: 42 }),
     ];
     for (const token of tokens) {
-      expect(await checkedLogin(token, a.signIn, keys)).toBeUndefined();
+      expect(await checkedLogin(token, a.signIn, keys)).toStrictEqual(
+        refused("client", { issuer: a.issuer, subject: "cfo_100" }),
+      );
     }
   });
 
@@ -102,20 +113,21 @@ describe("C1: a token made for DSoR, and only one", () => {
     vi.setSystemTime(start + 59 * 60_000);
     expect(await checkedLogin(token, a.signIn, keys)).toStrictEqual(cfo());
     vi.setSystemTime(start + 61 * 60_000);
-    expect(await checkedLogin(token, a.signIn, keys)).toBeUndefined();
+    expect(await checkedLogin(token, a.signIn, keys)).toStrictEqual(refused("too_old"));
   });
 });
 
 describe("C1, from step 43: what a token must be", () => {
   it("DSOR-IDN-04a: a perfect-looking token signed with another key, naming the trusted issuer, is refused", async () => {
     const forged = await stranger.sign("cfo_100", { iss: a.issuer }, { kid: "key-1" });
-    expect(await checkedLogin(forged, a.signIn, keys)).toBeUndefined();
+    expect(await checkedLogin(forged, a.signIn, keys)).toStrictEqual(unsigned("signature"));
   });
 
   it("DSOR-IDN-04a: a real token of another server is refused, and so is the trusted one's key under an issuer with a trailing slash", async () => {
-    expect(await checkedLogin(await stranger.sign("cfo_100"), a.signIn, keys)).toBeUndefined();
+    const theirs = await stranger.sign("cfo_100");
+    expect(await checkedLogin(theirs, a.signIn, keys)).toStrictEqual(unsigned("signature"));
     const slash = await a.sign("cfo_100", { iss: `${a.issuer}/` });
-    expect(await checkedLogin(slash, a.signIn, keys)).toBeUndefined();
+    expect(await checkedLogin(slash, a.signIn, keys)).toStrictEqual(refused("issuer"));
   });
 
   it("Step 44, 44-1: a token that names HS256, signed with the server's public key as a secret, is refused", async () => {
@@ -134,12 +146,14 @@ describe("C1, from step 43: what a token must be", () => {
     const mac = createHmac("sha256", published[0]?.n ?? "")
       .update(`${head}.${body}`)
       .digest("base64url");
-    expect(await checkedLogin(`${head}.${body}.${mac}`, a.signIn, keys)).toBeUndefined();
+    const token = `${head}.${body}.${mac}`;
+    expect(await checkedLogin(token, a.signIn, keys)).toStrictEqual(unsigned("algorithm"));
   });
 
   it("Step 44, 44-1: a token signed with ES256 by a key its own server publishes is refused: RS256 only", async () => {
     const es = await startIssuer("ES256");
-    expect(await checkedLogin(await es.sign("cfo_100"), es.signIn, remoteKeys())).toBeUndefined();
+    const token = await es.sign("cfo_100");
+    expect(await checkedLogin(token, es.signIn, remoteKeys())).toStrictEqual(unsigned("algorithm"));
     await es.close();
   });
 
@@ -154,33 +168,29 @@ describe("C1, from step 43: what a token must be", () => {
       iat: seconds(),
       exp: seconds() + 900,
     });
-    expect(await checkedLogin(`${head}.${body}.`, a.signIn, keys)).toBeUndefined();
+    const token = `${head}.${body}.`;
+    expect(await checkedLogin(token, a.signIn, keys)).toStrictEqual(unsigned("algorithm"));
   });
 
   it("Step 44, 44-1: a token with no subject is refused", async () => {
-    expect(await checkedLogin(await a.sign(undefined), a.signIn, keys)).toBeUndefined();
+    expect(await checkedLogin(await a.sign(undefined), a.signIn, keys)).toStrictEqual(
+      refused("subject", { issuer: a.issuer, client: PEOPLE_APP }),
+    );
   });
 
   it("Step 44, 44-1: a token expired 10 seconds ago is refused; one expired 3 seconds ago counts, inside the 5 seconds for clocks", async () => {
     const old = await a.sign("cfo_100", { exp: seconds() - 10 });
     const justNow = await a.sign("cfo_100", { exp: seconds() - 3 });
-    expect(await checkedLogin(old, a.signIn, keys)).toBeUndefined();
+    expect(await checkedLogin(old, a.signIn, keys)).toStrictEqual(refused("expired"));
     expect(await checkedLogin(justNow, a.signIn, keys)).toStrictEqual(cfo());
   });
 
   it("Step 44, 44-1: a token issued a day from now, or with no iat, is refused", async () => {
     const tomorrow = await a.sign("cfo_100", { iat: seconds() + 86_400 });
-    expect(await checkedLogin(tomorrow, a.signIn, keys)).toBeUndefined();
-    const head = part({ alg: "RS256", kid: "key-1", typ: "JWT" });
-    const body = part({
-      iss: a.issuer,
-      aud: DSOR,
-      sub: "cfo_100",
-      scope: "dsor",
-      azp: PEOPLE_APP,
-      exp: seconds() + 900,
-    });
-    expect(await checkedLogin(`${head}.${body}.x`, a.signIn, keys)).toBeUndefined();
+    expect(await checkedLogin(tomorrow, a.signIn, keys)).toStrictEqual(refused("not_yet"));
+    // Signed with the server's own key, so the missing iat, and nothing else, refuses it.
+    const noIat = await a.sign("cfo_100", { iat: undefined, exp: seconds() + 900 });
+    expect(await checkedLogin(noIat, a.signIn, keys)).toStrictEqual(refused("claims"));
   });
 
   it.each([
@@ -193,7 +203,7 @@ describe("C1, from step 43: what a token must be", () => {
   ])(
     "Step 44, 44-1: %s is no signed token, and is refused without a throw",
     async (_label, token) => {
-      expect(await checkedLogin(token, a.signIn, keys)).toBeUndefined();
+      expect(await checkedLogin(token, a.signIn, keys)).toStrictEqual(unsigned("form"));
     },
   );
 });
@@ -214,31 +224,33 @@ describe("C6: keys that cannot be fetched are an outage, not a bad token", () =>
 
   it("Step 44, 44-1: a token whose key the server does not publish is still a bad token, not an outage", async () => {
     const forged = await stranger.sign("cfo_100", { iss: a.issuer }, { kid: "no-such-key" });
-    expect(await checkedLogin(forged, a.signIn, keys)).toBeUndefined();
+    expect(await checkedLogin(forged, a.signIn, keys)).toStrictEqual(unsigned("signature"));
   });
 
   it("Step 44, 44-1: with the shipped cache, a key the server stops publishing still counts for ten minutes, and not after", async () => {
     const b = await startIssuer();
     const shipped = remoteKeys();
+    const login = { issuer: b.issuer, subject: "cfo_100", client: PEOPLE_APP };
     const old = await b.sign("cfo_100", { exp: seconds() + 86_400 });
-    expect(await checkedLogin(old, b.signIn, shipped)).not.toBeUndefined();
+    expect(await checkedLogin(old, b.signIn, shipped)).toStrictEqual(login);
     await b.rotate();
     // Within ten minutes the kept keys still hold the old one.
-    expect(await checkedLogin(old, b.signIn, shipped)).not.toBeUndefined();
+    expect(await checkedLogin(old, b.signIn, shipped)).toStrictEqual(login);
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(Date.now() + 601_000);
-    expect(await checkedLogin(old, b.signIn, shipped)).toBeUndefined();
+    expect(await checkedLogin(old, b.signIn, shipped)).toStrictEqual(unsigned("signature"));
     await b.close();
   });
 
   it("Step 44, 44-1: a key the server no longer publishes refuses its tokens, once the keys are fetched again", async () => {
     const b = await startIssuer();
     const fresh = remoteKeys({ cacheMaxAge: 0 });
+    const login = { issuer: b.issuer, subject: "cfo_100", client: PEOPLE_APP };
     const before = await b.sign("cfo_100");
-    expect(await checkedLogin(before, b.signIn, fresh)).not.toBeUndefined();
+    expect(await checkedLogin(before, b.signIn, fresh)).toStrictEqual(login);
     await b.rotate();
-    expect(await checkedLogin(before, b.signIn, fresh)).toBeUndefined();
-    expect(await checkedLogin(await b.sign("cfo_100"), b.signIn, fresh)).not.toBeUndefined();
+    expect(await checkedLogin(before, b.signIn, fresh)).toStrictEqual(unsigned("signature"));
+    expect(await checkedLogin(await b.sign("cfo_100"), b.signIn, fresh)).toStrictEqual(login);
     await b.close();
   });
 });

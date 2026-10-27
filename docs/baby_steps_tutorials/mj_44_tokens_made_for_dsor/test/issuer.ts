@@ -94,9 +94,16 @@ export async function startIssuer(alg = "RS256"): Promise<TestIssuer> {
       const payload = Object.fromEntries(
         Object.entries({ ...usual, ...claims }).filter(([, value]) => value !== undefined),
       );
-      const jwt = new SignJWT(payload)
-        .setProtectedHeader({ alg: header.alg ?? alg, kid: header.kid ?? key.kid, typ: "JWT" })
-        .setIssuedAt(typeof claims.iat === "number" ? claims.iat : undefined);
+      const jwt = new SignJWT(payload).setProtectedHeader({
+        alg: header.alg ?? alg,
+        kid: header.kid ?? key.kid,
+        typ: "JWT",
+      });
+      // iat given as undefined leaves the token with none, signed all the same (the review's
+      //   finding: a token with no iat was first refused for a fake signature instead).
+      if (!("iat" in claims) || claims.iat !== undefined) {
+        jwt.setIssuedAt(typeof claims.iat === "number" ? claims.iat : undefined);
+      }
       if (!("exp" in claims)) jwt.setExpirationTime("1h");
       if (subject !== undefined) jwt.setSubject(subject);
       return jwt.sign(key.privateKey);
