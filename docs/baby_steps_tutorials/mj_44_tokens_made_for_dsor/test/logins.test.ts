@@ -151,7 +151,12 @@ describe("C2: every refused login hears one answer, at line ①, recorded before
     expect(records[0]).not.toHaveProperty("tenant");
     expect(records[0]?.extensions).toStrictEqual({
       [OUR_EXTENSIONS]: {
-        refused_token: { cause: "scope", issuer: sso.issuer, subject: "cfo_100", client: PEOPLE_APP },
+        refused_token: {
+          cause: "scope",
+          issuer: sso.issuer,
+          subject: "cfo_100",
+          client: PEOPLE_APP,
+        },
       },
     });
     expect(JSON.stringify(records)).not.toContain(token);

@@ -81,7 +81,8 @@ describe("C5: sign-in.json, checked at start-up", () => {
   it("Step 44, R2: start-up refuses a scope every app is given, such as openid, which says nothing about DSoR", () => {
     // OpenID Connect's own scopes (Core, sections 5.4 and 11). With one of them, R2's scope check
     //   would pass every app's token (found by step 44's review).
-    const own = "sign-in.json: scope must be DSoR's own, not one every app is given, such as openid";
+    const own =
+      "sign-in.json: scope must be DSoR's own, not one every app is given, such as openid";
     for (const shared of ["openid", "profile", "email", "offline_access", "phone", "address"]) {
       expect(problemsOf(goodWith({ scope: shared }))).toStrictEqual([own]);
     }
@@ -131,7 +132,10 @@ describe("C5: sign-in.json, checked at start-up", () => {
       goodWith({ dedicated_to_dsor: true }),
     ];
     for (const data of bad) {
-      const { signIn, problems } = checkSignIn({ file: "sign-in.json", text: JSON.stringify(data) });
+      const { signIn, problems } = checkSignIn({
+        file: "sign-in.json",
+        text: JSON.stringify(data),
+      });
       expect(problems).toHaveLength(1);
       expect(signIn).toBeUndefined();
     }
