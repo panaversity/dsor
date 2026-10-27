@@ -1,20 +1,16 @@
 # Step 44 · Tokens made for DSoR
 
-**New in this step:** a person will be who a token *made for DSoR* says. The token must come from
-the one sign-in server DSoR trusts, name DSoR as its audience, carry the `dsor` scope, come from a
+**New in this step:** a person is who a token *made for DSoR* says. The token must come from the
+one sign-in server DSoR trusts, name DSoR as its audience, carry the `dsor` scope, come from a
 client on DSoR's own list, and be at most one hour old (DSOR-RP-02b, DSOR-IDN-01, DSOR-IDN-04a,
 DSOR-IDN-04b).
-
-> **Status, 2026-10-27: designed, not built.** This README holds the design, agreed with the
-> learner before any code. The sections after the design arrive with the code, each with real
-> output. Nothing below claims that the code exists yet.
 
 ## In plain words
 
 Since step 05, a caller proves who they are with a fixed key from a table in the code:
 `tok_d4e8` is cfo_100. The table is `src/principals.ts`, a public file, and a key never expires.
-This step will replace those keys, for people, with real sign-in. Agents keep their keys until
-steps 48 and 49.
+This step replaces those keys, for people, with real sign-in. Agents keep their keys until steps
+48 and 49.
 
 A person signs in at a *sign-in server*, here the Panaversity SSO. It gives them a *signed token*:
 a short text that says who they are, who issued it, for which service it is meant, and until when.
@@ -190,8 +186,8 @@ audience is refused; `tok_d4e8` is refused.
 
 ### The breaks, with the learner's predictions
 
-Each break will be made for real in a copy, and its output will go under "Break it". The
-predictions were made before any code, on 2026-10-27, and none is judged until its run.
+The predictions were made before any code, on 2026-10-27. Then each break was made for real in a
+copy, and "Break it" shows how each prediction came out.
 
 | Break | The story | The learner's prediction |
 |---|---|---|
@@ -203,3 +199,280 @@ predictions were made before any code, on 2026-10-27, and none is judged until i
 | B6 · the one-hour age check is deleted | The SSO's setting has changed so `dsor` tokens live 14 days. A token stolen three hours ago arrives | Accepted as its owner |
 | B7 · an outage of the keys is reported as a bad token | DSoR restarts at 09:00 while the SSO is down, so no keys are cached. cfo_100's good token arrives | cfo_100 hears "log in first" |
 | B8 · the client is read only from `client_id` | The Panaversity SSO writes only `azp`. cfo_100's good token arrives on Monday morning | Refused for everyone |
+
+## What changed since step 42
+
+| File | What changed |
+| --- | --- |
+| `sign-in.json` | **New.** The one sign-in server DSoR trusts: its issuer, the address of its keys, the allowed algorithm, the one-hour age, DSoR's audience, the one other audience allowed, the `dsor` scope, and the clients on DSoR's list (44-2) |
+| `src/sign-in.ts` | **New.** Reads `sign-in.json` and refuses settings that trust too much (C5) |
+| `src/tokens.ts` | **New.** The token check, with `jose` 6.2.12: the signature with a key the issuer publishes, then the algorithm, the issuer, the audience, the time, the scope, the client, and the subject. Keys that cannot be fetched are an outage, not a bad token (C1, C6) |
+| `src/logins.ts` | **New.** Where a call's login comes from. `FAKE_LOGINS` keeps step 42's table for `pnpm start` and the earlier tests. `realLogins`, for `pnpm serve`, takes a person's token and an agent's key (C3, C4) |
+| `src/principals.ts` | `callerOf`, the one refusal of line ①, with new words: "log in first: the call has no login that DSoR accepts". An outage of the keys is `CONNECTOR_UNAVAILABLE` |
+| `src/pipeline.ts` | Line ① asks the world's logins. A good token for nobody in the table is named in the record (44-10) |
+| `src/log.ts` | The record's `unlisted_login`: the issuer, the person's id there, and the client, never the token (44-10) |
+| `src/registry.ts` | A registry names its logins, `FAKE_LOGINS` unless a world chooses others |
+| `src/serve.ts` | `pnpm serve` checks `sign-in.json` at start-up and uses `realLogins` (C4, C5) |
+| `package.json`, `pnpm-lock.yaml` | `jose` 6.2.12, which checks signed tokens and fetches the issuer's keys |
+| `test/issuer.ts` | **New.** A test sign-in server in the Panaversity SSO's shape. Its key exists only inside the tests (44-8) |
+| `test/sign-in.test.ts`, `test/tokens.test.ts`, `test/logins.test.ts` | **New.** The claims C1 to C6 |
+| `test/helpers.ts`, `test/permissions.test.ts`, `test/registry.test.ts` | The refusal's new words, and two registries built by hand that now name their logins |
+| `src/door.ts`, `src/routes.ts`, `src/server.ts`, `src/statuses.ts` | Comments only: step 42's `NEW IN STEP` markers removed |
+
+The checklist's lines ② to ⑪, the stores, and the migrations are step 42's.
+
+```bash
+git diff --no-index ../mj_42_a_rest_api/src src
+git diff --no-index ../mj_42_a_rest_api/test test
+```
+
+## Run it
+
+As in step 42: a local PostgreSQL 17 and a new database of its own. No migration is new. The tests
+sign their tokens with a test-only key, so they need no sign-in server.
+
+```bash
+pnpm install
+pnpm check
+pnpm migrate
+pnpm serve          # DSoR's door listens on http://127.0.0.1:8042
+```
+
+`pnpm serve` starts without a sign-in server too: the settings are checked at start-up, and the keys
+are fetched at the first token. Until the server answers, a person's call hears
+`CONNECTOR_UNAVAILABLE` (break B7 shows it).
+
+**The sign-in server.** The real run used the Panaversity SSO's branch `feat/sso-dsor-fix-list`
+(draft pull request [panaversity/agentfactory#1331](https://github.com/panaversity/agentfactory/pull/1331)),
+on this computer at `127.0.0.1:3011`, over its own local database. Nothing in production was
+touched. Three things were set up there first:
+
+- two clients that may ask for `openid dsor`: `dsor-people`, DSoR's own app for people, and
+  `reports`, a second app that DSoR's list does not name;
+- a test password for cfo_100, set through the SSO's own password-reset flow;
+- DSoR's address, `http://127.0.0.1:8042`, among the audiences the SSO accepts
+  (`OAUTH_MCP_AUDIENCES`). The SSO's own DSoR tests need it there too.
+
+Then cfo_100 signed in, and each app got a token through the *authorization-code flow with PKCE*.
+In that flow, the app sends the person to the SSO, the SSO sends back a one-time code, and the app
+trades the code for the token. *PKCE* is a secret the app makes for each sign-in, so a stolen code
+is useless to anyone else. It is the flow of the SSO's own `apps/sso/tests/test-dsor-tokens.ts`.
+The app's request names DSoR's address in its `resource` field (RFC 8707), so the SSO makes the
+token for DSoR. A real run on 2026-10-27. The tokens' claims, never the tokens:
+
+```text
+cfo_100 signs in at the SSO: 200
+
+dsor-people: a token kept in token-people, never printed
+  form    3 parts, alg RS256
+  iss     http://localhost:3011
+  aud     ["http://127.0.0.1:8042","http://localhost:3011/api/auth/oauth2/userinfo"]
+  azp     dsor-people
+  scope   openid dsor
+  sub     cfo_100
+  age     0 s; lives 3600 s
+
+reports: a token kept in token-reports, never printed
+  form    3 parts, alg RS256
+  iss     http://localhost:3011
+  aud     ["http://127.0.0.1:8042","http://localhost:3011/api/auth/oauth2/userinfo"]
+  azp     reports
+  scope   openid dsor
+  sub     cfo_100
+  age     0 s; lives 3600 s
+```
+
+The two tokens differ in one claim only, `azp`. Each call puts its token in the `Authorization`
+header:
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" -H 'DSoR-Tenant: org_456' http://127.0.0.1:8042/invoices/INV-1008
+```
+
+The story, on a new database, in a copy of this folder with the same code and settings:
+
+```text
+1. cfo_100's token from dsor-people reads INV-1008
+   HTTP 200 to cfo_100 {"id":"INV-1008","amount":{"value":"31400.00","currency":"USD"}}
+2. the agent pays INV-1008, 31,400.00 USD
+   HTTP 202 PENDING_APPROVAL, waits for CFO (1)
+3. cfo_100's token from reports approves it
+   HTTP 401 AUTHENTICATION_REQUIRED: log in first: the call has no login that DSoR accepts (retry never)
+4. tok_d4e8 approves it
+   HTTP 401 AUTHENTICATION_REQUIRED: log in first: the call has no login that DSoR accepts (retry never)
+5. cfo_100's token from dsor-people approves it
+   HTTP 200 COMMITTED to cfo_100 {"id":"apr_6a6c8dc6-ebbd-4aa3-9b6e-b2def648e295","state":"APPROVED","waits_for":[]}
+```
+
+The agent keeps its key. Earlier the same day, `pnpm serve` in this folder answered the agent's
+`tok_7f3a` with INV-1008 masked:
+
+```text
+4. tok_7f3a, the agent's key
+  → 200, answered to agent accounts-payable-fte
+    {"tenant_id":"org_456","id":"INV-1008","vendor_id":"VENDOR-44","status":"issued","version":1}
+```
+
+DSoR's log for the story, `dsor.audit`, read as the owner (sequence, operation, decision, result,
+reason, caller). Records 5 and 6 name nobody: a refused token is no login, so DSoR takes no name
+from it, not even its `sub`.
+
+```text
+1 | invoice.get@1 | ALLOW | ok | - | cfo_100
+2 | payment.create@1 |  | PROPOSED | payment.create called | accounts-payable-fte
+3 | payment.create@1 |  | PENDING_APPROVAL | the control high-value-payment asks for an approval | accounts-payable-fte
+4 | payment.create@1 | ALLOW | PENDING_APPROVAL | - | accounts-payable-fte
+5 | proposal.approve@1 | DENY | AUTHENTICATION_REQUIRED | log in first: the call has no login that DSoR accepts | -
+6 | proposal.approve@1 | DENY | AUTHENTICATION_REQUIRED | log in first: the call has no login that DSoR accepts | -
+7 | proposal.approve@1 |  | PROPOSED | proposal.approve called | cfo_100
+8 | proposal.approve@1 |  | READY | no control asks for an approval | cfo_100
+9 | proposal.approve@1 |  | EXECUTING | execute mode: the work starts | cfo_100
+10 | payment.create@1 |  | APPROVED | approved by cfo_100 | cfo_100
+11 | proposal.approve@1 |  | COMMITTED | the work ended | cfo_100
+12 | proposal.approve@1 | ALLOW | ok | - | cfo_100
+approval by | cfo_100 | [{"authn": {"at": "2026-10-27T09:07:22.451Z"}, "basis": "role:CFO", "principal": "cfo_100"}]
+```
+
+## Break it
+
+Each break was made on 2026-10-27 in its own copy of this folder, outside the repository, against
+the final code. Each copy got a new database and its own `pnpm serve` on `8042`, and the break's
+story went through the door.
+
+- B3, B5, B7, and B8 used real tokens from the local SSO. For B7, the copy fetched its keys from a
+  port where nothing listens. That is what DSoR sees while the SSO is down.
+- B1, B2, B4, and B6 used this step's test sign-in server, `test/issuer.ts`. The SSO makes no
+  token 90 minutes or three hours old, and none with role claims. It also makes none for an
+  address it does not list: asked for `8043`, it answered `invalid_request`, "requested resource
+  invalid".
+
+Then `test/tokens.test.ts` and `test/logins.test.ts`, 56 tests, ran in each copy. The column "As
+built" is the same story against the step as built.
+
+| Break | What it changes | Broken, DSoR answers | As built | Tests that fail | The learner's prediction |
+|---|---|---|---|---|---|
+| B1a | Deletes the audience given to `jose`: "DSoR's address is one of the audiences" | The token for the test copy at `8043`: 401, still refused | 401 | 1 | Accepted as cfo_100: **not here** |
+| B1b | Deletes 44-9's check too: "every audience is DSoR's or the SSO's userinfo address" | 200, the whole invoice, ALLOW by cfo_100 | 401 | 5 | Accepted as cfo_100, with an ALLOW recorded: **as predicted** |
+| B2 | Deletes the `dsor` scope check | The token without `dsor`, 90 minutes after its `iat`: 401. The same kind of token in its first minute: 200, ALLOW by cfo_100 | 401 | 3 | Accepted: **not for the story's token** |
+| B3 | Keeps only "a client is named", not "a client on DSoR's list" | The `reports` token approves: 200, APPROVED by cfo_100, `basis` `role:CFO` | 401 | 2 | The approval counts, and names cfo_100: **as predicted** |
+| B4 | Takes the company and the role from the token's `tenant_id` and `org_role` | user_700 approves: 200, APPROVED by user_700, `basis` `role:CFO` | 403, "the caller may not work in the tenant it named" | 7 | The approval counts, as a CFO's: **as predicted** |
+| B5 | A key counts for anyone in the table, people too | `tok_d4e8` approves: 200, APPROVED by cfo_100 | 401 | 6 | The approval counts as cfo_100's: **as predicted** |
+| B6 | Deletes the one-hour age, `maxTokenAge` | The token stolen three hours ago: 200, the whole invoice, ALLOW by cfo_100 | 401 | 3 | Accepted as its owner: **as predicted** |
+| B7 | Keys that cannot be fetched count as a bad token | 401, "log in first", retry `never` | 503, `CONNECTOR_UNAVAILABLE`, "try again", retry `safe_same_key` | 2 | cfo_100 hears "log in first": **as predicted** |
+| B8 | Reads the client only from `client_id` | cfo_100's good token: 401. The agent's key: 200 | 200 | 13 | Refused for everyone: **as predicted**, for every person |
+
+What the runs add:
+
+- **B1: the audience is checked twice.** `jose` checks that DSoR's address is among the audiences.
+  44-9's check refuses any audience that is neither DSoR's nor the SSO's userinfo address. With only
+  the first deleted, the `8043` token fails the second. One test noticed B1a: a token with no `aud`
+  at all, which passes 44-9's check, because an empty list holds no stranger.
+- **B2: the age check still runs.** 90 minutes after `iat` is more than DSoR's one hour (Q2), so the
+  token is refused without any scope check. In its first hour, it counts. The scope check is the
+  only guard in a token's first hour, and the age check is the guard after it.
+- **B3 and B5: the record cannot tell.** An approval through `reports`, or with `tok_d4e8` from a
+  public file, is recorded as `{"authn": {"at": …}, "basis": "role:CFO", "principal": "cfo_100"}`,
+  exactly like cfo_100's own approval through `dsor-people`.
+- **B4: the log looks right.** It shows a CFO's approval by user_700, whom DSoR's table lists in
+  org_789 only.
+- **B6: the SSO's settings do not matter here.** As built, a token works for at most one hour after
+  it was made, however long the SSO lets it live.
+- **B7: "retry never" sends the caller the wrong way.** Signing in again cannot help while the SSO
+  is down, and the log blames a login, not an outage.
+- **B8: "everyone" is every person.** Agents and system logins use keys, which never reach the client
+  check.
+
+The two misses, B1a and B2, came from one idea: "one check gone, the token gets in". A token must
+pass every check, and the others still run. The new clerk who stops checking which building a badge
+was printed for still turns away a badge printed last year.
+
+## Build it yourself with Claude Code
+
+| # | Move | What was done |
+|---|---|---|
+| 1 | Understand | Step 43d's understanding session, from two stories, the finance story and Panaversity ops. It questioned steps 43 to 43c, and they were set aside |
+| 2 | Decide | Q1 to Q10 for the chain, then this step's 44-1 to 44-10, R1, and R2, put to the learner one at a time. Then the claims, the tests, and a prediction for each break, before any code |
+| 3 | The copy | Step 42 copied, its markers removed |
+| 4 | Build, piece by piece | Four pieces, each with its tests written first and seen red: the settings (`sign-in.json`, `src/sign-in.ts`); the token check (`src/tokens.ts`, `jose`); line ① (`src/logins.ts`, `callerOf`); the refusal's new words |
+| 5 | The real run | `pnpm serve` against the Panaversity SSO on this computer, with one prediction first |
+| 6 | Break it | Eight breaks, each made for real in a copy and set beside its prediction |
+
+To start it in a new session:
+
+```text
+Build step 44 in learner mode from the design in
+docs/baby_steps_tutorials/mj_44_tokens_made_for_dsor/README.md and the decisions in
+docs/baby_steps_tutorials/mj_notes.md, from "Step 43d, paused" on.
+```
+
+## Check yourself
+
+1. cfo_100 opens the "reports" app. The SSO gives it a token made for DSoR, with the `dsor` scope,
+   signed with the SSO's own key. The app sends cfo_100's approval of PAY-901 to DSoR. What does it
+   get, and whom does the log name?
+   <details><summary>Answer</summary>401, <code>AUTHENTICATION_REQUIRED</code>, "log in first". The token is real, but <code>reports</code> is not on DSoR's list of clients (R2), so it is no login. The record is a DENY that names nobody: DSoR takes no name from a token it refused. Run it, call 3 and record 5.</details>
+2. DSoR starts at 09:00 while the SSO is down. cfo_100's good token arrives. What does she hear,
+   and why not "log in first"?
+   <details><summary>Answer</summary>503, <code>CONNECTOR_UNAVAILABLE</code>, "try again", retry <code>safe_same_key</code>. DSoR could not check the token, so it cannot call the token bad. "Log in first" with retry <code>never</code> would send her to sign in again, which cannot help, and the log would blame a login instead of an outage. Break B7.</details>
+3. user_700's token says `tenant_id` org_456 and `org_role` CFO. Why can't user_700 approve
+   PAY-901?
+   <details><summary>Answer</summary>DSoR reads a person's companies and roles from its own table, by the token's <code>sub</code>, never from the token's claims (C3, DSOR-IDN-04b). The table lists user_700 in org_789 only, so line ② refuses: "the caller may not work in the tenant it named". Break B4 shows the other way: the approval counts as a CFO's.</details>
+4. Someone deletes the `dsor` scope check. cfo_100's token without `dsor` arrives 90 minutes after
+   it was made. What happens? And to the same kind of token, a minute after it was made?
+   <details><summary>Answer</summary>The first is refused: 90 minutes is more than DSoR's one hour after <code>iat</code> (Q2), and that check still runs. The second counts as cfo_100. So the scope check is the only guard in a token's first hour. Break B2.</details>
+5. The SSO decides a token's `exp`. Why does DSoR also count one hour from `iat` itself?
+   <details><summary>Answer</summary>The SSO's setting can change, and a token without <code>dsor</code> already lives 14 days. DSoR's own hour bounds a stolen token whatever the SSO says. In break B6, without that hour, a token stolen three hours earlier, valid for 14 days, read INV-1008 whole.</details>
+
+## Think it through
+
+### Found while building
+
+- **17 of line ①'s 28 new tests passed before its code existed.** All 17 expect a refusal, and step
+  42 refuses every token, so they were green from the start. Each proved something only once a test
+  that expects "yes" stood beside it.
+- **The token is read before line ① starts,** because finding the login may wait for the sign-in
+  server's keys. An envelope whose `token` field throws when it is read gets `INTERNAL_ERROR` with
+  DSoR's own request id, as in step 43.
+- **The refusal's words changed.** Step 05 said "the call has no login token that DSoR gave". A
+  person's token comes from the SSO now, so it says "the call has no login that DSoR accepts". "Why
+  it matters" keeps the old words, because it quotes step 42's run.
+- **The audience is checked twice** (break B1a). Only one test, a token with no `aud`, notices the
+  loss of `jose`'s check.
+- **The SSO makes tokens only for audiences it lists.** Asked for `8043`, it answered "requested
+  resource invalid". A test copy of DSoR needs its own address registered at the SSO.
+- **The SSO's test email capture stayed empty in dev mode,** though the SSO's log shows that the
+  reset email was made. The likely cause: in dev mode, Next.js gives the reset route and
+  `/api/test/emails` separate copies of the list. The run read the reset token from the SSO's
+  `verification` table instead.
+
+### Left open on purpose
+
+- **Agents keep their keys,** in a public file. Steps 48 and 49 will replace them.
+- **Companies and roles still come from step 42's table** (44-5). Step 45 will ask the SSO.
+- **No record names the client a person used.** B3's approval through `reports` looks like one
+  through `dsor-people`. This matters in step 47, where approvals will count only from DSoR's own
+  approval app.
+- **A refused token names nobody, even when its signature checked.** The record of the reports call
+  cannot say that another app used cfo_100's token. 44-10 names a good token only when its person is
+  missing from the table.
+- **An app may keep getting new tokens for 30 days.** An app that asks the SSO for `offline_access`
+  gets a *refresh token*, which it trades for new tokens, and that lives 30 days. DSoR's hour
+  bounds each token, not how long an app may keep getting new ones.
+- **One issuer for every company** (44-2).
+
+## The rules this step meets
+
+| Rule | What it says | Spec | Tests |
+|---|---|---|---|
+| DSOR-RP-02b | A token whose audience is not this DSoR is rejected | [§37](../../../specs/dsor/05-bindings.md#37-identity-binding) | `test/tokens.test.ts`, `test/sign-in.test.ts` (C1, C5) |
+| DSOR-IDN-01 | Every caller becomes a principal before anything else | [§12](../../../specs/dsor/02-security.md#12-identity-and-principals) | `test/tokens.test.ts`, `test/logins.test.ts` (C1, C2) |
+| DSOR-IDN-04a | Roles and scopes only from the issuer or role source the tenant trusts | [§12.1](../../../specs/dsor/02-security.md#121-role-source) | `test/tokens.test.ts`, `test/logins.test.ts` (C3) |
+| DSOR-IDN-04b | A claim from any other origin decides nothing | [§12.1](../../../specs/dsor/02-security.md#121-role-source) | `test/logins.test.ts` (C3) |
+| DSOR-EXE-02 | A refusal is recorded, with its reason, before the answer | [§21](../../../specs/dsor/03-execution.md#21-command-pipeline) | `test/logins.test.ts` (C2) |
+
+The settings, the one-hour age, the list of clients, keys versus tokens, and the outage answer are
+this tutorial's decisions: those tests are titled by 44-1, 44-2, 44-6, 44-7, 44-9, 44-10, Q2, R1,
+and R2.
+
+**Next:** step 45, ask the sign-in server. At every call, DSoR will ask the SSO who this person is
+in this company now. A leaver's next call will be refused, and the leaver's slips suspended.
