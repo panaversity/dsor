@@ -11,6 +11,7 @@ import { NO_KSORS } from "../src/ksor.ts";
 import { NO_CONTROLS } from "../src/rulebook.ts";
 import { createRoleSource } from "../src/authority.ts";
 import { NO_DIRECTORIES } from "../src/directory.ts";
+import { FAKE_LOGINS } from "../src/logins.ts";
 import { call } from "../src/pipeline.ts";
 import { buildRegistry, type Handler } from "../src/registry.ts";
 import {
@@ -154,6 +155,8 @@ describe("C1: nothing can be called without a contract", () => {
       alerts: new Map(),
       // Changed in step 38c: and no read of DSoR's own store.
       reads: new Map(),
+      // Changed in step 44: and step 42's table of logins, so line ① finds the agent.
+      logins: FAKE_LOGINS,
     };
     // The refusal is an envelope, not a throw.
     expect(await call(handMade, log, AGENT, "invoice.delete", {})).toMatchObject({

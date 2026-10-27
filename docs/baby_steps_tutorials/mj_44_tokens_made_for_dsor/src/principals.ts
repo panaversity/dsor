@@ -159,13 +159,29 @@ export function whoIsCalling(request: RequestEnvelope): Principal {
   const token = request?.token;
   // Only text is looked up. A Map never turns its key into text, so ["tok_7f3a"] finds
   // nobody, and neither does "toString".
-  const caller = typeof token === "string" ? logins.get(token) : undefined;
-  // One message for every case, so a refusal never tells a caller which tokens exist.
-  if (caller === undefined) {
+  // Changed in step 44: refused by callerOf, the one refusal line ① gives.
+  return callerOf(typeof token === "string" ? logins.get(token) : undefined);
+}
+
+/**
+ * NEW IN STEP 44: the caller a login source found, or the refusal of a call with none. Keys that
+ * could not be fetched are an outage, which the caller may try again, never "log in first" (step
+ * 44's README, claim C6, decision 44-1).
+ */
+export function callerOf(
+  found: Principal | { unavailable: string } | { unlisted: object } | undefined,
+): Principal {
+  if (found !== undefined && "unavailable" in found) {
+    const why = `the sign-in server's keys could not be fetched (${found.unavailable}): try again`;
+    throw new Refusal("CONNECTOR_UNAVAILABLE", why);
+  }
+  // One message for every case, so a refusal never tells a caller which tokens exist, why a token
+  //   failed, or that a good token's person is missing from the table (decisions 44-1 and 44-10).
+  if (found === undefined || "unlisted" in found) {
     const message = "log in first: the call has no login token that DSoR gave";
     throw new Refusal("AUTHENTICATION_REQUIRED", message);
   }
-  return caller;
+  return found;
 }
 
 /** The ids that name the caller in an answer's correlation (step 05's README, decision 9). */

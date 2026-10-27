@@ -688,6 +688,8 @@ describe("C4: an operation nobody was granted is denied to everyone", () => {
         alerts: registry.alerts,
         // Changed in step 38c: and the shared registry's own reads.
         reads: registry.reads,
+        // Changed in step 44: and step 42's table of logins.
+        logins: registry.logins,
       };
       expect(
         await call(handMade, log, SUPERVISOR, "invoice.get", {

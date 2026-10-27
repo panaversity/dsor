@@ -80,7 +80,8 @@ import { NO_PAYMENTS, unlocked, type PaymentStore } from "./payment.ts";
 import { checkResultSize } from "./pages.ts";
 import { checkPermission, effectivePermissions, permissionsOf } from "./permissions.ts";
 import { clearanceOf, maskRefusal, show } from "./masking.ts";
-import { callerIds, checkNamedPrincipals, whoIsCalling } from "./principals.ts";
+import { callerIds, callerOf, checkNamedPrincipals } from "./principals.ts";
+import type { Login } from "./tokens.ts";
 import {
   callerMover,
   closeProposal,
@@ -232,6 +233,9 @@ export async function call(
   // The mode line ① read, or execute when the envelope names none. A command's
   // record names it (step 23's README, decision 10).
   let modeOfRecord: Mode | undefined;
+  // NEW IN STEP 44: a good token for someone DSoR's table lists as no person, which line ①
+  //   refuses. Its record names the login, so an administrator can see why (decision 44-10).
+  let unlistedOfRecord: Login | undefined;
   // The label of each read the code makes, noted by the bound store. Only the
   // checklist holds this notebook (step 15's README, decision 5).
   const reads = newReads();
@@ -280,13 +284,25 @@ export async function call(
     //   token and DSoR's own table only (DSOR-IDN-01, DSOR-SRC-02a). Then any principal the
     //   arguments name must be the caller (DSOR-SRC-02b), and the request id must be usable
     //   (step 05's README, decisions 6 and 7; step 07's README, decision 8).
+    // NEW IN STEP 44: the login is found first, from the world's source: step 42's table, or, in
+    //   pnpm serve, a token made for DSoR and an agent's key. Asking may wait for the sign-in
+    //   server's keys, so it is done before line ①, which then refuses a call with no caller
+    //   before any other check (DSOR-IDN-01; step 44's README, decisions 44-6 and 44-7). As in
+    //   step 43: a source that throws anyway gives no caller (its review, L6), and the token is
+    //   read outside that guard, so an envelope whose token throws is answered INTERNAL_ERROR.
+    const token = request?.token;
+    const login = await Promise.resolve()
+      .then(() => registry.logins.find(token))
+      .catch(() => undefined);
     const { caller, copy, key, named, supersedes } = line(1, () => {
       // The caller's own request id labels every answer, when DSoR can use it (step 05's
       // README, decisions 6 and 7). It is read inside the try, so an envelope whose
       // request_id cannot be read gets an answer, not a throw. Found by step 07's review,
       // and fixed from step 05 on.
       correlation = { request_id: usableRequestId(request) ?? correlation.request_id };
-      const found = whoIsCalling(request);
+      // NEW IN STEP 44: refused as every bad login is, and named in the record (decision 44-10).
+      if (login !== undefined && "unlisted" in login) unlistedOfRecord = login.unlisted;
+      const found = callerOf(login);
       correlation = { ...correlation, ...callerIds(found) };
       // One copy of the input, made here, once, after the login is found. Every check from
       // here on, and the operation's code, reads this copy. So no check can see a value that
@@ -2375,6 +2391,8 @@ export async function call(
       staleOfRecord,
       approvedUnderOfRecord,
       evidence.asserted,
+      // NEW IN STEP 44: and the login of a good token for nobody DSoR lists (decision 44-10).
+      unlistedOfRecord,
     );
     const bundle = bundleOf(decision, evidence, registry.contracts.get(name));
     if (bundle === undefined) return { decision, bundle };

@@ -69,6 +69,7 @@ import { ownProblems, type OwnWork } from "./revocation.ts";
 import { undoProblems } from "./semantics.ts";
 import { NO_SLIPS, type SlipStore } from "./slips.ts";
 import { loginProblems, logins } from "./principals.ts";
+import { FAKE_LOGINS, type LoginSource } from "./logins.ts";
 
 /** One contract file, as it was read from disk: its name and its text. */
 export type ContractSource = { file: string; text: string };
@@ -142,6 +143,9 @@ export type Registry = {
   // DSoR's own reads, for the queries over DSoR's own store, kept apart from the
   //   company's code and from DSoR's own work, which changes things (step 38c's README).
   reads: ReadonlyMap<string, OwnRead>;
+  // NEW IN STEP 44: and where a call's login comes from: step 42's table, unless the world gives
+  //   real logins, as pnpm serve does (step 44's README, decision 44-6).
+  logins: LoginSource;
 };
 
 // The specification's own schemas, copied byte for byte (step 03's README, decision 3).
@@ -247,6 +251,8 @@ export function buildRegistry(
   // DSoR's own reads. Given, or else this step's own for each contract the
   //   registry has, so a registry of a few contracts gets no read of a contract it lacks.
   given?: Record<string, OwnRead>,
+  // NEW IN STEP 44: the logins, step 42's table unless the caller gives real ones.
+  loginSource: LoginSource = FAKE_LOGINS,
 ): Registry {
   // Every problem is collected first, and the refusal names them all (step 03's
   // README, decision 2).
@@ -493,6 +499,7 @@ export function buildRegistry(
     plugs,
     alerts,
     reads: ownReads,
+    logins: loginSource,
   };
 }
 
