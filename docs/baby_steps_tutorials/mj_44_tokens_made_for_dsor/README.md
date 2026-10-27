@@ -529,6 +529,43 @@ replay, recorded as what it is.
 that is not its own address, or (b) leave it open. **The learner chose (a), decision 44-12**, built
 red first. Its real refusal is under "Run it".
 
+### Standards, not one sign-in server
+
+DSoR is public, so it must not depend on the Panaversity SSO. The token check uses only open
+standards, and only `sign-in.json` names the SSO.
+
+| What DSoR checks | The standard |
+|---|---|
+| A signed token, RS256 | JWT (RFC 7519), JWS (RFC 7515), the algorithms of RFC 7518 |
+| Public keys from the issuer's address | JWK Set (RFC 7517), at an address the server announces (RFC 8414, OpenID Connect Discovery) |
+| Made for DSoR's address | `aud` (RFC 7519), asked for with a resource indicator (RFC 8707) |
+| The app that asked | `azp` (OpenID Connect) or `client_id` (RFC 9068) |
+| DSoR's own permission word | `scope` (RFC 6749, section 3.3) |
+| At most one hour old | `iat` and `exp` (RFC 7519); the one-hour limit is DSoR's own |
+| Someone acting for the person | `act` (RFC 8693): refused, until step 48 decides how to accept it |
+
+What shows it:
+
+- No line of code in `src/` names the SSO or Better Auth. Only `sign-in.json` does.
+- All 3,777 unit tests use `test/issuer.ts`, a 144-line sign-in server written for the tests.
+- Decision Q2, from 43d's design, states DSoR's needs as a checklist of RFCs that any sign-in
+  server must meet, as MCP does. Q2d keeps the Panaversity SSO a product of its own, never part of
+  DSoR ([`../mj_notes.md`](../mj_notes.md)).
+
+Where the SSO still shapes the design:
+
+1. **One more audience.** 44-9 allows the SSO's userinfo address beside DSoR's, because Better Auth
+   adds it. It is a setting: another server can leave the list empty.
+2. **One issuer for every company** (44-2). A company that brings its own sign-in server needs
+   `sign-in.json` to become a list.
+3. **Story ids as `sub`.** The story's people have their story ids as `sub` only because the local
+   SSO was seeded that way (44-4). Elsewhere, `sub` is the server's own id for the person.
+4. **The lookup route.** The SSO's branch has a route made for DSoR, `GET /api/dsor/lookup`, which
+   step 45 plans to ask. No standard defines it, and a managed server such as Neon Auth cannot add
+   one. Whose contract it is, is a question for step 45's design.
+5. **Step 49 waits on Better Auth 1.7,** because 1.6.23 has no `private_key_jwt` (RFC 7523). That is
+   a standard the SSO does not offer yet, not a tie to the SSO.
+
 ### Left open on purpose
 
 - **Agents keep their keys,** in a public file. Steps 48 and 49 will replace them.
