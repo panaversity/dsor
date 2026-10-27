@@ -113,6 +113,23 @@ describe("C1: a token made for DSoR, and only one", () => {
     expect(await checkedLogin(token, a.signIn, keys)).toStrictEqual(refused("actor"));
   });
 
+  it("Step 44, 44-11: a person or a client name over 200 bytes is never named, and such a subject is refused, so a record always fits", async () => {
+    // 200 bytes is a name; 202 bytes, in two-byte letters, is not.
+    const longest = "x".repeat(200);
+    expect(await checkedLogin(await a.sign(longest), a.signIn, keys)).toStrictEqual({
+      ...cfo(),
+      subject: longest,
+    });
+    const tooLong = "é".repeat(101);
+    expect(await checkedLogin(await a.sign(tooLong), a.signIn, keys)).toStrictEqual(
+      refused("subject", { issuer: a.issuer, client: PEOPLE_APP }),
+    );
+    const app = await a.sign("cfo_100", { azp: "c".repeat(201) });
+    expect(await checkedLogin(app, a.signIn, keys)).toStrictEqual(
+      refused("client", { issuer: a.issuer, subject: "cfo_100" }),
+    );
+  });
+
   it("Step 44, Q2: 59 minutes after its iat a token counts; 61 minutes after, it is refused, though its exp is days away", async () => {
     const token = await a.sign("cfo_100", { exp: seconds() + 3 * 86_400 });
     const start = Date.now();

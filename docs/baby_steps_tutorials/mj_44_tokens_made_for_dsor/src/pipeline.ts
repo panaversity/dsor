@@ -75,13 +75,14 @@ import {
   type DecisionLog,
   type Mover,
   type Read,
+  type TokenOfRecord,
 } from "./log.ts";
+import { tokenOfRecord } from "./logins.ts";
 import { NO_PAYMENTS, unlocked, type PaymentStore } from "./payment.ts";
 import { checkResultSize } from "./pages.ts";
 import { checkPermission, effectivePermissions, permissionsOf } from "./permissions.ts";
 import { clearanceOf, maskRefusal, show } from "./masking.ts";
 import { callerIds, callerOf, checkNamedPrincipals } from "./principals.ts";
-import type { Login } from "./tokens.ts";
 import {
   callerMover,
   closeProposal,
@@ -233,9 +234,9 @@ export async function call(
   // The mode line ① read, or execute when the envelope names none. A command's
   // record names it (step 23's README, decision 10).
   let modeOfRecord: Mode | undefined;
-  // NEW IN STEP 44: a good token for someone DSoR's table lists as no person, which line ①
-  //   refuses. Its record names the login, so an administrator can see why (decision 44-10).
-  let unlistedOfRecord: Login | undefined;
+  // NEW IN STEP 44: what line ① learned about the call's token: the issuer and client of one that
+  //   counts, or why one was refused and who it speaks for (decisions 44-10 and 44-11).
+  let tokenOfCall: TokenOfRecord | undefined;
   // The label of each read the code makes, noted by the bound store. Only the
   // checklist holds this notebook (step 15's README, decision 5).
   const reads = newReads();
@@ -300,8 +301,9 @@ export async function call(
       // request_id cannot be read gets an answer, not a throw. Found by step 07's review,
       // and fixed from step 05 on.
       correlation = { request_id: usableRequestId(request) ?? correlation.request_id };
-      // NEW IN STEP 44: refused as every bad login is, and named in the record (decision 44-10).
-      if (login !== undefined && "unlisted" in login) unlistedOfRecord = login.unlisted;
+      // NEW IN STEP 44: refused as every bad login is. The record keeps why, and whose login it
+      //   was, though the caller hears one answer (decisions 44-10 and 44-11).
+      tokenOfCall = tokenOfRecord(login);
       const found = callerOf(login);
       correlation = { ...correlation, ...callerIds(found) };
       // One copy of the input, made here, once, after the login is found. Every check from
@@ -2392,7 +2394,7 @@ export async function call(
       approvedUnderOfRecord,
       evidence.asserted,
       // NEW IN STEP 44: and the login of a good token for nobody DSoR lists (decision 44-10).
-      unlistedOfRecord,
+      tokenOfCall,
     );
     const bundle = bundleOf(decision, evidence, registry.contracts.get(name));
     if (bundle === undefined) return { decision, bundle };

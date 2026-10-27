@@ -15,7 +15,7 @@ import type { Answer, Correlation } from "./envelope.ts";
 import type { Contract } from "./registry.ts";
 import type { Mode } from "./request.ts";
 import type { PolicyInForce, RuleBy } from "./rulebook.ts";
-import type { Login } from "./tokens.ts";
+import type { Cause } from "./tokens.ts";
 
 // The audit record's own field names, where this step can fill them honestly (step 08's
 // README, decision 5).
@@ -69,10 +69,13 @@ export type Decision = {
       // What the agent said about itself, as line ① checked it, under the name the
       //   bundle uses, so a call with no bundle keeps it too (DSOR-AUD-06; step 33's README, D11).
       agent_asserted?: AgentAsserted;
-      // NEW IN STEP 44: a good token made for DSoR, whose subject the table lists as no person:
-      //   its issuer, subject, and client, never the token. Line ① refused it as it refuses a bad
-      //   token, and the caller heard nothing more (step 44's README, decision 44-10).
-      unlisted_login?: Login;
+      // NEW IN STEP 44: the login of a call made with a token: the issuer, and the client the
+      //   person used. The person is the record's correlation (step 44's README, decision 44-11).
+      login?: { issuer: string; client: string };
+      // NEW IN STEP 44: a refused token: why, and who it speaks for once its signature checked.
+      //   Never the token. The caller heard only "log in first" (step 44's README, decisions 44-10
+      //   and 44-11).
+      refused_token?: RefusedToken;
     };
   };
   // What a read returned, in the audit record's own fields (DSOR-CLS-05).
@@ -452,6 +455,17 @@ export function createLog(): MemoryLog {
   });
 }
 
+/** A refused token in its record: the cause, and who it speaks for once its signature checked. */
+export type RefusedToken = { cause: Cause; issuer?: string; subject?: string; client?: string };
+
+/**
+ * NEW IN STEP 44: what line ① learned about a call's token, for its record: the login of one that
+ * counts, or why one was refused. Nothing for a key (step 44's README, decision 44-11).
+ */
+export type TokenOfRecord =
+  | { login: { issuer: string; client: string } }
+  | { refused_token: RefusedToken };
+
 // What the record says about an answer (step 08's README, decision 5).
 /** What the record says about an answer. */
 export function decisionOf(
@@ -487,8 +501,8 @@ export function decisionOf(
   approvedUnder?: { control: string; version: number }[],
   // And what the agent said about itself, when it said something (step 33's README, D11).
   asserted?: AgentAsserted,
-  // NEW IN STEP 44: and the login of a good token for nobody the table lists (decision 44-10).
-  unlisted?: Login,
+  // NEW IN STEP 44: and what line ① learned about the call's token (decisions 44-10 and 44-11).
+  token?: TokenOfRecord,
 ): Decision {
   const refused = "code" in answer;
   // This tutorial's own fields, gathered in one place, so a command's record can name both
@@ -520,7 +534,7 @@ export function decisionOf(
     ...(stale === undefined || stale.length === 0 ? {} : { stale: structuredClone(stale) }),
     ...(approvedUnder === undefined ? {} : { approved_under: structuredClone(approvedUnder) }),
     ...(asserted === undefined ? {} : { agent_asserted: structuredClone(asserted) }),
-    ...(unlisted === undefined ? {} : { unlisted_login: { ...unlisted } }),
+    ...(token === undefined ? {} : structuredClone(token)),
   };
   return {
     kind: "decision",

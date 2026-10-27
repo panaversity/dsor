@@ -145,9 +145,14 @@ describe("C2: every refused login hears one answer, at line ①, recorded before
         correlation: answer.correlation,
       }),
     ]);
-    // Refused before line ② checked a company, and a bad token names nobody (decision 44-10).
+    // Refused before line ② checked a company. The record names why, and who the token speaks for,
+    //   since its signature checked; the caller heard neither (decision 44-11).
     expect(records[0]).not.toHaveProperty("tenant");
-    expect(records[0]).not.toHaveProperty("extensions");
+    expect(records[0]?.extensions).toStrictEqual({
+      [OUR_EXTENSIONS]: {
+        refused_token: { cause: "scope", issuer: sso.issuer, subject: "cfo_100", client: PEOPLE_APP },
+      },
+    });
     expect(JSON.stringify(records)).not.toContain(token);
     // A log that cannot take the record: the answer waits for the record, so it is this one.
     const full: DecisionLog = {
@@ -193,11 +198,59 @@ describe("C3: companies and roles come only from DSoR's table, by the token's su
     const answer = await asServed(await sso.sign("user_555"), "invoice.get", INV_1008, kept);
     expect(answer).toStrictEqual(NO_LOGIN);
     const [record] = await kept.records();
+    // Changed by decision 44-11: the cause "unlisted", among the others.
     expect(record?.extensions).toStrictEqual({
       [OUR_EXTENSIONS]: {
-        unlisted_login: { issuer: sso.issuer, subject: "user_555", client: PEOPLE_APP },
+        refused_token: {
+          cause: "unlisted",
+          issuer: sso.issuer,
+          subject: "user_555",
+          client: PEOPLE_APP,
+        },
       },
     });
+  });
+});
+
+describe("44-11: the record says why a token was refused, and whose login a call used", () => {
+  /** The one record of a call in pnpm serve's world with this token or key, and its answer. */
+  async function recorded(token: string): Promise<{ answer: Answer; ours: unknown }> {
+    const kept = createLog();
+    const answer = await asServed(token, "invoice.get", INV_1008, kept);
+    const [record] = await kept.records();
+    return { answer, ours: record?.extensions?.[OUR_EXTENSIONS] };
+  }
+
+  it("Step 44, 44-11: an app replaying cfo_100's real token is recorded as that app, with cfo_100 and the cause; the caller hears the one answer", async () => {
+    const { answer, ours } = await recorded(await sso.sign("cfo_100", { azp: "reports" }));
+    expect(answer).toStrictEqual(NO_LOGIN);
+    expect(ours).toStrictEqual({
+      refused_token: { cause: "client", issuer: sso.issuer, subject: "cfo_100", client: "reports" },
+    });
+  });
+
+  it("Step 44, 44-11: a token whose signature did not check is recorded with its cause and nobody, since nothing in it can be believed", async () => {
+    const forged = await stranger.sign("cfo_100", { iss: sso.issuer }, { kid: "key-1" });
+    const { answer, ours } = await recorded(forged);
+    expect(answer).toStrictEqual(NO_LOGIN);
+    expect(ours).toStrictEqual({ refused_token: { cause: "signature" } });
+  });
+
+  it("Step 44, 44-11: an allowed call with a token names the issuer and the app in its record; its correlation names the person", async () => {
+    const { answer, ours } = await recorded(await sso.sign("cfo_100"));
+    expect(answer.correlation).toStrictEqual(correlationFor(THE_CFO));
+    expect(ours).toMatchObject({ login: { issuer: sso.issuer, client: PEOPLE_APP } });
+    expect(ours).not.toHaveProperty("refused_token");
+  });
+
+  it("Step 44, 44-11: a call with a key names no token in its record, allowed or refused", async () => {
+    const agent = await recorded("tok_7f3a");
+    expect(agent.answer.correlation).toStrictEqual(correlationFor(THE_AGENT));
+    expect(agent.ours).not.toHaveProperty("login");
+    expect(agent.ours).not.toHaveProperty("refused_token");
+    const person = await recorded("tok_d4e8");
+    expect(person.answer).toStrictEqual(NO_LOGIN);
+    expect(person.ours).toBeUndefined();
   });
 });
 

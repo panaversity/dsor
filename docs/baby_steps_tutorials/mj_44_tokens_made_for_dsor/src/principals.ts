@@ -171,8 +171,8 @@ export function whoIsCalling(request: RequestEnvelope): Principal {
 export function callerOf(
   found:
     | Principal
+    | { signed: object; caller: Principal }
     | { unavailable: string }
-    | { unlisted: object }
     | { refused: string }
     | undefined,
 ): Principal {
@@ -183,11 +183,12 @@ export function callerOf(
   // One message for every case, so a refusal never tells a caller which tokens exist, why a token
   //   failed, or that a good token's person is missing from the table (decisions 44-1 and 44-10).
   //   Step 05's words, changed: a person's token comes from the sign-in server now, not from DSoR.
-  if (found === undefined || "unlisted" in found || "refused" in found) {
+  if (found === undefined || "refused" in found) {
     const message = "log in first: the call has no login that DSoR accepts";
     throw new Refusal("AUTHENTICATION_REQUIRED", message);
   }
-  return found;
+  // A token login that counts brings its person; a key is its holder (decision 44-11).
+  return "signed" in found ? found.caller : found;
 }
 
 /** The ids that name the caller in an answer's correlation (step 05's README, decision 9). */
