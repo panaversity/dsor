@@ -3360,6 +3360,20 @@ and in 1.7.2's own code from the local pnpm store. The SSO runs 1.6.23. Its upgr
   survived. The schema then equals a fresh one, and the tests and probes pass. The live SSO's
   discovery document shows S256 as the only PKCE method, and `iss` in authorization responses.
   #1331 is next: it merges `main`, and 0013 and 0014 go to production before it deploys.
+- **#1331 on `main` (2026-10-28).** Claude Code merged `main` into #1331 (`dfb25ce17`, no
+  force-push) and set its base to `main`. GitHub shows only the 22 files of the DSoR work. A comment
+  in 0013 still called 0011 and 0012 "the unmerged 1.7.2 upgrade", and `6386c622a` fixes it. The
+  proof ran again on this computer:
+  - CI's job passes, every file: lookup 25 checks, roles 17, keys 20, audit 11, tokens 18.
+  - Production may run 0013 and 0014 before or after the second 0011b and 0012, so both orders ran.
+    Each ends with the schema of a fresh database (0 of 332 lines differ). A copy without 0013 and
+    0014 differs in 16 lines. With 0013 and 0014 in, 0012 still refuses while a late 1.6 token is
+    left. The second 0011b deletes that token and keeps all four 1.7 tokens.
+  - On the result, #1331's code passes `test-api`, and the probes pass 9 and skip 2 (Redis).
+
+  GitHub did not start the CI jobs on the new head. A billing block on the account stopped them
+  ("recent account payments have failed or your spending limit needs to be increased"). They run
+  when someone fixes the billing and runs them again.
 
 ## Still unknown
 
