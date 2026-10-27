@@ -90,11 +90,12 @@ once its signature checked, whose token it was. See the step's README.
   [panaversity/agentfactory#1331](https://github.com/panaversity/agentfactory/pull/1331), now on
   Better Auth 1.7.2 in draft pull request
   [panaversity/agentfactory#1332](https://github.com/panaversity/agentfactory/pull/1332).
-- No standard serves this lookup. Better Auth's organization plugin answers a signed-in member, its
-  SCIM plugin only receives people, and introspection needs the person's own token, which a slip's
-  signer never sends.
-- Open design questions: whose contract the lookup is, how the system logins sign in, and whether
-  the people's rows stay ([`mj_notes.md`](mj_notes.md), "Questions for step 45's design").
+- No standard serves this lookup. Better Auth's organization plugin answers a signed-in member. Its
+  SCIM plugin lists people only to the directory that sent them. Introspection needs the person's
+  own token, which a slip's signer never sends.
+- Open design questions: whose contract the lookup is, which key DSoR holds for each company, how
+  the system logins sign in, and whether the people's rows stay
+  ([`mj_notes.md`](mj_notes.md), "Questions for step 45's design").
 
 ### 46 · Who may approve, and up to how much
 

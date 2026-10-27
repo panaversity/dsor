@@ -3186,6 +3186,15 @@ Raised while explaining step 44's architecture. No decision: Phase A of step 45 
   - (b) DSoR uses the SSO's route as it is.
   - (c) A standard instead: SCIM (RFC 7643, RFC 7644), which Q1 allows ("DSoR asks the server, or
     is told").
+- **Which key does DSoR hold for each company?** (Added 2026-10-27.) Today the SSO's administrator
+  makes one key that lists every company DSoR may ask about. Options found:
+  - (a) Keep the one key with its list.
+  - (b) One key for each company, owned by that company's organization (`references:
+    "organization"` in the api-key plugin). The company's owner makes the key and can take it
+    back. A leaked key shows only one company's people. *Cost:* the SSO's `apikey` table changes,
+    and DSoR keeps one secret for each company. Claude Code recommends (b).
+  - (c) A token from the SSO instead of a key (client credentials), as agents get in step 49. The
+    SSO would then need its own way to say which companies the token may ask about.
 - **How do the system logins sign in?** dsor-scheduler and dsor-rates are DSoR's own timer jobs,
   with keys in `src/principals.ts`. No step in the chain plans their credential. Options found:
   - (a) Run them inside DSoR, never through the door.
@@ -3219,9 +3228,11 @@ and in 1.7.2's own code from the local pnpm store. The SSO runs 1.6.23. Its upgr
     and checks each client metadata document. Today the SSO pins ChatGPT's and Claude's CIMD
     addresses as fixed clients, and fetches no document.
 - **No standard serves the lookup.** The organization plugin answers a signed-in member, not a
-  service. The SCIM plugin, `@better-auth/scim`, only receives people from a directory.
-  Introspection (RFC 7662) tells the current state of a token, but only to a caller who holds the
-  token, and a slip's signer sends none. So step 45 keeps the SSO's lookup route.
+  service. The SCIM plugin, `@better-auth/scim`, lists back only the people that one directory
+  connection sent. It lists them only to the holder of that connection's token, and the same token
+  can also create and delete people. Introspection (RFC 7662) tells the current state of a token,
+  but only to a caller who holds the token, and a slip's signer sends none. So step 45 keeps the
+  SSO's lookup route.
 - **No standard serves `act`.** Better Auth has no token exchange (RFC 8693), in 1.7.2 or 1.7.14.
   The SSO could add one through the provider's extension point, `extendOAuthProvider`, as its own
   code. Step 48's design still chooses between that and a change to DSOR-RP-03.
@@ -3257,6 +3268,21 @@ and in 1.7.2's own code from the local pnpm store. The SSO runs 1.6.23. Its upgr
   1.7.2 upgrade (#1288) together, and both of those stay open. `feat/sso-dsor-on-ba1712` is pushed
   as a branch, without a pull request. Nothing is merged or deployed: the SSO deploys only from
   `main`.
+- **Checked again on 1.7.14, the latest version (2026-10-27).** The learner asked whether the
+  SSO's DSoR work uses Better Auth's own way before its own code. It does. The token lifetime is
+  `scopeExpirations`. The roles use the organization plugin's access control and its hooks. The key
+  check is the api-key plugin. The history is written from Better Auth's hooks. Our own code is the
+  lookup's answer, the owner-only rule, and the history table. Three facts were new:
+  - **Keys owned by a company.** The api-key plugin can give a key to an organization instead of a
+    user (`references: "organization"`, in 1.7.2 too). Today DSoR's one key lists its companies
+    in `metadata.dsorOrganizations`. With the native option, each company gives DSoR its own key
+    and can take it back. The SSO's `apikey.user_id` has a foreign key to users, so the change
+    needs a schema change. It is a question for step 45's design.
+  - **Better Auth's own audit logs are a hosted service.** They come with Better Auth
+    Infrastructure (`dash()` from `@better-auth/infra`, with an API key from that service). The
+    SSO keeps its history in its own database.
+  - **No changes in the two newest versions.** 1.7.13 and 1.7.14 change nothing that the SSO's
+    DSoR work uses.
 
 ## Still unknown
 
