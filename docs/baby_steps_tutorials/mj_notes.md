@@ -3195,6 +3195,53 @@ Raised while explaining step 44's architecture. No decision: Phase A of step 45 
   them (44-6), while `pnpm serve` refuses their keys. Step 44's README leaves this to step 45.
   Options found: keep them for that world, or move the older tests to a world shaped like the SSO.
 
+The next section changes two of these options. Option (c) of the first question needs a sign-in
+server other than ours, and option (b) of the second becomes possible.
+
+### Better Auth 1.7 against the chain (2026-10-27)
+
+The learner asked whether Better Auth has a standard or a plugin that serves the spec after an
+upgrade, and asked to drop what no longer matters. Checked in Better Auth's current documentation,
+and in 1.7.2's own code from the local pnpm store. The SSO runs 1.6.23. Its upgrade branch,
+`feat/sso-ba-172`, is at 1.7.2 (draft pull request panaversity/agentfactory#1288). npm is at 1.7.14.
+
+- **The upgrade serves every token rule left in the chain.**
+  - DSOR-RP-10 (step 49): `private_key_jwt` (RFC 7523), with the agent's keys given by `jwks` or
+    `jwks_uri`, and a replay guard.
+  - DSOR-RP-11 (step 49): a machine token's `sub` is the agent's client id, beside `client_id` and
+    `azp`. 1.7.2's `createJwtAccessToken` sets `sub = user?.id ?? client.clientId`. In 1.6.23 only
+    `azp` names the agent.
+  - The spec's SHOULD for unattended tokens (DPoP, RFC 9449, in §37): DPoP-bound tokens. DSoR would
+    check each proof itself.
+  - DSOR-RP-02e and DSOR-RP-02c (step 47): S256 PKCE always, and `iss` in every authorization
+    response (RFC 9207).
+  - DSOR-RP-02d (step 48): registration stays off unless turned on, and `@better-auth/cimd` fetches
+    and checks each client metadata document. Today the SSO pins ChatGPT's and Claude's CIMD
+    addresses as fixed clients, and fetches no document.
+- **No standard serves the lookup.** The organization plugin answers a signed-in member, not a
+  service. The SCIM plugin, `@better-auth/scim`, only receives people from a directory.
+  Introspection (RFC 7662) tells the current state of a token, but only to a caller who holds the
+  token, and a slip's signer sends none. So step 45 keeps the SSO's lookup route.
+- **No standard serves `act`.** Better Auth has no token exchange (RFC 8693), in 1.7.2 or 1.7.14.
+  The SSO could add one through the provider's extension point, `extendOAuthProvider`, as its own
+  code. Step 48's design still chooses between that and a change to DSOR-RP-03.
+- **Not adopted.**
+  - `@better-auth/mcp` becomes the OAuth provider of the whole SSO, and its helpers serve a resource
+    server that runs inside Better Auth. DSoR is a separate resource server, and publishes its own
+    RFC 9728 document (DSOR-RP-02a).
+  - Agent Auth, `@better-auth/agent-auth` 0.6.2, is its own protocol, not an RFC, and still 0.x. Its
+    capability grants would be a second copy of DSoR's slips: the reason steps 43 to 43c were set
+    aside.
+  - Roles inside the token, through `customAccessTokenClaims`. DSOR-IDN-04a allows them from an
+    authoritative issuer, but they stay as issued for up to an hour, and Q5 asks at every call.
+- **A company's own directory goes to the SSO.** Okta, Entra, or authentik can send people to the
+  SSO through `@better-auth/scim`, with groups mapped to roles. DSoR keeps one role source, so the
+  chain needs no SCIM copy in DSoR, as step 43c had.
+- **Decision: the SSO moves to 1.7 before step 45.** The learner took Claude Code's recommendation.
+  The fix-list branch goes on top of the upgrade branch, locally, on a 1.7 release at least 48 hours
+  old, and the SSO's DSoR tests run again. Nothing reaches production. Steps 45 to 49 then use one
+  version, and the lookup is tested once. *Downside:* SSO work comes before step 45 starts.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.
