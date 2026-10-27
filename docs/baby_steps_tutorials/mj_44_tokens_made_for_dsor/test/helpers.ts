@@ -461,7 +461,9 @@ export function companyNamed(tenant: string): unknown {
 }
 
 // The messages of step 05's refusals, typed out rather than imported.
-export const LOG_IN_FIRST = "log in first: the call has no login token that DSoR gave";
+// Changed in step 44: a person's token now comes from the sign-in server, not from DSoR, so the
+//   refusal no longer says "no login token that DSoR gave".
+export const LOG_IN_FIRST = "log in first: the call has no login that DSoR accepts";
 // Well-formed, with no control characters (step 09's README, decision 16).
 export const BAD_REQUEST_ID =
   "a request_id must be text of 1 to 128 characters, well-formed, with no control characters";

@@ -177,8 +177,9 @@ export function callerOf(
   }
   // One message for every case, so a refusal never tells a caller which tokens exist, why a token
   //   failed, or that a good token's person is missing from the table (decisions 44-1 and 44-10).
+  //   Step 05's words, changed: a person's token comes from the sign-in server now, not from DSoR.
   if (found === undefined || "unlisted" in found) {
-    const message = "log in first: the call has no login token that DSoR gave";
+    const message = "log in first: the call has no login that DSoR accepts";
     throw new Refusal("AUTHENTICATION_REQUIRED", message);
   }
   return found;
