@@ -62,13 +62,18 @@ const ASYMMETRIC = [
 const AGE = /^(\d{1,5})(s|m|h)$/;
 const SECONDS = { s: 1, m: 60, h: 3600 } as const;
 const HOUR = 3600;
+// OpenID Connect's own scopes (Core, sections 5.4 and 11), which a sign-in server gives every app
+//   that asks. A token carrying one says nothing about DSoR, so it can never be DSoR's scope (R2;
+//   found by step 44's review: "scope": "openid" passed start-up, and the scope check meant nothing).
+const EVERY_APPS = ["openid", "profile", "email", "offline_access", "phone", "address"];
 
 const ADDRESS = "must be an https address, or http on this computer (127.0.0.1 or localhost)";
 
 /**
  * The sign-in server in the file, and every problem with it: a field the file does not know, a
  * missing one, an address DSoR may not trust, an algorithm that is a shared secret or none, an age
- * over one hour, a scope that is not one word, and a list of clients that is empty or names one
+ * over one hour, a scope that is not one word or is one every app is given, and a list of clients
+ * that is empty or names one
  * twice. With any problem, no sign-in server: DSoR does not start.
  */
 export function checkSignIn(source: SignInSource): {
@@ -138,9 +143,12 @@ function fieldProblem(field: (typeof FIELDS)[number], value: unknown): string | 
         : undefined;
     case "scope":
       // One scope token, as OAuth writes them: printable, with no space (RFC 6749, section 3.3).
-      return typeof value === "string" && /^[\x21\x23-\x5B\x5D-\x7E]+$/.test(value)
-        ? undefined
-        : "scope must be one word, such as dsor";
+      if (typeof value !== "string" || !/^[\x21\x23-\x5B\x5D-\x7E]+$/.test(value)) {
+        return "scope must be one word, such as dsor";
+      }
+      return EVERY_APPS.includes(value)
+        ? "scope must be DSoR's own, not one every app is given, such as openid"
+        : undefined;
     case "clients":
       return clientsProblem(value);
   }

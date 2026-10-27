@@ -74,6 +74,15 @@ describe("C5: sign-in.json, checked at start-up", () => {
     expect(problemsOf(goodWith({ scope: "dsor openid" }))).toStrictEqual([word]);
   });
 
+  it("Step 44, R2: start-up refuses a scope every app is given, such as openid, which says nothing about DSoR", () => {
+    // OpenID Connect's own scopes (Core, sections 5.4 and 11). With one of them, R2's scope check
+    //   would pass every app's token (found by step 44's review).
+    const own = "sign-in.json: scope must be DSoR's own, not one every app is given, such as openid";
+    for (const shared of ["openid", "profile", "email", "offline_access", "phone", "address"]) {
+      expect(problemsOf(goodWith({ scope: shared }))).toStrictEqual([own]);
+    }
+  });
+
   it("Step 44, R2: start-up refuses an empty list of clients, an empty name, and a client named twice", () => {
     expect(problemsOf(goodWith({ clients: [] }))).toStrictEqual([
       "sign-in.json: clients must name at least one client",
