@@ -3135,6 +3135,43 @@ is who holds identity.
 - **The cost.** The map and `docs/status.md` are out of date. The chain depends on our own SSO's fix
   list. And some of the map's rules had no step until the decisions in the next section.
 
+### The extended chain, with three decisions (2026-10-27)
+
+Compared rule by rule with the map's steps 43 to 51, the chain left some rules with no step: acting
+for a person (DSOR-DEL-03a, DSOR-DEL-03b, DSOR-RP-03), five MCP binding rules (DSOR-RP-04,
+DSOR-RP-05a, DSOR-RP-06a, DSOR-RP-07a, DSOR-RP-07b), the MCP traps (DSOR-RP-08, DSOR-RP-09a,
+DSOR-RP-09b), a real agent and prompt injection (DSOR-SRC-01a and DSOR-SRC-01b, both L1), and Part
+7. The learner decided their places, each time taking Claude Code's recommendation:
+
+- **Placement: extend where the idea is new.** The five binding rules join step 48, because they
+  are the agent door itself. A small step for the traps, and one for a real agent, come right after
+  48. Part 7 comes after step 50. *Downside:* the chain grows, and step 48 gets bigger.
+- **Numbering: letters after 48,** 48b and 48c, so steps 45 and 49 keep the numbers that the SSO's
+  pull request, its hand-over note, and these notes use. *Downside:* letters can read as optional
+  extras, though these are spec rules.
+- **Acting for a person: in step 48, as door A.** Door A is an agent acting for a person who
+  connected it. Step 48's design settles whether the agent shows as the token's app (`client_id`,
+  as Q3 chose) or as `act` (RFC 8693, as DSOR-RP-03 requires), and meets DSOR-DEL-03a and
+  DSOR-DEL-03b. If DSOR-RP-03 must change, it changes in the open, through the `change-the-spec`
+  skill. Until then step 44 refuses `act`. *Downside:* step 48 holds the MCP door, its rules, and
+  the actor rule, and may need a change to the spec.
+
+| Step | Idea | Rules |
+|---|---|---|
+| 44 · Tokens made for DSoR | Built | New: DSOR-RP-02b. Again: DSOR-IDN-01, DSOR-IDN-04a, DSOR-IDN-04b |
+| 45 · Ask the sign-in server | DSoR asks the SSO at every call | Again, against a real server: DSOR-IDN-05, DSOR-IDN-06, DSOR-IDN-07, DSOR-IDN-03a, DSOR-DEL-02, DSOR-BND-02 |
+| 46 · Who may approve, and up to how much | Approver roles, each with a limit | New: DSOR-SOD-04a, DSOR-SOD-04b |
+| 47 · The approval door | Approvals only from DSoR's own approval app | Again: DSOR-APR-05a, DSOR-APR-05b, DSOR-SOD-01a. New: DSOR-RP-02c, DSOR-RP-02e |
+| 48 · The agent door (MCP), door A | An agent acting for a person who connected it | New: DSOR-RP-02a, DSOR-RP-02d, DSOR-OPR-03a, DSOR-IDN-02b; now also DSOR-RP-04, DSOR-RP-05a, DSOR-RP-06a, DSOR-RP-07a, DSOR-RP-07b, DSOR-DEL-03a, DSOR-DEL-03b, DSOR-RP-03, and the rest of DSOR-DEL-10 |
+| 48b · Two MCP traps | An answer sent in the middle of a call is no approval; routing headers that disagree with the body are refused | New: DSOR-RP-08, DSOR-RP-09a, DSOR-RP-09b |
+| 48c · A real agent | An injection test suite, then a real agent through door A | New: DSOR-SRC-01a, DSOR-SRC-01b |
+| 49 · An agent with nobody present, door B | The agent's own signed token | New: DSOR-RP-10, DSOR-RP-11, DSOR-IDN-02a, DSOR-DEL-09. Again: DSOR-DEL-07, DSOR-DEL-08. Waits on Better Auth 1.7 |
+| 50 · The right people hear | Alerts to a role, not a fixed name | Again: DSOR-UNK-04c |
+| 51 to 53 · Skills, memory, the whole digital employee | Part 7, in the map's order | The CTX rules |
+
+Two notes. 48c's injection suite (DSOR-SRC-01b) needs no MCP, so its design may build the suite
+first and add the real agent after. Part 7 needs 48c's real agent.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.
