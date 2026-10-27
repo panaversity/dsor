@@ -3288,7 +3288,8 @@ and in 1.7.2's own code from the local pnpm store. The SSO runs 1.6.23. Its upgr
     DSoR work uses.
 - **Decision (2026-10-28): before step 45, the SSO moves to 1.7.14, and each company gives DSoR
   its own key.** The learner asked for both. The work builds on the 1.7.12 rework, because 1.7.3
-  removed `account.issuer`. The learner made three choices:
+  removed `account.issuer`. *Changed the same day:* the upgrade starts from `main` instead (the
+  next decision). The learner made three choices:
   - **1.7.14 now.** The learner did not wait the last 25 hours of the 48-hour rule. Before the
     install, Claude Code checks the release's provenance, its install scripts, and how it differs
     from 1.7.13. The version is checked again by 2026-10-30. *Downside:* a bad release that is
@@ -3304,6 +3305,19 @@ and in 1.7.2's own code from the local pnpm store. The SSO runs 1.6.23. Its upgr
     carries one link. Tested on PostgreSQL 17 on 2026-10-28: a key for a missing owner is refused,
     a direct write to a link column is refused, and deleting org_456 or cfo_100 deletes their
     keys. *Downside:* the table has an unusual shape, which needs one comment.
+- **Decision (2026-10-28, later the same day): two clean pull requests instead of the chain.** The
+  learner asked for one upgrade from `main`, because the SSO serves about 40,000 users and the
+  chain of pull requests was confusing. Claude Code agreed:
+  - **PR A** goes from `main` straight from 1.6.23 to 1.7.14, with nothing else in it. It reuses the
+    tested work: the version pins, the OAuth table migrations in the form that is safe while old
+    and new servers run together, the authorize-parameter fix, the `jose` alignment, and #1288's
+    preflight queries and probes. The account table stays as it is in 1.6.
+  - **PR B** is #1331 moved on top of PR A, with the company keys. Step 45 builds on it.
+  - #1288 and #1332 are closed once PR A is up, each with a link to it.
+  - Before PR A merges, someone with production access runs the preflight queries, tests every app
+    that signs in through the SSO, and tries the migrations on a copy of production data.
+
+  *Downside:* the upgrade and the DSoR work must be separated again by hand, file by file.
 
 ## Still unknown
 

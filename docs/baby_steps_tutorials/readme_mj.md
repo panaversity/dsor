@@ -34,7 +34,7 @@ sign-in server that cannot answer a lookup (Q1, Q4).
 |---|---|---|---|
 | [44 · Tokens made for DSoR](mj_44_tokens_made_for_dsor/README.md) | A person is who a token made for DSoR says | New: DSOR-RP-02b. Again: DSOR-IDN-01, DSOR-IDN-04a, DSOR-IDN-04b | Built |
 | Before 45 · The SSO on Better Auth 1.7 | The SSO's fix list moves onto its 1.7 upgrade. Not a DSoR step | None in DSoR. It gives 47, 48, and 49 the standard parts they need | Done on 1.7.2, in a draft pull request |
-| Before 45 (b) · The latest Better Auth, and a key for each company | The SSO moves to 1.7.14, and each company's owner gives DSoR its own key. Not a DSoR step | None in DSoR. Step 45 keeps one key for each company | Next |
+| Before 45 (b) · The latest Better Auth, and a key for each company | One upgrade from `main` to 1.7.14, then the DSoR fix list on top of it, with a key from each company's owner. Not a DSoR step | None in DSoR. Step 45 keeps one key for each company | Next |
 | 45 · Ask the sign-in server | DSoR asks the SSO, at every call, who a person is in a company now | Again, against a real server: DSOR-IDN-05, DSOR-IDN-06, DSOR-IDN-07, DSOR-IDN-03a, DSOR-DEL-02, DSOR-BND-02 | Planned |
 | 46 · Who may approve, and up to how much | Approver roles, each with a limit | New: DSOR-SOD-04a, DSOR-SOD-04b | Planned |
 | 47 · The approval door | Approvals only from DSoR's own approval app | Again: DSOR-APR-05a, DSOR-APR-05b, DSOR-SOD-01a. New: DSOR-RP-02c, DSOR-RP-02e | Planned |
@@ -79,15 +79,22 @@ once its signature checked, whose token it was. See the step's README.
 
 ### Before 45 (b) · The latest Better Auth, and a key for each company (next)
 
-Decided by the learner on 2026-10-28 ([`mj_notes.md`](mj_notes.md), the decision at the end of
+Decided by the learner on 2026-10-28 ([`mj_notes.md`](mj_notes.md), the last two decisions of
 "Better Auth 1.7 against the chain"):
 
-- The SSO moves to Better Auth 1.7.14, on the 1.7.12 rework, and step 45 builds on it.
+- The SSO moves from 1.6.23 straight to Better Auth 1.7.14, in one pull request from `main` with
+  nothing else in it. Its account table stays as it is in 1.6.
+- The DSoR fix list (panaversity/agentfactory#1331) then moves on top of that pull request, with
+  the company keys, in a second pull request. Step 45 builds on it. panaversity/agentfactory#1288
+  and #1332 close.
 - The SSO's lookup will answer only with a key owned by the company it is asked about. Only that
   company's owner can make the key or take it back. Today, one key from the SSO's administrator
   lists every company.
 - In the SSO's key table, the database will keep a link for each kind of owner, so a key is
   deleted together with its user or its company.
+- Before the upgrade reaches the SSO's 40,000 users, someone with production access runs the
+  read-only preflight queries, tests every app that signs in through the SSO, and tries the
+  migrations on a copy of production data.
 
 ### 45 · Ask the sign-in server
 
