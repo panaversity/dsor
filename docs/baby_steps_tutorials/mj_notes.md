@@ -3086,6 +3086,24 @@ learner's prediction is recorded first):
 - **Settled at build time,** each by a real run of the broken copy beside the whole one. No
   prediction is judged before then.
 
+### Step 44's review: two answers (2026-10-27)
+
+Two reviewers who had not seen the conversation found one latent hole (a token whose `act` names
+an agent counted as the person's own login), guarantees no test protected, and README sentences
+the code contradicted. Those were fixed red first. Two findings changed the design, so they were
+put to the learner, each with Claude Code's recommendation, and the learner took it:
+
+- **44-11. The record keeps a token's login and a refusal's cause.** Every refused token recorded
+  one sentence, so the reports app replaying cfo_100's token looked like an old token. Now, once a
+  token's signature checks, its record names the issuer, the person, and the app, whether the call
+  is allowed or refused, and a refusal names its cause. The caller still hears one answer.
+  *Downside:* a list of causes to keep, and at most 200 bytes for each name a record keeps.
+- **44-12. `pnpm serve` starts only when the audience is its own address,** `http://127.0.0.1` at
+  the port it listens on. A copy on 8043 with the shipped file had taken tokens made for 8042.
+  *Downside:* behind a proxy with a public https address, the check has to learn that address.
+- **The breaks came out in the step's README, under "Break it".** The habit behind the misses:
+  "one check gone, the token gets in". A token must pass every check, and the others still run.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.
