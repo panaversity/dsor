@@ -73,8 +73,7 @@ const ADDRESS = "must be an https address, or http on this computer (127.0.0.1 o
  * The sign-in server in the file, and every problem with it: a field the file does not know, a
  * missing one, an address DSoR may not trust, an algorithm that is a shared secret or none, an age
  * over one hour, a scope that is not one word or is one every app is given, and a list of clients
- * that is empty or names one
- * twice. With any problem, no sign-in server: DSoR does not start.
+ * that is empty or names one twice. With any problem, no sign-in server: DSoR does not start.
  */
 export function checkSignIn(source: SignInSource): {
   signIn: SignIn | undefined;

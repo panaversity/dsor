@@ -61,7 +61,8 @@ describe("C5: sign-in.json, checked at start-up", () => {
     for (const fine of ["1h", "60m", "3600s", "15m"]) {
       expect(problemsOf(goodWith({ max_age: fine }))).toStrictEqual([]);
     }
-    for (const bad of ["61m", "2h", "3601s", "0s", "PT1H", 3600]) {
+    // x1h and 1hx: the age is the whole value, not a part of it (the review's mutation sweep).
+    for (const bad of ["61m", "2h", "3601s", "0s", "PT1H", 3600, "x1h", "1hx"]) {
       expect(problemsOf(goodWith({ max_age: bad }))).toStrictEqual([age]);
     }
   });
@@ -72,6 +73,9 @@ describe("C5: sign-in.json, checked at start-up", () => {
     const word = "sign-in.json: scope must be one word, such as dsor";
     expect(problemsOf(goodWith({ scope: "" }))).toStrictEqual([word]);
     expect(problemsOf(goodWith({ scope: "dsor openid" }))).toStrictEqual([word]);
+    // A quote and a backslash are no part of a scope's word (RFC 6749, section 3.3).
+    expect(problemsOf(goodWith({ scope: 'ds"or' }))).toStrictEqual([word]);
+    expect(problemsOf(goodWith({ scope: "ds\\or" }))).toStrictEqual([word]);
   });
 
   it("Step 44, R2: start-up refuses a scope every app is given, such as openid, which says nothing about DSoR", () => {
@@ -105,7 +109,32 @@ describe("C5: sign-in.json, checked at start-up", () => {
     expect(problemsOf(goodWith({ issuer: "https://user:secret@sso.example.com" }))).toStrictEqual([
       `sign-in.json: issuer ${ADDRESS}`,
     ]);
+    // A password with no name, and a scheme that is not http, even on this computer.
+    expect(problemsOf(goodWith({ issuer: "https://:secret@sso.example.com" }))).toStrictEqual([
+      `sign-in.json: issuer ${ADDRESS}`,
+    ]);
+    expect(problemsOf(goodWith({ jwks: "ftp://localhost:3011/api/auth/jwks" }))).toStrictEqual([
+      `sign-in.json: jwks ${ADDRESS}`,
+    ]);
     expect(problemsOf(goodWith({ issuer: "https://auth.panaversity.org" }))).toStrictEqual([]);
+  });
+
+  it("Step 44, 44-2: with any problem, the file gives no sign-in server at all, so pnpm serve cannot start on part of one", () => {
+    const { audience: _gone, ...noAudience } = GOOD;
+    const bad = [
+      noAudience,
+      goodWith({ algorithms: ["HS256"] }),
+      goodWith({ max_age: "2h" }),
+      goodWith({ scope: "openid" }),
+      goodWith({ clients: [] }),
+      goodWith({ issuer: "http://sso.example.com" }),
+      goodWith({ dedicated_to_dsor: true }),
+    ];
+    for (const data of bad) {
+      const { signIn, problems } = checkSignIn({ file: "sign-in.json", text: JSON.stringify(data) });
+      expect(problems).toHaveLength(1);
+      expect(signIn).toBeUndefined();
+    }
   });
 
   it("Step 44, 44-9: other_audiences must be a list of addresses, and an empty list passes", () => {
