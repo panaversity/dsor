@@ -3195,6 +3195,8 @@ Raised while explaining step 44's architecture. No decision: Phase A of step 45 
     and DSoR keeps one secret for each company. Claude Code recommends (b).
   - (c) A token from the SSO instead of a key (client credentials), as agents get in step 49. The
     SSO would then need its own way to say which companies the token may ask about.
+  - **Decided on 2026-10-28: (b).** Only a company's owner makes or takes back its key. See the
+    decision at the end of "Better Auth 1.7 against the chain".
 - **How do the system logins sign in?** dsor-scheduler and dsor-rates are DSoR's own timer jobs,
   with keys in `src/principals.ts`. No step in the chain plans their credential. Options found:
   - (a) Run them inside DSoR, never through the door.
@@ -3262,7 +3264,8 @@ and in 1.7.2's own code from the local pnpm store. The SSO runs 1.6.23. Its upgr
 - **Decision: step 45 builds on 1.7.2 for now.** Claude Code recommended 1.7.12, the version more
   likely to ship. The learner kept 1.7.2 on port 3011, and the 1.7.12 branch waits for the decision
   on the SSO's upgrade pull request, panaversity/agentfactory#1288. *Downside:* if 1.7.12 ships,
-  step 45's runs against the SSO are made again on it.
+  step 45's runs against the SSO are made again on it. *Superseded on 2026-10-28:* step 45 builds
+  on 1.7.14 (the decision at the end of this section).
 - **Pushed the same day, at the learner's request.** `feat/sso-dsor-on-ba17` is now draft pull
   request panaversity/agentfactory#1332, against `main`. It holds the fix list (#1331) and the
   1.7.2 upgrade (#1288) together, and both of those stay open. `feat/sso-dsor-on-ba1712` is pushed
@@ -3283,6 +3286,24 @@ and in 1.7.2's own code from the local pnpm store. The SSO runs 1.6.23. Its upgr
     SSO keeps its history in its own database.
   - **No changes in the two newest versions.** 1.7.13 and 1.7.14 change nothing that the SSO's
     DSoR work uses.
+- **Decision (2026-10-28): before step 45, the SSO moves to 1.7.14, and each company gives DSoR
+  its own key.** The learner asked for both. The work builds on the 1.7.12 rework, because 1.7.3
+  removed `account.issuer`. The learner made three choices:
+  - **1.7.14 now.** The learner did not wait the last 25 hours of the 48-hour rule. Before the
+    install, Claude Code checks the release's provenance, its install scripts, and how it differs
+    from 1.7.13. The version is checked again by 2026-10-30. *Downside:* a bad release that is
+    found in those hours reaches this computer first.
+  - **Only the owner makes or takes back a company's DSoR key.** This is Better Auth's default:
+    an organization's owners have every key permission, and no other role gets the `apiKey`
+    permission. The reason is that taking the key back stops DSoR for the whole company.
+    *Downside:* if a company's only owner is away, nobody there can replace a leaked key, so the
+    company names a second owner.
+  - **The database keeps a link for each kind of owner.** In 1.7.14's own code, `reference_id`
+    holds the owner's id with no link, and nothing deletes a key when its owner is deleted.
+    Two read-only columns, `user_id` and `organization_id`, are made from `reference_id`, and each
+    carries one link. Tested on PostgreSQL 17 on 2026-10-28: a key for a missing owner is refused,
+    a direct write to a link column is refused, and deleting org_456 or cfo_100 deletes their
+    keys. *Downside:* the table has an unusual shape, which needs one comment.
 
 ## Still unknown
 

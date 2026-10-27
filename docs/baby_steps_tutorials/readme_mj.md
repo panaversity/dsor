@@ -34,7 +34,8 @@ sign-in server that cannot answer a lookup (Q1, Q4).
 |---|---|---|---|
 | [44 · Tokens made for DSoR](mj_44_tokens_made_for_dsor/README.md) | A person is who a token made for DSoR says | New: DSOR-RP-02b. Again: DSOR-IDN-01, DSOR-IDN-04a, DSOR-IDN-04b | Built |
 | Before 45 · The SSO on Better Auth 1.7 | The SSO's fix list moves onto its 1.7 upgrade. Not a DSoR step | None in DSoR. It gives 47, 48, and 49 the standard parts they need | Done on 1.7.2, in a draft pull request |
-| 45 · Ask the sign-in server | DSoR asks the SSO, at every call, who a person is in a company now | Again, against a real server: DSOR-IDN-05, DSOR-IDN-06, DSOR-IDN-07, DSOR-IDN-03a, DSOR-DEL-02, DSOR-BND-02 | Next |
+| Before 45 (b) · The latest Better Auth, and a key for each company | The SSO moves to 1.7.14, and each company's owner gives DSoR its own key. Not a DSoR step | None in DSoR. Step 45 keeps one key for each company | Next |
+| 45 · Ask the sign-in server | DSoR asks the SSO, at every call, who a person is in a company now | Again, against a real server: DSOR-IDN-05, DSOR-IDN-06, DSOR-IDN-07, DSOR-IDN-03a, DSOR-DEL-02, DSOR-BND-02 | Planned |
 | 46 · Who may approve, and up to how much | Approver roles, each with a limit | New: DSOR-SOD-04a, DSOR-SOD-04b | Planned |
 | 47 · The approval door | Approvals only from DSoR's own approval app | Again: DSOR-APR-05a, DSOR-APR-05b, DSOR-SOD-01a. New: DSOR-RP-02c, DSOR-RP-02e | Planned |
 | 48 · The agent door (MCP), door A | An agent acting for a person who connected it | New: DSOR-RP-02a, DSOR-RP-02d, DSOR-OPR-03a, DSOR-IDN-02b, DSOR-RP-04, DSOR-RP-05a, DSOR-RP-06a, DSOR-RP-07a, DSOR-RP-07b, DSOR-DEL-03a, DSOR-DEL-03b, DSOR-RP-03, and the rest of DSOR-DEL-10 | Planned |
@@ -47,8 +48,8 @@ sign-in server that cannot answer a lookup (Q1, Q4).
 | 53 · The whole digital employee | The official map's step 51 | DSOR-CNF-01, DSOR-MOD-02, DSOR-BND-01 | Planned |
 
 Letters after 48 keep the numbers 45 and 49, which the SSO's pull request and these notes use. The
-row before 45 is work on the SSO, decided on 2026-10-27, so that steps 45 to 49 use one version of
-Better Auth.
+rows before 45 are work on the SSO, decided on 2026-10-27 and 2026-10-28, so that steps 45 to 49
+use one version of Better Auth.
 
 ### 44 · Tokens made for DSoR (built)
 
@@ -74,7 +75,19 @@ once its signature checked, whose token it was. See the step's README.
   is on the SSO's branch `feat/sso-dsor-on-ba1712`, pushed without a pull request, and passes the
   same proofs. It waits for the decision on the SSO's upgrade pull request,
   panaversity/agentfactory#1288. Until then step 45 builds on 1.7.2, on port 3011 (decided
-  2026-10-27).
+  2026-10-27). Superseded on 2026-10-28 by the next section.
+
+### Before 45 (b) · The latest Better Auth, and a key for each company (next)
+
+Decided by the learner on 2026-10-28 ([`mj_notes.md`](mj_notes.md), the decision at the end of
+"Better Auth 1.7 against the chain"):
+
+- The SSO moves to Better Auth 1.7.14, on the 1.7.12 rework, and step 45 builds on it.
+- The SSO's lookup will answer only with a key owned by the company it is asked about. Only that
+  company's owner can make the key or take it back. Today, one key from the SSO's administrator
+  lists every company.
+- In the SSO's key table, the database will keep a link for each kind of owner, so a key is
+  deleted together with its user or its company.
 
 ### 45 · Ask the sign-in server
 
@@ -87,15 +100,13 @@ once its signature checked, whose token it was. See the step's README.
 - It replaces the people's rows in `src/principals.ts` and the fake staff directory in
   `src/serve.ts`.
 - It uses the Panaversity SSO's lookup route from draft pull request
-  [panaversity/agentfactory#1331](https://github.com/panaversity/agentfactory/pull/1331), now on
-  Better Auth 1.7.2 in draft pull request
-  [panaversity/agentfactory#1332](https://github.com/panaversity/agentfactory/pull/1332).
+  [panaversity/agentfactory#1331](https://github.com/panaversity/agentfactory/pull/1331). Before step
+  45, the SSO moves to Better Auth 1.7.14, and DSoR gets one key from each company (the row before).
 - No standard serves this lookup. Better Auth's organization plugin answers a signed-in member. Its
   SCIM plugin lists people only to the directory that sent them. Introspection needs the person's
   own token, which a slip's signer never sends.
-- Open design questions: whose contract the lookup is, which key DSoR holds for each company, how
-  the system logins sign in, and whether the people's rows stay
-  ([`mj_notes.md`](mj_notes.md), "Questions for step 45's design").
+- Open design questions: whose contract the lookup is, how the system logins sign in, and whether
+  the people's rows stay ([`mj_notes.md`](mj_notes.md), "Questions for step 45's design").
 
 ### 46 · Who may approve, and up to how much
 
