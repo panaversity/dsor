@@ -566,10 +566,28 @@ Where the SSO still shapes the design:
 5. **Step 49 waits on Better Auth 1.7,** because 1.6.23 has no `private_key_jwt` (RFC 7523). That is
    a standard the SSO does not offer yet, not a tie to the SSO.
 
+### What is temporary, and what replaces it
+
+People and their roles live in three places in step 44: the SSO, the table in `src/principals.ts`,
+and a fake staff directory in `src/serve.ts`. Two of them are here for one step only, on purpose.
+
+| What | Where | What it does in step 44 | What replaces it |
+|---|---|---|---|
+| People's companies and roles: user_123, cfo_100, admin_100, user_700, admin_700 | `src/principals.ts` | Line ② reads a person's companies and roles by the token's `sub` (44-5) | Step 45: the SSO's answer, asked at every call (Q5, Q7) |
+| People's keys, such as `tok_d4e8` | `src/principals.ts` | Refused in `pnpm serve`. `pnpm start` and the older tests still use them (44-6) | Kept for that world. Step 45 decides whether the rows stay |
+| The fake staff directory | `src/serve.ts` | Line ③ asks it whether a slip's signer is still active, and which roles she holds now (step 19) | Step 45: the same kind of source, `idp_lookup`, answered by the SSO |
+| Agents' keys: `tok_7f3a`, `tok_9b52` | `src/principals.ts`, a public file | Line ① finds an agent by its key | Steps 48 and 49: an agent becomes an app of the sign-in server, with its own token. Step 48's design decides which step removes the keys |
+| System logins' keys: dsor-scheduler, dsor-rates | `src/principals.ts` | Line ① finds DSoR's own timer jobs by key | Not planned yet: a question for step 45's design |
+| `principalNamed` and `loginProblems` | `src/principals.ts` | Find a slip's signer in the table; check that one name is one principal | Step 45, with the people's rows |
+| The refusal of `act` | `src/tokens.ts` | A token whose `act` names an agent acting for the person is refused, cause `actor` | Step 48: acting for a person, door A |
+
+What stays: `roles.json`, which says what each role may do, DSoR's own job (Q1); and the rules
+about any caller in `src/principals.ts`: `callerOf`, `callerIds`, `actsAsAgent`,
+`checkNamedPrincipals`, and the four kinds of caller.
+
 ### Left open on purpose
 
-- **Agents keep their keys,** in a public file. Steps 48 and 49 will replace them.
-- **Companies and roles still come from step 42's table** (44-5). Step 45 will ask the SSO.
+- **What is temporary,** and the step that replaces each part, is in the table above.
 - **Approvals count from any app on DSoR's list.** The record now names the app; step 47 will count
   approvals only from DSoR's own approval app.
 - **An app may keep getting new tokens for 30 days.** An app that asks the SSO for `offline_access`
