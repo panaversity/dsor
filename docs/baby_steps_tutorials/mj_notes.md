@@ -3172,6 +3172,29 @@ DSOR-RP-09b), a real agent and prompt injection (DSOR-SRC-01a and DSOR-SRC-01b, 
 Two notes. 48c's injection suite (DSOR-SRC-01b) needs no MCP, so its design may build the suite
 first and add the real agent after. Part 7 needs 48c's real agent.
 
+### Questions for step 45's design (2026-10-27)
+
+Raised while explaining step 44's architecture. No decision: Phase A of step 45 starts from them.
+
+- **Whose contract is the lookup?** The Panaversity SSO's branch has `GET /api/dsor/lookup`, made
+  for DSoR, called with an API key that lists DSoR's companies. No standard defines it, and a
+  managed server such as Neon Auth cannot add a route. A public DSoR should not depend on one
+  server's API. Options found:
+  - (a) DSoR documents the request and the answer of the `idp_lookup` kind as its own contract. The
+    Panaversity route is one implementation, and another sign-in server serves it through a small
+    adapter.
+  - (b) DSoR uses the SSO's route as it is.
+  - (c) A standard instead: SCIM (RFC 7643, RFC 7644), which Q1 allows ("DSoR asks the server, or
+    is told").
+- **How do the system logins sign in?** dsor-scheduler and dsor-rates are DSoR's own timer jobs,
+  with keys in `src/principals.ts`. No step in the chain plans their credential. Options found:
+  - (a) Run them inside DSoR, never through the door.
+  - (b) Make them apps of the sign-in server, with tokens of their own, as agents get in step 49.
+  - (c) Keep their keys, and record why.
+- **Do the people's rows stay in `src/principals.ts`?** `pnpm start` and the older tests still use
+  them (44-6), while `pnpm serve` refuses their keys. Step 44's README leaves this to step 45.
+  Options found: keep them for that world, or move the older tests to a world shaped like the SSO.
+
 ## Still unknown
 
 - **Whether learner builds belong on `main`.** For now they live on our branch only.
