@@ -66,6 +66,13 @@ describe("C1: a token made for DSoR, and only one", () => {
     expect(await checkedLogin(both, a.signIn, keys)).toStrictEqual(cfo());
   });
 
+  it("DSOR-RP-02b: a token made only for the server's own userinfo address is refused: DSoR must be among its audiences", async () => {
+    // 44-9 allows the userinfo address beside DSoR's, never in its place (the review's mutation
+    //   sweep: no test had the userinfo address as a token's only audience).
+    const token = await a.sign("cfo_100", { aud: a.userinfo });
+    expect(await checkedLogin(token, a.signIn, keys)).toStrictEqual(refused("audience"));
+  });
+
   it("Step 44, R2: a token without the dsor scope is refused, every other check passing", async () => {
     for (const scope of ["openid profile", "openid dsor-admin", "", undefined]) {
       const token = await a.sign("cfo_100", { scope });
@@ -139,6 +146,17 @@ describe("C1: a token made for DSoR, and only one", () => {
     vi.setSystemTime(start + 61 * 60_000);
     expect(await checkedLogin(token, a.signIn, keys)).toStrictEqual(refused("too_old"));
   });
+
+  it("Step 44, Q2: the age comes from sign-in.json: with 30m, a token counts 29 minutes after its iat, and not 31", async () => {
+    const halfHour = { ...a.signIn, max_age: "30m" };
+    const token = await a.sign("cfo_100", { exp: seconds() + 86_400 });
+    const start = Date.now();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(start + 29 * 60_000);
+    expect(await checkedLogin(token, halfHour, keys)).toStrictEqual(cfo());
+    vi.setSystemTime(start + 31 * 60_000);
+    expect(await checkedLogin(token, halfHour, keys)).toStrictEqual(refused("too_old"));
+  });
 });
 
 describe("C1, from step 43: what a token must be", () => {
@@ -202,11 +220,28 @@ describe("C1, from step 43: what a token must be", () => {
     );
   });
 
-  it("Step 44, 44-1: a token expired 10 seconds ago is refused; one expired 3 seconds ago counts, inside the 5 seconds for clocks", async () => {
+  it("Step 44, 44-1: a subject that is empty, or not text, is refused, and never named", async () => {
+    // jose checks only that a sub is there (the review's mutation sweep).
+    for (const sub of ["", 42]) {
+      const token = await a.sign(undefined, { sub });
+      expect(await checkedLogin(token, a.signIn, keys)).toStrictEqual(
+        refused("subject", { issuer: a.issuer, client: PEOPLE_APP }),
+      );
+    }
+  });
+
+  it("Step 44, 44-1: a token expired 10 or 6 seconds ago is refused; one expired 3 seconds ago counts, inside the 5 seconds for clocks", async () => {
     const old = await a.sign("cfo_100", { exp: seconds() - 10 });
+    const pastSlack = await a.sign("cfo_100", { exp: seconds() - 6 });
     const justNow = await a.sign("cfo_100", { exp: seconds() - 3 });
     expect(await checkedLogin(old, a.signIn, keys)).toStrictEqual(refused("expired"));
+    expect(await checkedLogin(pastSlack, a.signIn, keys)).toStrictEqual(refused("expired"));
     expect(await checkedLogin(justNow, a.signIn, keys)).toStrictEqual(cfo());
+  });
+
+  it("Step 44, 44-1: a token with no exp is refused, though its iat is fresh", async () => {
+    const token = await a.sign("cfo_100", { exp: undefined });
+    expect(await checkedLogin(token, a.signIn, keys)).toStrictEqual(refused("claims"));
   });
 
   it("Step 44, 44-1: a token issued a day from now, or with no iat, is refused", async () => {
@@ -230,6 +265,17 @@ describe("C1, from step 43: what a token must be", () => {
       expect(await checkedLogin(token, a.signIn, keys)).toStrictEqual(unsigned("form"));
     },
   );
+
+  it("Step 44, 44-1: an over-long token, or one not in the compact form, is refused before any key is fetched", async () => {
+    // jose would refuse each of them too, but only after DSoR asked for the server's keys (the
+    //   review's mutation sweep: the length and form checks could go, and every test passed).
+    const fetched = vi.fn(keys);
+    const long = `${"a".repeat(4096)}.${"b".repeat(4096)}.c`;
+    for (const token of [long, "a.b", " a.b.c", "a.b+c.d"]) {
+      expect(await checkedLogin(token, a.signIn, fetched)).toStrictEqual(unsigned("form"));
+    }
+    expect(fetched).not.toHaveBeenCalled();
+  });
 });
 
 describe("C6: keys that cannot be fetched are an outage, not a bad token", () => {
@@ -258,10 +304,14 @@ describe("C6: keys that cannot be fetched are an outage, not a bad token", () =>
     const old = await b.sign("cfo_100", { exp: seconds() + 86_400 });
     expect(await checkedLogin(old, b.signIn, shipped)).toStrictEqual(login);
     await b.rotate();
-    // Within ten minutes the kept keys still hold the old one.
+    // Within ten minutes the kept keys still hold the old one, up to 599 seconds (the review's
+    //   mutation sweep: a cache of one minute passed when only 0 and 601 seconds were checked).
     expect(await checkedLogin(old, b.signIn, shipped)).toStrictEqual(login);
+    const start = Date.now();
     vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(Date.now() + 601_000);
+    vi.setSystemTime(start + 599_000);
+    expect(await checkedLogin(old, b.signIn, shipped)).toStrictEqual(login);
+    vi.setSystemTime(start + 601_000);
     expect(await checkedLogin(old, b.signIn, shipped)).toStrictEqual(unsigned("signature"));
     await b.close();
   });
