@@ -106,6 +106,13 @@ describe("C1: a token made for DSoR, and only one", () => {
     }
   });
 
+  it("DSOR-IDN-01: a token for cfo_100 whose act names an agent acting for her is refused: it is not her own login", async () => {
+    // RFC 8693's act names who acts for the subject. Taken as cfo_100 herself, an agent's call
+    //   would count as her own direct login, and her approval with it (the review's finding).
+    const token = await a.sign("cfo_100", { act: { sub: "accounts-payable-fte" } });
+    expect(await checkedLogin(token, a.signIn, keys)).toStrictEqual(refused("actor"));
+  });
+
   it("Step 44, Q2: 59 minutes after its iat a token counts; 61 minutes after, it is refused, though its exp is days away", async () => {
     const token = await a.sign("cfo_100", { exp: seconds() + 3 * 86_400 });
     const start = Date.now();

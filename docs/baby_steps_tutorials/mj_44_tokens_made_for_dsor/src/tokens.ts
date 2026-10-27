@@ -34,6 +34,7 @@ export type Cause =
   | "scope"
   | "client"
   | "subject"
+  | "actor"
   | "unlisted";
 
 /**
@@ -113,6 +114,11 @@ export async function checkedLogin(
     if (keysUnreachable(error)) return { unavailable: signIn.issuer };
     return refusal(causeOf(error), signIn, checkedPayload(error));
   }
+  // A token whose act names someone acting for the subject (RFC 8693, §37's on_behalf_of) is that
+  //   actor's login, not the person's own. Taken as hers, an agent's call would count as her direct
+  //   login, and her approval with it. Agents keep their keys until steps 48 and 49 (found by step
+  //   44's review).
+  if (payload["act"] !== undefined) return refusal("actor", signIn, payload);
   if (!onlyAllowedAudiences(payload.aud, signIn)) return refusal("audience", signIn, payload);
   if (!hasScope(payload["scope"], signIn.scope)) return refusal("scope", signIn, payload);
   const client = clientOf(payload);

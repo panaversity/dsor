@@ -99,6 +99,11 @@ describe("C2: every refused login hears one answer, at line ①, recorded before
       "a token signed with another server's key",
       () => stranger.sign("cfo_100", { iss: sso.issuer }),
     ],
+    // The review's finding: an agent acting for cfo_100, named in act (RFC 8693), is not cfo_100.
+    [
+      "a token for cfo_100 whose act names the agent acting for her",
+      () => sso.sign("cfo_100", { act: { sub: "accounts-payable-fte" } }),
+    ],
     ["a good token for user_555, whom DSoR's table does not list", () => sso.sign("user_555")],
     ["a good token for the agent, accounts-payable-fte", () => sso.sign("accounts-payable-fte")],
     ["a good token for dsor-scheduler, a system login", () => sso.sign("dsor-scheduler")],
