@@ -311,6 +311,44 @@ written.
 - **Cost.** The Panaversity SSO's route reads `x-api-key` today, and must read Bearer too.
 - **Rejected.** `x-api-key`, Better Auth's habit; a header that each company sets.
 
+## 28 · With no person in DSoR's table, start-up reads no one's job (2026-10-28), D15
+
+**Decided by:** Claude Code, during step 45's build, on its own recommendation. **Waits for the
+learner's review.**
+
+- **What.** D7 took the people out of DSoR's own table. Three checks read a person's job there, and
+  now read only what DSoR itself knows. A slip's signer is refused at line ③ only when DSoR's table
+  names her as an agent, an application, or a timer job; anyone else, her company answers for. A
+  control's owner, and `alerts.json`'s escalation person, are refused only when DSoR's table names
+  them as no person. A receivers role must be in `roles.json` and hold `alert:read`. Whether a
+  person works in the company, and in which job, her company says when she acts, at line ②.
+- **Why.** Asking the company at start-up proves a membership at one moment only, and makes DSoR's
+  start-up wait on the sign-in server. A control's owner switches it on in person, so line ② checks
+  her then.
+- **Cost.** A company's server decides who is a person: a service account it lists as an active
+  member can sign a slip (step 19's decision 13 guarded against that). And start-up no longer
+  catches an escalation to someone who cannot settle a payment (step 38b's review, M3).
+- **Rejected.** Keeping a list of people's ids in DSoR, which D7 removed; asking each company's
+  lookup at start-up.
+- **The review's attack (2026-10-28).** A service account that the company's SSO lists as an
+  active member, with a role, signs in through `dsor-people` and acts in direct mode: it reads
+  unmasked, drafts with no slip, and approves as a CFO. The answer says nothing about the kind of
+  account. An escalation can go to someone who cannot see alerts. And a company's lookup may sit on
+  another server than the token's issuer, which may give the same id to someone else.
+- **Proposed, for the learner:** the answer carries `kind`, and DSoR acts only on `person`; the
+  sweep asks the lookup about the escalation person; start-up refuses a lookup whose origin is not
+  the issuer's.
+
+## 29 · Q8's alert is not built in step 45 (2026-10-28)
+
+**Found by:** Claude Code, after step 45's build. **Waits for the learner's decision.**
+
+- **What.** Entry 5 says that at the first `FRESHNESS_UNSATISFIABLE`, the company's alert receivers
+  hear. Step 45 refuses the call and records it, but raises no alert.
+- **Why.** In this tutorial an alert belongs to a proposal (step 38b). A sign-in server that cannot
+  answer has no proposal, so it needs a kind of alert of its own.
+- **Proposed.** Build it in step 45b, which is about a server that is down, or in a step of its own.
+
 ## Open
 
 - **The SSO writes a key's row on every check.** Better Auth updates `updatedAt` each time, so all

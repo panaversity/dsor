@@ -35,7 +35,7 @@ sign-in server that cannot answer a lookup (Q1, Q4).
 | [44 · Tokens made for DSoR](mj_44_tokens_made_for_dsor/README.md) | A person is who a token made for DSoR says | New: DSOR-RP-02b. Again: DSOR-IDN-01, DSOR-IDN-04a, DSOR-IDN-04b | Built |
 | Before 45 · The SSO on Better Auth 1.7 | The SSO's fix list moves onto its 1.7 upgrade. Not a DSoR step | None in DSoR. It gives 47, 48, and 49 the standard parts they need | Done on 1.7.2, in a draft pull request |
 | Before 45 (b) · The latest Better Auth, and a key for each company | One upgrade from `main` to 1.7.14, then the DSoR fix list on top of it, with a key from each company's owner. Not a DSoR step | None in DSoR. Step 45 keeps one key for each company | #1333 merged and live; #1331 in draft, on `main` |
-| [45 · Ask the sign-in server](mj_45_ask_the_sign_in_server/README.md) | DSoR asks the company's sign-in server, through DSoR's own contract, who a person is in a company now, and reuses an answer for up to 10 seconds | Again, against a real server: DSOR-IDN-05, DSOR-IDN-06, DSOR-IDN-07, DSOR-IDN-03a, DSOR-DEL-02, DSOR-BND-02 | Design written |
+| [45 · Ask the sign-in server](mj_45_ask_the_sign_in_server/README.md) | DSoR asks the company's sign-in server, through DSoR's own contract, who a person is in a company now, and reuses an answer for up to 10 seconds | Again, against a real server: DSOR-IDN-05, DSOR-IDN-06, DSOR-IDN-07, DSOR-IDN-03a, DSOR-DEL-02, DSOR-BND-02 | Built, run for real against the SSO; D15 and Q8's alert wait for the learner |
 | 45b · Protect the sign-in server | One lookup in flight for each company and person, and a pause after five failures | Again: DSOR-IDN-06 | Planned |
 | 46 · Who may approve, and up to how much | Approver roles, each with a limit | New: DSOR-SOD-04a, DSOR-SOD-04b | Planned |
 | 47 · The approval door | Approvals only from DSoR's own approval app | Again: DSOR-APR-05a, DSOR-APR-05b, DSOR-SOD-01a. New: DSOR-RP-02c, DSOR-RP-02e | Planned |
@@ -123,7 +123,11 @@ Decided by the learner on 2026-10-28 ([`mj_notes.md`](mj_notes.md), the last two
   names, and `as_of` (D4). It counts only when it names the company and the person DSoR asked
   about. No answer (a 429, a 5xx, a timeout) lets the kept answer count for up to one hour, then
   `FRESHNESS_UNSATISFIABLE` and an alert. Any other reply is a fault, `INTERNAL_ERROR` (Q6, Q8).
-- A leaver will be refused at the next ask, and their slips suspended.
+  Built on 2026-10-28 without the alert: an alert in this tutorial belongs to a proposal, and
+  this one has none ([`mj_decisions.md`](mj_decisions.md), entry 29).
+- A leaver is refused at the first ask 10 seconds after the last, and their slips are suspended.
+  With no person left in DSoR's table, three start-up checks no longer read a person's job (D15,
+  entry 28, for the learner's review).
 - It replaces the people's rows in `src/principals.ts` and the fake staff directory in
   `src/serve.ts` with a stand-in that answers the contract (D7). The timer jobs keep their keys for
   now (D6). Every role-source adapter passes one shared test list (D5).
