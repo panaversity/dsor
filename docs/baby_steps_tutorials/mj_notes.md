@@ -253,6 +253,11 @@ Step 45b pauses a failing role source after five failures in a row, for 10 secon
 one call try it, as this tutorial's decisions (D10, D16, D17). A call refused during the pause hears
 DSOR-IDN-06's `FRESHNESS_UNSATISFIABLE`, not `CONNECTOR_UNAVAILABLE`. To raise: should §18 name the
 role source beside the connector, and should the specification say how often DSoR may ask one?
+Step 45c (2026-10-29) adds a budget: at most 20 lookups a minute for each company about people DSoR
+knows nothing about, from their own calls, and the stranger's words over it. DSOR-OPS-02's rate
+limits cover callers' requests, not DSoR's own questions, so this too is the tutorial's decision. A
+release's question about a request's maker must not spend it, nor turn an outage into "no" (entry
+44).
 
 ## Proposals for the specification
 

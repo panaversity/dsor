@@ -37,9 +37,10 @@ sign-in server that cannot answer a lookup (Q1, Q4).
 | Before 45 (b) · The latest Better Auth, and a key for each company | One upgrade from `main` to 1.7.14, then the DSoR fix list on top of it, with a key from each company's owner. Not a DSoR step | None in DSoR. Step 45 keeps one key for each company | #1333 merged and live; #1331 in draft, on `main` |
 | [45 · Ask the sign-in server](mj_45_ask_the_sign_in_server/README.md) | DSoR asks the company's sign-in server, through DSoR's own contract, who a person is in a company now, and reuses an answer for up to 10 seconds | Again, against a real server: DSOR-IDN-05, DSOR-IDN-06, DSOR-IDN-07, DSOR-IDN-03a, DSOR-DEL-02, DSOR-BND-02 | Built, run for real against the SSO; D15 reviewed (entries 35 to 37), and Q8's alert is step 45d |
 | [45b · Protect the sign-in server](mj_45b_protect_the_sign_in_server/README.md) | One lookup in flight for each company and person, and a pause after five failures, then one trial | Again, against a real server: DSOR-IDN-06, DSOR-TEN-02a | Built, run for real against the SSO |
-| 45c · A stranger cannot spend a company's lookups | At most one lookup about a company and a person in 10 seconds, whatever the reply, a budget of lookups about people DSoR knows nothing about, and a pause that counts different people | Again: DSOR-IDN-06 | Planned |
+| [45c · Lookups, person by person](mj_45c_lookups_person_by_person/README.md) | Every reply about a person remembered for 10 seconds, a wait that doubles while her lookups keep failing, a pause that counts different people, and 20 lookups a minute about people DSoR knows nothing about | Again, against a real server: DSOR-IDN-06, DSOR-TEN-02a, DSOR-ERR-01b | Built, run for real against the SSO |
 | 45d · Alerts and the sign-in server | The alert of decision Q8, with a record of its own, and an escalation that goes only to someone who can act | Again: DSOR-IDN-06 | Planned |
 | 45e · Only a person acts as a person | The lookup's answer says what kind of account it is about, and whose ids it uses | Again: DSOR-IDN-01, DSOR-SOD-01a | Planned |
+| 45f · A key rotation keeps people known | A mark that DSoR once knew a person as active, which a fault does not erase | Again: DSOR-IDN-06 | Planned |
 | 46 · Who may approve, and up to how much | Approver roles, each with a limit | New: DSOR-SOD-04a, DSOR-SOD-04b | Planned |
 | 47 · The approval door | Approvals only from DSoR's own approval app | Again: DSOR-APR-05a, DSOR-APR-05b, DSOR-SOD-01a. New: DSOR-RP-02c, DSOR-RP-02e | Planned |
 | 48 · The agent door (MCP), door A | An agent acting for a person who connected it | New: DSOR-RP-02a, DSOR-RP-02d, DSOR-OPR-03a, DSOR-IDN-02b, DSOR-RP-04, DSOR-RP-05a, DSOR-RP-06a, DSOR-RP-07a, DSOR-RP-07b, DSOR-DEL-03a, DSOR-DEL-03b, DSOR-RP-03, and the rest of DSOR-DEL-10 | Planned |
@@ -161,15 +162,20 @@ Decided by the learner on 2026-10-28 ([`mj_notes.md`](mj_notes.md), the last two
   ([`mj_decisions.md`](mj_decisions.md), entry 23). Built on 2026-10-28, and run for real against
   the SSO, frozen with `kill -STOP`.
 
-### 45c · A stranger cannot spend a company's lookups
+### 45c · Lookups, person by person
 
-- Anyone with an SSO account can name org_456, and each such call spends one of org_456's lookups
-  (step 45's review, finding 2). DSoR will ask about the same company and person at most once in 10
-  seconds, whatever the reply, and spend at most a budget of lookups on people it knows nothing
-  about. Its numbers are this step's to decide ([`mj_decisions.md`](mj_decisions.md), entry 32).
-- One person whose own lookups fail can pause the company for everyone, and keep it paused by being
-  every trial (step 45b's review, finding 2). Here the company's pause will count different people,
-  and a person whose lookups keep failing will be asked less and less often (entry 34).
+- On each DSoR server, every reply about a person is remembered for 10 seconds, and she is asked
+  about again only then (D21). While her lookups keep failing, the wait doubles, up to 5 minutes
+  (D22). An answer a call can use is used again from the kept answers, under the company's bound.
+- The company's pause counts five different people (D25), so one person's broken record never
+  pauses it, and a person who waits is never the trial.
+- At most 20 lookups a minute for each company about people DSoR knows nothing about, from their
+  own calls; over it, the stranger's words at once (D23, D24). A stranger's own calls use "not a
+  member" for 10 minutes (D26). Run for real: 25 new SSO accounts, 20 lookups.
+- Its review found that a release spent the budget and threw a waiting payment away, a bug since
+  step 45 for a `503`: fixed here, and proposed for steps 45 and 45b (entry 44).
+- From the reviews of steps 45 and 45b ([`mj_decisions.md`](mj_decisions.md), entries 32 and 34);
+  decided and built on 2026-10-29 (entries 38 to 44).
 
 ### 45d · Alerts and the sign-in server
 
@@ -189,6 +195,14 @@ Decided by the learner on 2026-10-28 ([`mj_notes.md`](mj_notes.md), the last two
   not its token issuer (D20, entry 37).
 - Both come from the learner's review of D15 (entry 28), and are part of the lookup proposal in
   [`mj_notes.md`](mj_notes.md).
+
+### 45f · A key rotation keeps people known
+
+- A fault, such as a `403` during a key rotation done wrong, erases DSoR's kept answer about each
+  person it asks about (step 45's D2), so they all count as strangers for step 45c's budget, and a
+  company shares 20 lookups a minute until each is asked again. DSoR will keep a mark that it once
+  knew a person as active, which a fault does not erase: a new column in `dsor.role_answers`
+  ([`mj_decisions.md`](mj_decisions.md), entry 43). Its place is Claude Code's proposal.
 
 ### 46 · Who may approve, and up to how much
 
