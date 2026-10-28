@@ -142,7 +142,7 @@ describe("C4 and D23: 20 lookups a minute about people DSoR knows nothing about"
 });
 
 describe("C5 and D24: over the budget, the stranger's words at once", () => {
-  it("D24, DSOR-ERR-01b: over the budget, a call hears the stranger's words at once, with no question, and five such calls start no pause", async () => {
+  it("DSOR-ERR-01b: over the budget, a call hears the stranger's words at once, with no question, and five such calls start no pause (D24)", async () => {
     await line2(signUps(20));
     server.hang();
     const start = performance.now();
