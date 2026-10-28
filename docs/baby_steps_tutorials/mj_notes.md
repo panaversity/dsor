@@ -3582,6 +3582,13 @@ recommendation first. The learner took each recommendation, after two questions 
 - **D10. A 2-second timeout, no retry, and a 10-second pause after five failures in a row.** In
   the pause, DSoR uses its kept answers, up to the one-hour bound. *Downside:* a server that
   answers in three seconds counts as no answer.
+- **D11 to D13, from checking the design against the rules and the schemas** (2026-10-28). D11:
+  each company's lookup address is in `lookups.json`, and its key comes from the environment
+  (`DSOR_LOOKUP_KEY_ORG_456`), never from a file. D12: the proposal's answer schema lives in
+  `proposals/`, and `schemas/` keeps only the specification's copies. D13: an answer's `as_of` is
+  the earlier of the server's `as_of` and the moment DSoR asked. D14 (asked while writing the
+  tests): DSoR sends the company key as `Authorization: Bearer`, so the SSO's route must read it
+  there too.
 - **D9 and the pause of D10 are step 45b's** (decided 2026-10-28), so that each step teaches one
   idea. Step 45 keeps D10's 2-second timeout, because "a timeout means the server cannot answer
   now" needs one.

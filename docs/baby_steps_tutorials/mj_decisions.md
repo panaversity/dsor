@@ -266,6 +266,51 @@ decided by the learner.
 - **Rejected.** All of D1 to D10 in step 45, which is two ideas at once; and D8 to D10 in step
   45b, which gives the same answers two homes, built twice.
 
+## 24 · Each company's lookup address is in a file, and its key in the environment (2026-10-28), D11
+
+**Decided by:** the learner, on Claude Code's recommendation, from checking step 45's design.
+
+- **What.** `lookups.json` names each company's lookup address. Each company key comes from an
+  environment variable, such as `DSOR_LOOKUP_KEY_ORG_456`. Start-up refuses a company that has a
+  lookup and no key.
+- **Why.** The specification's `role_source` setting holds only `kind` and `max_staleness`, and
+  DSOR-SCH-02 keeps our own fields out of it. A key in a file is readable by whatever reads the
+  folder, and DSOR-CNR-02 forbids that.
+- **Rejected.** The address under `extensions` in `role-sources.json`; every setting in the
+  environment.
+
+## 25 · The proposal's schema lives in its own folder (2026-10-28), D12
+
+**Decided by:** the learner, on Claude Code's recommendation.
+
+- **What.** `proposals/role-source-answer.schema.json` in step 45. `schemas/` keeps only the
+  specification's copies, byte for byte, so a reader can tell a rule from a proposal by where the
+  file is. When the proposal lands, the file moves to `schemas/` unchanged.
+- **Rejected.** The proposal in `schemas/`, with a note.
+
+## 26 · An answer is as old as the earlier of two times (2026-10-28), D13
+
+**Decided by:** the learner, on Claude Code's recommendation.
+
+- **What.** An answer's `as_of` is the earlier of the server's `as_of` and the moment DSoR asked.
+- **Why.** Step 19's decision 14 says an answer is never later than the moment DSoR asked; D4 adds
+  the server's own time. Together, an answer read three hours ago counts as three hours old, and
+  one up to a minute ahead counts as the moment DSoR asked.
+- **Rejected.** The server's time only (a clock ahead makes an answer look fresher); DSoR's time
+  only (a cached answer looks fresh, which is break B3).
+
+## 27 · The company key travels as Authorization: Bearer (2026-10-28), D14
+
+**Decided by:** the learner, on Claude Code's recommendation, while step 45's test server was
+written.
+
+- **What.** DSoR sends each company key as `Authorization: Bearer <key>`.
+- **Why.** The proposed contract said only "a credential for that tenant alone". The HTTP
+  standard for a credential (RFC 6750) works for any server, and keeps a product's habit out of
+  DSoR's contract (entry 6).
+- **Cost.** The Panaversity SSO's route reads `x-api-key` today, and must read Bearer too.
+- **Rejected.** `x-api-key`, Better Auth's habit; a header that each company sets.
+
 ## Open
 
 - **The SSO writes a key's row on every check.** Better Auth updates `updatedAt` each time, so all
