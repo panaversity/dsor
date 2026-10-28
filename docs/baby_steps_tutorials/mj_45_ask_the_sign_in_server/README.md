@@ -254,4 +254,348 @@ copy, and "Break it" will show how each prediction came out.
 | B7 · line ② reads the people's rows again | `user_123` left org_456 at 01:55 but holds a token made at 01:30. At 02:00 `user_123` calls DSoR to draft a payment | DSoR allows it |
 | B8 · roles are read whatever the status | `user_123` was suspended at 01:00 for an investigation, and a bug in the SSO answers `suspended` with the role `ap_supervisor`. At 02:00 the agent pays under `del_100` | DSoR pays, as `ap_supervisor` |
 
-*The sections from "What changed since step 44" on are written as the step is built.*
+## What changed since step 44
+
+| File | What changed |
+| --- | --- |
+| `proposals/role-source-answer.schema.json` | **New.** The shape of an answer, from our proposal for the specification: `tenant`, `person`, `status` (`active`, `suspended`, or `gone`), `roles` (empty unless `active`), and `as_of` (D4, D12). It moves into `schemas/` unchanged when the proposal lands |
+| `src/lookup.ts` | **New.** The lookup: one `GET` for one company and one person, with the company's key as `Authorization: Bearer` (D1, D14). A `429`, a `5xx`, no reply in 2 seconds, or no connection is "cannot answer now". Any other reply, a redirect too, is a fault (D2, D10) |
+| `src/authority.ts` | Line ③'s question reads answers in the proposal's shape. An answer about someone else is a fault. An `as_of` must be a real RFC 3339 time, at most one minute ahead, and the answer counts from the earlier of it and the moment DSoR asked (D13). An answer is used again for 10 seconds (D3). `gone` refuses like `suspended`. `memberOf` asks the same question for line ② |
+| `src/answers.ts` | **New.** The kept answers, one for each company and person, in memory. Older news never replaces newer, and a kept answer from the future never blocks a new one |
+| `src/postgres.ts`, `migrations/047_role_answers.sql` | **New table** `dsor.role_answers`, under row-level security: the kept answers in DSoR's PostgreSQL, shared by every DSoR server, kept over a restart (D8). `dsor_runtime` may not delete a row: an answer DSoR forgets leaves its row empty |
+| `src/store.ts`, `store.json` | The map gains a kind of table, `control-kept`, and the new table |
+| `src/lookups.ts`, `lookups.json` | **New.** Each company's lookup address, and its key from the environment, `DSOR_LOOKUP_KEY_ORG_456`, never from a file (D11). Start-up refuses any problem, and names a variable, never its value |
+| `src/serve.ts` | `pnpm serve` asks each company's lookup. The fake directory is gone. The kept answers have a database pool of their own |
+| `src/pipeline.ts` | Line ② asks a person's company what she holds, for her own call (C2, Q7) |
+| `src/principals.ts`, `src/stand-in.ts` | The five people leave DSoR's table for a stand-in sign-in server: the key each person signs in with, and what each company says about her (D7). The agents and the timer jobs stay (D6) |
+| `src/logins.ts` | A person's key at the stand-in names her and nothing more. In `pnpm serve`, a token names a person unless DSoR's table names that login as no person |
+| `src/delegation.ts`, `src/controls.ts`, `src/alerts.ts` | Start-up and line ③ no longer read a person's job from DSoR's table (D15) |
+| `src/release.ts`, `src/proposals.ts`, `src/approve.ts` | A release asks the company about a person who asked for herself. The records of a person's own call name the role source and its time |
+| `src/main.ts` | `pnpm start` uses the stand-in. Its story sets the kept answer aside where it says the night moves on, and brings the directory back before user_123's retry |
+| `src/directory.ts`, `src/log.ts`, `src/suspensions.ts` | The fake directory answers in the proposal's shape. Comments |
+| `test/role-source-list.ts`, `test/lookup.test.ts` | **New.** The list every role source passes (D5), run against the lookup |
+| `test/sign-in-server.ts` | **New.** A small sign-in server for the tests, with switches: answer about someone else, reply unreadably, serve old facts, fail, hang, or redirect |
+| `test/lookup-replies.test.ts`, `test/answers.test.ts`, `test/answers.db.test.ts`, `test/kept-answers.ts`, `test/lookups.test.ts`, `test/people.test.ts` | **New.** Each kind of reply; the 10-second reuse; the answers on PostgreSQL; `lookups.json` and the keys; line ② and the stand-in |
+| `test/helpers.ts`, `test/cross-tenant.ts`, `test/companies.ts`, `test/catalogs.ts`, `test/db.ts`, and 30 more test files | The older tests now say what changed: a person planted by a test is planted at the stand-in, a test that changes a person waits past the 10 seconds, and a person's own call needs her company's answer |
+
+```bash
+git diff --no-index ../mj_44_tokens_made_for_dsor/src src
+git diff --no-index ../mj_44_tokens_made_for_dsor/test test
+```
+
+## Run it
+
+A local PostgreSQL 17 and a new database of its own, as in step 44. Migration 047 is new.
+
+```bash
+pnpm install
+pnpm check
+pnpm migrate
+pnpm test:db test/answers.db.test.ts
+pnpm start          # the story, with the stand-in sign-in server
+```
+
+`pnpm serve` needs each company's key in the environment, and refuses to start without one. Started
+with no keys set, a real run:
+
+```text
+lookups.json refused to start:
+  lookups.json: org_456 has a lookup, and DSOR_LOOKUP_KEY_ORG_456 is not set
+  lookups.json: org_789 has a lookup, and DSOR_LOOKUP_KEY_ORG_789 is not set
+```
+
+**The live run.** On 2026-10-28, `pnpm serve` asked the Panaversity SSO, branch
+`feat/sso-dsor-fix-list` (draft pull request
+[panaversity/agentfactory#1331](https://github.com/panaversity/agentfactory/pull/1331)) with one
+more commit, `fa9a10ac1`, so that its lookup reads the key as `Authorization: Bearer` (D14). The SSO
+ran on this computer, on port 3011, over a copy of step 44's data. Nothing in production was
+touched. Three things were set up there first:
+
+- org_789, with user_700 as its AP supervisor;
+- an owner for each company, who made that company's DSoR key at `POST /api/dsor/keys`. Only a
+  company's owner may make one, and the key answers about that company only;
+- a new test password for cfo_100, through the SSO's own reset flow.
+
+cfo_100 signed in, and DSoR's app `dsor-people` got her token through the authorization-code flow
+with PKCE, as in step 44. Then the run. Its own words, with times in UTC; tokens, keys, and
+passwords are never printed:
+
+```text
+cfo_100's token, its claims only: {"iss":"http://localhost:3011","sub":"cfo_100","aud":["http://127.0.0.1:8042","http://localhost:3011/api/auth/oauth2/userinfo"],"azp":"dsor-people","scope":"openid dsor","lifetime_s":3600}
+  the token carries no company and no role: true
+
+16:09:48 1. cfo_100 reads INV-1008 with her token; line ② asks org_456 about cfo_100
+   DSoR: 200 INV-1008, VENDOR-44, 31400.00 USD
+16:09:48 2. the agent reads INV-1008 under del_100; line ③ asks org_456 about user_123
+   DSoR: 200 INV-1008, VENDOR-44, amount masked
+
+   dsor.role_answers now:
+   org_456 cfo_100: active ["CFO"], as_of 2026-10-28T16:09:48.856Z, asked 2026-10-28T16:09:48.856Z
+   org_456 user_123: active ["ap_supervisor"], as_of 2026-10-28T16:09:48.935Z, asked 2026-10-28T16:09:48.935Z
+   the agent's record, subject_authority: {"as_of":"2026-10-28T16:09:48.935Z","source":"role_source"}
+
+16:09:48 3. org_456's owner removes cfo_100 at the SSO. DSoR asks again after 10 seconds (D3)
+16:09:49    at once: 200 INV-1008, VENDOR-44, 31400.00 USD
+16:10:00    11 seconds later: 403 AUTHORIZATION_DENIED: the caller may not work in the tenant it named
+16:10:01    org_456's owner adds cfo_100 back as CFO
+16:10:12    11 seconds later: 200 INV-1008, VENDOR-44, 31400.00 USD
+
+16:10:12 4. user_123 leaves org_456 at the SSO; the agent reads 11 seconds later
+16:10:23    DSoR: 403 DELEGATION_REQUIRED: "invoice.get": slip del_100 is signed by user_123, whom the directory of org_456 does not list as active
+   her slips in DSoR now: del_100 suspended, del_101 suspended
+
+16:10:23 5. org_456's owner takes back DSoR's key at the SSO; cfo_100 reads 11 seconds later
+16:10:23    the SSO: key taken back, 200
+16:10:34    DSoR: 500 INTERNAL_ERROR: the directory of org_456 answered with something DSoR cannot use
+```
+
+And what the SSO saw in the same minute, from its own log. Six lookups, not seven: the read "at
+once" in part 3 asked nothing, because DSoR used its answer of 16:09:48 again.
+
+```text
+GET /api/dsor/lookup?tenant=org_456&person=cfo_100 200 in 32ms
+GET /api/dsor/lookup?tenant=org_456&person=user_123 200 in 18ms
+GET /api/dsor/lookup?tenant=org_456&person=cfo_100 200 in 191ms
+GET /api/dsor/lookup?tenant=org_456&person=cfo_100 200 in 44ms
+GET /api/dsor/lookup?tenant=org_456&person=user_123 200 in 99ms
+GET /api/dsor/lookup?tenant=org_456&person=cfo_100 401 in 26ms
+```
+
+Part 3 is D3's downside, seen for real: for up to 10 seconds after she was removed, cfo_100 still
+read the invoice whole, and once she was back, she read it again 11 seconds later. Part 5 is break
+B2's story, as built: a key taken back is a fault that someone must fix, not "cannot answer
+now". This run was made again after the review's fixes, on the same day.
+
+## Break it
+
+Each break was made for real, in a copy of this step, with a story test that tells what DSoR
+answers, once as built and once broken. The predictions are the learner's, from before any code.
+
+| Break | The learner's prediction | As built | Broken |
+|---|---|---|---|
+| B1 · DSoR no longer checks whom an answer is about | DSoR pays, as with a CFO's authority | `INTERNAL_ERROR`: the directory of org_456 answered with something DSoR cannot use | `AUTHORIZATION_DENIED`: `"payment.create"` needs payment:create, which user_123, who signed slip del_100, does not hold now |
+| B1b · the same break, and the mixed-up answer is user_124's, another AP supervisor | (not asked) | `INTERNAL_ERROR` | **the draft is made** |
+| B2 · a `403` is read as "cannot answer now" | DSoR pays on the kept answer until about 01:59, then `FRESHNESS_UNSATISFIABLE`; nobody learns the key is gone | `INTERNAL_ERROR` at 01:30 and at 02:00 | the draft is made at 01:30; `FRESHNESS_UNSATISFIABLE` at 02:00 |
+| B3 · `as_of` is ignored | DSoR pays | `FRESHNESS_UNSATISFIABLE` | the draft is made |
+| B4 · the 10-second reuse never ends | DSoR pays on the 01:50 answer | `DELEGATION_REQUIRED`: user_123 is not listed as active | the draft is made |
+| B5 · the 2-second timeout is deleted | The call hangs for minutes, then DSoR falls back to the kept answer | the draft is made, after 2.0 seconds | the draft is made, after **301.1 seconds** |
+| B6 · kept answers live in one server's memory | DSoR pays on the 01:58 answer | the draft is made | `FRESHNESS_UNSATISFIABLE` |
+| B7 · line ② reads the people's rows again | DSoR allows it | `AUTHORIZATION_DENIED`: the caller may not work in the tenant it named | the draft is made |
+| B8 · roles are read whatever the status | DSoR pays, as `ap_supervisor` | `INTERNAL_ERROR` | `INTERNAL_ERROR` |
+
+Five predictions came out as the learner said: B2, B3, B4, B5, and B7. Three did not, and each
+teaches something:
+
+- **B1.** DSoR refused, but by luck: the CFO's role does not hold `payment:create`, so the borrowed
+  authority could not pay. B1b changes one thing, whose answer it is, and the payment is drafted.
+  The check of whom an answer is about is what stands between the two.
+- **B5.** The prediction was right, and the number is worth knowing. With DSoR's own two seconds
+  gone, Node's `fetch` gave up after 300 seconds of its own: an agent's call held for five minutes,
+  while every other call that asked the same server waited too.
+- **B6.** The prediction describes the step as built, not the break. Broken, each DSoR server keeps
+  its answers in its own memory, so the restart at 02:05 forgot the 01:58 answer, and with the SSO
+  down there was nothing to use: refused. As built, the answer is in `dsor.role_answers`, and the
+  restarted DSoR pays on it.
+- **B8.** Refused either way. The proposal's schema allows roles only while `active`, so an answer
+  that says `suspended` with `ap_supervisor` is a fault before its status is ever read. Two checks
+  stand in front of the same harm: break one, and the other still holds.
+
+Each new check was also broken one at a time, in a copy, against the unit and database tests: 11
+in line ③'s question, 12 in the reuse and the table, 8 in `lookups.json`, 10 in line ② and the
+stand-in, and 15 after the review: ten of its changes that no test caught, and five breaks of its
+fixes. Every one is caught now, many only after the test that catches it was written, and those
+tests are in this step.
+
+## Build it yourself with Claude Code
+
+| # | Move | What was done |
+|---|---|---|
+| 1 | Understand | Step 43d's understanding session, then the questions of steps 44 and 45, from two stories |
+| 2 | Decide | Q1, Q5 to Q8 for the chain, D1 to D10 for this step, then D11 to D14 from checking the design against the rules and the schemas, each put to the learner. D15 came from the build, and waits for the learner's review |
+| 3 | The copy | Step 44 copied, its markers removed |
+| 4 | Build, piece by piece | Five pieces, each with its tests, its breaks, and its own commit: the design check and the shared list; line ③'s question through the lookup; the reuse and the table; `lookups.json` and the keys; line ② and the stand-in |
+| 5 | The real run | `pnpm serve` against the Panaversity SSO on this computer |
+| 6 | Break it | Eight breaks, each made for real in a copy and set beside its prediction |
+| 7 | Review | A reviewer who had not seen the conversation |
+
+To start it in a new session:
+
+```text
+Build step 45 in learner mode from the design in
+docs/baby_steps_tutorials/mj_45_ask_the_sign_in_server/README.md and the decisions in
+docs/baby_steps_tutorials/mj_decisions.md, entries 1 to 27.
+```
+
+## Check yourself
+
+1. At 02:00:00 the agent reads INV-1008 under del_100. At 02:00:05 org_456 removes user_123 at the
+   SSO. At 02:00:08 the agent pays PAY-901. What happens, and what at 02:00:12?
+   <details><summary>Answer</summary>At 02:00:08 the payment is drafted: DSoR asked about user_123 less than 10 seconds before, so it uses that answer again and does not ask (D3). At 02:00:12 it asks again, hears <code>gone</code>, refuses with <code>DELEGATION_REQUIRED</code>, and suspends del_100 and del_101. Part 3 of the live run shows the same window for cfo_100.</details>
+2. A cache in front of org_456's SSO serves user_123's answer, read at 23:00: active, `ap_supervisor`.
+   At 02:00 the agent pays. What happens?
+   <details><summary>Answer</summary><code>FRESHNESS_UNSATISFIABLE</code>. The answer counts from the earlier of its own <code>as_of</code> and the moment DSoR asked (D13), so it is three hours old, and org_456 allows one hour. Break B3 shows the payment drafted when <code>as_of</code> is ignored.</details>
+3. org_456's owner takes back DSoR's key. Why does DSoR answer `INTERNAL_ERROR`, and not keep using
+   the answer it holds?
+   <details><summary>Answer</summary>A <code>401</code> or <code>403</code> is not "cannot answer now": the server answered, and said DSoR may not ask. Someone must fix it. Using the kept answer would hide the missing key for up to an hour, while a person who left kept her power. Part 5 of the live run, and break B2.</details>
+4. cfo_100's token names her and carries no company and no role. How does DSoR know she is the CFO of
+   org_456 when she reads INV-1008?
+   <details><summary>Answer</summary>Line ② asks org_456's lookup about cfo_100, for the company her call names (C2). The answer says <code>active</code>, <code>CFO</code>. A role written in her token would count for nothing (DSOR-IDN-04b): the token says who she is, her company says what she holds.</details>
+5. The SSO goes down at 02:00. DSoR asked about user_123 at 01:58, and restarts at 02:05 for a deploy.
+   At 02:06 the agent pays. What happens, and until when?
+   <details><summary>Answer</summary>The payment is drafted on the 01:58 answer, because the answers live in <code>dsor.role_answers</code> and a restart keeps them (D8). It counts until about 02:58, org_456's one hour. After that, with the SSO still down, DSoR refuses with <code>FRESHNESS_UNSATISFIABLE</code>. Break B6 shows the restart forgetting it.</details>
+
+## Think it through
+
+### Found while building
+
+Each was found by a run, fixed in the piece that made it, and tested:
+
+- **A warning on start-up.** Once `src/authority.ts` compiled the proposal's schema, the schema
+  checker printed "unknown format date-time" to stderr, and `pnpm start` must print nothing there.
+  The checker now checks no formats, as `src/slips.ts` does, and the code reads an `as_of` itself.
+- **A date that does not exist.** `Date.parse` reads 30 February as 2 March, and the hour 24 as
+  the next midnight. RFC 3339, which the proposal names, has neither. An `as_of` like that is now a
+  fault, with a test for each.
+- **Tests that called again at once.** Since D3, a change at the server counts from the first
+  question 10 seconds after the last. Older tests that changed a person and called again at once
+  now move DSoR's clock past the 10 seconds. `pnpm start`'s story sets the kept answer aside where
+  it says the night moves on.
+- **A deadlock.** A release asks line ③'s question again inside its claim, a database transaction
+  that holds one of the pool's connections. The kept answers needed a second connection from the
+  same pool. With two releases at once and a pool of two, each waited for the other forever. The
+  kept answers now have a pool of their own. Found by the database tests, which timed out.
+- **An answer from the future.** Older news never replaces newer. So a kept answer whose `as_of`
+  was later than DSoR's clock, left by a clock that went back, blocked every new answer until the
+  clock caught up. Now a kept answer from the future never stops a new one: step 19's decision 15,
+  for keeping as well as for using.
+- **Forgetting without deleting.** `dsor_runtime` may not delete a row (step 16's decision 3), so
+  an answer DSoR forgets leaves its row with no answer. The map gained a kind of table for that,
+  `control-kept`.
+- **A citation that did not move.** The cross-tenant suite turns an example into a same-company
+  call by moving its addresses into the caller's company. It did not move a `ksor://` citation, so
+  org_789's rule draft cited org_456's policy. Step 44 refused that draft for its owner first. Once
+  D15 stopped reading the owner's job, the citation was read, and its refusal repeated
+  `org_456` back. The suite now moves the citation too.
+
+### What the review found
+
+A reviewer who had not seen the conversation attacked the step as the agent would, with inputs of its
+own, and changed the code 55 times, one change at a time, in a copy. Eight findings; 14 changes left
+every test green.
+
+Fixed, each with a test that fails without the fix:
+
+- **A person could learn which companies DSoR serves (finding 3, DSOR-ERR-01b).** Naming a company
+  DSoR does not serve gave `INTERNAL_ERROR`, "no role source for org_999"; naming one whose server
+  was down gave `FRESHNESS_UNSATISFIABLE`, naming its directory; any other company, the stranger's
+  words. Now a person DSoR knows nothing about in a company hears the stranger's words, whatever
+  stopped the answer. A person DSoR keeps an active answer about there hears the real refusal.
+- **An older reply still decided (finding 4).** When a lagging server answered with facts older
+  than the answer DSoR kept, the store refused to keep the older reply, but the call decided on it
+  anyway: `ap_supervisor` again, though DSoR knew `ap_clerk`. Now the newer of the two decides.
+- **A fault never forgot an answer from the future (finding 5).** An answer kept by a DSoR server
+  whose clock ran ahead was never forgotten after a reply DSoR could not use. Now it is, as
+  keeping already replaced one.
+- **The keys could come from `.env` (finding 7).** D11 says never from a file. `pnpm serve` now reads
+  them only from the environment it is started in.
+- **Ten untested edges.** The minute's edge (61 seconds ahead is a fault, 59 counts); a time with no
+  zone; a kept answer's age from its facts' time; the kept answer read again after the 2-second wait;
+  a `203` with a good answer; the lookup letting go of the request it waited on; a login that brings
+  roles of its own; a release's record of a person's authority; the answers' own pool in `pnpm
+  serve`; and the store forgetting by the moment DSoR asked. Each now has a test.
+
+Put to the learner, with D15 (entry 28 of [`../mj_decisions.md`](../mj_decisions.md)):
+
+- **Finding 1: any account the company lists counts as a person.** With no person in DSoR's table,
+  a service account that the SSO lists as an active member, with a role, can sign in through
+  `dsor-people` and act in direct mode: read unmasked, draft with no slip, approve as a CFO. The
+  answer says nothing about what kind of account it is. *Proposed:* the contract's answer carries
+  `kind`, and DSoR acts only on `person`.
+- **Finding 6: the escalation person is no longer checked.** An escalation to someone who cannot
+  see alerts reaches nobody. *Proposed:* the sweep asks the company's lookup about her.
+- **Finding 8: a lookup on another server.** Tokens come from the one issuer in `sign-in.json`, and
+  a company's lookup could sit on another server, which may give the same id to someone else.
+  *Proposed:* start-up refuses a lookup whose origin is not the issuer's.
+
+For step 45b, which protects the server:
+
+- **Finding 2: a stranger can spend a company's lookups.** Any person with a token from the SSO can
+  name org_456, and each call asks org_456's lookup with org_456's key. A failure is not kept, so
+  the next call asks again. If a server limits each key, a flood of strangers turns org_456's own
+  lookups into `429`s, and the kept answers keep counting up to the hour. *Proposed for 45b:* DSoR
+  asks about the same company and person at most once in 10 seconds, whatever the reply, and holds a
+  budget of lookups about people it knows nothing about.
+
+Lower, and left open: a reply cut off after its headers is a fault, which errs on the safe side; a
+company served only by people cannot have a role source, since "companies where a login works"
+still come from DSoR's table; `dsor.role_answers` gains a row for each stranger in each company,
+and `dsor_runtime` deletes none; the answer's schema takes the specification's `1.3` name before the
+specification has it; a release of a person's own proposal holds its claim during a lookup of up to
+2 seconds; nothing caps an answer's size; and two DSoR servers keeping at once is not tested. Four
+of the review's changes that no test caught make DSoR only stricter, such as reading a `502` as a
+fault, and have no test either.
+
+### D15, a decision the build forced
+
+With no person in DSoR's own table, three checks could no longer read a person's job there:
+
+| Check | Before step 45 | Now |
+|---|---|---|
+| A slip's signer, at line ③ | DSoR's table had to know her as a person, "because a directory lists service accounts too" (step 19's decision 13) | Refused only when DSoR's table names her as an agent, an application, or a timer job. Anyone else, her company answers for |
+| A control's owner, at start-up and at a draft | A person who works in the control's company | Not a login DSoR knows as no person. She switches a rule on only in person, and line ② asks her company then |
+| `alerts.json`'s escalation person and receivers | A person of the company who can settle a payment and see alerts; a role that a person of the company holds | The person is not a login DSoR knows as no person; the role is in `roles.json` and holds `alert:read` |
+
+**Downside:** a company's server now decides who is a person. If it lists a service account as an
+active member with `ap_supervisor`, that account can sign a slip. And start-up no longer catches an
+escalation that goes to someone who cannot settle a payment (step 38b's review, finding M3): that
+person learns it only when she tries. Claude Code took D15 during the build, with this
+recommendation, and it waits for the learner's review: keep it, or keep a list of people's ids in
+DSoR after all.
+
+### Left open on purpose
+
+- **Not built: Q8's alert.** Decision Q8 says that at the first `FRESHNESS_UNSATISFIABLE`, the
+  company's alert receivers hear, and claim C5 promised it. This step refuses the call, and records
+  it, but raises no alert. In this tutorial an alert belongs to a proposal, raised when a payment's
+  outcome is unknown (step 38b), and a sign-in server that cannot answer has no proposal: it needs
+  a kind of alert of its own. It fits step 45b, which is about a server that is down, and is put
+  to the learner there.
+- **A stale "suspended" after a lift.** When a person comes back and her owner lifts the
+  suspensions, an agent call within 10 seconds of DSoR's last question still uses the old
+  "suspended" answer, and suspends her slips again. It fails closed: the owner waits 10 seconds.
+- **Line ② suspends nothing.** When line ② hears that a person who calls for herself is gone, it
+  refuses her, but her slips are suspended only at her agent's next call, at line ③.
+- **`max_staleness` of zero.** A company may set it, and then every call is refused, even with a
+  fresh answer: nothing is younger than zero.
+- **Two pools.** Each DSoR server opens a second pool for the kept answers. Step 45b counts
+  connections.
+- **The sign-in server is not protected yet.** A thousand calls about one person in the same second
+  are a thousand questions, once the 10 seconds pass together, and a server that is down is asked
+  at every call. Step 45b.
+- **The proposal.** The lookup contract is not in the specification yet. `proposals/` holds its
+  schema, and `mj_notes.md` its sentences, until they are proposed together.
+
+## The rules this step meets
+
+| Rule | What it says | Spec | Tests |
+|---|---|---|---|
+| DSOR-IDN-03a | A call works in one company, where its caller holds a membership | [§12](../../../specs/dsor/02-security.md#12-identity-and-principals) | `test/people.test.ts` (C2), `test/role-source.test.ts`, `test/slips.test.ts` |
+| DSOR-IDN-04a | Roles come only from an issuer or role source the company trusts | [§12](../../../specs/dsor/02-security.md#12-identity-and-principals) | `test/people.test.ts` (C2) |
+| DSOR-IDN-04b | A claim from anywhere else decides nothing | [§12](../../../specs/dsor/02-security.md#12-identity-and-principals) | `test/people.test.ts` (C2), `test/logins.test.ts` |
+| DSOR-IDN-05 | Each company has a role source that DSoR asks about a person who is not in the request | [§12.1](../../../specs/dsor/02-security.md#121-role-source) | `test/lookup.test.ts`, `test/lookup-replies.test.ts`, `test/lookups.test.ts` (C1) |
+| DSOR-IDN-06 | With no authority recent enough, the command is refused | [§12.1](../../../specs/dsor/02-security.md#121-role-source) | `test/lookup.test.ts`, `test/lookup-replies.test.ts` (C5), `test/answers.test.ts`, `test/answers.db.test.ts` |
+| DSOR-IDN-07 | A signer reported suspended or gone has every slip she signed suspended | [§12.1](../../../specs/dsor/02-security.md#121-role-source) | `test/lookup.test.ts`, `test/suspended-slips.test.ts` (C4) |
+| DSOR-AUT-01b | No permission granted, no operation | [§15](../../../specs/dsor/02-security.md#15-authorization) | `test/role-source.test.ts`, `test/people.test.ts` (C4) |
+| DSOR-DEL-02 | Effective authority is the slip's grants cut down to the signer's authority now | [§13](../../../specs/dsor/02-security.md#13-delegation) | `test/role-source.test.ts`, `test/recheck.test.ts` (C4) |
+| DSOR-BND-02 | A company's setting never loosens a bound | [§44](../../../specs/dsor/06-conformance.md#44-operational-bounds) | `test/role-source.test.ts` (C5) |
+| DSOR-TEN-02a | Caches are kept by company | [§14](../../../specs/dsor/02-security.md#14-multi-tenancy) | `test/role-source.test.ts`, `test/answers.db.test.ts` (C7) |
+| DSOR-CNR-02 | No credential reaches the model or the agent | [§35](../../../specs/dsor/05-bindings.md#35-connector-contract) | `test/lookups.test.ts` (C1, D11) |
+| DSOR-ERR-01b | An error reveals nothing the caller may not read | [§28](../../../specs/dsor/03-execution.md#28-result-and-error-envelopes) | `test/people.test.ts`, `test/suspended-slips.test.ts` |
+
+The contract, the reuse, the table, the settings file, the timeout, the earlier-of rule, the Bearer
+key, and the stand-in are this tutorial's decisions, and so is D15: those tests are titled by D2,
+D3, D4, D7, D8, D10, D11, D13, D14, D15, and Q7.
+
+**Next:** step 45b, protect the sign-in server. When a thousand calls about user_123 arrive in the
+same second, DSoR will ask once and share the answer (D9). After five failures in a row, it will
+stop asking for 10 seconds, so a server that is down is not hammered as it comes back (D10).
