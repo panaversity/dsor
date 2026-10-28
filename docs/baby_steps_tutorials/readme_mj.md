@@ -126,6 +126,9 @@ Decided by the learner on 2026-10-28 ([`mj_notes.md`](mj_notes.md), the last two
 - It replaces the people's rows in `src/principals.ts` and the fake staff directory in
   `src/serve.ts` with a stand-in that answers the contract (D7). The timer jobs keep their keys for
   now (D6). Every role-source adapter passes one shared test list (D5).
+- The answers live in DSoR's PostgreSQL, one lookup is in flight for each company and person, and
+  a lookup waits 2 seconds, with a 10-second pause after five failures (D8 to D10). Whether these
+  three make a step 45b is open.
 - The Panaversity SSO is the first server to answer the contract. Its lookup route, from draft pull
   request [panaversity/agentfactory#1331](https://github.com/panaversity/agentfactory/pull/1331) on
   Better Auth 1.7.14 (#1333), changes to match. DSoR holds one key for each company, made by that
@@ -133,8 +136,9 @@ Decided by the learner on 2026-10-28 ([`mj_notes.md`](mj_notes.md), the last two
 - No standard serves this lookup. Better Auth's organization plugin answers a signed-in member. Its
   SCIM plugin lists people only to the directory that sent them. Introspection needs the person's
   own token, which a slip's signer never sends.
-- Decisions D1 to D7, and the questions behind them: [`mj_notes.md`](mj_notes.md), "Step 45's
-  design, the learner's answers".
+- Decisions D1 to D10, and the questions behind them: [`mj_notes.md`](mj_notes.md), "Step 45's
+  design, the learner's answers". Every decision from step 43d on, in one place:
+  [`mj_decisions.md`](mj_decisions.md).
 
 ### 46 · Who may approve, and up to how much
 

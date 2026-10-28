@@ -3,7 +3,8 @@
 These are our own thoughts while learning DSoR through the `mj_` learner builds. They
 are notes, not decisions. Nothing here changes the specification, the map, or anyone
 else's work. When a note becomes a decision, it moves to the place that owns it: the
-spec through a pull request, a step's README, or the `build-baby-step` skill.
+spec through a pull request, a step's README, or the `build-baby-step` skill. From
+2026-10-26 on, every decision is also listed in [`mj_decisions.md`](mj_decisions.md).
 
 ## Questions for the specification
 
@@ -3571,6 +3572,16 @@ recommendation first. The learner took each recommendation, after two questions 
 - **D7. A stand-in that answers DSoR's contract** replaces the people's rows and the fake staff
   directory, for `pnpm start` and the older tests. Every world takes one path, and the live run
   still asks the real SSO. *Downside:* many older tests change in step 45.
+- **D8. The answers live in DSoR's PostgreSQL** (added 2026-10-28, from the learner's question
+  about load). One table of answers holds the 10-second reuse and the kept answers. Every DSoR
+  server shares it, it survives a restart, and it is the evidence a decision bundle needs.
+  *Downside:* one indexed read for each call, and one write for each lookup.
+- **D9. One lookup in flight for each company and person,** on each server. Other calls for the
+  same pair wait for its answer. *Downside:* a little code, and a waiting call is only as fast as
+  that one lookup.
+- **D10. A 2-second timeout, no retry, and a 10-second pause after five failures in a row.** In
+  the pause, DSoR uses its kept answers, up to the one-hour bound. *Downside:* a server that
+  answers in three seconds counts as no answer.
 - **Closed by the specification:** "Which kind does each company use?" DSOR-IDN-05 makes every
   tenant set its own role source, and the tenant policy requires `role_source.kind`, so DSoR has
   no default.
