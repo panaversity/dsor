@@ -111,8 +111,10 @@ Decided by the learner on 2026-10-28 ([`mj_notes.md`](mj_notes.md), the last two
 
 ### 45 · Ask the sign-in server
 
-- Starts with a change to the specification: DSoR's own contract for the lookup kind, and two new
-  rules in [§12.1](../../specs/dsor/02-security.md#121-role-source) (D1, D2).
+- Rests on a proposal for the specification, kept in [`mj_notes.md`](mj_notes.md) until all
+  proposals go to it together: DSoR's own contract for the lookup kind, and two new rules for
+  [§12.1](../../specs/dsor/02-security.md#121-role-source) (D1, D2). Until it lands, the tests
+  are titled by the decisions.
 - Line ② for a person, and line ③ for a slip's signer, will ask the company's sign-in server through
   that contract: is this person in this company, are they active, and which roles do they hold (Q7).
   An answer is reused for up to 10 seconds, so a flood of calls cannot flood the server (D3).

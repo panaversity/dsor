@@ -242,6 +242,63 @@ returns. So the waiting work can never run, and it fills approval queues and hol
 an administrator's tear-up cancels it. To raise: should a suspension under DSOR-IDN-07 also cancel
 the slip's waiting work, as DSOR-DEL-04c does for a revocation?
 
+## Proposals for the specification
+
+Changes the learner has decided to propose. None of them is in the specification. They go to it
+together, later, in a pull request of their own. Until one lands, a step that relies on it titles
+its tests by the step's own decisions, never by a requirement id the specification does not have.
+
+### The lookup contract (step 45, 2026-10-28)
+
+**Why.** The identity-provider lookup of DSOR-IDN-05 has a name and nothing else: no question, no
+answer, and no meaning for an error. One real server's `403` meant both "this person left" and
+"your credential is wrong", so DSoR could not tell a leaver from a broken setup. Decided in
+"Step 45's design, the learner's answers" (D1, D2, D4), and checked against the four kinds of
+company, so that no single server shapes it.
+
+**What it adds.** The full text was first committed straight into the specification as `e2f6965d`
+and reverted the same day. `git show e2f6965d` holds every file, ready to apply.
+
+- **Two L2 rules in §12.1,** with the next free IDN ids:
+  - DSoR MUST use a role-source answer only when it names the tenant and the principal that DSoR
+    asked about.
+  - When a role source replies with something that is neither an answer nor a sign that it cannot
+    answer now, DSoR MUST refuse the request with `INTERNAL_ERROR` and discard the answer it kept
+    for that principal.
+- **A Common mistake in §12.1:** keeping a second list of people and roles in DSoR when the
+  company has a directory, or a map from the directory's group names to DSoR's roles. The directory
+  gives people DSoR's own role names, and a name DSoR does not define grants nothing
+  (DSOR-AUT-01b).
+- **A new §37.1, "Role-source lookup",** with three RP rules and the next free RP ids:
+  - DSoR MUST send each `idp_lookup` request for one tenant and one person, with a credential that
+    the role source issued for that tenant alone.
+  - DSoR MUST accept an `idp_lookup` reply as an answer only when it is a `200` whose body validates
+    against the `role-source-answer` schema and whose `as_of` is no more than one minute ahead of
+    DSoR's clock.
+  - DSoR MUST treat a `429`, a `5xx`, a timeout, or a failed connection from an `idp_lookup` role
+    source as a sign that it cannot answer now.
+
+  The request is `GET …?tenant=org_456&person=user_123`. A person who left is a `200` with
+  `"status": "gone"`, never an error code. Anything else, such as a `401`, a `403`, or a body that
+  does not validate, is a fault. A deployment can reuse an answer for a few seconds, as long as its
+  age stays within the bound.
+- **A fourteenth schema, `role-source-answer`,** with the URN `1.3`, because no existing schema
+  changes:
+
+  ```json
+  { "tenant": "org_456", "person": "user_123", "status": "active",
+    "roles": ["ap_supervisor"], "as_of": "2026-10-28T01:55:00Z" }
+  ```
+
+  All five fields are required. `status` is `active`, `suspended`, or `gone`. `roles` holds DSoR's
+  role names and is empty unless `status` is `active`. One rejection test for each constraint. The
+  status test must clear `roles` too, or the roles rule rejects the answer and the status rule
+  goes untested: found by breaking each rule on purpose.
+- **Around it:** a row in Appendix A; the two §12.1 rules in §45's row for the unattended agent; a
+  §47 case for a role source that answers about someone else or sends an unreadable reply; version
+  1.5.0, with `TARGET_SPEC_VERSION`, which a test keeps in step; a history entry; and a decision in
+  AGENTS.md: the lookup contract is DSoR's.
+
 ## Our builds, compared with another learner's
 
 Another learner builds the same steps on the branch `wania/dev-DSoR-in-baby-steps`
@@ -3482,13 +3539,13 @@ and in 1.7.2's own code from the local pnpm store. The SSO runs 1.6.23. Its upgr
 
 Asked one decision at a time through the ask tool, each with its trade-off and Claude Code's
 recommendation first. The learner took each recommendation, after two questions of their own
-(below). Step 45 starts with a change to the specification, before any code.
+(below). Step 45 rests on a proposal for the specification, written before any code.
 
-- **D1. The lookup follows DSoR's own contract, written in the specification.** Any sign-in server
-  can serve it, and the Panaversity SSO is the first. *Downside:* a spec change comes before step
-  45's code, and the SSO's route changes to match.
-- **D2. Two new MUST rules in [§12.1](../../specs/dsor/02-security.md#121-role-source), for every
-  DSoR.** An answer counts only when it names the tenant and the person that DSoR asked about. A
+- **D1. The lookup follows DSoR's own contract, proposed for the specification.** Any sign-in
+  server can serve it, and the Panaversity SSO is the first. *Downside:* step 45 rests on a
+  proposal until it lands, and the SSO's route changes to match.
+- **D2. Two new MUST rules proposed for
+  [§12.1](../../specs/dsor/02-security.md#121-role-source), for every DSoR.** An answer counts only when it names the tenant and the person that DSoR asked about. A
   reply that is neither an answer nor "no answer" refuses the call with `INTERNAL_ERROR`, and the
   kept answer is dropped. The replies that mean "no answer" (a 429, a 5xx, a timeout, no
   connection) go in the contract's binding. "Role names are DSoR's" goes in §12.1 as a **Common
@@ -3523,8 +3580,11 @@ recommendation first. The learner took each recommendation, after two questions 
   role, and `roles.json` holds what each role may do. A company manages its people in one place
   and never edits `roles.json`, as with Microsoft Entra's app roles. The company's own limits, such
   as 25,000 USD, are rules in DSoR.
-- **Next:** the specification change (the two rules, the contract's binding, and the common
-  mistake), then the SSO's route moves to the contract, then step 45 is built.
+- **The specification change is a proposal (2026-10-28).** It was first written straight into
+  the specification and reverted the same day: see "The lookup contract" under "Proposals for
+  the specification". Until it lands, step 45's tests are titled by these decisions (D2, D4,
+  …), as step 44's were by 44-1 and Q2. **Next:** the SSO's route moves to the contract, then
+  step 45 is built.
 
 ## Still unknown
 
