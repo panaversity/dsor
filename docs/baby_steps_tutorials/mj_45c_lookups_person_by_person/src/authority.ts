@@ -228,6 +228,11 @@ type Asked = { askedAt: number } & ({ answered: true; answer: unknown } | { answ
 // README, D22).
 const BACKOFF_MAX_MS = 5 * 60 * 1000;
 
+// NEW IN STEP 45c: each DSoR server sends at most 20 lookups in any minute, for each company, about
+// people it knows nothing about, from their own calls (step 45c's README, D23).
+const BUDGET = 20;
+const BUDGET_MS = 60 * 1000;
+
 // NEW IN STEP 45c: the latest lookup about one person in one company, on this DSoR server: the
 // lookup, in flight or with its reply, the moment DSoR asked, until when its reply is remembered,
 // and her failures in a row (D9, D21, D22).
@@ -253,6 +258,9 @@ export function createRoleSource(
   // And each company's run of failures, keyed by company, so one company's outage
   // never pauses another (C7, D10; DSOR-TEN-02a). In memory too: a restart forgets a run.
   const runs = new Map<string, Run>();
+  // NEW IN STEP 45c: and each company's budget: the moments of its lookups about people DSoR knows
+  //   nothing about in the last minute, 20 at most (C4, D23; DSOR-TEN-02a).
+  const budgets = new Map<string, number[]>();
 
   /**
    * The lookup a call reads: the one in flight about this person in this company, a new one, or,
@@ -264,6 +272,8 @@ export function createRoleSource(
     directory: Directory,
     // NEW IN STEP 45c: the company's bound, which an answer used again from memory must not pass.
     bound: number,
+    // NEW IN STEP 45c: true for a person's own call about herself, when DSoR knows nothing about her.
+    budgeted: boolean,
   ): Promise<Asked> {
     const key = JSON.stringify([tenant, person]);
     const askedAt = Date.now();
@@ -286,6 +296,10 @@ export function createRoleSource(
     if (trial && (paused || run.trying)) {
       return Promise.resolve({ askedAt, answered: false });
     }
+    // NEW IN STEP 45c: a question about someone DSoR knows nothing about, from her own call, spends
+    //   one of the company's 20 lookups of this minute. With none left, no question, at once: it is
+    //   no failure, and nothing is remembered (C4, C5; D23, D24).
+    if (budgeted && !spend(tenant, askedAt)) return Promise.resolve({ askedAt, answered: false });
     // The pause is over: this call alone tries the server again (D16).
     if (trial) run.trying = true;
     // NEW IN STEP 45c: in flight until its reply comes. Her failures in a row so far count on from
@@ -325,6 +339,19 @@ export function createRoleSource(
     return lookup;
   }
 
+  // NEW IN STEP 45c: one of the company's lookups of this minute, if one is left (D23).
+  /** Spends one lookup about someone DSoR knows nothing about, and false if none is left. */
+  function spend(tenant: string, now: number): boolean {
+    // This minute's only. One from the future came before a clock went back (decision 15).
+    const spent = (budgets.get(tenant) ?? []).filter(
+      (moment) => moment <= now && now - moment < BUDGET_MS,
+    );
+    const left = spent.length < BUDGET;
+    if (left) spent.push(now);
+    budgets.set(tenant, spent);
+    return left;
+  }
+
   // NEW IN STEP 45c: a memory goes 5 minutes after it ended, so the map holds only the people asked
   //   about lately. The oldest come first, and the first that is not old yet ends the sweep (D21).
   /** Forgets the memories that ended more than 5 minutes ago. */
@@ -344,6 +371,8 @@ export function createRoleSource(
     person: string,
     name: string,
     who: string,
+    // NEW IN STEP 45c: whether a question spends the company's budget (D23).
+    budgeted = false,
   ): Promise<{ answer: Answer; as_of: string }> {
     const setting = settings.get(tenant);
     const directory = directories.get(tenant);
@@ -369,7 +398,7 @@ export function createRoleSource(
     // a new one otherwise (D9).
     const asked: Asked = reuse
       ? { askedAt, answered: false }
-      : await ask(tenant, person, directory, setting.ms);
+      : await ask(tenant, person, directory, setting.ms, budgeted);
     let answer: Answer;
     let at: number;
     if (asked.answered) {
@@ -484,7 +513,9 @@ export function createRoleSource(
         before.answer.status === "active";
       let found: { answer: Answer; as_of: string };
       try {
-        found = await current(tenant, person, name, person);
+        // NEW IN STEP 45c: her own call spends the company's budget when DSoR knows nothing about
+        //   her (C4, D23).
+        found = await current(tenant, person, name, person, !known);
       } catch (error) {
         if (!known) throw stranger;
         throw error;
