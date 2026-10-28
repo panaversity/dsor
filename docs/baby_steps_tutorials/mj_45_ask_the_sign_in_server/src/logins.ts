@@ -1,4 +1,4 @@
-// NEW IN STEP 44: where a call's login comes from. Each world chooses. pnpm start and the earlier
+// Where a call's login comes from. Each world chooses. pnpm start and the earlier
 //   tests keep step 42's table of keys. pnpm serve takes a person's signed token, made for DSoR by
 //   the one sign-in server it trusts, and an agent's key. A token proves who signed in; DSoR's own
 //   table says which companies and roles that person holds (DSOR-IDN-01, DSOR-IDN-04a,

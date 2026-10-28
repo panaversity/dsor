@@ -1,4 +1,4 @@
-// NEW IN STEP 44: the one sign-in server DSoR trusts, for every company, and what a token from it
+// The one sign-in server DSoR trusts, for every company, and what a token from it
 //   must carry to be made for DSoR (DSOR-RP-02b, DSOR-IDN-04a). Start-up checks the file before any
 //   caller can ask (step 44's README, claim C5, decisions 44-1, 44-2, 44-3, 44-9, Q2, R2).
 import { readFileSync } from "node:fs";

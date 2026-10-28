@@ -1,4 +1,4 @@
-// NEW IN STEP 44: line ① with tokens made for DSoR. In pnpm serve's world a person is who a token
+// Line ① with tokens made for DSoR. In pnpm serve's world a person is who a token
 // from the one trusted sign-in server says, found in DSoR's own table by the token's sub, and an
 // agent keeps its key. Every refused login hears one answer, recorded before the answer leaves
 // (DSOR-IDN-01, DSOR-IDN-04a, DSOR-IDN-04b, DSOR-EXE-02; step 44's README, claims C1 to C4 and C6,

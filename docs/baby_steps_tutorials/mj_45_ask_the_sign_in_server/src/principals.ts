@@ -164,7 +164,7 @@ export function whoIsCalling(request: RequestEnvelope): Principal {
 }
 
 /**
- * NEW IN STEP 44: the caller a login source found, or the refusal of a call with none. Keys that
+ * The caller a login source found, or the refusal of a call with none. Keys that
  * could not be fetched are an outage, which the caller may try again, never "log in first" (step
  * 44's README, claim C6, decision 44-1).
  */

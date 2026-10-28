@@ -1,4 +1,4 @@
-// NEW IN STEP 44: a token counts only when it was made for DSoR: signed by the one trusted server,
+// A token counts only when it was made for DSoR: signed by the one trusted server,
 // for DSoR's audience, with the dsor scope, from a client DSoR knows, and at most an hour old. Each
 // test changes one thing, and every other check passes, so it proves that one check (DSOR-IDN-01,
 // DSOR-RP-02b, DSOR-IDN-04a; step 44's README, claims C1 and C6, decisions 44-1, 44-9, Q2, R1, R2).

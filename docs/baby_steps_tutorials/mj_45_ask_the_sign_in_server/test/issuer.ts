@@ -1,4 +1,4 @@
-// NEW IN STEP 44: what the tests of step 44 share: a sign-in server on 127.0.0.1, in the Panaversity
+// What the tests of step 44 share: a sign-in server on 127.0.0.1, in the Panaversity
 // SSO's shape. It holds an RS256 key, publishes the public half at /api/auth/jwks, and signs tokens
 // made for DSoR: aud DSoR's address and its own userinfo address, scope "openid dsor", the client in
 // azp, one hour long. The key exists only inside the tests (step 44's README, decision 44-8). Not a

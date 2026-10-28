@@ -1,4 +1,4 @@
-// NEW IN STEP 44: the one sign-in server DSoR trusts, in sign-in.json, checked at start-up
+// The one sign-in server DSoR trusts, in sign-in.json, checked at start-up
 // (DSOR-RP-02b, DSOR-IDN-04a; step 44's README, claim C5, decisions 44-1, 44-2, 44-3, 44-9, Q2, R2).
 import { describe, expect, it } from "vitest";
 import { audienceProblem, checkSignIn, readSignIn, type SignIn } from "../src/sign-in.ts";

@@ -69,10 +69,10 @@ export type Decision = {
       // What the agent said about itself, as line ① checked it, under the name the
       //   bundle uses, so a call with no bundle keeps it too (DSOR-AUD-06; step 33's README, D11).
       agent_asserted?: AgentAsserted;
-      // NEW IN STEP 44: the login of a call made with a token: the issuer, and the client the
+      // The login of a call made with a token: the issuer, and the client the
       //   person used. The person is the record's correlation (step 44's README, decision 44-11).
       login?: { issuer: string; client: string };
-      // NEW IN STEP 44: a refused token: why, and who it speaks for once its signature checked.
+      // A refused token: why, and who it speaks for once its signature checked.
       //   Never the token. The caller heard only "log in first" (step 44's README, decisions 44-10
       //   and 44-11).
       refused_token?: RefusedToken;
@@ -459,7 +459,7 @@ export function createLog(): MemoryLog {
 export type RefusedToken = { cause: Cause; issuer?: string; subject?: string; client?: string };
 
 /**
- * NEW IN STEP 44: what line ① learned about a call's token, for its record: the login of one that
+ * What line ① learned about a call's token, for its record: the login of one that
  * counts, or why one was refused. Nothing for a key (step 44's README, decision 44-11).
  */
 export type TokenOfRecord =
@@ -501,7 +501,7 @@ export function decisionOf(
   approvedUnder?: { control: string; version: number }[],
   // And what the agent said about itself, when it said something (step 33's README, D11).
   asserted?: AgentAsserted,
-  // NEW IN STEP 44: and what line ① learned about the call's token (decisions 44-10 and 44-11).
+  // And what line ① learned about the call's token (decisions 44-10 and 44-11).
   token?: TokenOfRecord,
 ): Decision {
   const refused = "code" in answer;

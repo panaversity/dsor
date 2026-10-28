@@ -1,4 +1,4 @@
-// NEW IN STEP 44: the token records of decision 44-11, on PostgreSQL. This tutorial's own fields must
+// The token records of decision 44-11, on PostgreSQL. This tutorial's own fields must
 // fit the 1 KiB dsor.audit allows them (migration 003b). A record that did not fit could not be kept,
 // and the caller would hear an outage instead of its refusal (DSOR-EXE-02; step 44's README, decision
 // 44-11, and the review's finding on 44-10).

@@ -1,4 +1,4 @@
-// NEW IN STEP 44: a signed token, checked against the one sign-in server DSoR trusts. DSoR takes
+// A signed token, checked against the one sign-in server DSoR trusts. DSoR takes
 //   nothing in it on trust: the signature with a key that server publishes, then the algorithm, the
 //   issuer, the audience, the time, the scope, the client, and the subject. What it gives back is
 //   only who signed in, and through which client: never a role (DSOR-IDN-01, DSOR-RP-02b,

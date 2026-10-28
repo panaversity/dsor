@@ -97,13 +97,13 @@ try {
   const { problems } = checkStore(readStore());
   if (problems.length > 0)
     refuse(`the map of the store refused to start:\n  ${problems.join("\n  ")}`);
-  // NEW IN STEP 44: the one sign-in server DSoR trusts, from sign-in.json, checked before any
+  // The one sign-in server DSoR trusts, from sign-in.json, checked before any
   //   caller can ask. A person signs in there with a token made for DSoR; an agent keeps its key
   //   (step 44's README, claims C4 and C5, decisions 44-2 and 44-6).
   const { signIn, problems: signInProblems } = checkSignIn(readSignIn());
   if (signIn === undefined)
     refuse(`sign-in.json refused to start:\n  ${signInProblems.join("\n  ")}`);
-  // NEW IN STEP 44: and made for this DSoR, at the port it listens on (decision 44-12).
+  // And made for this DSoR, at the port it listens on (decision 44-12).
   const elsewhere = audienceProblem(signIn, port);
   if (elsewhere !== undefined) refuse(`sign-in.json refused to start:\n  ${elsewhere}`);
   registry = { ...registry, logins: realLogins(signIn, remoteKeys()) };

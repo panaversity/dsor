@@ -234,7 +234,7 @@ export async function call(
   // The mode line ① read, or execute when the envelope names none. A command's
   // record names it (step 23's README, decision 10).
   let modeOfRecord: Mode | undefined;
-  // NEW IN STEP 44: what line ① learned about the call's token: the issuer and client of one that
+  // What line ① learned about the call's token: the issuer and client of one that
   //   counts, or why one was refused and who it speaks for (decisions 44-10 and 44-11).
   let tokenOfCall: TokenOfRecord | undefined;
   // The label of each read the code makes, noted by the bound store. Only the
@@ -285,7 +285,7 @@ export async function call(
     //   token and DSoR's own table only (DSOR-IDN-01, DSOR-SRC-02a). Then any principal the
     //   arguments name must be the caller (DSOR-SRC-02b), and the request id must be usable
     //   (step 05's README, decisions 6 and 7; step 07's README, decision 8).
-    // NEW IN STEP 44: the login is found first, from the world's source: step 42's table, or, in
+    // The login is found first, from the world's source: step 42's table, or, in
     //   pnpm serve, a token made for DSoR and an agent's key. Asking may wait for the sign-in
     //   server's keys, so it is done before line ①, which then refuses a call with no caller
     //   before any other check (DSOR-IDN-01; step 44's README, decisions 44-6 and 44-7). As in
@@ -301,7 +301,7 @@ export async function call(
       // request_id cannot be read gets an answer, not a throw. Found by step 07's review,
       // and fixed from step 05 on.
       correlation = { request_id: usableRequestId(request) ?? correlation.request_id };
-      // NEW IN STEP 44: refused as every bad login is. The record keeps why, and whose login it
+      // Refused as every bad login is. The record keeps why, and whose login it
       //   was, though the caller hears one answer (decisions 44-10 and 44-11).
       tokenOfCall = tokenOfRecord(login);
       const found = callerOf(login);
@@ -2393,7 +2393,7 @@ export async function call(
       staleOfRecord,
       approvedUnderOfRecord,
       evidence.asserted,
-      // NEW IN STEP 44: and the login of a good token for nobody DSoR lists (decision 44-10).
+      // And the login of a good token for nobody DSoR lists (decision 44-10).
       tokenOfCall,
     );
     const bundle = bundleOf(decision, evidence, registry.contracts.get(name));

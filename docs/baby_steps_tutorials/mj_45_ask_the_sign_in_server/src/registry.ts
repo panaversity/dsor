@@ -143,7 +143,7 @@ export type Registry = {
   // DSoR's own reads, for the queries over DSoR's own store, kept apart from the
   //   company's code and from DSoR's own work, which changes things (step 38c's README).
   reads: ReadonlyMap<string, OwnRead>;
-  // NEW IN STEP 44: and where a call's login comes from: step 42's table, unless the world gives
+  // And where a call's login comes from: step 42's table, unless the world gives
   //   real logins, as pnpm serve does (step 44's README, decision 44-6).
   logins: LoginSource;
 };
@@ -251,7 +251,7 @@ export function buildRegistry(
   // DSoR's own reads. Given, or else this step's own for each contract the
   //   registry has, so a registry of a few contracts gets no read of a contract it lacks.
   given?: Record<string, OwnRead>,
-  // NEW IN STEP 44: the logins, step 42's table unless the caller gives real ones.
+  // The logins, step 42's table unless the caller gives real ones.
   loginSource: LoginSource = FAKE_LOGINS,
 ): Registry {
   // Every problem is collected first, and the refusal names them all (step 03's
