@@ -1,4 +1,4 @@
-// NEW IN STEP 45b: the sign-in server is protected on PostgreSQL too, where the kept answers live in
+// The sign-in server is protected on PostgreSQL too, where the kept answers live in
 // dsor.role_answers (step 45b's README, D8, D9, D10). One registry is one DSoR server: its lookups
 // in flight and its runs of failures are in its own memory. DSoR's clock runs for real here.
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";

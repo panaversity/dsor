@@ -206,17 +206,17 @@ function timeOf(as_of: string): number {
   return day <= new Date(Date.UTC(year, month, 0)).getUTCDate() ? Date.parse(as_of) : Number.NaN;
 }
 
-// NEW IN STEP 45b: after five failures in a row from one company's server, this DSoR server asks
+// After five failures in a row from one company's server, this DSoR server asks
 // that server nothing for 10 seconds (step 45b's README, D10).
 const FAILURES = 5;
 const PAUSE_MS = 10 * 1000;
 
-// NEW IN STEP 45b: one company's server, as this DSoR server has found it: its failures in a row,
+// One company's server, as this DSoR server has found it: its failures in a row,
 // the end of its pause, and whether a call is trying it again (D10, D16).
 /** One company's run of failures on this DSoR server. */
 type Run = { failures: number; pausedUntil: number; trying: boolean };
 
-// NEW IN STEP 45b: one lookup, as every call that shares it reads it: the moment DSoR sent it,
+// One lookup, as every call that shares it reads it: the moment DSoR sent it,
 // and what came back (step 45b's README, D9).
 /** A lookup that calls share: when DSoR asked, and the reply, if one came in time. */
 type Asked = { askedAt: number } & ({ answered: true; answer: unknown } | { answered: false });
@@ -231,11 +231,11 @@ export function createRoleSource(
   // keeps them (step 45's README, D8).
   kept: KeptAnswers = memoryAnswers(),
 ): RoleSource {
-  // NEW IN STEP 45b: the lookups in flight on this DSoR server, one for each company and person.
+  // The lookups in flight on this DSoR server, one for each company and person.
   // A call about the same pair waits for the one in flight, and asks nothing. The key holds the
   // company, as the kept answers' key does (step 45b's README, C1, C2, D9; DSOR-TEN-02a).
   const flying = new Map<string, Promise<Asked>>();
-  // NEW IN STEP 45b: and each company's run of failures, keyed by company, so one company's outage
+  // And each company's run of failures, keyed by company, so one company's outage
   // never pauses another (C7, D10; DSOR-TEN-02a). In memory too: a restart forgets a run.
   const runs = new Map<string, Run>();
 
@@ -248,7 +248,7 @@ export function createRoleSource(
     const inFlight = flying.get(key);
     if (inFlight !== undefined) return inFlight;
     const askedAt = Date.now();
-    // NEW IN STEP 45b: after five failures in a row, a call asks nothing while the pause lasts, or
+    // After five failures in a row, a call asks nothing while the pause lasts, or
     // while another call tries the server again. It has no reply, at once, and uses the answer
     // kept, or is refused (C4, C5; D10, D16).
     const run = runs.get(tenant) ?? { failures: 0, pausedUntil: 0, trying: false };
@@ -268,14 +268,14 @@ export function createRoleSource(
       flying.delete(key);
       if (trial) run.trying = false;
       if (reply.answered) {
-        // NEW IN STEP 45b: any reply, even one DSoR cannot use, shows the server is up, and ends
+        // Any reply, even one DSoR cannot use, shows the server is up, and ends
         // the run (C6, D17).
         run.failures = 0;
         // One copy for every call that waited, which each copies again for itself (step 19's
         // README, decision 17).
         return { askedAt, answered: true, answer: copyOf(reply.answer) };
       }
-      // NEW IN STEP 45b: one lookup is one failure, however many calls waited for it. The fifth in
+      // One lookup is one failure, however many calls waited for it. The fifth in
       // a row starts a pause, and so does each failure after it, the trial's too (C4, C5).
       run.failures += 1;
       if (run.failures >= FAILURES) run.pausedUntil = Date.now() + PAUSE_MS;
@@ -315,7 +315,7 @@ export function createRoleSource(
     const since = recent === undefined ? Number.NaN : askedAt - recent.asked;
     const reuse =
       recent !== undefined && since >= 0 && since < REUSE_MS && askedAt - recent.at < setting.ms;
-    // NEW IN STEP 45b: the lookup in flight about this person in this company, if there is one, and
+    // The lookup in flight about this person in this company, if there is one, and
     // a new one otherwise (D9).
     const asked: Asked = reuse
       ? { askedAt, answered: false }
@@ -323,7 +323,7 @@ export function createRoleSource(
     let answer: Answer;
     let at: number;
     if (asked.answered) {
-      // NEW IN STEP 45b: the moment DSoR asked is the moment the shared lookup was sent, which may
+      // The moment DSoR asked is the moment the shared lookup was sent, which may
       // be before this call came. Each call that waited reads the answer as that old, and checks it
       // as its own, with every rule below (C3; D9, D13).
       const sent = asked.askedAt;

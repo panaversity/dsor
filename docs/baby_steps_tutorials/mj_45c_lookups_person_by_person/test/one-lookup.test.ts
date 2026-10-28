@@ -1,4 +1,4 @@
-// NEW IN STEP 45b: calls about the same company and person share one lookup in flight, on each DSoR
+// Calls about the same company and person share one lookup in flight, on each DSoR
 // server (step 45b's README, C1 to C3, and D9). The agent works under del_100, which user_123
 // signed, and DSoR asks a test sign-in server for org_456, which can hold its replies until the test
 // sends them. Only the date is faked: the network needs real timers.

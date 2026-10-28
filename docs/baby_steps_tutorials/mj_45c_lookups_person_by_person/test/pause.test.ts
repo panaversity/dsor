@@ -1,4 +1,4 @@
-// NEW IN STEP 45b: after five failures in a row from one company's sign-in server, this DSoR server
+// After five failures in a row from one company's sign-in server, this DSoR server
 // asks it nothing for 10 seconds, and then lets one call try it again (step 45b's README, C4 to C7,
 // D10, D16, and D17). The agent works under del_100, which user_123 signed, and DSoR asks a test
 // sign-in server for org_456. Only the date is faked: the network needs real timers.

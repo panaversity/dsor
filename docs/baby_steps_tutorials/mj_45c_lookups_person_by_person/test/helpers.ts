@@ -242,7 +242,7 @@ export function withoutControls(...given: Parameters<typeof buildRegistry>): Reg
   //   line ② finds her company, as her slip's line ③ does (step 45's README, C2 and D7).
   const directories = named ?? storyDirectories();
   const [, , , , , , , , , roleSettings, claims, own, brakes, lifetimes, policies] = given;
-  // NEW IN STEP 45b: and the kept answers, when the test gives them, so that two DSoR servers can
+  // And the kept answers, when the test gives them, so that two DSoR servers can
   // share them, as two servers on one database do (step 45b's README, D9).
   const answers = given[22];
   return buildRegistry(
@@ -769,7 +769,7 @@ export function slipRegistry(
   rows: Payment[] = [],
   // The story's directories, unless the test gives others.
   directories: Directories = storyDirectories(),
-  // NEW IN STEP 45b: the kept answers, this DSoR server's own unless the test gives a store that
+  // The kept answers, this DSoR server's own unless the test gives a store that
   // another one shares (D9).
   answers?: KeptAnswers,
 ): Registry {

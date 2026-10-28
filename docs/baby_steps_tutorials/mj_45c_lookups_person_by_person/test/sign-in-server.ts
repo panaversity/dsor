@@ -39,7 +39,7 @@ export type SignInServer = {
   dropped: () => number;
   /** From now on, the server takes each request and never replies. */
   hang: () => void;
-  // NEW IN STEP 45b: so a test can hold a lookup in flight, and send calls while it waits (step
+  // So a test can hold a lookup in flight, and send calls while it waits (step
   // 45b's README, D9).
   /** From now on, the server keeps each reply back, until release() sends it. */
   hold: () => void;
