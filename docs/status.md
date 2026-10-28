@@ -2,15 +2,15 @@
 
 **This document is the only authority on what is implemented.** The README is the
 idea; the specification is the contract; this page is the facts. Last updated:
-2026-10-28.
+2026-10-23.
 
 ## Specification
 
-**v1.5.0**, draft for review. 273 requirements: 89 at L1, 120 at L2, 25 at L3, 25 in
-the reference profile, 14 for the surrounding stack. v1.5.0 gives the identity-provider
-lookup a contract of DSoR's own (§37.1, DSOR-RP-12 to DSOR-RP-14) with a fourteenth
-schema, `role-source-answer`, and adds DSOR-IDN-08 and DSOR-IDN-09 for every role
-source. No existing requirement or schema changed.
+**v1.4.0**, draft for review. 268 requirements: 89 at L1, 118 at L2, 25 at L3, 22 in
+the reference profile, 14 for the surrounding stack. v1.4.0 adds DSOR-CTX-07 and
+DSOR-CTX-08 and splits the reference context store into Graphiti (memory) and
+OpenViking (skills and resources). No L1, L2, L3, or RP requirement and no schema
+differs from v1.3.
 
 Neither Graphiti nor OpenViking is integrated, installed, or tested in this
 repository. The bindings in §40 are a design, checked against both projects'

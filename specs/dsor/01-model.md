@@ -1,7 +1,7 @@
 ---
 status: draft
-version: 1.5.0
-date: 2026-10-28
+version: 1.4.0
+date: 2026-09-20
 part: 01-model
 ---
 

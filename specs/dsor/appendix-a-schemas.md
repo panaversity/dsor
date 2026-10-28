@@ -1,7 +1,7 @@
 ---
 status: draft
-version: 1.5.0
-date: 2026-10-28
+version: 1.4.0
+date: 2026-09-20
 part: appendix-a-schemas
 ---
 
@@ -24,4 +24,3 @@ JSON Schema draft 2020-12, identified by URN. `common` holds shared definitions:
 | `event` | Domain event | Event id, ordering key, origin, classification |
 | `connector` | Connector declaration | Every capability stated; region; `shared` requires change detection |
 | `tenant-policy` | Money, role source, SoD, egress, residency | `on_unconvertible` is fixed to `restrictive`; enabling owner-approval requires who enabled it, a ceiling, a cooling-off period, and a notification channel |
-| `role-source-answer` | A role source's answer to a lookup ([§37.1](05-bindings.md#371-role-source-lookup)) | Tenant, person, status, roles, and `as_of` required; `status` is `active`, `suspended`, or `gone`; `roles` is empty unless `status` is `active` |
