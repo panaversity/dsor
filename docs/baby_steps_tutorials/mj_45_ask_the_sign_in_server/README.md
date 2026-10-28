@@ -35,8 +35,9 @@ the same job.
 - `status` is `active`; `suspended`, a person who may not act for now; or `gone`, a person who left
   the company or has no account.
 - `as_of` is when the server read its facts. An answer's age runs from it.
-- A *kept answer* is the last answer DSoR received about a person. It counts for up to
-  `max_staleness`, one hour here, while the server cannot answer.
+- A *kept answer* is the last answer DSoR received about a person. It counts for up to the
+  company's `max_staleness` while the server cannot answer: one hour for org_456 and four for
+  org_789, in `role-sources.json`.
 - *Cannot answer now* means a `429` (too many requests), a `5xx` (the server failed), a timeout, or
   no connection.
 - A *company key* is the credential that the company's owner made in the SSO for DSoR. It reads that
@@ -139,11 +140,11 @@ Proposed by the learner, and not in the specification yet ([`../mj_notes.md`](..
 
 | Claim | What it says |
 |---|---|
-| C1 | Line ③ asks the company's sign-in server about a slip's signer, through the contract: one request for one tenant and one person, with that company's key and no other (DSOR-IDN-05; D1, D4) |
+| C1 | Line ③ asks the company's sign-in server about a slip's signer, through the contract: one request for one tenant and one person, with that company's key and no other. The address comes from `lookups.json`, and the key from the environment, sent as `Authorization: Bearer` (DSOR-IDN-05; D1, D4, D11, D14) |
 | C2 | Line ② asks too: a person's companies and roles come from the same lookup, by the token's `sub`, never from a row in DSoR's code and never from a claim in the token. A person who is not `active` in the company has no membership there, and is refused (DSOR-IDN-03a, DSOR-IDN-04a, DSOR-IDN-04b; decision Q7) |
-| C3 | An answer counts only when it is a `200` that validates against `role-source-answer`, names the tenant and the person DSoR asked about, and has an `as_of` at most one minute ahead of DSoR's clock (D2, D4) |
+| C3 | An answer counts only when it is a `200` that validates against `role-source-answer` (in `proposals/`, D12), names the tenant and the person DSoR asked about, and has an `as_of` at most one minute ahead of DSoR's clock (D2, D4) |
 | C4 | Roles count only when `status` is `active`. `suspended` or `gone` refuses the call and suspends every slip that person signed (DSOR-IDN-07). The signer's authority at decision time is what the lookup said (DSOR-DEL-02). A role that `roles.json` does not define grants nothing (DSOR-AUT-01b) |
-| C5 | When the server cannot answer now (a `429`, a `5xx`, no reply within 2 seconds, or no connection), DSoR does not try again. The kept answer counts while it is younger than `max_staleness`, measured from its `as_of`. After that the call is refused with `FRESHNESS_UNSATISFIABLE`, and the company's alert receivers hear at once. Start-up still refuses a `max_staleness` over 24 hours (DSOR-IDN-06, DSOR-BND-02; decision Q8; D10's timeout) |
+| C5 | When the server cannot answer now (a `429`, a `5xx`, no reply within 2 seconds, or no connection), DSoR does not try again. The kept answer counts while it is younger than `max_staleness`, measured from its `as_of`: the earlier of the server's and the moment DSoR asked (D13). After that the call is refused with `FRESHNESS_UNSATISFIABLE`, and the company's alert receivers hear at once. Start-up still refuses a `max_staleness` over 24 hours (DSOR-IDN-06, DSOR-BND-02; decision Q8; D10's timeout) |
 | C6 | Any other reply is a fault: `INTERNAL_ERROR`, and the kept answer is dropped (D2) |
 | C7 | An answer is reused for up to 10 seconds. The answers live in a table in DSoR's PostgreSQL, so every DSoR server shares them and a restart keeps them. A decision's record names the answer's `as_of` (D3, D8) |
 | C8 | One world: the people's rows in `src/principals.ts` and the fake directory in `src/serve.ts` are gone. `pnpm start` and the older tests use a small stand-in that answers the contract. The timer jobs keep their keys for now (D6, D7) |
@@ -195,6 +196,25 @@ For this step, the learner's, on 2026-10-28, each with Claude Code's recommendat
 D9, one lookup in flight for each company and person, and the rest of D10, a 10-second pause after
 five failures in a row, are step 45b's.
 
+Found by checking this design against the rules and the schemas, and put to the learner on
+2026-10-28, each with Claude Code's recommendation taken:
+
+- **D11. Each company's lookup address is in `lookups.json`, and its key comes from the
+  environment,** as `DSOR_LOOKUP_KEY_ORG_456`, never from a file (DSOR-CNR-02). The specification's
+  `role_source` setting holds only `kind` and `max_staleness`, and DSOR-SCH-02 keeps our own fields
+  out of it. Start-up refuses a company that has a lookup and no key. *Downside:* one more settings
+  file, and one variable for each company.
+- **D12. The proposal's answer schema is `proposals/role-source-answer.schema.json`.** `schemas/`
+  keeps only the specification's copies, byte for byte (step 03's README, decision 3). When the
+  proposal lands, the file moves there unchanged. *Downside:* a second folder of schemas until then.
+- **D13. An answer's `as_of` is the earlier of the server's `as_of` and the moment DSoR asked.** An
+  answer read three hours ago counts as three hours old, and one up to a minute ahead counts as the
+  moment DSoR asked (step 19's README, decision 14, together with D4). *Downside:* one more rule to
+  hold in mind.
+- **D14. DSoR sends the company key as `Authorization: Bearer`,** the HTTP standard for a credential
+  (RFC 6750), so that no product's habit enters DSoR's contract. *Downside:* the Panaversity SSO's
+  route reads `x-api-key` today, and must read Bearer too, a change in #1331.
+
 ### The tests, by claim
 
 Each test changes one thing while every other check passes, so it proves that one check and no
@@ -203,9 +223,9 @@ other. The lookup's tests ask a small test server that answers the contract, wit
 
 | Claim | Tests |
 |---|---|
-| C1 | `DSOR-IDN-05`: a slip signed by `user_123` in org_456 makes one request, for tenant org_456 and person `user_123`, with org_456's key. `D1`: org_789's lookup uses org_789's key, and never org_456's |
+| C1 | `DSOR-IDN-05`: a slip signed by `user_123` in org_456 makes one request, for tenant org_456 and person `user_123`, with org_456's key. `D1`: org_789's lookup uses org_789's key, and never org_456's. `D11`: start-up refuses org_456 with a lookup address and no key in the environment, and no key appears in a log or a record. `D14`: the key travels as `Authorization: Bearer`, and a server that gets none answers `401`, a fault (C6) |
 | C2 | `DSOR-IDN-04a`: `cfo_100`'s token; their roles in org_456 come from the lookup (`CFO`), and no row in `src/principals.ts` names them. `DSOR-IDN-04b`: a token that claims `CFO` for `user_700` does not change what the lookup says. `DSOR-IDN-03a`: `user_123`, `gone` from org_456, calls with a good token and is refused at line ② |
-| C3 | `D2`: an answer about `cfo_100` when DSoR asked about `user_123`, and an answer about org_789 when DSoR asked about org_456, are faults. `D4`: an answer with no `as_of`, with a fourth status, or with roles while `gone` is a fault. `D4`: an `as_of` 59 seconds ahead counts as now; 61 seconds ahead is a fault |
+| C3 | `D2`: an answer about `cfo_100` when DSoR asked about `user_123`, and an answer about org_789 when DSoR asked about org_456, are faults. `D4`: an answer with no `as_of`, with a fourth status, or with roles while `gone` is a fault. `D4`, `D13`: an `as_of` 59 seconds ahead counts, and is recorded as the moment DSoR asked; 61 seconds ahead is a fault |
 | C4 | `DSOR-IDN-07`: `gone` refuses the payment and suspends `del_100`; so does `suspended`. `DSOR-DEL-02`: the earlier steps' tests of effective authority (`user_123` moves to `ap_clerk`, and the agent under `del_100` may prepare but never execute) pass with the lookup's answers. `DSOR-AUT-01b`: `active` with a role that `roles.json` does not define is refused for lack of a permission |
 | C5 | `DSOR-IDN-06`: a `429`, a `503`, no reply within 2 seconds, and no connection each let the kept answer count while it is younger than one hour; at 61 minutes the call is refused with `FRESHNESS_UNSATISFIABLE`, and an alert goes out at the first one. `DSOR-IDN-06`: an answer whose `as_of` is 61 minutes old is refused. `D10`: a reply after 2.5 seconds counts as no reply, and no second request is sent. `DSOR-BND-02`: start-up still refuses a `max_staleness` over 24 hours |
 | C6 | `D2`: a `401`, a `403`, a `404`, a `200` that is not JSON, and a `200` that fails the schema are each `INTERNAL_ERROR`, and the kept answer is gone afterwards |
