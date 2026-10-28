@@ -1,0 +1,87 @@
+{
+  "rule": "dsor://org_456/rule/cross-tenant-rule",
+  "draft": {
+    "operation": "payment.create",
+    "condition": "dsor_exceeds(state.invoice.open_amount, dsor_money(\"20000\", \"USD\"))",
+    "effect": {
+      "require_approval": {
+        "role": "CFO",
+        "quorum": 1
+      }
+    },
+    "authority": {
+      "system": "ksor",
+      "uri": "ksor://org_456/finance/payment-approval-policy",
+      "rule": "high-value-payment",
+      "version": 4,
+      "content_hash": "sha256:9f2c1e7ab4d0"
+    },
+    "owner": "cfo_100",
+    "on_stale": "require_approval",
+    "stale_grace": "P7D",
+    "tests": [
+      {
+        "state": {
+          "invoice": {
+            "open_amount": {
+              "value": "20000.00",
+              "currency": "USD"
+            }
+          }
+        },
+        "expect": "ALLOW"
+      },
+      {
+        "state": {
+          "invoice": {
+            "open_amount": {
+              "value": "20000.01",
+              "currency": "USD"
+            }
+          }
+        },
+        "expect": "REQUIRE_APPROVAL"
+      },
+      {
+        "state": {
+          "invoice": {
+            "open_amount": {
+              "value": "50000000.00",
+              "currency": "PKR"
+            }
+          }
+        },
+        "rates": {
+          "PKR": "280"
+        },
+        "expect": "REQUIRE_APPROVAL"
+      },
+      {
+        "state": {
+          "invoice": {
+            "open_amount": {
+              "value": "5000000.00",
+              "currency": "PKR"
+            }
+          }
+        },
+        "rates": {
+          "PKR": "280"
+        },
+        "expect": "ALLOW"
+      },
+      {
+        "state": {
+          "invoice": {
+            "open_amount": {
+              "value": "100.00",
+              "currency": "XXX"
+            }
+          }
+        },
+        "expect": "REQUIRE_APPROVAL"
+      }
+    ]
+  },
+  "reason": "the cross-tenant suite drafts a rule of its own"
+}

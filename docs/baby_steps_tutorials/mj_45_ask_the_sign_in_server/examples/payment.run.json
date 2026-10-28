@@ -1,0 +1,6 @@
+{
+  "lines": [
+    { "invoice": "dsor://org_456/invoice/INV-1002", "expected_version": 1 },
+    { "invoice": "dsor://org_456/invoice/INV-1009", "expected_version": 1 }
+  ]
+}

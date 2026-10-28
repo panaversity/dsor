@@ -1,0 +1,20 @@
+{
+  "id": "payment.run",
+  "version": 1,
+  "kind": "command",
+  "effect": "additive",
+  "input": { "schema": "PaymentRunRequest" },
+  "output": { "schema": "PaymentRun" },
+  "authorization": { "permission": "payment:create", "approve_permission": "payment:approve" },
+  "tenancy": { "required": true },
+  "delegation": { "required": true },
+  "idempotency": { "required": true },
+  "concurrency": { "strategy": "none" },
+  "execution": { "semantics": "compensatable", "compensated_by": ["payment.cancel"] },
+  "risk": { "level": "medium" },
+  "preconditions": { "freshness": "current", "predicates": [] },
+  "batch": { "atomicity": "all_or_nothing", "max_items": 50 },
+  "controls": [],
+  "audit": { "level": "full" },
+  "extensions": { "org.panaversity.steps": { "line": "payment.create" } }
+}
