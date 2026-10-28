@@ -1,4 +1,4 @@
-// NEW IN STEP 45: what the lookup does with each kind of reply (step 45's README, C1, C5, C6, D10,
+// What the lookup does with each kind of reply (step 45's README, C1, C5, C6, D10,
 // D13, D14). The agent works under del_100, which user_123 signed, and DSoR asks a test sign-in
 // server for org_456.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

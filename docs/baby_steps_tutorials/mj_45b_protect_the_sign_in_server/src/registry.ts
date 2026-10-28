@@ -254,7 +254,7 @@ export function buildRegistry(
   given?: Record<string, OwnRead>,
   // The logins, step 42's table unless the caller gives real ones.
   loginSource: LoginSource = FAKE_LOGINS,
-  // NEW IN STEP 45: the answers each company's role source gave, in memory unless DSoR runs on
+  // The answers each company's role source gave, in memory unless DSoR runs on
   // its database (step 45's README, D8).
   answers: KeptAnswers = memoryAnswers(),
 ): Registry {

@@ -1,4 +1,4 @@
-// NEW IN STEP 45: lookups.json and the company keys, checked when pnpm serve starts (step 45's
+// Lookups.json and the company keys, checked when pnpm serve starts (step 45's
 // README, C1 and D11). Each company's lookup is an address in the file and a key in the
 // environment, and the key is never written down anywhere else: not in the file, not in a
 // problem, not in a record.

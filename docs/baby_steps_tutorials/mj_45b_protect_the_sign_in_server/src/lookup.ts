@@ -1,4 +1,4 @@
-// NEW IN STEP 45: the lookup, the role source of a company whose sign-in server answers DSoR's own
+// The lookup, the role source of a company whose sign-in server answers DSoR's own
 // question (step 45's README, D1, D4, D11, D14). DSoR asks about one person in one company: a GET
 // of the company's lookup address with ?tenant=&person=, carrying the company key as
 // Authorization: Bearer. The lookup is a directory in step 19's sense: authority.ts asks it, waits

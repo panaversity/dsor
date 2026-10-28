@@ -43,7 +43,7 @@ export type RoleSettingsSource = { file: string; text: string };
 /** DSoR's side of the role source: the signer's current authority, or a refusal. */
 export type RoleSource = {
   authorityOf: (tenant: string, slip: Slip, name: string) => Promise<SignerAuthority>;
-  // NEW IN STEP 45: and a person's own, at line ②, when she calls for herself (step 45's README,
+  // And a person's own, at line ②, when she calls for herself (step 45's README,
   // C2; decision Q7).
   /** What a person who calls for herself holds in this company now, or a refusal. */
   memberOf: (tenant: string, person: string, name: string) => Promise<SignerAuthority>;
@@ -69,7 +69,7 @@ const ajv = new Ajv2020({
   coerceTypes: false,
   removeAdditional: false,
   strict: false,
-  // NEW IN STEP 45: and no formats, as slips.ts builds its checker. An answer's as_of is read below,
+  // And no formats, as slips.ts builds its checker. An answer's as_of is read below,
   // by TIMESTAMP, so the checker neither checks a date-time nor warns at start-up that it cannot.
   // Found by the database run: pnpm start printed the warning, and must print nothing to stderr.
   validateFormats: false,
@@ -79,7 +79,7 @@ ajv.addSchema(loadSchema("tenant-policy.schema.json"));
 const validateSetting = ajv.compile({
   $ref: "urn:dsor:schema:1.3:tenant-policy#/properties/role_source",
 });
-// NEW IN STEP 45: the shape of an answer, from our proposal for the specification. It sits in
+// The shape of an answer, from our proposal for the specification. It sits in
 // proposals/, apart from the specification's own copies, until the proposal lands (step 45's
 // README, D4, D12).
 const PROPOSALS = new URL("../proposals/", import.meta.url);
@@ -172,11 +172,11 @@ export function checkRoleSettings(
 // call from an agent (step 19's README, decision 9).
 const WAIT_MS = 2000;
 
-// NEW IN STEP 45: an answer is used again for up to 10 seconds, so a flood of calls from agents is
+// An answer is used again for up to 10 seconds, so a flood of calls from agents is
 // a few lookups a minute. A person who left is caught within 10 seconds (step 45's README, D3).
 const REUSE_MS = 10 * 1000;
 
-// NEW IN STEP 45: an answer in the shape the proposal gives: active, suspended, or gone, which is
+// An answer in the shape the proposal gives: active, suspended, or gone, which is
 // left the company or never had an account, and roles only while active (step 45's README, D4).
 // Any other answer is one DSoR cannot read (step 19's README, decision 11).
 type Answer = {
@@ -187,7 +187,7 @@ type Answer = {
   as_of: string;
 };
 
-// NEW IN STEP 45: an answer's as_of may run ahead of DSoR's clock by one minute at most, and then
+// An answer's as_of may run ahead of DSoR's clock by one minute at most, and then
 // counts as the moment DSoR asked; further ahead, the reply is one DSoR cannot use (D4, D13).
 const AHEAD_MS = 60 * 1000;
 // The checker above loads no formats, so it lets any text pass as a date-time. A time is read
@@ -212,13 +212,13 @@ export function createRoleSource(
   directories: Directories,
   // The kept answers, in memory, so a restart forgets them (step 19's README, decision 3).
   // A test may plant one.
-  // NEW IN STEP 45: or in DSoR's PostgreSQL, so every DSoR server shares them, and a restart
+  // Or in DSoR's PostgreSQL, so every DSoR server shares them, and a restart
   // keeps them (step 45's README, D8).
   kept: KeptAnswers = memoryAnswers(),
 ): RoleSource {
-  // NEW IN STEP 45: the question both lines ask, about a slip's signer at line ③ and about a person
-  //   who calls for herself at line ②: what the company says about this person now, and as of
-  //   when (step 45's README, C2). `who` names the person in a refusal's words.
+  // The question both lines ask, about a slip's signer at line ③ and about a person
+  // who calls for herself at line ②: what the company says about this person now, and as of
+  // when (step 45's README, C2). `who` names the person in a refusal's words.
   /** The answer DSoR may use about this person now, and its time, or a refusal. */
   async function current(
     tenant: string,
@@ -238,7 +238,7 @@ export function createRoleSource(
     // The question. An answer is never later than the moment DSoR asked: the directory may
     // have changed a moment after it answered (step 19's README, decision 14).
     const askedAt = Date.now();
-    // NEW IN STEP 45: not at every call any more. An answer DSoR asked for less than 10
+    // Not at every call any more. An answer DSoR asked for less than 10
     // seconds ago is used again, and the server is not asked, while the answer is under the
     // company's bound too (D3). Never one asked for in the future: a clock that went back
     // would make it look new (step 19's README, decision 15).
@@ -253,7 +253,7 @@ export function createRoleSource(
       // One copy, read once, and every check and every use reads that copy, as line ①
       // copies the input (step 07's README, decision 9; step 19's README, decision 17).
       const copy = copyOf(asked.answer);
-      // NEW IN STEP 45: the time the server read its facts. Further than a minute ahead of
+      // The time the server read its facts. Further than a minute ahead of
       // DSoR's clock, the answer is one DSoR cannot use (D4).
       const read = usable(copy, tenant, person) ? timeOf(copy.as_of) : Number.NaN;
       if (!(read <= askedAt + AHEAD_MS)) {
@@ -264,7 +264,7 @@ export function createRoleSource(
         throw new Refusal("INTERNAL_ERROR", cannotUse);
       }
       answer = copy as Answer;
-      // NEW IN STEP 45: the answer counts from the earlier of the server's time and the moment
+      // The answer counts from the earlier of the server's time and the moment
       // DSoR asked (D13). Facts read longer ago than the company's bound establish nothing now,
       // though they came back at once (DSOR-IDN-06; break B3).
       at = Math.min(read, askedAt);
@@ -275,11 +275,11 @@ export function createRoleSource(
       }
       // Older news never replaces newer: an answer whose facts are older than the kept ones is
       // not kept over them (decision 14). Found by step 19's review.
-      // NEW IN STEP 45: the store decides it, in one step, with the moment DSoR asked (D3, D8).
+      // The store decides it, in one step, with the moment DSoR asked (D3, D8).
       await kept.keep(tenant, person, { answer: copy as Answer, at, asked: askedAt });
-      // NEW IN STEP 45: and the call decides on the newer news too. A reply from a server that
-      //   lags may be older than the answer DSoR keeps, and then the kept one decides: found by
-      //   step 45's review, finding 4 (step 19's README, decision 14).
+      // And the call decides on the newer news too. A reply from a server that
+      // lags may be older than the answer DSoR keeps, and then the kept one decides: found by
+      // step 45's review, finding 4 (step 19's README, decision 14).
       const newest = await kept.get(tenant, person);
       if (newest !== undefined && newest.at > at && usable(newest.answer, tenant, person)) {
         answer = newest.answer;
@@ -289,7 +289,7 @@ export function createRoleSource(
       // No answer: the kept one counts only while it is under the company's bound
       // (DSOR-IDN-06; step 19's README, decisions 3, 4, and 5). Never one from the future: a
       // clock that went back would make an old answer look young (decision 15).
-      // NEW IN STEP 45: an answer used again takes this path too (D3). After a wait, the kept
+      // An answer used again takes this path too (D3). After a wait, the kept
       // answer is read again: another call may have kept a newer one meanwhile.
       const last = reuse ? recent : await kept.get(tenant, person);
       const age = last === undefined ? Number.NaN : Date.now() - last.at;
@@ -320,7 +320,7 @@ export function createRoleSource(
       const person = slip.delegator;
       const who = `${person}, who signed slip ${slip.id},`;
       const { answer, as_of } = await current(tenant, person, name, who);
-      // NEW IN STEP 45: suspended or gone, her agent gets nothing, and her slips here are suspended
+      // Suspended or gone, her agent gets nothing, and her slips here are suspended
       // (DSOR-IDN-07). Gone takes the place of step 19's deprovisioned and of "not listed": a
       // company's server says only that she is not here, not why (D4). One message for both:
       // which one she is, is a fact about a person that the agent may not read (DSOR-ERR-01b;
@@ -335,8 +335,8 @@ export function createRoleSource(
       }
       return { roles: [...answer.roles], source: "role_source", as_of };
     },
-    // NEW IN STEP 45: the same question about a person who calls for herself, asked at line ②
-    //   (step 45's README, C2; decision Q7).
+    // The same question about a person who calls for herself, asked at line ②
+    // (step 45's README, C2; decision Q7).
     memberOf: async (tenant: string, person: string, name: string): Promise<SignerAuthority> => {
       // Suspended or gone, she may not work in the company. The words are the ones line ② gives
       //   anyone who is not a member, so the answer does not say which one she is (DSOR-ERR-01b).
@@ -403,7 +403,7 @@ function copyOf(answer: unknown): unknown {
 }
 
 /** True for an answer DSoR can use: in the proposal's shape, about this person, in this company. */
-// NEW IN STEP 45: the shape is the proposal's schema now, not a list of checks of its own. The
+// The shape is the proposal's schema now, not a list of checks of its own. The
 // schema holds the rest of step 19b's decision 15: roles are a list of words, and empty unless
 // the person is active (D4).
 function usable(answer: unknown, tenant: string, person: string): answer is Answer {

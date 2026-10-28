@@ -1,4 +1,4 @@
-// NEW IN STEP 45: the lookup joins the list every role source passes (step 45's README, D5). DSoR
+// The lookup joins the list every role source passes (step 45's README, D5). DSoR
 // asks a test sign-in server for org_456, at the address that lookups.json would name, with the
 // company's test key (D11, D14). The list's switches become the server's: "cannot answer now" is
 // a 503, and "read at 01:01" is that time of the story's night.

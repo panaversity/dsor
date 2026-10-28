@@ -296,9 +296,9 @@ describe("C1: every permission is <resource>:<action>, checked at start-up", () 
   });
 });
 
-// NEW IN STEP 45: a person is no longer in DSoR's table. Her key names her at the stand-in, and her
-//   roles are the ones the story's directory gives her, as line ② finds them (step 45's README,
-//   C2 and D7). Any other login is found in DSoR's table, as before.
+// A person is no longer in DSoR's table. Her key names her at the stand-in, and her
+// roles are the ones the story's directory gives her, as line ② finds them (step 45's README,
+// C2 and D7). Any other login is found in DSoR's table, as before.
 /** Whom a login names, with the roles the call would hold in org_456. */
 function holderOf(token: string): Principal {
   const person = STAND_IN_KEYS.get(token);

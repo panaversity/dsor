@@ -1,4 +1,4 @@
-// NEW IN STEP 45: an answer is used again for up to 10 seconds, and the server is not asked (step
+// An answer is used again for up to 10 seconds, and the server is not asked (step
 // 45's README, C7 and D3). The agent works under del_100, which user_123 signed, and DSoR asks a
 // test sign-in server for org_456. Only the date is faked: the network needs real timers.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

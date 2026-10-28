@@ -115,10 +115,10 @@ export const KINDS: ReadonlyMap<string, Kind> = new Map<string, Kind>([
     "control-claimed",
     { side: "dsor", table: ["SELECT"], columns: ["INSERT", "UPDATE"], key: true, triggers: false },
   ],
-  // NEW IN STEP 45: DSoR's own copies of what a company said, such as each company's answer
-  //   about a person's job: read them, add them, and replace them with newer ones, each through
-  //   named columns. Never DELETE: an answer DSoR forgets leaves its row with no answer (step
-  //   45's README, D8).
+  // DSoR's own copies of what a company said, such as each company's answer
+  // about a person's job: read them, add them, and replace them with newer ones, each through
+  // named columns. Never DELETE: an answer DSoR forgets leaves its row with no answer (step
+  // 45's README, D8).
   [
     "control-kept",
     { side: "dsor", table: ["SELECT"], columns: ["INSERT", "UPDATE"], key: true, triggers: false },

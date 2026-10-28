@@ -401,8 +401,8 @@ describe("C3: the agent may use only what its slip lists and its signer holds no
     },
   );
 
-  // NEW IN STEP 45: user_999, whom org_456's company does not list, is gone, as a person who left
-  //   is (step 45's README, D4 and D15).
+  // user_999, whom org_456's company does not list, is gone, as a person who left
+  // is (step 45's README, D4 and D15).
   it("D15: a slip signed by user_999, whom DSoR does not know and org_456 does not list, is refused at line ③ as gone, and suspended", async () => {
     const lines: number[] = [];
     const slips = with100({ delegator: "user_999" });

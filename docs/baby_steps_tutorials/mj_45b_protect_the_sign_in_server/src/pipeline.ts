@@ -338,7 +338,7 @@ export async function call(
       return { caller: found, copy, key, named, supersedes };
     });
     const { copy, key, named, supersedes } = first;
-    // NEW IN STEP 45: line ② may learn, for a person, what she holds now.
+    // Line ② may learn, for a person, what she holds now.
     let caller = first.caller;
 
     // ② Resolve tenant. The company comes from the envelope, and DSoR checks
@@ -351,10 +351,10 @@ export async function call(
       // The envelope comes from outside the program, so it may even be null. Read once.
       const named = request?.tenant;
       if (isTenantId(named)) claimedTenant = named;
-      // NEW IN STEP 45: a person's companies and roles come from her company's sign-in server,
-      //   asked about who line ① found, for the company the envelope names: never from a row
-      //   in DSoR's code, never from a claim in her token. A person it does not list as active
-      //   is not a member, and the next line refuses her (step 45's README, C2; decision Q7).
+      // A person's companies and roles come from her company's sign-in server,
+      // asked about who line ① found, for the company the envelope names: never from a row
+      // in DSoR's code, never from a claim in her token. A person it does not list as active
+      // is not a member, and the next line refuses her (step 45's README, C2; decision Q7).
       if (caller.type === "human" && isTenantId(named)) {
         // The name the caller sent, cut and quoted: the contract is not looked up yet.
         const held = await registry.roleSource.memberOf(named, caller.id, preview(name));

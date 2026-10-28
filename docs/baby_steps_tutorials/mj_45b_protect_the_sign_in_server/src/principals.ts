@@ -37,7 +37,7 @@ export type Principal = {
   type: PrincipalType;
   memberships: Membership[];
   clearance?: Label;
-  // NEW IN STEP 45: for a person, set by line ②: where her roles came from, her company's
+  // For a person, set by line ②: where her roles came from, her company's
   // lookup, and as of when. A record of her own call names it (step 45's README, C2).
   authority?: { source: "role_source"; as_of: string };
 };

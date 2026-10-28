@@ -65,9 +65,9 @@ async function switchOn(w: RuleWorld, text: Record<string, unknown>) {
 // Since step 45, an answer is used again for 10 seconds, and a change in the directory counts
 // from the first question after that (step 45's README, D3). These tests move DSoR's date 11
 // seconds on, as if the release came that much after the draft.
-// NEW IN STEP 45: user_123's own roles follow the directory too, so once it moves her to
-//   ap_clerk her own release is refused at line ⑨. user_124, a second AP supervisor, releases
-//   instead, and the check again still meets her slip's new job (step 45's README, C2).
+// user_123's own roles follow the directory too, so once it moves her to
+// ap_clerk her own release is refused at line ⑨. user_124, a second AP supervisor, releases
+// instead, and the check again still meets her slip's new job (step 45's README, C2).
 const USER_124: RequestEnvelope = { token: "tok_user_124", tenant: "org_456" };
 const SECOND_SUPERVISOR = {
   id: "user_124",

@@ -1,4 +1,4 @@
-// NEW IN STEP 45: line ② asks too. A person's companies and roles come from her company's lookup,
+// Line ② asks too. A person's companies and roles come from her company's lookup,
 // asked about whom line ① found, never from a row in DSoR's code and never from a claim in her token
 // (step 45's README, C2; decision Q7). DSoR's own table holds no person: only agents and the timer
 // jobs' logins (C8, D6, D7). DSoR asks a test sign-in server for org_456.

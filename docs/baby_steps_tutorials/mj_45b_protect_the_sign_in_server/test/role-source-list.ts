@@ -1,4 +1,4 @@
-// NEW IN STEP 45: the tests every role source must pass, whatever it is: the company's sign-in
+// The tests every role source must pass, whatever it is: the company's sign-in
 // server that DSoR asks (this step), a copy that a directory sends by SCIM, or DSoR's own table
 // (step 45's README, D5). A role source joins by giving a world: a way to start it for org_456
 // with the story's people, and switches that change what DSoR hears at its next ask. Each refusal

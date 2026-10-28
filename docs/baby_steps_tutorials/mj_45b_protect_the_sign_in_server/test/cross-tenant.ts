@@ -75,9 +75,9 @@ function permissionOf(registry: Registry, operation: string): unknown {
   return (authorization as { permission?: unknown } | undefined)?.permission;
 }
 
-// NEW IN STEP 45: DSoR's own table holds no person, so the suite attacks with its logins and with
-//   each of the story's people, by her key at the stand-in, with the jobs the story's directories
-//   give her, as line ② finds them (step 45's README, C2 and D7).
+// DSoR's own table holds no person, so the suite attacks with its logins and with
+// each of the story's people, by her key at the stand-in, with the jobs the story's directories
+// give her, as line ② finds them (step 45's README, C2 and D7).
 /** Every login the suite may attack with, and the principal each stands for. */
 function everyLogin(): [string, Principal][] {
   const people = [...STAND_IN_KEYS].map(([token, id]): [string, Principal] => [

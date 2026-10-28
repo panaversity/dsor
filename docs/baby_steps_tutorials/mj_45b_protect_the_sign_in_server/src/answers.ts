@@ -1,4 +1,4 @@
-// NEW IN STEP 45: the answers DSoR keeps from each company's role source, one for each company and
+// The answers DSoR keeps from each company's role source, one for each company and
 // person: the last answer DSoR could use, as of when, and when DSoR asked for it (step 45's README,
 // D3 and D8). In memory for `pnpm start` and the unit tests, so a restart forgets them. In
 // dsor.role_answers when DSoR runs on its database (createDbAnswers in src/postgres.ts), so every

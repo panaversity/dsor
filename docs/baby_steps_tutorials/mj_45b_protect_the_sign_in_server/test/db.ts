@@ -43,10 +43,10 @@ export function newPool(url: string = RUNTIME_URL): pg.Pool {
   return new pg.Pool({ connectionString: url, max: 2 });
 }
 
-// NEW IN STEP 45: the answers of each company's role source, through a pool of their own. A
-//   release asks line ③'s question again inside its claim, which holds one of the main pool's
-//   connections, so one pool for both would let two releases wait for each other forever (found
-//   by step 45's database run). Its idle connections let the test program end.
+// The answers of each company's role source, through a pool of their own. A
+// release asks line ③'s question again inside its claim, which holds one of the main pool's
+// connections, so one pool for both would let two releases wait for each other forever (found
+// by step 45's database run). Its idle connections let the test program end.
 const ANSWERS_POOL = new pg.Pool({ connectionString: RUNTIME_URL, max: 2, allowExitOnIdle: true });
 
 /** The shipped operations, reading invoices through this pool. */
@@ -115,7 +115,7 @@ export function dbRegistry(
     alerts,
     undefined,
     undefined,
-    // NEW IN STEP 45: and the answers of each company's role source, in dsor.role_answers
+    // And the answers of each company's role source, in dsor.role_answers
     // (step 45's README, D8).
     createDbAnswers(ANSWERS_POOL),
   );

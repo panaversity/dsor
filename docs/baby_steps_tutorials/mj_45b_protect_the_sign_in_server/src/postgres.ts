@@ -1416,7 +1416,7 @@ function holdsThrough(run: Runner): HoldStore {
   };
 }
 
-// NEW IN STEP 45: the answers of each company's role source, in dsor.role_answers (step 45's
+// The answers of each company's role source, in dsor.role_answers (step 45's
 // README, D8).
 // One kept answer as pg gives it back. A row with no answer is one DSoR forgot: dsor_runtime may
 // not delete a row (step 16's README, decision 3).

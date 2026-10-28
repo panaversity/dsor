@@ -629,7 +629,7 @@ export const STORY_PEOPLE: Record<string, Record<string, Person>> = {
   },
 };
 
-// NEW IN STEP 45: the people a test plants with withPlanted, while the test runs (D7).
+// The people a test plants with withPlanted, while the test runs (D7).
 const PLANTED_PEOPLE = new Map<string, Principal>();
 
 /** The story's two directories, new and on, so a test may switch or change its own. */
@@ -642,8 +642,8 @@ export function storyDirectories(): Map<string, FakeDirectory> {
   );
 }
 
-// NEW IN STEP 45: a story directory knows each person a test planted who works in its company, with
-//   the roles the test gave her, unless the test set or forgot her on this directory itself.
+// A story directory knows each person a test planted who works in its company, with
+// the roles the test gave her, unless the test set or forgot her on this directory itself.
 /** The directory, knowing the planted people of its company too. */
 function knowingPlanted(tenant: string, directory: FakeDirectory): FakeDirectory {
   const decided = new Set<string>();

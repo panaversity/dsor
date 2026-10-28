@@ -1,4 +1,4 @@
-// NEW IN STEP 45: where pnpm serve asks each company's sign-in server about a person, and with which
+// Where pnpm serve asks each company's sign-in server about a person, and with which
 // key (step 45's README, C1 and D11). The address is in lookups.json. The key is never in a file:
 // it comes from the environment, as DSOR_LOOKUP_KEY_ORG_456 for org_456, so it never sits where an
 // agent or a model could read it (DSOR-CNR-02). Start-up checks both before any caller can ask.

@@ -48,8 +48,8 @@ function refuse(message: string): never {
   process.exit(1);
 }
 
-// NEW IN STEP 45: the companies with a role source, whose lookups pnpm serve asks. role-sources.json
-//   is checked first, so a problem there is named as its own, not as a missing lookup.
+// The companies with a role source, whose lookups pnpm serve asks. role-sources.json
+// is checked first, so a problem there is named as its own, not as a missing lookup.
 const roleCheck = checkRoleSettings(readRoleSettings(), logins.values());
 if (roleCheck.problems.length > 0) {
   refuse(`role-sources.json refused to start:\n  ${roleCheck.problems.join("\n  ")}`);
@@ -71,9 +71,9 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
 }
 const pool = openPool(process.env["DSOR_DB_URL"] ?? "");
 
-// NEW IN STEP 45: each company's lookup on its sign-in server, from lookups.json, with the
-//   company's key from the environment, checked before any caller can ask. No fake directory
-//   answers here any more (step 45's README, C1 and D11).
+// Each company's lookup on its sign-in server, from lookups.json, with the
+// company's key from the environment, checked before any caller can ask. No fake directory
+// answers here any more (step 45's README, C1 and D11).
 const { lookups, problems: lookupProblems } = checkLookups(readLookups(), companies);
 if (lookupProblems.length > 0) {
   refuse(`lookups.json refused to start:\n  ${lookupProblems.join("\n  ")}`);
@@ -113,7 +113,7 @@ try {
     undefined,
     undefined,
     undefined,
-    // NEW IN STEP 45: the answers of each company's role source, in dsor.role_answers, shared
+    // The answers of each company's role source, in dsor.role_answers, shared
     // by every DSoR server and kept over a restart (step 45's README, D8). Through a pool of
     // their own: a release asks line ③'s question again inside its claim, which holds one of
     // this pool's connections, so one pool for both would let releases wait for each other

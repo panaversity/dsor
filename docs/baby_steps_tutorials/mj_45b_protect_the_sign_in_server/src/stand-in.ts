@@ -1,4 +1,4 @@
-// NEW IN STEP 45: the stand-in for each company's sign-in server, in pnpm start and the older tests
+// The stand-in for each company's sign-in server, in pnpm start and the older tests
 // (step 45's README, C8 and D7). pnpm serve asks the real one, through lookups.json. The stand-in
 // knows the story's people twice over, as a sign-in server does: whom each person's key names, and
 // what each company says about each person, in the lookup contract's shape. DSoR's own table,

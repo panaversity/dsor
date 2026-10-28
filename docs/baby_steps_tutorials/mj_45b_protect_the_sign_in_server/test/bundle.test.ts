@@ -340,8 +340,8 @@ describe("C2: a bundle names the facts of its decision (step 33's README, D4 and
     expect(bundle.authority).not.toHaveProperty("delegation");
   });
 
-  // NEW IN STEP 45: and her move to APPROVED names it too. Found by piece 5's breaks: no test read
-  //   the move's own record (step 45's README, C2).
+  // And her move to APPROVED names it too. Found by piece 5's breaks: no test read
+  // the move's own record (step 45's README, C2).
   it("C2: cfo_100's move to APPROVED names her company's role source as her authority", async () => {
     const w = await ruleWorldOnTuesday();
     await approved(w);

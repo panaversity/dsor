@@ -1,4 +1,4 @@
-// NEW IN STEP 45: the two rules of step 19's decision 14, for any store of kept answers, in
+// The two rules of step 19's decision 14, for any store of kept answers, in
 // memory or in the database: older news never replaces newer, and a reply DSoR could not use
 // forgets only an answer DSoR asked for before that question (step 45's README, D8).
 import { expect } from "vitest";

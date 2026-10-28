@@ -45,8 +45,8 @@ export function tokenOfRecord(
 }
 
 // Step 42's table, as every world had it until now (decision 44-6).
-// NEW IN STEP 45: or a person's key at the stand-in sign-in server, which names her and nothing
-//   more. What she holds, line ② asks her company (step 45's README, C2 and D7).
+// Or a person's key at the stand-in sign-in server, which names her and nothing
+// more. What she holds, line ② asks her company (step 45's README, C2 and D7).
 export const FAKE_LOGINS: LoginSource = Object.freeze({
   find: async (token: unknown): Promise<Principal | undefined> => {
     if (typeof token !== "string") return undefined;

@@ -88,9 +88,9 @@ describe("C3: rule.draft writes the next version, a draft (step 28's README, dec
 });
 
 describe("C3: line ⑨ checks a draft as start-up checks a version (step 28's README, decision D11)", () => {
-  // NEW IN STEP 45: a person's job is no longer read at the draft. user_700 of org_789 may be named
-  //   the owner, and only she switches the version on, in person, where line ② asks org_456 about
-  //   her and refuses her (step 45's README, D15).
+  // A person's job is no longer read at the draft. user_700 of org_789 may be named
+  // the owner, and only she switches the version on, in person, where line ② asks org_456 about
+  // her and refuses her (step 45's README, D15).
   it("D15: a draft naming user_700 of org_789 as its owner is kept, and user_700 cannot switch it on in org_456", async () => {
     const w = await ruleWorldOnTuesday();
     const answer = await draft(w, CFO, { ...textOf(version9()), owner: "user_700" });

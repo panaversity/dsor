@@ -1,4 +1,4 @@
-// NEW IN STEP 45: the answers live in DSoR's PostgreSQL, in dsor.role_answers, so every DSoR server
+// The answers live in DSoR's PostgreSQL, in dsor.role_answers, so every DSoR server
 // shares them and a restart keeps them (step 45's README, C7 and D8). The agent works under del_100,
 // which user_123 signed, and DSoR asks a test sign-in server for org_456. DSoR's clock runs for
 // real here: rows stay in the database from run to run, and older news never replaces newer.

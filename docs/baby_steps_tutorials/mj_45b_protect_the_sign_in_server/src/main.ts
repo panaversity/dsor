@@ -154,10 +154,10 @@ const pool = openPool(process.env["DSOR_DB_URL"] ?? "");
 const directories = standInDirectories();
 const directory456 = directories.get("org_456")!;
 const directory789 = directories.get("org_789")!;
-// NEW IN STEP 45: the answers DSoR keeps about each person, in memory, as pnpm start keeps them.
-//   An answer is used again for 10 seconds (step 45's README, D3). pnpm start tells the night in
-//   a moment, so where the story moves on and changes a person, it sets aside the answer kept
-//   about her, as 10 seconds would, and DSoR asks her company again.
+// The answers DSoR keeps about each person, in memory, as pnpm start keeps them.
+// An answer is used again for 10 seconds (step 45's README, D3). pnpm start tells the night in
+// a moment, so where the story moves on and changes a person, it sets aside the answer kept
+// about her, as 10 seconds would, and DSoR asks her company again.
 const keptAnswers = memoryAnswers();
 /** The story moves on 10 seconds: DSoR asks again about this person. */
 async function tenSecondsLater(tenant: string, person: string): Promise<void> {
@@ -203,7 +203,7 @@ try {
     undefined,
     undefined,
     undefined,
-    // NEW IN STEP 45: and the answers it keeps, which the story sets aside (D3).
+    // And the answers it keeps, which the story sets aside (D3).
     keptAnswers,
   );
   // And each company's controls, with their tests, before any caller can ask. The

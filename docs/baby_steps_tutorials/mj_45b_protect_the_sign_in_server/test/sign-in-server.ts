@@ -1,4 +1,4 @@
-// NEW IN STEP 45: a small sign-in server for the tests. It answers DSoR's lookup contract for one
+// A small sign-in server for the tests. It answers DSoR's lookup contract for one
 // company, from a list of people, as the company's real server would (step 45's README, D1, D4).
 // It accepts only the company's test key, sent as Authorization: Bearer (D14), and stamps each
 // answer with when it read its facts. Its switches make it answer about someone else, reply with
