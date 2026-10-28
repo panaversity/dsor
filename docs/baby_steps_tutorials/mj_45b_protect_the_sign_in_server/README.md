@@ -403,7 +403,8 @@ and a time that a paused call never reads.
   3), for up to 10 seconds.
 - **The trial is whoever comes first,** a stranger's call too. That is safe: any reply ends the run,
   and a stranger's `gone` is a reply.
-- **D15** (entry 28) still waits for the learner's review.
+- **D15** (entry 28) was reviewed after this step was built: its three gaps go to steps 45d and 45e
+  (entries 35 to 37).
 
 ## The rules this step meets
 

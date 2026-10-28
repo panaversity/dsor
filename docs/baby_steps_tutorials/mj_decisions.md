@@ -317,8 +317,9 @@ written.
 
 ## 28 · With no person in DSoR's table, start-up reads no one's job (2026-10-28), D15
 
-**Decided by:** Claude Code, during step 45's build, on its own recommendation. **Waits for the
-learner's review.**
+**Decided by:** Claude Code, during step 45's build, on its own recommendation. **Reviewed by the
+learner on 2026-10-28:** its direction stays, with no list of people in DSoR, and its three gaps
+close in entries 35 to 37.
 
 - **What.** D7 took the people out of DSoR's own table. Three checks read a person's job there, and
   now read only what DSoR itself knows. A slip's signer is refused at line ③ only when DSoR's table
@@ -341,7 +342,8 @@ learner's review.**
   another server than the token's issuer, which may give the same id to someone else.
 - **Proposed, for the learner:** the answer carries `kind`, and DSoR acts only on `person`; the
   sweep asks the lookup about the escalation person; start-up refuses a lookup whose origin is not
-  the issuer's.
+  the issuer's. The learner took the first two, and, for the third, the answer names its issuer
+  instead (entries 35 to 37).
 
 ## 29 · Q8's alert is not built in step 45 (2026-10-28)
 
@@ -422,6 +424,55 @@ learner's review.**
   and after an hour every call is.
 - **Rejected.** Counting different people now, in step 45b: an outage seen through one person's calls
   would no longer pause, and the step's stories and its real run would change.
+
+## 35 · The lookup's answer says who is a person (2026-10-28), D18
+
+**Decided by:** the learner, on Claude Code's recommendation, in the review of D15 (entry 28).
+
+- **What.** The lookup's answer gains `type`, from the specification's own list of principal types:
+  `human`, `agent`, `application`, or `system` (§12). DSoR treats an account as a person only when
+  its company's answer says `human`: for a person's own call at line ②, for a slip's signer at line
+  ③, and for an approval. Any other type is refused as no person.
+- **Why.** DSOR-IDN-01 asks DSoR to give every caller a type, and DSOR-SOD-01a forbids an agent to
+  approve. Since D15, DSoR gives "human" to any login its own table does not name, so a script
+  account that a company lists as CFO could approve payments as a person (step 45's review,
+  finding 1). The company knows its accounts; DSoR should not guess.
+- **Cost.** Each company's server must know which accounts are people. The Panaversity SSO marks
+  none today, so it answers `human` for all until it does: how it marks a script account is the
+  SSO's own choice, for its notes. The contract and the SSO's route change again.
+- **Rejected.** Keeping D15 as built; a list of people's ids in DSoR, the double management the
+  learner rejected for roles.
+- **Built in** step 45e (its place proposed by Claude Code).
+
+## 36 · The sweep asks about the escalation person when it escalates (2026-10-28), D19
+
+**Decided by:** the learner, on Claude Code's recommendation, in the review of D15 (entry 28).
+
+- **What.** When the sweep escalates an alert, DSoR asks the company's lookup about the person
+  `alerts.json` names. If she is not active, or her roles cannot see alerts and settle a payment,
+  the alert records that the escalation did not reach her, and stays with the receivers.
+- **Why.** Since D15, start-up no longer checks her job (step 38b's review, M3). An escalation to
+  someone who left, or who cannot see alerts, reached nobody who could act, and nobody heard
+  (step 45's review, finding 6).
+- **Cost.** One lookup for each escalation, and a new kind of alert record.
+- **Rejected.** Asking at start-up, which waits on every company's sign-in server and proves her job
+  at one moment only (D15's own reason); leaving it.
+- **Built in** step 45d, with Q8's alert (its place proposed by Claude Code).
+
+## 37 · The lookup's answer names its issuer (2026-10-28), D20
+
+**Decided by:** the learner, on Claude Code's recommendation, in the review of D15 (entry 28).
+
+- **What.** The lookup's answer gains `issuer`: the sign-in server whose ids `person` uses. DSoR
+  uses an answer only when its `issuer` is the one in `sign-in.json`.
+- **Why.** Tokens come from one issuer, and a company's lookup could sit on another server with ids
+  of its own, where `user_123` is someone else: she would get that person's roles (step 45's
+  review, finding 8). The answer says which ids it speaks, so a mismatch is refused, not used.
+- **Cost.** A second new field in the contract; each server must know whose ids it uses.
+- **Rejected.** Start-up refusing a lookup on another server than the issuer, which also refuses a
+  company whose roles live on another server with the same ids; leaving it to whoever writes the
+  two files.
+- **Built in** step 45e (its place proposed by Claude Code).
 
 ## Open
 

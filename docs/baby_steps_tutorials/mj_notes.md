@@ -306,6 +306,14 @@ and reverted the same day. `git show e2f6965d` holds every file, ready to apply.
   role names and is empty unless `status` is `active`. One rejection test for each constraint. The
   status test must clear `roles` too, or the roles rule rejects the answer and the status rule
   goes untested: found by breaking each rule on purpose.
+- **Two more fields, decided in the review of D15 (2026-10-28), not built yet** (`mj_decisions.md`,
+  entries 35 and 37):
+  - `type`, one of §12's principal types: `human`, `agent`, `application`, or `system`. A rule for
+    §12.1: DSoR MUST treat a principal resolved through a role source as `human` only when the role
+    source's answer gives that type.
+  - `issuer`, the sign-in server whose ids `person` uses. The first §12.1 rule above grows: an
+    answer counts only when it names the tenant, the principal, and the issuer whose principal ids
+    DSoR uses for that tenant.
 - **Around it:** a row in Appendix A; the two §12.1 rules in §45's row for the unattended agent; a
   §47 case for a role source that answers about someone else or sends an unreadable reply; version
   1.5.0, with `TARGET_SPEC_VERSION`, which a test keeps in step; a history entry; and a decision in

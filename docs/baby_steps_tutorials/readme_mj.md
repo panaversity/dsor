@@ -35,10 +35,11 @@ sign-in server that cannot answer a lookup (Q1, Q4).
 | [44 · Tokens made for DSoR](mj_44_tokens_made_for_dsor/README.md) | A person is who a token made for DSoR says | New: DSOR-RP-02b. Again: DSOR-IDN-01, DSOR-IDN-04a, DSOR-IDN-04b | Built |
 | Before 45 · The SSO on Better Auth 1.7 | The SSO's fix list moves onto its 1.7 upgrade. Not a DSoR step | None in DSoR. It gives 47, 48, and 49 the standard parts they need | Done on 1.7.2, in a draft pull request |
 | Before 45 (b) · The latest Better Auth, and a key for each company | One upgrade from `main` to 1.7.14, then the DSoR fix list on top of it, with a key from each company's owner. Not a DSoR step | None in DSoR. Step 45 keeps one key for each company | #1333 merged and live; #1331 in draft, on `main` |
-| [45 · Ask the sign-in server](mj_45_ask_the_sign_in_server/README.md) | DSoR asks the company's sign-in server, through DSoR's own contract, who a person is in a company now, and reuses an answer for up to 10 seconds | Again, against a real server: DSOR-IDN-05, DSOR-IDN-06, DSOR-IDN-07, DSOR-IDN-03a, DSOR-DEL-02, DSOR-BND-02 | Built, run for real against the SSO; D15 waits for the learner, and Q8's alert is step 45d |
+| [45 · Ask the sign-in server](mj_45_ask_the_sign_in_server/README.md) | DSoR asks the company's sign-in server, through DSoR's own contract, who a person is in a company now, and reuses an answer for up to 10 seconds | Again, against a real server: DSOR-IDN-05, DSOR-IDN-06, DSOR-IDN-07, DSOR-IDN-03a, DSOR-DEL-02, DSOR-BND-02 | Built, run for real against the SSO; D15 reviewed (entries 35 to 37), and Q8's alert is step 45d |
 | [45b · Protect the sign-in server](mj_45b_protect_the_sign_in_server/README.md) | One lookup in flight for each company and person, and a pause after five failures, then one trial | Again, against a real server: DSOR-IDN-06, DSOR-TEN-02a | Built, run for real against the SSO |
 | 45c · A stranger cannot spend a company's lookups | At most one lookup about a company and a person in 10 seconds, whatever the reply, a budget of lookups about people DSoR knows nothing about, and a pause that counts different people | Again: DSOR-IDN-06 | Planned |
-| 45d · Tell the company its sign-in server is down | The alert of decision Q8, with a record of its own | Again: DSOR-IDN-06 | Planned |
+| 45d · Alerts and the sign-in server | The alert of decision Q8, with a record of its own, and an escalation that goes only to someone who can act | Again: DSOR-IDN-06 | Planned |
+| 45e · Only a person acts as a person | The lookup's answer says what kind of account it is about, and whose ids it uses | Again: DSOR-IDN-01, DSOR-SOD-01a | Planned |
 | 46 · Who may approve, and up to how much | Approver roles, each with a limit | New: DSOR-SOD-04a, DSOR-SOD-04b | Planned |
 | 47 · The approval door | Approvals only from DSoR's own approval app | Again: DSOR-APR-05a, DSOR-APR-05b, DSOR-SOD-01a. New: DSOR-RP-02c, DSOR-RP-02e | Planned |
 | 48 · The agent door (MCP), door A | An agent acting for a person who connected it | New: DSOR-RP-02a, DSOR-RP-02d, DSOR-OPR-03a, DSOR-IDN-02b, DSOR-RP-04, DSOR-RP-05a, DSOR-RP-06a, DSOR-RP-07a, DSOR-RP-07b, DSOR-DEL-03a, DSOR-DEL-03b, DSOR-RP-03, and the rest of DSOR-DEL-10 | Planned |
@@ -170,11 +171,24 @@ Decided by the learner on 2026-10-28 ([`mj_notes.md`](mj_notes.md), the last two
   every trial (step 45b's review, finding 2). Here the company's pause will count different people,
   and a person whose lookups keep failing will be asked less and less often (entry 34).
 
-### 45d · Tell the company its sign-in server is down
+### 45d · Alerts and the sign-in server
 
 - The alert of decision Q8: the company's alert receivers will hear when DSoR cannot get a fresh
   answer from its sign-in server. An alert today belongs to a payment (step 38b), so this one needs
   a kind and a record of its own ([`mj_decisions.md`](mj_decisions.md), entries 29 and 33).
+- When the sweep escalates an alert, DSoR will ask the company about the escalation person. One who
+  is not active, or cannot see alerts and settle a payment, is not reached, and the alert records
+  it (D19, entry 36).
+
+### 45e · Only a person acts as a person
+
+- The lookup's answer will say what kind of account it is about, from §12's principal types, and
+  DSoR will act as a person only on `human`: a person's own call, a slip's signer, an approval
+  (D18, entry 35). A script account that a company lists as CFO can then no longer approve.
+- The answer will also name the sign-in server whose ids it uses, and DSoR will refuse one that is
+  not its token issuer (D20, entry 37).
+- Both come from the learner's review of D15 (entry 28), and are part of the lookup proposal in
+  [`mj_notes.md`](mj_notes.md).
 
 ### 46 · Who may approve, and up to how much
 
