@@ -2,6 +2,7 @@
 // which dsor_runtime can add to and read, and never change (DSOR-AUD-04a in
 // specs/dsor/03-execution.md, section 30). The invoices are the table app.invoices.
 import type { Alert } from "./alerts.ts";
+import type { KeptAnswers } from "./answers.ts";
 import type { HoldStore, KeptHold } from "./holds.ts";
 import { outboxIn } from "./outbox.ts";
 import {
@@ -1412,6 +1413,60 @@ function holdsThrough(run: Runner): HoldStore {
         return rows.map((row): KeptHold => ({ ...row, placed_at: row.placed_at.toISOString() }));
       });
     },
+  };
+}
+
+// NEW IN STEP 45: the answers of each company's role source, in dsor.role_answers (step 45's
+// README, D8).
+// One kept answer as pg gives it back. A row with no answer is one DSoR forgot: dsor_runtime may
+// not delete a row (step 16's README, decision 3).
+type AnswerRow = { answer: Record<string, unknown>; as_of: Date; asked_at: Date };
+
+/** The kept answers in dsor.role_answers, one company at a time. */
+export function createDbAnswers(pool: pg.Pool): KeptAnswers {
+  return {
+    get: (tenant, person) =>
+      inCompany(pool, tenant, async (client) => {
+        const { rows } = await client.query<AnswerRow>(
+          `SELECT answer, as_of, asked_at FROM dsor.role_answers
+            WHERE tenant_id = $1 AND person = $2 AND answer IS NOT NULL`,
+          [tenant, person],
+        );
+        const row = rows[0];
+        if (row === undefined) return undefined;
+        return { answer: row.answer, at: row.as_of.getTime(), asked: row.asked_at.getTime() };
+      }),
+    // One statement, so when two DSoR servers keep at once, the newer facts stay (decision 14).
+    // The times are DSoR's clock, not the database's: line ③ compares them with DSoR's clock
+    // (step 19's README, decision 15).
+    keep: (tenant, person, kept) =>
+      inCompany(pool, tenant, async (client) => {
+        await client.query(
+          `INSERT INTO dsor.role_answers (tenant_id, person, answer, as_of, asked_at)
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (tenant_id, person) DO UPDATE
+             SET answer = EXCLUDED.answer, as_of = EXCLUDED.as_of, asked_at = EXCLUDED.asked_at
+           WHERE dsor.role_answers.as_of IS NULL OR dsor.role_answers.as_of <= EXCLUDED.as_of
+              OR dsor.role_answers.as_of > $6`,
+          [
+            tenant,
+            person,
+            JSON.stringify(kept.answer),
+            new Date(kept.at),
+            new Date(kept.asked),
+            // DSoR's clock now: a kept answer later than it came before a clock went back.
+            new Date(),
+          ],
+        );
+      }),
+    forget: (tenant, person, asked) =>
+      inCompany(pool, tenant, async (client) => {
+        await client.query(
+          `UPDATE dsor.role_answers SET answer = NULL, as_of = NULL
+            WHERE tenant_id = $1 AND person = $2 AND asked_at <= $3`,
+          [tenant, person, new Date(asked)],
+        );
+      }),
   };
 }
 

@@ -10,7 +10,7 @@
 // and never reports the story's people as gone (step 19b's README, decision 11).
 import { randomUUID } from "node:crypto";
 import pg from "pg";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import type { Directory, FakeDirectory } from "../src/directory.ts";
 import { call } from "../src/pipeline.ts";
 import { createDbLog } from "../src/postgres.ts";
@@ -257,9 +257,16 @@ describe("C2 and decision 6: a suspension stays until a person lifts it by hand"
       expect(ownerSlips("lift", "org_456", signer.person)).toStrictEqual({
         lifted: [...signer.slips],
       });
-      expect(await call(registry, log, signer.first, "invoice.get", READ)).toMatchObject({
-        data: { id: "INV-1008" },
-      });
+      // Changed in step 45: the agent reads again 11 seconds later, once DSoR asks her company
+      //   again: an answer is used again for 10 seconds (step 45's README, D3).
+      vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + 11_000 });
+      try {
+        expect(await call(registry, log, signer.first, "invoice.get", READ)).toMatchObject({
+          data: { id: "INV-1008" },
+        });
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 });

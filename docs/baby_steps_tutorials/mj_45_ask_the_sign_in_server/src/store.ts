@@ -56,6 +56,7 @@ export type Kind = {
 // UPDATE, on named columns.
 // And control-written, on named columns too (step 19b's README, decision 3).
 // And control-claimed, on named columns too (step 20's README, decision 12).
+// And control-kept, on named columns too (step 45's README, D8).
 /** Every kind of table the map may use. */
 export const KINDS: ReadonlyMap<string, Kind> = new Map<string, Kind>([
   // The company's data: dsor_runtime only reads it.
@@ -112,6 +113,14 @@ export const KINDS: ReadonlyMap<string, Kind> = new Map<string, Kind>([
   // README, decision 12).
   [
     "control-claimed",
+    { side: "dsor", table: ["SELECT"], columns: ["INSERT", "UPDATE"], key: true, triggers: false },
+  ],
+  // NEW IN STEP 45: DSoR's own copies of what a company said, such as each company's answer
+  //   about a person's job: read them, add them, and replace them with newer ones, each through
+  //   named columns. Never DELETE: an answer DSoR forgets leaves its row with no answer (step
+  //   45's README, D8).
+  [
+    "control-kept",
     { side: "dsor", table: ["SELECT"], columns: ["INSERT", "UPDATE"], key: true, triggers: false },
   ],
   // DSoR's own records that move from state to state, such as proposals: read

@@ -67,7 +67,8 @@ describe("the shipped map", () => {
   // Changed in step 40: and dsor.outbox, a twenty-first (step 40's README, decision D2).
   // Changed in step 40c: and dsor.outbox_tries and dsor.event_alerts, a twenty-second and a
   //   twenty-third (step 40c's README, decisions D4 and D5).
-  it("step 16's decision 1: it names three schemas and twenty-three tables", () => {
+  // Changed in step 45: and dsor.role_answers, a twenty-fourth (step 45's README, D8).
+  it("step 16's decision 1: it names three schemas and twenty-four tables", () => {
     const { map } = checkStore(SHIPPED);
     expect([...map.schemas.keys()]).toStrictEqual(["app", "dsor", "public"]);
     expect([...map.tables.keys()]).toStrictEqual([
@@ -87,6 +88,7 @@ describe("the shipped map", () => {
       "dsor.approvals",
       "dsor.decision_bundles",
       "dsor.holds",
+      "dsor.role_answers",
       "dsor.alerts",
       "dsor.intents",
       "dsor.outbox",
@@ -581,8 +583,8 @@ describe("C7: the map itself is checked", () => {
       // Step 17's business-written is a fourth kind, step 18's control-read a fifth, and step
       // 19b's control-written a sixth.
       // And step 22's control-moved.
-      // And step 40c's append-only-watched.
-      'store.json: dsor.migrations has the kind "ledger", which is not business, business-written, append-only, append-only-chained, append-only-watched, control-read, control-written, control-claimed, control-moved, or bookkeeping',
+      // And step 40c's append-only-watched, and step 45's control-kept.
+      'store.json: dsor.migrations has the kind "ledger", which is not business, business-written, append-only, append-only-chained, append-only-watched, control-read, control-written, control-claimed, control-kept, control-moved, or bookkeeping',
     ]);
   });
 

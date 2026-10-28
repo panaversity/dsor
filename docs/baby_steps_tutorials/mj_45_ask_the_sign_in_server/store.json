@@ -261,6 +261,17 @@
         }
       }
     },
+    "dsor.role_answers": {
+      "kind": "control-kept",
+      "tenant": "tenant_id",
+      "runtime": {
+        "table": ["SELECT"],
+        "columns": {
+          "INSERT": ["tenant_id", "person", "answer", "as_of", "asked_at"],
+          "UPDATE": ["answer", "as_of", "asked_at"]
+        }
+      }
+    },
     "dsor.alerts": {
       "kind": "control-moved",
       "tenant": "tenant_id",

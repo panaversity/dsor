@@ -6,11 +6,10 @@ import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 
 import {
   checkRoleSettings,
   createRoleSource,
-  keptKey,
   readRoleSettings,
-  type Kept,
   type RoleSettingsSource,
 } from "../src/authority.ts";
+import { memoryAnswers, type Kept } from "../src/answers.ts";
 import type { Directory } from "../src/directory.ts";
 import { createLog } from "../src/log.ts";
 import type { Payment } from "../src/payment.ts";
@@ -236,7 +235,14 @@ describe("C1: each company has its own role source, or DSoR does not start", () 
 });
 
 describe("C2: at every call from an agent, the signer's directory decides line â‘¤", () => {
-  it("DSOR-IDN-05: the agent's draft follows user_123's job in the directory, call by call, with no restart", async () => {
+  // Changed in step 45: an answer is used again for 10 seconds, so a change counts from the first
+  // question after that (step 45's README, D3). The calls run on the story's clock.
+  it("DSOR-IDN-05: the agent's draft follows user_123's job in the directory, call by call, with no restart, from the first question 10 seconds after the last", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    at("02:00");
     const directories = storyDirectories();
     const org456 = directories.get("org_456")!;
     const rows: Payment[] = [];
@@ -251,6 +257,7 @@ describe("C2: at every call from an agent, the signer's directory decides line â
     });
 
     // 02:05: the directory moves user_123 to a job that may only read invoices.
+    at("02:05");
     org456.set("user_123", { status: "active", roles: ["ap_clerk"] });
     const lines: number[] = [];
     expect(
@@ -270,12 +277,14 @@ describe("C2: at every call from an agent, the signer's directory decides line â
         '"payment.create" needs payment:create, which user_123, who signed slip del_100, does not hold now; payment:create.propose allows propose_only mode only',
     });
     expect(lines).toStrictEqual([1, 2, 3, 4, 5, 11]);
-    // The read is still answered: del_100 lists invoice:read, and ap_clerk holds it.
+    // The read is still answered: del_100 lists invoice:read, and ap_clerk holds it. It uses the
+    // answer of 02:05 again, and asks nothing.
     expect(await call(registry, createLog(), AGENT, "invoice.get", READ)).toMatchObject({
       data: MASKED_1008_OF_456,
     });
 
-    // Back to her old job: the next draft is made again.
+    // 02:10: back to her old job: the next draft is made again.
+    at("02:10");
     org456.set("user_123", { status: "active", roles: ["ap_supervisor"] });
     expect(
       await call(registry, createLog(), keyed(AGENT), "payment.create", {
@@ -286,8 +295,8 @@ describe("C2: at every call from an agent, the signer's directory decides line â
       data: { status: "draft" },
     });
     expect(rows).toHaveLength(2);
-    // One question for each of the four calls.
-    expect(org456.asked()).toBe(4);
+    // One question at 02:00, at 02:05, and at 02:10.
+    expect(org456.asked()).toBe(3);
   });
 
   it("DSOR-DEL-02: a role the directory names and roles.json does not have grants nothing", async () => {
@@ -1056,8 +1065,8 @@ describe("C10: an answer DSoR cannot use is a fault, and is never used", () => {
         throw new Error("off");
       },
     };
-    const planted: Kept = { answer: aboutHer(), at: Date.now() };
-    const kept = new Map([[keptKey("org_789", "user_123"), planted]]);
+    const planted: Kept = { answer: aboutHer(), at: Date.now(), asked: Date.now() };
+    const kept = memoryAnswers([["org_789", "user_123", planted]]);
     const source = createRoleSource(settings, new Map([["org_789", off]]), kept);
     const DEL_103 = { ...DEL_102, id: "del_103", delegator: "user_123" } as Slip;
     await expect(source.authorityOf("org_789", DEL_103, '"invoice.get"')).rejects.toMatchObject({

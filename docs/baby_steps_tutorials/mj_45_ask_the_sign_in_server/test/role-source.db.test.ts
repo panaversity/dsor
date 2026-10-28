@@ -4,7 +4,7 @@
 // tests prove the clock in memory, with a fake one.
 import { afterAll, describe, expect, it } from "vitest";
 import { call } from "../src/pipeline.ts";
-import { createDbLog } from "../src/postgres.ts";
+import { createDbAnswers, createDbLog } from "../src/postgres.ts";
 import { AGENT, keyed, storyDirectories } from "./helpers.ts";
 import { dbRegistry, newPool, requestId, tryThenRollBack } from "./db.ts";
 
@@ -32,6 +32,10 @@ async function authorityRecorded(request_id: string): Promise<unknown> {
 
 describe("the source and time of the signer's authority, on the database", () => {
   it("DSOR-DEL-10: a draft on a fresh answer: the log holds role_source and the time of the answer", async () => {
+    // Changed in step 45: an answer kept by another test less than 10 seconds ago would be used
+    //   again, with its own time, so the kept answer about user_123 goes first, whatever its time
+    //   (step 45's README, D3 and D8).
+    await createDbAnswers(pool).forget("org_456", "user_123", Date.parse("9999-12-31T00:00:00Z"));
     const before = Date.now();
     const request_id = requestId("s19-fresh");
     const answer = await call(

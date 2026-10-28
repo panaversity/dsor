@@ -4,6 +4,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { Ajv2020 } from "ajv/dist/2020.js";
+import { memoryAnswers, type KeptAnswers } from "./answers.ts";
 import type { Directories, Directory } from "./directory.ts";
 import { Refusal, type ErrorCode } from "./envelope.ts";
 import { keysWrittenTwice } from "./json.ts";
@@ -38,9 +39,6 @@ export type RoleSettings = ReadonlyMap<string, RoleSetting>;
 
 /** The settings file, as it was read from disk: its name and its text. */
 export type RoleSettingsSource = { file: string; text: string };
-
-/** An answer DSoR checked and kept, with the time it arrived by DSoR's clock. */
-export type Kept = { answer: Record<string, unknown>; at: number };
 
 /** DSoR's side of the role source: the signer's current authority, or a refusal. */
 export type RoleSource = {
@@ -166,14 +164,13 @@ export function checkRoleSettings(
   return { settings, problems };
 }
 
-/** The key a kept answer is kept under: its company and its person (DSOR-TEN-02a). */
-export function keptKey(tenant: string, person: string): string {
-  return JSON.stringify([tenant, person]);
-}
-
 // DSoR waits this long for one answer, and no longer: a stuck directory must not hold every
 // call from an agent (step 19's README, decision 9).
 const WAIT_MS = 2000;
+
+// NEW IN STEP 45: an answer is used again for up to 10 seconds, so a flood of calls from agents is
+// a few lookups a minute. A person who left is caught within 10 seconds (step 45's README, D3).
+const REUSE_MS = 10 * 1000;
 
 // NEW IN STEP 45: an answer in the shape the proposal gives: active, suspended, or gone, which is
 // left the company or never had an account, and roles only while active (step 45's README, D4).
@@ -211,7 +208,9 @@ export function createRoleSource(
   directories: Directories,
   // The kept answers, in memory, so a restart forgets them (step 19's README, decision 3).
   // A test may plant one.
-  kept: Map<string, Kept> = new Map(),
+  // NEW IN STEP 45: or in DSoR's PostgreSQL, so every DSoR server shares them, and a restart
+  // keeps them (step 45's README, D8).
+  kept: KeptAnswers = memoryAnswers(),
 ): RoleSource {
   return Object.freeze({
     authorityOf: async (tenant: string, slip: Slip, name: string): Promise<SignerAuthority> => {
@@ -224,14 +223,19 @@ export function createRoleSource(
         throw new Refusal("INTERNAL_ERROR", `DSoR has no role source for ${tenant}`);
       }
       const cannotUse = `the directory of ${tenant} answered with something DSoR cannot use`;
-      const key = keptKey(tenant, person);
 
-      // The question, at every call (step 19's README, decision 3). An answer is never later
-      // than the moment DSoR asked: the directory may have changed a moment after it answered
-      // (decision 14).
+      // The question. An answer is never later than the moment DSoR asked: the directory may
+      // have changed a moment after it answered (step 19's README, decision 14).
       const askedAt = Date.now();
-      const asked = await askWithin(directory, person);
-      const last = kept.get(key);
+      // NEW IN STEP 45: not at every call any more. An answer DSoR asked for less than 10
+      // seconds ago is used again, and the server is not asked, while the answer is under the
+      // company's bound too (D3). Never one asked for in the future: a clock that went back
+      // would make it look new (step 19's README, decision 15).
+      const recent = await kept.get(tenant, person);
+      const since = recent === undefined ? Number.NaN : askedAt - recent.asked;
+      const reuse =
+        recent !== undefined && since >= 0 && since < REUSE_MS && askedAt - recent.at < setting.ms;
+      const asked = reuse ? { answered: false as const } : await askWithin(directory, person);
       let answer: Answer;
       let at: number;
       if (asked.answered) {
@@ -245,7 +249,7 @@ export function createRoleSource(
           // An answer DSoR cannot use is a fault. The strange answer may be the very news DSoR
           // needs, so the kept answer goes too, unless DSoR learned it after it asked this
           // question (decisions 11 and 14). Found by step 19's review.
-          if (last !== undefined && last.at <= askedAt) kept.delete(key);
+          await kept.forget(tenant, person, askedAt);
           throw new Refusal("INTERNAL_ERROR", cannotUse);
         }
         answer = copy as Answer;
@@ -260,11 +264,15 @@ export function createRoleSource(
         }
         // Older news never replaces newer: an answer whose facts are older than the kept ones is
         // not kept over them (decision 14). Found by step 19's review.
-        if (last === undefined || last.at <= at) kept.set(key, { answer: copy as Answer, at });
+        // NEW IN STEP 45: the store decides it, in one step, with the moment DSoR asked (D3, D8).
+        await kept.keep(tenant, person, { answer: copy as Answer, at, asked: askedAt });
       } else {
         // No answer: the kept one counts only while it is under the company's bound
         // (DSOR-IDN-06; step 19's README, decisions 3, 4, and 5). Never one from the future: a
         // clock that went back would make an old answer look young (decision 15).
+        // NEW IN STEP 45: an answer used again takes this path too (D3). After a wait, the kept
+        // answer is read again: another call may have kept a newer one meanwhile.
+        const last = reuse ? recent : await kept.get(tenant, person);
         const age = last === undefined ? Number.NaN : Date.now() - last.at;
         if (last === undefined || !(age >= 0 && age < setting.ms)) {
           // The message names no bound: how long a kept answer lasts is the company's to know
@@ -276,7 +284,7 @@ export function createRoleSource(
         // Checked again at every use: a kept answer about someone else, or from another
         // company, is a fault too, and goes (step 19's README, C10).
         if (!usable(last.answer, tenant, person)) {
-          kept.delete(key);
+          await kept.forget(tenant, person, last.asked);
           throw new Refusal("INTERNAL_ERROR", cannotUse);
         }
         answer = last.answer;

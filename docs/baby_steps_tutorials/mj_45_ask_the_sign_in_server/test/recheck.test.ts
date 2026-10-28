@@ -1,7 +1,7 @@
 // The release checks everything again, on live data, before the stored request runs (step 31's
 // README, claims C3, C4, and C5, decisions D1, D3, D5, D6, and D8). Hours or days pass between an
 // approval and its release. Each test changes one thing in that time, and the release must see it.
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Answer } from "../src/envelope.ts";
 import { NO_BRAKES } from "../src/brakes.ts";
 import { principalNamed, type Principal } from "../src/principals.ts";
@@ -61,6 +61,18 @@ async function switchOn(w: RuleWorld, text: Record<string, unknown>) {
   const on = await ruleCall(w, CFO, "rule.activate", { version });
   expect(on).toMatchObject({ data: { status: "active", version: 9 } });
 }
+
+// Since step 45, an answer is used again for 10 seconds, and a change in the directory counts
+// from the first question after that (step 45's README, D3). These tests move DSoR's date 11
+// seconds on, as if the release came that much after the draft.
+/** Moves DSoR's date 11 seconds on. */
+function elevenSecondsOn(): void {
+  vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + 11_000 });
+}
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 /** The proposal's state and its last move's cause, and what DSoR drafted. */
 async function afterwards(w: RuleWorld, id: string) {
@@ -197,6 +209,7 @@ describe("C3: every check runs again, for the person or agent that asked (DSOR-A
     const w = await ruleWorldOnTuesday();
     const { id, uri } = await approved(w);
     w.directories.get("org_456")!.set("user_123", { status: "active", roles: ["ap_clerk"] });
+    elevenSecondsOn();
     const answer = await release(w, SUPERVISOR, uri);
     await expectInvalidated(w, answer, id, "APPROVED");
     expect((await afterwards(w, id)).cause).toBe(
@@ -286,6 +299,7 @@ describe("C5: what an invalidated release leaves (DSOR-APR-03c, D4, D8)", () => 
     const w = await ruleWorldOnTuesday();
     const { id, uri } = await approved(w);
     w.directories.get("org_456")!.set("user_123", { status: "active", roles: ["ap_clerk"] });
+    elevenSecondsOn();
     expect(await release(w, SUPERVISOR, uri)).toMatchObject({ code: "APPROVAL_INVALIDATED" });
     expect(await release(w, SUPERVISOR, uri)).toMatchObject({
       code: "CONFLICT",
@@ -375,6 +389,7 @@ describe("C4: an approval counts only while it lasts, and only for its request (
     // The directory takes the question and never answers, so the role source waits its two
     //   seconds, then uses the answer it kept from the draft. Meanwhile the proposal's time comes.
     w.directories.get("org_456")!.turn("stuck");
+    elevenSecondsOn();
     const late = setTimeout(() => {
       w.clock.now = Date.parse(kept.expires_at) + 1000;
     }, 500);

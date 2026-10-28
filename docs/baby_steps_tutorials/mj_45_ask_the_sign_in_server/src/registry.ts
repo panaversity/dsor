@@ -36,6 +36,7 @@ import {
 } from "./labels.ts";
 import type { Company } from "./company.ts";
 import { NO_DIRECTORIES, type Directories } from "./directory.ts";
+import { memoryAnswers, type KeptAnswers } from "./answers.ts";
 import { checkCondition } from "./cel.ts";
 import { ruleName, ruleProblems } from "./controls.ts";
 import { NO_KSORS, type Ksors } from "./ksor.ts";
@@ -253,6 +254,9 @@ export function buildRegistry(
   given?: Record<string, OwnRead>,
   // The logins, step 42's table unless the caller gives real ones.
   loginSource: LoginSource = FAKE_LOGINS,
+  // NEW IN STEP 45: the answers each company's role source gave, in memory unless DSoR runs on
+  // its database (step 45's README, D8).
+  answers: KeptAnswers = memoryAnswers(),
 ): Registry {
   // Every problem is collected first, and the refusal names them all (step 03's
   // README, decision 2).
@@ -487,7 +491,7 @@ export function buildRegistry(
     invoices,
     payments,
     delegations,
-    roleSource: createRoleSource(settings, directories),
+    roleSource: createRoleSource(settings, directories, answers),
     claims,
     own: ownWork,
     brakes,

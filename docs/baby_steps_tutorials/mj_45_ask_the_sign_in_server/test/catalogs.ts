@@ -132,6 +132,12 @@ const BUNDLE_COLUMNS = ["decision_id", "tenant_id", "bundle", "sealed_at"];
 //   (step 37's README, decision D1).
 const HOLD_COLUMNS = ["tenant_id", "resource", "proposal_id", "placed_at"];
 
+// Step 45: dsor.role_answers, as migration 047 makes it. dsor_runtime reads every column, adds an
+//   answer through all five, and replaces one through three. The database fills no column, and
+//   nothing removes a row (step 45's README, D8).
+const ROLE_ANSWER_COLUMNS = ["tenant_id", "person", "answer", "as_of", "asked_at"];
+const ROLE_ANSWER_KEY = ["tenant_id", "person"];
+
 // Step 36: dsor.intents, as migration 032 makes it. dsor_runtime reads every column, adds a note
 //   through nine, and writes its outcome. written_at has a default; ended_at has none, and the
 //   trigger writes it with the outcome (step 36's README, decision D1).
@@ -713,6 +719,21 @@ export function today(): Catalog {
         columns: RESERVATION_COLUMNS.map((name) => ({
           name,
           held: name === "state" ? ["SELECT", "INSERT", "UPDATE"] : ["SELECT", "INSERT"],
+          filled: false,
+        })),
+        rowSecurity: { enabled: true, forced: true },
+        rules: [],
+        triggers: [],
+      },
+      {
+        name: "dsor.role_answers",
+        kind: "table",
+        held: ["SELECT"],
+        columns: ROLE_ANSWER_COLUMNS.map((name) => ({
+          name,
+          held: ROLE_ANSWER_KEY.includes(name)
+            ? ["SELECT", "INSERT"]
+            : ["SELECT", "INSERT", "UPDATE"],
           filled: false,
         })),
         rowSecurity: { enabled: true, forced: true },

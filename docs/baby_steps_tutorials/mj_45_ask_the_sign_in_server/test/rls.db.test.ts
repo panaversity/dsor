@@ -113,7 +113,9 @@ describe("C1: every table with a company column has its lock", () => {
   // And dsor.intents, the notes (step 36's README, decision D1).
   // Changed in step 40: and dsor.outbox, the events (step 40's README, decision D2).
   // Changed in step 40c: and dsor.event_alerts and dsor.outbox_tries (step 40c's README, D4, D5).
-  it("DSOR-RP-01b: app.invoices, app.payments, app.vendors, dsor.alerts, dsor.approvals, dsor.audit, dsor.brakes, dsor.controls, dsor.decision_bundles, dsor.delegations, dsor.event_alerts, dsor.holds, dsor.idempotency, dsor.intents, dsor.limit_counters, dsor.notices, dsor.outbox, dsor.outbox_tries, dsor.proposals, dsor.rates, and dsor.reservations have row-level security enabled, forced, and policies", async () => {
+  // Changed in step 45: and dsor.role_answers, the answers of each company's role source (step
+  //   45's README, D8).
+  it("DSOR-RP-01b: app.invoices, app.payments, app.vendors, dsor.alerts, dsor.approvals, dsor.audit, dsor.brakes, dsor.controls, dsor.decision_bundles, dsor.delegations, dsor.event_alerts, dsor.holds, dsor.idempotency, dsor.intents, dsor.limit_counters, dsor.notices, dsor.outbox, dsor.outbox_tries, dsor.proposals, dsor.rates, dsor.reservations, and dsor.role_answers have row-level security enabled, forced, and policies", async () => {
     const { rows } = await observer.query(TENANT_TABLES);
     expect(rows).toStrictEqual([
       { table: "app.invoices", enabled: true, forced: true, policies: 1 },
@@ -151,6 +153,7 @@ describe("C1: every table with a company column has its lock", () => {
       { table: "dsor.proposals", enabled: true, forced: true, policies: 1 },
       { table: "dsor.rates", enabled: true, forced: true, policies: 1 },
       { table: "dsor.reservations", enabled: true, forced: true, policies: 3 },
+      { table: "dsor.role_answers", enabled: true, forced: true, policies: 1 },
     ]);
   });
 
@@ -462,6 +465,16 @@ describe("C1: every table with a company column has its lock", () => {
       },
       {
         table: "dsor.reservations",
+        name: "tenant_isolation",
+        command: "ALL",
+        roles: ["public"],
+        using: `(tenant_id = ${company})`,
+        check: null,
+        kind: "PERMISSIVE",
+      },
+      // Step 45's answers, behind the company's lock only (step 45's README, D8).
+      {
+        table: "dsor.role_answers",
         name: "tenant_isolation",
         command: "ALL",
         roles: ["public"],

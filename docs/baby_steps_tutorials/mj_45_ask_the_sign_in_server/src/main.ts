@@ -113,6 +113,7 @@ import { checkRules, memoryControls, NO_CONTROLS, type MemoryControls } from "./
 import type { RequestEnvelope } from "./request.ts";
 import { checkStore, readStore, type StoreMap } from "./store.ts";
 import { memorySlips } from "./slips.ts";
+import { memoryAnswers } from "./answers.ts";
 import { fakeDirectory } from "./directory.ts";
 import { fakeKsor, type FakeKsor } from "./ksor.ts";
 import { parseUri } from "./uri.ts";
@@ -157,6 +158,15 @@ const directories = new Map([
   ["org_456", directory456],
   ["org_789", directory789],
 ]);
+// NEW IN STEP 45: the answers DSoR keeps about each person, in memory, as pnpm start keeps them.
+//   An answer is used again for 10 seconds (step 45's README, D3). pnpm start tells the night in
+//   a moment, so where the story moves on and changes a person, it sets aside the answer kept
+//   about her, as 10 seconds would, and DSoR asks her company again.
+const keptAnswers = memoryAnswers();
+/** The story moves on 10 seconds: DSoR asks again about this person. */
+async function tenSecondsLater(tenant: string, person: string): Promise<void> {
+  await keptAnswers.forget(tenant, person, Date.now());
+}
 let registry: Registry;
 let store: StoreMap;
 // The store of the company's rules for the program's own story.
@@ -191,6 +201,14 @@ try {
     undefined,
     undefined,
     NO_CONTROLS,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    // NEW IN STEP 45: and the answers it keeps, which the story sets aside (D3).
+    keptAnswers,
   );
   // And each company's controls, with their tests, before any caller can ask. The
   //   worlds of the stories give no controls, so the earlier steps' stories keep their idea, and
@@ -547,6 +565,7 @@ console.log("the same key, for INV-1008:", heard(reused));
 // The directory moves user_123 to ap_clerk. The agent's draft is refused at line ⑤, and its
 // read is still answered: ap_clerk may read invoices (step 19's README, outcome 2).
 directory456.set("user_123", { status: "active", roles: ["ap_clerk"] });
+await tenSecondsLater("org_456", "user_123");
 console.log(
   "ap_clerk, the agent drafts:",
   heard(await ask(withKey(AGENT, "pay-INV-1008-clerk"), "payment.create", DRAFT_1008)),
@@ -568,6 +587,7 @@ console.log(
 // She is back to ap_supervisor, and then the directory goes off. DSoR uses the answer it kept a
 // moment ago, which is far under org_456's one hour (step 19's README, decision 3).
 directory456.set("user_123", { status: "active", roles: ["ap_supervisor"] });
+await tenSecondsLater("org_456", "user_123");
 console.log(
   "ap_supervisor again, the agent reads:",
   heard(await ask(AGENT, "invoice.get", INV_1008)),

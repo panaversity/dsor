@@ -18,6 +18,7 @@ import { realLogins } from "./logins.ts";
 import { audienceProblem, checkSignIn, readSignIn } from "./sign-in.ts";
 import { remoteKeys } from "./tokens.ts";
 import {
+  createDbAnswers,
   createDbBrakes,
   createDbClaims,
   createDbControls,
@@ -93,6 +94,18 @@ try {
     undefined,
     undefined,
     controls,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    // NEW IN STEP 45: the answers of each company's role source, in dsor.role_answers, shared
+    // by every DSoR server and kept over a restart (step 45's README, D8). Through a pool of
+    // their own: a release asks line ③'s question again inside its claim, which holds one of
+    // this pool's connections, so one pool for both would let releases wait for each other
+    // forever (found by step 45's database run).
+    createDbAnswers(openPool(process.env["DSOR_DB_URL"] ?? "")),
   );
   const { problems } = checkStore(readStore());
   if (problems.length > 0)

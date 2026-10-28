@@ -274,6 +274,12 @@ describe("C1: dsor_runtime cannot change or remove an audit record", () => {
         held: "tenant_id proposal_id delegation day amount_value amount_currency state",
       },
       { object: "dsor.reservations UPDATE", held: "state" },
+      // Step 45: the answers of each company's role source. Read every column, add one through all
+      //   five, and replace one through three. Never delete one (step 45's README, D8).
+      { object: "dsor.role_answers", held: "SELECT" },
+      { object: "dsor.role_answers INSERT", held: "tenant_id person answer as_of asked_at" },
+      { object: "dsor.role_answers SELECT", held: "tenant_id person answer as_of asked_at" },
+      { object: "dsor.role_answers UPDATE", held: "answer as_of asked_at" },
       { object: "schema app", held: "USAGE" },
       { object: "schema dsor", held: "USAGE" },
       { object: "schema public", held: "USAGE" },

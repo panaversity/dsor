@@ -77,27 +77,45 @@ describe("C6: a reply that is neither an answer nor 'cannot answer now' is a fau
 });
 
 describe("C5: a server that cannot answer now leaves the kept answer counting", () => {
+  // Each second call comes 11 seconds after the good answer, past the 10 seconds an answer is
+  // used again (D3), so DSoR asks the failing server. Only the date: the network needs real
+  // timers.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(`${NIGHT}T02:00:00Z`));
+  });
+
+  /** Moves DSoR's clock to 11 seconds after the good answer. */
+  function elevenSecondsLater(): void {
+    vi.setSystemTime(new Date(`${NIGHT}T02:00:11Z`));
+  }
+
   it.each([429, 500, 503])(
     "DSOR-IDN-06: after a good answer, a %i is no answer, and the kept answer still counts",
     async (status) => {
       expect(await read()).toMatchObject({ data: MASKED_1008_OF_456 });
       server.replyStatus(status);
+      elevenSecondsLater();
       expect(await pay()).toMatchObject({ data: { status: "draft" } });
+      expect(server.asked()).toBe(2);
     },
   );
 
   it("DSOR-IDN-06: after a good answer, no connection is no answer, and the kept answer still counts", async () => {
     expect(await read()).toMatchObject({ data: MASKED_1008_OF_456 });
     await server.stop();
+    elevenSecondsLater();
     expect(await pay()).toMatchObject({ data: { status: "draft" } });
   });
 
   it("D10: a server that never replies is no answer after 2 seconds, and DSoR does not ask again", async () => {
     expect(await read()).toMatchObject({ data: MASKED_1008_OF_456 });
     server.hang();
-    const started = Date.now();
+    elevenSecondsLater();
+    // The real time the call took: the date is faked, the performance clock is not.
+    const started = performance.now();
     expect(await pay()).toMatchObject({ data: { status: "draft" } });
-    const waited = Date.now() - started;
+    const waited = performance.now() - started;
     expect(waited).toBeGreaterThanOrEqual(1900);
     expect(waited).toBeLessThan(4000);
     expect(server.asked()).toBe(2);
