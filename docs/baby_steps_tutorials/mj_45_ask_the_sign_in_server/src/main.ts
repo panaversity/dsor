@@ -592,7 +592,8 @@ directory456.turn("off");
 console.log("directory off, the agent reads:", heard(await ask(AGENT, "invoice.get", INV_1008)));
 // DSoR restarts while the directory is off. The kept answers lived in memory, so they are
 // gone, and the agent is refused (decisions 2 and 3).
-// Changed in step 45: user_123's own call asks her company too, so she is refused as well. Her
+// Changed in step 45: user_123's own call asks her company too, so she is refused as well, with
+//   the words every stranger hears, since the restart left DSoR knowing nothing about her. Her
 //   record names no company: DSoR could not confirm that she works there (step 45's README, C2;
 //   decision Q7; step 10's README, decision 6).
 const restarted = buildRegistry(

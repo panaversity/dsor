@@ -37,9 +37,21 @@ export async function futureNewsGoes(answers: KeptAnswers, now: number): Promise
   expect((await answers.get("org_456", "user_123"))?.at).toBe(now);
 }
 
+/** A reply DSoR could not use forgets a kept answer asked for later than DSoR's clock now too. */
+export async function futureNewsForgotten(answers: KeptAnswers, now: number): Promise<void> {
+  // Kept by a DSoR whose clock ran an hour ahead. Found by step 45's review, finding 5.
+  const ahead = now + 60 * 60 * 1000;
+  await answers.keep("org_456", "user_123", { answer: readAt(ahead), at: ahead, asked: ahead });
+  await answers.forget("org_456", "user_123", now);
+  expect(await answers.get("org_456", "user_123")).toBeUndefined();
+}
+
 /** A reply DSoR could not use forgets the kept answer, unless DSoR asked for that one later. */
 export async function laterAnswerStays(answers: KeptAnswers, now: number): Promise<void> {
-  await answers.keep("org_456", "user_123", { answer: readAt(now), at: now, asked: now });
+  // Facts read a minute before DSoR asked, so the two times differ: found by step 45's review,
+  //   mutation M3, which compared the facts' time.
+  const read = now - 60_000;
+  await answers.keep("org_456", "user_123", { answer: readAt(read), at: read, asked: now });
   // The question that failed was asked a second before the kept answer's: the kept one stays.
   await answers.forget("org_456", "user_123", now - 1000);
   expect((await answers.get("org_456", "user_123"))?.asked).toBe(now);

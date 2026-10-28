@@ -136,22 +136,89 @@ describe("C2 and Q7: line ② asks a person's company what she holds", () => {
     },
   );
 
-  it("Q7: the lookup cannot answer and DSoR keeps nothing about user_123: her own read is refused at line ② with FRESHNESS_UNSATISFIABLE", async () => {
+  // Changed by step 45's review, finding 3: a person DSoR knows nothing about in a company hears
+  //   what every stranger hears, whatever stopped the answer, so no call tells her that the
+  //   company's server is down (DSOR-ERR-01b).
+  it("Q7: the lookup cannot answer and DSoR keeps nothing about user_123: her own read is refused at line ②, with the words every stranger hears", async () => {
     server.replyStatus(503);
     const lines: number[] = [];
     const answer = await call(registry, createLog(), SUPERVISOR, "invoice.get", INVOICE, (n) =>
       lines.push(n),
     );
-    expect(answer).toMatchObject({
+    expect(answer).toMatchObject({ code: "AUTHORIZATION_DENIED", message: STRANGER });
+    expect(lines).toStrictEqual([1, 2, 11]);
+  });
+
+  it("Q7: DSoR asked about user_123 at 00:30; at 02:00 the lookup cannot answer, and she hears FRESHNESS_UNSATISFIABLE, since DSoR knows her there", async () => {
+    at("00:30:00");
+    expect(await call(registry, createLog(), SUPERVISOR, "invoice.get", INVOICE)).toMatchObject({
+      data: { id: "INV-1008" },
+    });
+    server.replyStatus(503);
+    at("02:00:00");
+    expect(await call(registry, createLog(), SUPERVISOR, "invoice.get", INVOICE)).toMatchObject({
       code: "FRESHNESS_UNSATISFIABLE",
       message:
         '"invoice.get": DSoR has no answer about user_123 from the directory of org_456 that is recent enough',
     });
-    expect(lines).toStrictEqual([1, 2, 11]);
   });
 
+  // Found by step 45's review, finding 3: org_999, which DSoR does not serve, and org_789, whose
+  //   server cannot answer, must sound the same to cfo_100 as a company she does not work in.
+  it.each([
+    ["org_999, which DSoR does not serve", "org_999"],
+    ["org_789, whose server cannot answer now", "org_789"],
+  ])(
+    "DSOR-ERR-01b: cfo_100 names %s: the words every stranger hears, and no lookup of org_456",
+    async (_what, tenant) => {
+      const off = { ask: async (): Promise<unknown> => Promise.reject(new Error("off")) };
+      const both = slipRegistry(
+        undefined,
+        undefined,
+        [],
+        new Map([
+          [
+            "org_456",
+            lookupDirectory({ tenant: "org_456", address: server.address, key: server.key }),
+          ],
+          ["org_789", off],
+        ]),
+      );
+      const answer = await call(both, createLog(), { ...CFO, tenant }, "invoice.list", {});
+      expect(answer).toMatchObject({ code: "AUTHORIZATION_DENIED", message: STRANGER });
+      expect(server.seen()).toStrictEqual([]);
+    },
+  );
+
   // Found by piece 5's breaks: no login source brought memberships, so line ② keeping them went
-  //   unseen. A token's claims would be such memberships (DSOR-IDN-04b).
+  //   unseen. A token's claims would be such memberships (DSOR-IDN-04b). And the other way, found
+  //   by step 45's review, mutation PL2: memberships merged with the lookup's let the login's
+  //   ap_supervisor through, when the lookup says ap_clerk.
+  it("C2: a login that brings ap_supervisor changes nothing when the lookup says ap_clerk: user_123's own draft is refused at line ⑤", async () => {
+    server.set("user_123", { status: "active", roles: ["ap_clerk"] });
+    const claiming: Registry = {
+      ...registry,
+      logins: {
+        find: async () => ({
+          id: "user_123",
+          type: "human" as const,
+          memberships: [{ tenant_id: "org_456", roles: ["ap_supervisor"] }],
+        }),
+      },
+    };
+    const lines: number[] = [];
+    const answer = await call(
+      claiming,
+      createLog(),
+      keyed(SUPERVISOR),
+      "payment.create",
+      DRAFT,
+      (n) => lines.push(n),
+    );
+    expect(answer).toMatchObject({ code: "AUTHORIZATION_DENIED" });
+    expect(lines).toContain(5);
+  });
+
   it("C2: a login that brings memberships of its own changes nothing: line ② takes the lookup's, and user_123 drafts as the ap_supervisor it says she is", async () => {
     const claiming: Registry = {
       ...registry,
@@ -166,6 +233,33 @@ describe("C2 and Q7: line ② asks a person's company what she holds", () => {
     expect(
       await call(claiming, createLog(), keyed(SUPERVISOR), "payment.create", DRAFT),
     ).toMatchObject({ data: { status: "draft" } });
+  });
+
+  // Found by step 45's review, mutation R2: the check again at a release asks her company too,
+  //   and its bundle names the role source.
+  it("C2: user_123 releases a payment she prepared herself, 11 seconds later, and the release's bundle names the role source that the check again asked", async () => {
+    const log = createLog();
+    const prepared = await call(
+      registry,
+      log,
+      { ...keyed(SUPERVISOR), mode: "propose_only" },
+      "payment.create",
+      DRAFT,
+    );
+    expect(prepared).toMatchObject({ outcome: "READY" });
+    at("02:00:11");
+    const proposal = "proposal" in prepared ? prepared.proposal : "";
+    expect(
+      await call(registry, log, keyed(SUPERVISOR), "proposal.execute", { proposal }),
+    ).toMatchObject({ outcome: "COMMITTED" });
+    expect((await log.bundles()).at(-1)).toMatchObject({
+      // The release runs the proposal's own operation, and its bundle names it.
+      operation: "payment.create@1",
+      identity: {
+        subject: "user_123",
+        subject_authority: { source: "role_source", as_of: `${NIGHT}T02:00:11.000Z` },
+      },
+    });
   });
 
   it("C2: the bundle of user_123's own draft says her authority came from the role source, as of 02:00", async () => {

@@ -17,7 +17,10 @@ export type KeptAnswers = {
    * never stops a new one (decision 15).
    */
   keep: (tenant: string, person: string, kept: Kept) => Promise<void>;
-  /** Forgets the kept answer, unless DSoR asked for it after `asked` (decisions 11 and 14). */
+  /**
+   * Forgets the kept answer, unless DSoR asked for it after `asked` (decisions 11 and 14). One
+   * asked for later than DSoR's clock now came before a clock went back, and goes too.
+   */
   forget: (tenant: string, person: string, asked: number) => Promise<void>;
 };
 
@@ -43,7 +46,11 @@ export function memoryAnswers(planted: Iterable<[string, string, Kept]> = []): K
     },
     forget: async (tenant, person, asked) => {
       const last = kept.get(keyOf(tenant, person));
-      if (last !== undefined && last.asked <= asked) kept.delete(keyOf(tenant, person));
+      // Found by step 45's review, finding 5: an answer from the future was never forgotten.
+      const fromTheFuture = last !== undefined && last.asked > Date.now();
+      if (last !== undefined && (last.asked <= asked || fromTheFuture)) {
+        kept.delete(keyOf(tenant, person));
+      }
     },
   };
 }

@@ -68,6 +68,14 @@ describe("C6: a reply that is neither an answer nor 'cannot answer now' is a fau
     expect(rows).toStrictEqual([]);
   });
 
+  // Found by step 45's review, mutation L3: a reply of another 2xx, with a good answer inside, is
+  //   no answer either. Only a 200 is.
+  it("D2: a 203 that carries a good answer is INTERNAL_ERROR, and nothing is drafted", async () => {
+    server.answerStatus(203);
+    expect(await pay()).toMatchObject({ code: "INTERNAL_ERROR" });
+    expect(rows).toStrictEqual([]);
+  });
+
   it("D2: a redirect is not followed, though it leads to a good answer: it is INTERNAL_ERROR", async () => {
     server.redirect(true);
     expect(await pay()).toMatchObject({ code: "INTERNAL_ERROR" });
@@ -119,6 +127,10 @@ describe("C5: a server that cannot answer now leaves the kept answer counting", 
     expect(waited).toBeGreaterThanOrEqual(1900);
     expect(waited).toBeLessThan(4000);
     expect(server.asked()).toBe(2);
+    // And the lookup lets go of the request it waited on: found by step 45's review, mutation L4.
+    //   A request left open for each call that waited would pile up on both sides.
+    await new Promise((done) => setTimeout(done, 200));
+    expect(server.dropped()).toBe(1);
   }, 10_000);
 });
 
@@ -138,6 +150,24 @@ describe("D13: an answer counts from the earlier of the server's time and the mo
         identity: { subject_authority: { source: "role_source", as_of: `${NIGHT}T02:00:00.000Z` } },
       },
     ]);
+  });
+
+  // Found by step 45's review, mutation A4: the edge of the minute, which C3 names.
+  it("D13: an as_of 59 seconds ahead counts too, recorded as the moment DSoR asked", async () => {
+    server.readAt(`${NIGHT}T02:00:59Z`);
+    const log = createLog();
+    expect(await pay(log)).toMatchObject({ data: { status: "draft" } });
+    expect(await log.records()).toMatchObject([
+      {
+        identity: { subject_authority: { source: "role_source", as_of: `${NIGHT}T02:00:00.000Z` } },
+      },
+    ]);
+  });
+
+  it("D4: an as_of 61 seconds ahead is a fault: INTERNAL_ERROR, and nothing is drafted", async () => {
+    server.readAt(`${NIGHT}T02:01:01Z`);
+    expect(await pay()).toMatchObject({ code: "INTERNAL_ERROR" });
+    expect(rows).toStrictEqual([]);
   });
 
   it("D13: an answer whose facts were read at 01:40 is recorded as of 01:40", async () => {

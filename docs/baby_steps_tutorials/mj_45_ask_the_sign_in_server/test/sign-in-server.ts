@@ -33,6 +33,10 @@ export type SignInServer = {
   readAt: (time: string | undefined) => void;
   /** From now on, every reply is this status with no answer; undefined ends it. */
   replyStatus: (status: number | undefined) => void;
+  /** From now on, every answer comes with this status instead of 200; undefined ends it. */
+  answerStatus: (status: number | undefined) => void;
+  /** How many requests their sender let go of before the server replied. */
+  dropped: () => number;
   /** From now on, the server takes each request and never replies. */
   hang: () => void;
   /** Closes the server, and every request it holds. */
@@ -50,6 +54,8 @@ export async function startSignInServer(
   let unreadable = false;
   let readTime: string | undefined;
   let status: number | undefined;
+  let answeredWith = 200;
+  let droppedRequests = 0;
   let hanging = false;
   let requests = 0;
   let redirecting = false;
@@ -69,7 +75,13 @@ export async function startSignInServer(
       person: url.searchParams.get("person"),
       authorization: request.headers.authorization,
     });
-    if (hanging) return;
+    if (hanging) {
+      // The sender gives up: its side closes before this side ever replies.
+      response.on("close", () => {
+        if (!response.writableEnded) droppedRequests += 1;
+      });
+      return;
+    }
     // A redirect to a lookup that would answer well: DSoR must not follow it (step 45's lookup.ts).
     if (redirecting && !url.searchParams.has("via")) {
       url.searchParams.set("via", "redirect");
@@ -103,7 +115,9 @@ export async function startSignInServer(
       roles: entry.status === "active" ? entry.roles : [],
       as_of: readTime ?? new Date().toISOString(),
     };
-    response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(answer));
+    response
+      .writeHead(answeredWith, { "content-type": "application/json" })
+      .end(JSON.stringify(answer));
   });
   server.on("connection", (socket) => {
     sockets.add(socket);
@@ -136,6 +150,10 @@ export async function startSignInServer(
     replyStatus: (code) => {
       status = code;
     },
+    answerStatus: (code) => {
+      answeredWith = code ?? 200;
+    },
+    dropped: () => droppedRequests,
     hang: () => {
       hanging = true;
     },

@@ -406,7 +406,9 @@ describe("the program", () => {
       expect(output).toMatch("after a restart, the agent reads: FRESHNESS_UNSATISFIABLE");
       // Changed in step 45: her own call asks her company too, which is off, and the restart forgot
       //   what DSoR kept (step 45's README, C2; decision Q7). Her retry comes once it is back.
-      expect(output).toMatch("after a restart, user_123 reads: FRESHNESS_UNSATISFIABLE");
+      // Changed by step 45's review, finding 3: DSoR knows nothing about her after the restart,
+      //   so she hears the words every stranger hears.
+      expect(output).toMatch("after a restart, user_123 reads: AUTHORIZATION_DENIED");
       expect(output).toMatch("after a restart, user_123's retry of her draft: answered");
       // The changed payee, told in memory (step 21's README, decision 13).
       expect(output).toMatch("  02:05, the agent reads INV-1008: version 1, VENDOR-44");

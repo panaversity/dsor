@@ -936,6 +936,12 @@ describe("C10: an answer DSoR cannot use is a fault, and is never used", () => {
       "with an as_of two minutes ahead of DSoR's clock (step 45's D4)",
       aboutHer({ as_of: new Date(Date.now() + 120_000).toISOString() }),
     ],
+    // Found by step 45's review, mutation A17: a time with no zone, which Date.parse reads as
+    //   this computer's local time. The minute's edge is in test/lookup-replies.test.ts.
+    [
+      "with an as_of that names no time zone (step 45's D4)",
+      aboutHer({ as_of: new Date().toISOString().slice(0, 19) }),
+    ],
     ["that is text", "yes"],
     ["that is null", null],
   ])(
@@ -1103,7 +1109,9 @@ describe("C10: an answer DSoR cannot use is a fault, and is never used", () => {
 // Changed in step 45: a person who calls for herself needs her company's answer too, at line ②
 //   (step 45's README, C2; decision Q7). Step 19's decision 2 asked nothing for her own call.
 describe("C11: a person who calls for herself needs her company's answer too", () => {
-  it("Q7: with org_456's directory off and nothing kept, user_123's own draft and cfo_100's read are refused at line ②, and nothing is drafted", async () => {
+  // Changed by step 45's review, finding 3: DSoR knows nothing about either of them there, so
+  //   both hear the words every stranger hears (DSOR-ERR-01b).
+  it("Q7: with org_456's directory off and nothing kept, user_123's own draft and cfo_100's read are refused at line ② with the words every stranger hears, and nothing is drafted", async () => {
     const directories = storyDirectories();
     const org456 = directories.get("org_456")!;
     org456.turn("off");
@@ -1119,10 +1127,13 @@ describe("C11: a person who calls for herself needs her company's answer too", (
         { ...CREATE, expected_version: 1 },
         (n) => lines.push(n),
       ),
-    ).toMatchObject({ code: "FRESHNESS_UNSATISFIABLE" });
+    ).toMatchObject({
+      code: "AUTHORIZATION_DENIED",
+      message: "the caller may not work in the tenant it named",
+    });
     expect(lines).toStrictEqual([1, 2, 11]);
     expect(await call(registry, createLog(), CFO, "invoice.get", READ)).toMatchObject({
-      code: "FRESHNESS_UNSATISFIABLE",
+      code: "AUTHORIZATION_DENIED",
     });
     expect(rows).toStrictEqual([]);
     expect(org456.asked()).toBe(2);

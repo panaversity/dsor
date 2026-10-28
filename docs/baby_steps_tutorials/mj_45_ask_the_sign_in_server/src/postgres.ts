@@ -1463,8 +1463,9 @@ export function createDbAnswers(pool: pg.Pool): KeptAnswers {
       inCompany(pool, tenant, async (client) => {
         await client.query(
           `UPDATE dsor.role_answers SET answer = NULL, as_of = NULL
-            WHERE tenant_id = $1 AND person = $2 AND asked_at <= $3`,
-          [tenant, person, new Date(asked)],
+            WHERE tenant_id = $1 AND person = $2 AND (asked_at <= $3 OR asked_at > $4)`,
+          // And one asked for later than DSoR's clock now: found by step 45's review, finding 5.
+          [tenant, person, new Date(asked), new Date()],
         );
       }),
   };

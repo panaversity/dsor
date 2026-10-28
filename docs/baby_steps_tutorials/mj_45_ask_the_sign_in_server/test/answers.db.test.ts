@@ -8,7 +8,12 @@ import { createLog } from "../src/log.ts";
 import { lookupDirectory } from "../src/lookup.ts";
 import { call } from "../src/pipeline.ts";
 import type { Registry } from "../src/registry.ts";
-import { futureNewsGoes, laterAnswerStays, newerNewsStays } from "./kept-answers.ts";
+import {
+  futureNewsForgotten,
+  futureNewsGoes,
+  laterAnswerStays,
+  newerNewsStays,
+} from "./kept-answers.ts";
 import { AGENT, MASKED_1008_OF_456, storyDirectories } from "./helpers.ts";
 import { NO_PRIVILEGE, dbRegistry, newPool, tryThenRollBack } from "./db.ts";
 import { startSignInServer, type SignInServer } from "./sign-in-server.ts";
@@ -161,5 +166,9 @@ describe("D8: the kept answers in the database keep the newer news (step 19's RE
 
   it("step 19's decision 15: an answer kept before DSoR's clock went back, whose facts are later than its clock now, is replaced by the next answer", async () => {
     await futureNewsGoes(createDbAnswers(pool), Date.now());
+  });
+
+  it("step 19's decision 15: a reply DSoR could not use forgets an answer kept before DSoR's clock went back, though it was asked for later than that reply", async () => {
+    await futureNewsForgotten(createDbAnswers(pool), Date.now());
   });
 });

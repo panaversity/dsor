@@ -117,6 +117,15 @@ describe("C1 and D11: lookups.json and the keys, checked at start-up", () => {
     expect(serve).toMatch(/lookupDirectory\(\{ tenant, address, key \}\)/);
     expect(serve).not.toMatch(/fakeDirectory/);
   });
+
+  it("D11: pnpm serve reads no key from .env, a file, and keeps the answers on a pool of their own", () => {
+    const serve = readFileSync(new URL("../src/serve.ts", import.meta.url), "utf8");
+    // Found by step 45's review, finding 7: the keys were read from .env too.
+    expect(serve).toMatch('loadDotEnv(["DSOR_DB_URL", "DSOR_HTTP_PORT"]);');
+    expect(serve).not.toMatch(/keyVariable/);
+    // And mutation SV1: on the main pool, releases waited for each other forever.
+    expect(serve).toMatch(/createDbAnswers\(openPool\(/);
+  });
 });
 
 describe("C1 and D1: each company's lookup uses that company's key, and no other", () => {

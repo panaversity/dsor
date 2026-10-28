@@ -277,6 +277,14 @@ export function createRoleSource(
       // not kept over them (decision 14). Found by step 19's review.
       // NEW IN STEP 45: the store decides it, in one step, with the moment DSoR asked (D3, D8).
       await kept.keep(tenant, person, { answer: copy as Answer, at, asked: askedAt });
+      // NEW IN STEP 45: and the call decides on the newer news too. A reply from a server that
+      //   lags may be older than the answer DSoR keeps, and then the kept one decides: found by
+      //   step 45's review, finding 4 (step 19's README, decision 14).
+      const newest = await kept.get(tenant, person);
+      if (newest !== undefined && newest.at > at && usable(newest.answer, tenant, person)) {
+        answer = newest.answer;
+        at = newest.at;
+      }
     } else {
       // No answer: the kept one counts only while it is under the company's bound
       // (DSOR-IDN-06; step 19's README, decisions 3, 4, and 5). Never one from the future: a
@@ -330,13 +338,32 @@ export function createRoleSource(
     // NEW IN STEP 45: the same question about a person who calls for herself, asked at line ②
     //   (step 45's README, C2; decision Q7).
     memberOf: async (tenant: string, person: string, name: string): Promise<SignerAuthority> => {
-      const { answer, as_of } = await current(tenant, person, name, person);
       // Suspended or gone, she may not work in the company. The words are the ones line ② gives
       //   anyone who is not a member, so the answer does not say which one she is (DSOR-ERR-01b).
-      if (answer.status !== "active") {
-        throw new Refusal("AUTHORIZATION_DENIED", "the caller may not work in the tenant it named");
+      const stranger = new Refusal(
+        "AUTHORIZATION_DENIED",
+        "the caller may not work in the tenant it named",
+      );
+      // And a company DSoR does not serve, and a company whose server cannot answer now, sound the
+      //   same to a person DSoR knows nothing about there: she hears what every stranger hears, so
+      //   no call tells her which companies DSoR serves, or when their server is down. A person
+      //   DSoR keeps an active answer about, however old, hears the real refusal. Found by step
+      //   45's review, finding 3 (DSOR-ERR-01b).
+      if (!settings.has(tenant) || !directories.has(tenant)) throw stranger;
+      const before = await kept.get(tenant, person);
+      const known =
+        before !== undefined &&
+        usable(before.answer, tenant, person) &&
+        before.answer.status === "active";
+      let found: { answer: Answer; as_of: string };
+      try {
+        found = await current(tenant, person, name, person);
+      } catch (error) {
+        if (!known) throw stranger;
+        throw error;
       }
-      return { roles: [...answer.roles], source: "role_source", as_of };
+      if (found.answer.status !== "active") throw stranger;
+      return { roles: [...found.answer.roles], source: "role_source", as_of: found.as_of };
     },
   });
 }

@@ -12,7 +12,7 @@ import { checkRoleSettings, readRoleSettings } from "./authority.ts";
 import { readCatalog } from "./catalog.ts";
 import { readInputs } from "./inputs.ts";
 import { lookupDirectory } from "./lookup.ts";
-import { checkLookups, keyVariable, readLookups } from "./lookups.ts";
+import { checkLookups, readLookups } from "./lookups.ts";
 import { storeDifferences } from "./inspector.ts";
 import { readClassifications } from "./labels.ts";
 import { handlersFor } from "./operations.ts";
@@ -55,8 +55,10 @@ if (roleCheck.problems.length > 0) {
   refuse(`role-sources.json refused to start:\n  ${roleCheck.problems.join("\n  ")}`);
 }
 const companies = [...roleCheck.settings.keys()];
-// And each company's key, which .env may set too.
-loadDotEnv(["DSOR_DB_URL", "DSOR_HTTP_PORT", ...companies.map(keyVariable)]);
+// Each company's key is never read from .env, a file: only from the environment the program is
+//   started in, as a deployment's secret store sets it (D11, DSOR-CNR-02). Found by step 45's
+//   review, finding 7.
+loadDotEnv(["DSOR_DB_URL", "DSOR_HTTP_PORT"]);
 // No database named, no door: it never falls back to a log in memory (step 09's README, decision 15).
 try {
   requireEnv("DSOR_DB_URL");
