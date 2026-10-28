@@ -206,6 +206,16 @@ function timeOf(as_of: string): number {
   return day <= new Date(Date.UTC(year, month, 0)).getUTCDate() ? Date.parse(as_of) : Number.NaN;
 }
 
+// NEW IN STEP 45b: after five failures in a row from one company's server, this DSoR server asks
+// that server nothing for 10 seconds (step 45b's README, D10).
+const FAILURES = 5;
+const PAUSE_MS = 10 * 1000;
+
+// NEW IN STEP 45b: one company's server, as this DSoR server has found it: its failures in a row,
+// the end of its pause, and whether a call is trying it again (D10, D16).
+/** One company's run of failures on this DSoR server. */
+type Run = { failures: number; pausedUntil: number; trying: boolean };
+
 // NEW IN STEP 45b: one lookup, as every call that shares it reads it: the moment DSoR sent it,
 // and what came back (step 45b's README, D9).
 /** A lookup that calls share: when DSoR asked, and the reply, if one came in time. */
@@ -225,21 +235,47 @@ export function createRoleSource(
   // A call about the same pair waits for the one in flight, and asks nothing. The key holds the
   // company, as the kept answers' key does (step 45b's README, C1, C2, D9; DSOR-TEN-02a).
   const flying = new Map<string, Promise<Asked>>();
+  // NEW IN STEP 45b: and each company's run of failures, keyed by company, so one company's outage
+  // never pauses another (C7, D10; DSOR-TEN-02a). In memory too: a restart forgets a run.
+  const runs = new Map<string, Run>();
 
-  /** The lookup a call reads: the one in flight about this person in this company, or a new one. */
+  /**
+   * The lookup a call reads: the one in flight about this person in this company, a new one, or,
+   * while the company's server is paused, no reply at once.
+   */
   function ask(tenant: string, person: string, directory: Directory): Promise<Asked> {
     const key = JSON.stringify([tenant, person]);
     const inFlight = flying.get(key);
     if (inFlight !== undefined) return inFlight;
     const askedAt = Date.now();
+    // NEW IN STEP 45b: after five failures in a row, a call asks nothing while the pause lasts, or
+    // while another call tries the server again. It has no reply, at once, and uses the answer
+    // kept, or is refused (C4, C5; D10, D16).
+    const run = runs.get(tenant) ?? { failures: 0, pausedUntil: 0, trying: false };
+    runs.set(tenant, run);
+    const trial = run.failures >= FAILURES;
+    if (trial && (askedAt < run.pausedUntil || run.trying)) {
+      return Promise.resolve({ askedAt, answered: false });
+    }
+    // The pause is over: this call alone tries the server again (D16).
+    if (trial) run.trying = true;
     const lookup = askWithin(directory, person).then((reply): Asked => {
       // The lookup has ended. The next call asks again, unless it can use the answer kept (D3).
       flying.delete(key);
-      // One copy for every call that waited, which each copies again for itself (step 19's
-      // README, decision 17).
-      return reply.answered
-        ? { askedAt, answered: true, answer: copyOf(reply.answer) }
-        : { askedAt, answered: false };
+      if (trial) run.trying = false;
+      if (reply.answered) {
+        // NEW IN STEP 45b: any reply, even one DSoR cannot use, shows the server is up, and ends
+        // the run (C6, D17).
+        run.failures = 0;
+        // One copy for every call that waited, which each copies again for itself (step 19's
+        // README, decision 17).
+        return { askedAt, answered: true, answer: copyOf(reply.answer) };
+      }
+      // NEW IN STEP 45b: one lookup is one failure, however many calls waited for it. The fifth in
+      // a row starts a pause, and so does each failure after it, the trial's too (C4, C5).
+      run.failures += 1;
+      if (run.failures >= FAILURES) run.pausedUntil = Date.now() + PAUSE_MS;
+      return { askedAt, answered: false };
     });
     flying.set(key, lookup);
     return lookup;

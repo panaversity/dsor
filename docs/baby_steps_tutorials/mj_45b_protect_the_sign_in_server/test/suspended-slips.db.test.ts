@@ -626,10 +626,13 @@ describe("C7: two calls at once make one change and one record", () => {
           ["org_456", barrier],
           ["org_789", signer.directories.get("org_789")!],
         ]);
-        const registry = dbRegistry(both, directories);
+        // Changed in step 45b: one DSoR server now asks once for both calls about her (D9), so each
+        // agent calls a DSoR server of its own, on the same database, and each server asks.
+        const one = dbRegistry(both, directories);
+        const other = dbRegistry(both, directories);
         const answers = await Promise.all([
-          call(registry, log, signer.first, "invoice.get", READ),
-          call(registry, log, signer.second, "invoice.get", READ),
+          call(one, log, signer.first, "invoice.get", READ),
+          call(other, log, signer.second, "invoice.get", READ),
         ]);
         // Both heard the directory's word, not the slip's status: both tried a suspension.
         const whom = `whom the directory of org_456 does not list as active`;
