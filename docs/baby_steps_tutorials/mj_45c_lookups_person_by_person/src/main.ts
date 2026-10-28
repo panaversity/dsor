@@ -633,6 +633,11 @@ console.log("after a restart, user_123 reads:", heard(herOwn));
 // draft, though she has cancelled it since (step 20's README, decision 7).
 // Changed in step 45: the directory comes back before her retry, which asks her company first.
 directory456.turn("on");
+// NEW IN STEP 45c: the restarted DSoR remembers for 10 seconds that its question about user_123
+//   could not be answered while the directory was off (step 45c's README, D21). A retry before
+//   then hears the same refusal, so the story waits them out, as she would.
+console.log("10 seconds pass: DSoR remembers its failed question about user_123 for that long");
+await new Promise((resolve) => setTimeout(resolve, 10_000));
 const herRetry = await call(
   restarted,
   log,

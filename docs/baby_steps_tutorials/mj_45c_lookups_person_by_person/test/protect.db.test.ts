@@ -85,8 +85,10 @@ describe("C4, D8, and D10: the pause is in each DSoR server's memory, and the ke
     await keptFrom30SecondsAgo();
     const paused = dsor();
     server.replyStatus(503);
-    for (let call = 0; call < 5; call += 1) {
-      expect(await read(paused)).toMatchObject({ data: MASKED_1008_OF_456 });
+    // Changed in step 45c: a failed lookup about a person is remembered (step 45c's README, D21),
+    //   so the five failures in a row are five people's own calls, each about herself.
+    for (const person of ["user_201", "user_202", "user_203", "user_204", "user_205"]) {
+      await paused.roleSource.memberOf("org_456", person, '"invoice.get"').catch(() => undefined);
     }
     expect(server.asked()).toBe(5);
     server.hang();

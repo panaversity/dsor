@@ -337,6 +337,9 @@ describe("C5: what an invalidated release leaves (DSOR-APR-03c, D4, D8)", () => 
       expect((await afterwards(w, id)).state).toBe("APPROVED");
       expect(await w.reservations.get("org_456", id)).toMatchObject({ state: "held" });
       directory.turn("on");
+      // Changed in step 45c: the failed lookup is remembered for 10 seconds (step 45c's README,
+      //   D21), so the same key is sent again once they are over.
+      vi.setSystemTime(new Date(Date.now() + 10_000));
       expect(await w.ask(once, "proposal.execute", { proposal: uri })).toMatchObject({
         outcome: "COMMITTED",
       });

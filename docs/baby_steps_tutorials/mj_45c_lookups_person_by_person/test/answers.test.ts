@@ -104,10 +104,16 @@ describe("C7 and D3: an answer is used again for up to 10 seconds", () => {
     expect(server.asked()).toBe(2);
   });
 
-  it("D3: a fault is never used again: after an answer about cfo_100, the next call asks, and counts", async () => {
+  // Changed in step 45c: a fault is remembered for 10 seconds, as every reply is, so the call that
+  //   asks again comes 10 seconds later (step 45c's README, D21).
+  it("D3, D21: a fault is never used again as an answer: it is remembered as a fault for 10 seconds, and then DSoR asks, and the answer counts", async () => {
     server.answerAbout("cfo_100");
     expect(await read()).toMatchObject({ code: "INTERNAL_ERROR" });
     server.answerAbout(undefined);
+    at("02:00:09");
+    expect(await read()).toMatchObject({ code: "INTERNAL_ERROR" });
+    expect(server.asked()).toBe(1);
+    at("02:00:10");
     expect(await read()).toMatchObject({ data: MASKED_1008_OF_456 });
     expect(server.asked()).toBe(2);
   });

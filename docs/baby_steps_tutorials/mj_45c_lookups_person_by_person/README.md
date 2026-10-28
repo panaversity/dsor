@@ -106,7 +106,7 @@ questions to a role source, so the budget is this tutorial's decision, and so ar
 
 | Claim | What it says |
 |---|---|
-| C1 | On each DSoR server, a reply about a person in a company, an answer, a failure, or a fault, is remembered for 10 seconds from the moment DSoR asked. A call about her in that time sends no question, and gets what that reply gave: after a failure, her kept answer under the company's bound, or a refusal at once; after a fault, `INTERNAL_ERROR` at once (D21) |
+| C1 | On each DSoR server, a reply about a person in a company, an answer, a failure, or a fault, is remembered for 10 seconds from the moment DSoR asked. A call about her in that time sends no question, and gets what that reply gave: after a failure, her kept answer under the company's bound, or a refusal at once; after a fault, or an answer too old to use, the same refusal at once. An answer a call can use is used again from the kept answers, as step 45's D3 does, so never past the company's bound (D21) |
 | C2 | After failures in a row about one person, DSoR waits twice as long each time before it asks about her again: 10, 20, 40, 80, 160 seconds, then 5 minutes at most. Any reply about her starts her over at 10 seconds (D22) |
 | C3 | The company's pause starts when lookups about five different people have failed in a row: one person's failures count once. A person who is waiting (C2) is never the trial (D25) |
 | C4 | Each DSoR server sends at most 20 lookups in any minute, for each company, about people DSoR knows nothing about, from people's own calls at line ②. A person DSoR keeps an active answer for, however old, and line ③ never wait for the budget (D23) |
@@ -124,8 +124,9 @@ Before this step, from the two reviews, on 2026-10-28:
 For this step, the learner's, on 2026-10-28, each with Claude Code's recommendation taken:
 
 - **D21. Every reply about a person is remembered for 10 seconds, on each DSoR server.** An answer, a
-  failure, and a fault alike. *Downside:* a server that recovers a second after a failure is not
-  asked about her for up to 10 seconds.
+  failure, and a fault alike. An answer a call can use is used again from the kept answers, under
+  the company's bound, as step 45's D3 already does. *Downside:* a server that recovers a second
+  after a failure is not asked about her for up to 10 seconds.
 - **D22. When a person's lookups keep failing, DSoR waits twice as long each time,** from 10 seconds
   up to 5 minutes; any reply starts her over. *Downside:* once her record is fixed, DSoR may take up
   to 5 minutes to ask again; she uses her kept answer meanwhile.
@@ -146,7 +147,7 @@ person's record. Only the date is faked.
 | Claim | Tests |
 |---|---|
 | C1 | `D21`: after a `503` at 02:00:00, a read at 02:00:09 asks nothing and reads on the kept answer; one at 02:00:10 asks. `D21`: after a `403`, nine more reads in 9 seconds ask nothing, and each hears `INTERNAL_ERROR`. `D21`: after an answer too old to use, a read within 10 seconds asks nothing and is refused the same. `D21`, `DSOR-TEN-02a`: a failure about `user_123` holds no question back about `cfo_100` |
-| C2 | `D22`: while `user_123`'s lookups keep failing, DSoR asks about her at 10, 30, 70, 150, 310, 610, and 910 seconds; a reply starts her over at 10 |
+| C2 | `D22`: while `user_123`'s lookups keep failing, DSoR waits 10, 20, 40, 80, and 160 seconds between its questions about her, then 5 minutes; a reply starts her over at 10 |
 | C3 | `D25`: `user_123`'s lookups fail ten times, and org_456 never pauses: `cfo_100` is asked about. `D25`: five different people's failures pause it. `D25`: after an outage, `user_123`, who is waiting, is never the trial, and `cfo_100`'s call is |
 | C4 | `D23`: 25 people DSoR knows nothing about call at once: 20 questions. `D23`: a minute later, 20 more. `D23`: `cfo_100`, with a three-hour-old active answer kept, is asked about when the budget is used up. `D23`: an agent's call at line ③ is never held back |
 | C5 | `D24`, `DSOR-ERR-01b`: over the budget, a call hears the stranger's words at once, with no question; five such calls start no pause |

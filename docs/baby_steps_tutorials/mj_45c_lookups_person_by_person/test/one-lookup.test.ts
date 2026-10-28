@@ -96,13 +96,16 @@ describe("C1 and D9: calls about the same person share one lookup in flight", ()
     expect(server.asked()).toBe(2);
   });
 
-  it("D9: once a lookup has ended, the next call asks again: at once after a 503, and 11 seconds after an answer", async () => {
+  // Changed in step 45c: a failed lookup is remembered for 10 seconds, as every reply is (step
+  //   45c's README, D21), so the next call after a 503 asks 10 seconds later, not at once.
+  it("D9, D21: once a lookup has ended, the next call asks again: 10 seconds after a 503, and 11 seconds after an answer", async () => {
     server.replyStatus(503);
     expect(await read()).toMatchObject({ code: "FRESHNESS_UNSATISFIABLE" });
     server.replyStatus(undefined);
+    at("02:00:10");
     expect(await read()).toMatchObject({ data: MASKED_1008_OF_456 });
     expect(server.asked()).toBe(2);
-    at("02:00:11");
+    at("02:00:21");
     expect(await read()).toMatchObject({ data: MASKED_1008_OF_456 });
     expect(server.asked()).toBe(3);
   });

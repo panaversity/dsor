@@ -221,6 +221,17 @@ type Run = { failures: number; pausedUntil: number; trying: boolean };
 /** A lookup that calls share: when DSoR asked, and the reply, if one came in time. */
 type Asked = { askedAt: number } & ({ answered: true; answer: unknown } | { answered: false });
 
+// NEW IN STEP 45c: a person whose lookups keep failing waits twice as long each time before DSoR
+// asks about her again: 10 seconds, then 20, 40, 80, 160, and 5 minutes at most (step 45c's
+// README, D22).
+const BACKOFF_MAX_MS = 5 * 60 * 1000;
+
+// NEW IN STEP 45c: the latest lookup about one person in one company, on this DSoR server: the
+// lookup, in flight or with its reply, the moment DSoR asked, until when its reply is remembered,
+// and her failures in a row (D9, D21, D22).
+/** What one DSoR server remembers of its latest lookup about one person. */
+type Memory = { lookup: Promise<Asked>; askedAt: number; until: number; failures: number };
+
 /** DSoR's side of each company's role source, holding the answers it keeps. */
 export function createRoleSource(
   settings: RoleSettings,
@@ -234,7 +245,9 @@ export function createRoleSource(
   // The lookups in flight on this DSoR server, one for each company and person.
   // A call about the same pair waits for the one in flight, and asks nothing. The key holds the
   // company, as the kept answers' key does (step 45b's README, C1, C2, D9; DSOR-TEN-02a).
-  const flying = new Map<string, Promise<Asked>>();
+  // NEW IN STEP 45c: and once its reply has come, it is remembered for a while: 10 seconds, or
+  // longer after failures in a row (step 45c's README, C1, C2, D21, D22). The oldest come first.
+  const people = new Map<string, Memory>();
   // And each company's run of failures, keyed by company, so one company's outage
   // never pauses another (C7, D10; DSOR-TEN-02a). In memory too: a restart forgets a run.
   const runs = new Map<string, Run>();
@@ -243,11 +256,21 @@ export function createRoleSource(
    * The lookup a call reads: the one in flight about this person in this company, a new one, or,
    * while the company's server is paused, no reply at once.
    */
-  function ask(tenant: string, person: string, directory: Directory): Promise<Asked> {
+  function ask(
+    tenant: string,
+    person: string,
+    directory: Directory,
+    // NEW IN STEP 45c: the company's bound, which an answer used again from memory must not pass.
+    bound: number,
+  ): Promise<Asked> {
     const key = JSON.stringify([tenant, person]);
-    const inFlight = flying.get(key);
-    if (inFlight !== undefined) return inFlight;
     const askedAt = Date.now();
+    // NEW IN STEP 45c: a lookup in flight, or one whose reply is still remembered: the same reply,
+    // and no question (D9, D21, D22). Not one DSoR made later than its clock now: it came before a
+    // clock went back (step 19's README, decision 15).
+    const last = people.get(key);
+    if (last !== undefined && askedAt < last.until && askedAt >= last.askedAt) return last.lookup;
+    forgetOld(askedAt);
     // After five failures in a row, a call asks nothing while the pause lasts, or
     // while another call tries the server again. It has no reply, at once, and uses the answer
     // kept, or is refused (C4, C5; D10, D16).
@@ -263,26 +286,50 @@ export function createRoleSource(
     }
     // The pause is over: this call alone tries the server again (D16).
     if (trial) run.trying = true;
+    // NEW IN STEP 45c: in flight until its reply comes. Her failures in a row so far count on from
+    //   the lookup before, so the backoff grows (D22).
+    const memory = { askedAt, until: Number.POSITIVE_INFINITY, failures: last?.failures ?? 0 };
     const lookup = askWithin(directory, person).then((reply): Asked => {
-      // The lookup has ended. The next call asks again, unless it can use the answer kept (D3).
-      flying.delete(key);
       if (trial) run.trying = false;
       if (reply.answered) {
         // Any reply, even one DSoR cannot use, shows the server is up, and ends
         // the run (C6, D17).
         run.failures = 0;
+        // NEW IN STEP 45c: her failures in a row start over (D22). A reply that no call can use as
+        //   an answer, a fault or one too old, is remembered for 10 seconds from the moment DSoR
+        //   asked. An answer a call can use is kept, as before, and used again from there only
+        //   while it is under the company's bound (D3, D21): found by step 45's test of a bound of
+        //   5 seconds.
+        memory.failures = 0;
         // One copy for every call that waited, which each copies again for itself (step 19's
         // README, decision 17).
-        return { askedAt, answered: true, answer: copyOf(reply.answer) };
+        const copy = copyOf(reply.answer);
+        memory.until = good(copy, tenant, person, askedAt, bound) ? askedAt : askedAt + REUSE_MS;
+        return { askedAt, answered: true, answer: copy };
       }
       // One lookup is one failure, however many calls waited for it. The fifth in
       // a row starts a pause, and so does each failure after it, the trial's too (C4, C5).
       run.failures += 1;
       if (run.failures >= FAILURES) run.pausedUntil = Date.now() + PAUSE_MS;
+      // NEW IN STEP 45c: a failure is remembered for twice as long as the one before it (D22).
+      memory.failures += 1;
+      memory.until = askedAt + Math.min(REUSE_MS * 2 ** (memory.failures - 1), BACKOFF_MAX_MS);
       return { askedAt, answered: false };
     });
-    flying.set(key, lookup);
+    // The latest lookup goes last, so the oldest memories come first.
+    people.delete(key);
+    people.set(key, Object.assign(memory, { lookup }));
     return lookup;
+  }
+
+  // NEW IN STEP 45c: a memory goes 5 minutes after it ended, so the map holds only the people asked
+  //   about lately. The oldest come first, and the first that is not old yet ends the sweep (D21).
+  /** Forgets the memories that ended more than 5 minutes ago. */
+  function forgetOld(now: number): void {
+    for (const [key, memory] of people) {
+      if (now < memory.until + BACKOFF_MAX_MS) return;
+      people.delete(key);
+    }
   }
 
   // The question both lines ask, about a slip's signer at line ③ and about a person
@@ -319,7 +366,7 @@ export function createRoleSource(
     // a new one otherwise (D9).
     const asked: Asked = reuse
       ? { askedAt, answered: false }
-      : await ask(tenant, person, directory);
+      : await ask(tenant, person, directory, setting.ms);
     let answer: Answer;
     let at: number;
     if (asked.answered) {
@@ -466,6 +513,22 @@ async function askWithin(
     // The timer goes, so a call that was answered at once leaves nothing behind.
     clearTimeout(timer);
   }
+}
+
+// NEW IN STEP 45c: the answer a call can use, judged as each call judges it below: about this
+// person in this company, at most a minute ahead, and under the company's bound when DSoR asked
+// (step 45c's README, D21).
+/** True for an answer that a call reading it could use, as of the moment DSoR asked. */
+function good(
+  answer: unknown,
+  tenant: string,
+  person: string,
+  askedAt: number,
+  bound: number,
+): boolean {
+  if (!usable(answer, tenant, person)) return false;
+  const read = timeOf(answer.as_of);
+  return read <= askedAt + AHEAD_MS && askedAt - Math.min(read, askedAt) < bound;
 }
 
 /** A copy of the answer, read once, or nothing if it cannot be copied (decision 17). */

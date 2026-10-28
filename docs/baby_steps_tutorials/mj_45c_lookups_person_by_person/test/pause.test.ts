@@ -103,12 +103,20 @@ function driven(): {
   };
 }
 
-/** Five calls in a row under del_100, while the server replies with this status. */
-async function fiveCalls(status = 503): Promise<unknown[]> {
+// Changed in step 45c: a failed lookup about a person is remembered (step 45c's README, D21), so
+//   five calls about one person make one question. A run of five failures is five people's own
+//   calls, each about herself, as the pause's count of different people needs too (D25).
+const FIVE = ["user_201", "user_202", "user_203", "user_204", "user_205"];
+
+/** One person's own call naming org_456, at line ②: whatever she hears, DSoR asks about her. */
+async function line2(person: string): Promise<void> {
+  await registry.roleSource.memberOf("org_456", person, '"invoice.get"').catch(() => undefined);
+}
+
+/** Five people's own calls, one after another, while the server replies with this status. */
+async function fivePeople(status = 503): Promise<void> {
   server.replyStatus(status);
-  const heard: unknown[] = [];
-  for (let call = 0; call < 5; call += 1) heard.push(await read());
-  return heard;
+  for (const person of FIVE) await line2(person);
 }
 
 describe("C4 and D10: after five failures in a row, the server is asked nothing for 10 seconds", () => {
@@ -132,9 +140,7 @@ describe("C4 and D10: after five failures in a row, the server is asked nothing 
   it("D10: after five 503s in a row, the server is asked nothing, and a call with a kept answer under the hour uses it at once", async () => {
     expect(await read()).toMatchObject({ data: MASKED_1008_OF_456 });
     at("02:00:11");
-    for (const heard of await fiveCalls()) {
-      expect(heard).toMatchObject({ data: MASKED_1008_OF_456 });
-    }
+    await fivePeople();
     expect(server.asked()).toBe(6);
     server.hang();
     const { heard, ms } = await timed();
@@ -144,9 +150,7 @@ describe("C4 and D10: after five failures in a row, the server is asked nothing 
   });
 
   it("DSOR-IDN-06: during the pause, a call with no kept answer is refused with FRESHNESS_UNSATISFIABLE at once, though the server hangs", async () => {
-    for (const heard of await fiveCalls()) {
-      expect(heard).toMatchObject({ code: "FRESHNESS_UNSATISFIABLE" });
-    }
+    await fivePeople();
     server.hang();
     const { heard, ms } = await timed();
     expect(heard).toMatchObject({ code: "FRESHNESS_UNSATISFIABLE" });
@@ -156,23 +160,20 @@ describe("C4 and D10: after five failures in a row, the server is asked nothing 
 
   it("D10: four failures, a reply, and four failures start no pause: the next call asks", async () => {
     server.replyStatus(503);
-    for (let call = 0; call < 4; call += 1) await read();
+    for (const person of FIVE.slice(0, 4)) await line2(person);
     server.replyStatus(undefined);
     expect(await read()).toMatchObject({ data: MASKED_1008_OF_456 });
-    at("02:00:11");
     server.replyStatus(503);
-    for (let call = 0; call < 4; call += 1) {
-      expect(await read()).toMatchObject({ data: MASKED_1008_OF_456 });
-    }
+    for (const person of ["user_211", "user_212", "user_213", "user_214"]) await line2(person);
     expect(server.asked()).toBe(9);
-    await read();
+    await line2("user_215");
     expect(server.asked()).toBe(10);
   });
 
   it("D10: the pause lasts 10 seconds: at 02:00:20.999 the server is not asked, and at 02:00:21 one call asks", async () => {
     expect(await read()).toMatchObject({ data: MASKED_1008_OF_456 });
     at("02:00:11");
-    await fiveCalls();
+    await fivePeople();
     at("02:00:20.999");
     expect(await read()).toMatchObject({ data: MASKED_1008_OF_456 });
     expect(server.asked()).toBe(6);
@@ -184,7 +185,7 @@ describe("C4 and D10: after five failures in a row, the server is asked nothing 
   it("D10: a pause that began later than DSoR's clock now came before a clock went back, and ends: the next call asks (step 19's README, decision 15)", async () => {
     expect(await read()).toMatchObject({ data: MASKED_1008_OF_456 });
     at("02:00:11");
-    await fiveCalls();
+    await fivePeople();
     expect(server.asked()).toBe(6);
     // The clock is set back an hour. The pause, until 02:00:21, would otherwise last an hour and ten
     // seconds, with no lookup at all.
@@ -196,7 +197,7 @@ describe("C4 and D10: after five failures in a row, the server is asked nothing 
 
   it("D10: one failure starts no trial: the calls about user_123 and cfo_100 that follow both ask at once", async () => {
     server.replyStatus(503);
-    await read();
+    await line2("user_201");
     server.replyStatus(undefined);
     server.hold();
     const both = [read(), read(CFO)];
@@ -210,13 +211,13 @@ describe("C4 and D10: after five failures in a row, the server is asked nothing 
     expect(await read()).toMatchObject({ data: MASKED_1008_OF_456 });
     at("02:00:11");
     server.replyStatus(503);
-    for (let call = 0; call < 4; call += 1) await read();
+    for (const person of FIVE.slice(0, 4)) await line2(person);
     // The fifth lookup is sent at 02:00:11, and gets no reply: it fails 2 seconds later, at 02:00:13.
     server.hang();
-    const fifth = read();
+    const fifth = line2(FIVE[4]!);
     await asked(server, 6);
     at("02:00:13");
-    expect(await fifth).toMatchObject({ data: MASKED_1008_OF_456 });
+    await fifth;
     at("02:00:22");
     expect(await read()).toMatchObject({ data: MASKED_1008_OF_456 });
     expect(server.asked()).toBe(6);
@@ -225,19 +226,19 @@ describe("C4 and D10: after five failures in a row, the server is asked nothing 
   it("D10: a failure after the fifth, from a lookup already in flight, starts the pause again from its own moment", async () => {
     const drive = driven();
     registry = slipRegistry(undefined, undefined, [], new Map([["org_456", drive.directory]]));
-    for (let call = 0; call < 4; call += 1) {
-      const heard = read();
-      await drive.fail("user_123");
+    for (const person of FIVE.slice(0, 4)) {
+      const heard = line2(person);
+      await drive.fail(person);
       await heard;
     }
-    const agent = read();
-    const cfo = read(CFO);
-    await drive.fail("user_123");
-    // The agent's call ends after DSoR has counted the fifth failure, at 02:00:00.
-    await agent;
+    const fifth = line2(FIVE[4]!);
+    const sixth = line2("user_206");
+    await drive.fail(FIVE[4]!);
+    // The fifth call ends after DSoR has counted the fifth failure, at 02:00:00.
+    await fifth;
     at("02:00:03");
-    await drive.fail("cfo_100");
-    await cfo;
+    await drive.fail("user_206");
+    await sixth;
     expect(drive.asked()).toBe(6);
     // The fifth failure, at 02:00:00, paused until 02:00:10; the sixth, at 02:00:03, until 02:00:13.
     at("02:00:11");
@@ -246,7 +247,7 @@ describe("C4 and D10: after five failures in a row, the server is asked nothing 
   });
 
   it("D10: during the pause, cfo_100, of whom DSoR keeps no answer, hears the stranger's words at once", async () => {
-    await fiveCalls();
+    await fivePeople();
     server.hang();
     const { heard, ms } = await timed(CFO);
     expect(heard).toMatchObject({ code: "AUTHORIZATION_DENIED", message: STRANGER });
@@ -261,7 +262,7 @@ describe("C5 and D16: when the pause is over, one call tries the server again", 
     expect(await read()).toMatchObject({ data: MASKED_1008_OF_456 });
     expect(await read(CFO)).toHaveProperty("data");
     at("02:00:11");
-    await fiveCalls();
+    await fivePeople();
     expect(server.asked()).toBe(7);
     at("02:00:21");
   }
@@ -301,11 +302,12 @@ describe("C5 and D16: when the pause is over, one call tries the server again", 
     expect(server.asked()).toBe(8);
     expect(await read(CFO)).toHaveProperty("data");
     expect(server.asked()).toBe(8);
+    // cfo_100's calls, since user_123's own failed lookup is remembered until 02:00:31 too (D21).
     at("02:00:30.999");
-    await read();
+    await read(CFO);
     expect(server.asked()).toBe(8);
     at("02:00:31");
-    await read();
+    await read(CFO);
     expect(server.asked()).toBe(9);
   });
 
@@ -315,7 +317,7 @@ describe("C5 and D16: when the pause is over, one call tries the server again", 
     expect(await read()).toMatchObject({ data: MASKED_1008_OF_456 });
     expect(server.asked()).toBe(8);
     at("02:00:32");
-    await fiveCalls();
+    await fivePeople();
     expect(server.asked()).toBe(13);
     at("02:00:42");
     await read();
@@ -337,9 +339,9 @@ describe("C6 and D17: any reply ends the run", () => {
     const drive = driven();
     registry = slipRegistry(undefined, undefined, [], new Map([["org_456", drive.directory]]));
     const cfo = read(CFO);
-    for (let call = 0; call < 5; call += 1) {
-      const heard = read();
-      await drive.fail("user_123");
+    for (const person of FIVE) {
+      const heard = line2(person);
+      await drive.fail(person);
       await heard;
     }
     // The pause began with the fifth failure. cfo_100's lookup, sent before it, now gets its reply.
@@ -355,9 +357,8 @@ describe("C6 and D17: any reply ends the run", () => {
     expect(await read()).toMatchObject({ data: MASKED_1008_OF_456 });
     expect(await read(CFO)).toHaveProperty("data");
     at("02:00:11");
-    for (const heard of await fiveCalls(403)) {
-      expect(heard).toMatchObject({ code: "INTERNAL_ERROR" });
-    }
+    await fivePeople(403);
+    expect(server.asked()).toBe(7);
     at("02:00:12");
     expect(await read(CFO)).toMatchObject({ code: "INTERNAL_ERROR" });
     expect(server.asked()).toBe(8);
@@ -365,13 +366,13 @@ describe("C6 and D17: any reply ends the run", () => {
 
   it("D17: four 503s, a 403, and four 503s start no pause: the next call asks", async () => {
     server.replyStatus(503);
-    for (let call = 0; call < 4; call += 1) await read();
+    for (const person of FIVE.slice(0, 4)) await line2(person);
     server.replyStatus(403);
-    expect(await read()).toMatchObject({ code: "INTERNAL_ERROR" });
+    await line2("user_210");
     server.replyStatus(503);
-    for (let call = 0; call < 4; call += 1) await read();
+    for (const person of ["user_211", "user_212", "user_213", "user_214"]) await line2(person);
     expect(server.asked()).toBe(9);
-    await read();
+    await line2("user_215");
     expect(server.asked()).toBe(10);
   });
 });
@@ -387,7 +388,7 @@ describe("C7 and DSOR-TEN-02a: each company has its own run and its own pause", 
         ["org_789", lookupOf(server789, "org_789")],
       ]);
       registry = slipRegistry(undefined, undefined, [], both);
-      await fiveCalls();
+      await fivePeople();
       expect(server.asked()).toBe(5);
       const invoice = { invoice: "dsor://org_789/invoice/INV-1008" };
       expect(await call(registry, createLog(), USER_700, "invoice.get", invoice)).toHaveProperty(
