@@ -243,6 +243,17 @@ returns. So the waiting work can never run, and it fills approval queues and hol
 an administrator's tear-up cancels it. To raise: should a suspension under DSOR-IDN-07 also cancel
 the slip's waiting work, as DSOR-DEL-04c does for a revocation?
 
+### Should §18's circuit breaker name the role source too?
+
+Found in step 45b (2026-10-28). DSOR-OPS-03a, at L3, asks for "connector circuit breakers", which
+stop commands to a failing connector before they become `OUTCOME_UNKNOWN`. A role source fails in
+the same way, and DSoR asks it at every call that needs a person's authority: a sign-in server that
+hangs makes every call wait 2 seconds, and is asked again at every call while it tries to come back.
+Step 45b pauses a failing role source after five failures in a row, for 10 seconds, and then lets
+one call try it, as this tutorial's decisions (D10, D16, D17). A call refused during the pause hears
+DSOR-IDN-06's `FRESHNESS_UNSATISFIABLE`, not `CONNECTOR_UNAVAILABLE`. To raise: should §18 name the
+role source beside the connector, and should the specification say how often DSoR may ask one?
+
 ## Proposals for the specification
 
 Changes the learner has decided to propose. None of them is in the specification. They go to it

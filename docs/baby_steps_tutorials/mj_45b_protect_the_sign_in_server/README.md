@@ -409,7 +409,7 @@ and a time that a paused call never reads.
 
 | Rule | What it says | Spec | Tests |
 |---|---|---|---|
-| DSOR-IDN-06 | With no authority recent enough, the command is refused | [§12.1](../../../specs/dsor/02-security.md#121-role-source) | `test/pause.test.ts` (C4), `test/protect.db.test.ts` |
+| DSOR-IDN-06 | With no authority recent enough, the command is refused | [§12.1](../../../specs/dsor/02-security.md#121-role-source) | `test/pause.test.ts` (C4) |
 | DSOR-TEN-02a | Caches, counters, and the rest are keyed by company | [§14](../../../specs/dsor/02-security.md#14-multi-tenancy) | `test/one-lookup.test.ts` (C2), `test/pause.test.ts` (C7) |
 
 The shared lookup, the pause, the trial, and the fault rule are this tutorial's decisions: those

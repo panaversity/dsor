@@ -386,7 +386,8 @@ learner's review.**
 **Decided by:** the learner, on Claude Code's recommendation, with step 45b's questions.
 
 - **What.** Step 45's review, finding 2: anyone with an SSO account can name org_456, and each such
-  call spends one of org_456's lookups, with org_456's key. The fix gets a step of its own: DSoR
+  call spends one of org_456's lookups, with org_456's key. The fix gets a step of its own, step
+  45c in the map (its place proposed by Claude Code): DSoR
   asks about the same company and person at most once in 10 seconds, whatever the reply, and holds a
   budget of lookups about people it knows nothing about.
 - **Why.** Step 45b keeps one idea. The fix needs numbers of its own, and a refusal of its own.
@@ -399,7 +400,8 @@ learner's review.**
 **Decided by:** the learner, on Claude Code's recommendation, with step 45b's questions.
 
 - **What.** The alert of decision Q8, when DSoR cannot get a fresh answer from a company's sign-in
-  server, is built in a step of its own (entry 29).
+  server, is built in a step of its own (entry 29): step 45d in the map, its place proposed by
+  Claude Code.
 - **Why.** An alert in this tutorial belongs to a payment (step 38b). A server outage needs a new
   kind of alert, with a record of its own.
 - **Cost.** Until then, a company learns of an outage only from refused calls and their records.
