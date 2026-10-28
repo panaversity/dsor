@@ -344,7 +344,8 @@ describe("C3: the agent may use only what its slip lists and its signer holds no
   // Since step 18 the subject is the slip's signer, so the company must be one where the
   // signer holds a membership (DSOR-IDN-03a). Found by step 18's review: line ⑤ refused these
   // calls, but its record named user_700 as the subject in org_456 (step 18's README,
-  // decision 18).
+  // decision 18). Changed in step 45: org_456's server says only that it does not know
+  // user_700, so she is gone, as one who left, and del_100 is suspended (step 45's README, D4).
   it.each([
     ["invoice.get", READ],
     ["invoice.list", {}],
@@ -352,27 +353,25 @@ describe("C3: the agent may use only what its slip lists and its signer holds no
     ["payment.create", { ...CREATE, expected_version: 1 }],
     ["payment.cancel", { ...CANCEL, expected_version: 1 }],
   ])(
-    "DSOR-IDN-03a: a slip in org_456 signed by user_700, who works only in org_789, refuses %s at line ③",
+    "DSOR-IDN-03a: a slip in org_456 signed by user_700, who works only in org_789, refuses %s at line ③ as gone",
     async (name, input) => {
       const log = createLog();
       const lines: number[] = [];
-      const answer = await call(
-        slipRegistry(with100({ delegator: "user_700" })),
-        log,
-        AGENT,
-        name,
-        input,
-        (n) => lines.push(n),
-      );
+      const slips = with100({ delegator: "user_700" });
+      const answer = await call(slipRegistry(slips), log, AGENT, name, input, (n) => lines.push(n));
       expect(answer).toMatchObject({
-        code: "AUTHORIZATION_DENIED",
-        message: `"${name}": slip del_100 is signed by user_700, who is not a person in org_456`,
+        code: "DELEGATION_REQUIRED",
+        message: `"${name}": slip del_100 is signed by user_700, whom the directory of org_456 does not list as active`,
         retry: "never",
       });
       expect(lines).toStrictEqual([1, 2, 3, 11]);
       const [record] = await log.records();
-      expect(record).toMatchObject({ authorization: "DENY", result: "AUTHORIZATION_DENIED" });
+      expect(record).toMatchObject({ authorization: "DENY", result: "DELEGATION_REQUIRED" });
       expect(record).not.toHaveProperty("identity");
+      expect((await slips.find("org_456", "accounts-payable-fte"))?.slip).toMatchObject({
+        id: "del_100",
+        status: "suspended",
+      });
     },
   );
 

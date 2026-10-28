@@ -126,7 +126,7 @@ export type DelegationChange = {
   kind: "delegation_change";
   // Or revoked, when a person tears the slip up (step 25's README, decision D6).
   result: "suspended" | "revoked";
-  // The directory's word: suspended, deprovisioned, or not listed. For the people who read
+  // The directory's word: suspended or gone (step 45). For the people who read
   // the log, never for the agent.
   reason: string;
   // The call that heard it: its whole correlation, as the call's own record has it

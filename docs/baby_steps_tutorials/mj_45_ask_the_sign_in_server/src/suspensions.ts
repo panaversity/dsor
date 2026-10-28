@@ -1,5 +1,6 @@
 // Suspended slips. When a company's directory reports the person who signed a
-// slip as suspended, deprovisioned, or not listed, DSoR suspends every active slip she signed in
+// slip as suspended or gone (step 45's word for left, or never had an account), DSoR suspends
+// every active slip she signed in
 // that company, before it refuses the call (DSOR-IDN-07 in specs/dsor/02-security.md, section
 // 12.1; step 19b's README, decisions 1 to 8).
 import { SignerGone } from "./authority.ts";

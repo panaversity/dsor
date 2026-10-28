@@ -46,9 +46,14 @@ export function fakeDirectory(tenant: string, people: Record<string, Person>): F
       if (state === "stuck") return new Promise<never>(() => {});
       // The answer names the company and the person it is about, so DSoR can check that it
       // answers the question it asked (step 19's README, C10).
+      // NEW IN STEP 45: in the proposal's shape, as a company's sign-in server answers (step 45's
+      // README, D4): a person the company does not know is gone, roles only while active, and
+      // the time the facts were read.
       const entry = kept.get(person);
-      if (entry === undefined) return { tenant, person, listed: false };
-      return { tenant, person, listed: true, ...structuredClone(entry) };
+      const as_of = new Date().toISOString();
+      if (entry === undefined) return { tenant, person, status: "gone", roles: [], as_of };
+      const { status, roles } = structuredClone(entry);
+      return { tenant, person, status, roles: status === "active" ? roles : [], as_of };
     },
     set: (person: string, entry: Person | undefined): void => {
       if (entry === undefined) kept.delete(person);

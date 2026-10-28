@@ -18,7 +18,7 @@ export type SignerAuthority = { roles: string[]; source: "role_source"; as_of: s
 // code and message, so the agent hears nothing new, and it carries the directory's word and the
 // time of its answer, so line ③ can suspend her slips before it refuses (DSOR-IDN-07; step 19b's
 // README, decision 4). It names no company and no person: line ③ uses its own (decision 4).
-/** A refusal that carries the directory's report: the signer is suspended, deprovisioned, or not listed. */
+/** A refusal that carries the directory's report: the signer is suspended or gone. */
 export class SignerGone extends Refusal {
   readonly word: string;
   readonly as_of: string;
@@ -67,12 +67,24 @@ const ajv = new Ajv2020({
   coerceTypes: false,
   removeAdditional: false,
   strict: false,
+  // NEW IN STEP 45: and no formats, as slips.ts builds its checker. An answer's as_of is read below,
+  // by TIMESTAMP, so the checker neither checks a date-time nor warns at start-up that it cannot.
+  // Found by the database run: pnpm start printed the warning, and must print nothing to stderr.
+  validateFormats: false,
 });
 ajv.addSchema(loadSchema("common.schema.json"));
 ajv.addSchema(loadSchema("tenant-policy.schema.json"));
 const validateSetting = ajv.compile({
   $ref: "urn:dsor:schema:1.3:tenant-policy#/properties/role_source",
 });
+// NEW IN STEP 45: the shape of an answer, from our proposal for the specification. It sits in
+// proposals/, apart from the specification's own copies, until the proposal lands (step 45's
+// README, D4, D12).
+const PROPOSALS = new URL("../proposals/", import.meta.url);
+ajv.addSchema(
+  JSON.parse(readFileSync(new URL("role-source-answer.schema.json", PROPOSALS), "utf8")) as object,
+);
+const validateAnswer = ajv.compile({ $ref: "urn:dsor:schema:1.3:role-source-answer" });
 
 // §44's limit for L2: the signer's authority may be at most 24 hours old (DSOR-BND-02).
 const DAY = 24 * 60 * 60 * 1000;
@@ -163,9 +175,35 @@ export function keptKey(tenant: string, person: string): string {
 // call from an agent (step 19's README, decision 9).
 const WAIT_MS = 2000;
 
-// The statuses a directory may give. Any other word is an answer DSoR cannot read (step 19's
-// README, decision 11).
-const STATUSES: ReadonlySet<string> = new Set(["active", "suspended", "deprovisioned"]);
+// NEW IN STEP 45: an answer in the shape the proposal gives: active, suspended, or gone, which is
+// left the company or never had an account, and roles only while active (step 45's README, D4).
+// Any other answer is one DSoR cannot read (step 19's README, decision 11).
+type Answer = {
+  tenant: string;
+  person: string;
+  status: "active" | "suspended" | "gone";
+  roles: string[];
+  as_of: string;
+};
+
+// NEW IN STEP 45: an answer's as_of may run ahead of DSoR's clock by one minute at most, and then
+// counts as the moment DSoR asked; further ahead, the reply is one DSoR cannot use (D4, D13).
+const AHEAD_MS = 60 * 1000;
+// The checker above loads no formats, so it lets any text pass as a date-time. A time is read
+// here instead, as RFC 3339 writes one: each field in its range, upper case, a zone, and no leap
+// second.
+// not copied: common.schema.json's timestamp is the format date-time, which has no pattern.
+const TIMESTAMP =
+  /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T([01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/;
+
+/** The time an as_of names, or NaN when it is not RFC 3339 or names a day its month lacks. */
+function timeOf(as_of: string): number {
+  const parts = TIMESTAMP.exec(as_of);
+  if (parts === null) return Number.NaN;
+  // Date.parse would read 30 February as 2 March: the day must be one its month has.
+  const [year, month, day] = [Number(parts[1]), Number(parts[2]), Number(parts[3])];
+  return day <= new Date(Date.UTC(year, month, 0)).getUTCDate() ? Date.parse(as_of) : Number.NaN;
+}
 
 /** DSoR's side of each company's role source, holding the answers it keeps. */
 export function createRoleSource(
@@ -188,31 +226,41 @@ export function createRoleSource(
       const cannotUse = `the directory of ${tenant} answered with something DSoR cannot use`;
       const key = keptKey(tenant, person);
 
-      // The question, at every call (step 19's README, decision 3). An answer is as of the
-      // time DSoR asked, never later: the directory may have changed a moment after it
-      // answered (decision 14).
+      // The question, at every call (step 19's README, decision 3). An answer is never later
+      // than the moment DSoR asked: the directory may have changed a moment after it answered
+      // (decision 14).
       const askedAt = Date.now();
       const asked = await askWithin(directory, person);
       const last = kept.get(key);
-      let answer: Record<string, unknown>;
+      let answer: Answer;
       let at: number;
       if (asked.answered) {
         // One copy, read once, and every check and every use reads that copy, as line ①
         // copies the input (step 07's README, decision 9; step 19's README, decision 17).
         const copy = copyOf(asked.answer);
-        if (!usable(copy, tenant, person)) {
+        // NEW IN STEP 45: the time the server read its facts. Further than a minute ahead of
+        // DSoR's clock, the answer is one DSoR cannot use (D4).
+        const read = usable(copy, tenant, person) ? timeOf(copy.as_of) : Number.NaN;
+        if (!(read <= askedAt + AHEAD_MS)) {
           // An answer DSoR cannot use is a fault. The strange answer may be the very news DSoR
           // needs, so the kept answer goes too, unless DSoR learned it after it asked this
           // question (decisions 11 and 14). Found by step 19's review.
           if (last !== undefined && last.at <= askedAt) kept.delete(key);
           throw new Refusal("INTERNAL_ERROR", cannotUse);
         }
-        answer = copy;
-        at = askedAt;
-        // Older news never replaces newer: an answer that arrives late, to an earlier
-        // question, is not kept over one DSoR asked for after it (decision 14). Found by step
-        // 19's review.
-        if (last === undefined || last.at <= askedAt) kept.set(key, { answer: copy, at: askedAt });
+        answer = copy as Answer;
+        // NEW IN STEP 45: the answer counts from the earlier of the server's time and the moment
+        // DSoR asked (D13). Facts read longer ago than the company's bound establish nothing now,
+        // though they came back at once (DSOR-IDN-06; break B3).
+        at = Math.min(read, askedAt);
+        if (!(askedAt - at < setting.ms)) {
+          const where = `from the directory of ${tenant} that is recent enough`;
+          const why = `DSoR has no answer about ${person}, who signed slip ${slip.id}, ${where}`;
+          throw new Refusal("FRESHNESS_UNSATISFIABLE", `${name}: ${why}`);
+        }
+        // Older news never replaces newer: an answer whose facts are older than the kept ones is
+        // not kept over them (decision 14). Found by step 19's review.
+        if (last === undefined || last.at <= at) kept.set(key, { answer: copy as Answer, at });
       } else {
         // No answer: the kept one counts only while it is under the company's bound
         // (DSOR-IDN-06; step 19's README, decisions 3, 4, and 5). Never one from the future: a
@@ -238,28 +286,20 @@ export function createRoleSource(
       // The time of the answer used, which line ⑪ records (step 19's README, decision 7).
       // And which a suspension's record names too (step 19b's README, decision 5).
       const as_of = new Date(at).toISOString();
-      // Not listed: the signer is not a person of this company (DSOR-IDN-03a; step 18's
-      // README, decisions 15 and 18, now asked of the directory).
-      // And her slips here are suspended too (step 19b's README, decision 8).
-      if (answer["listed"] === false) {
-        const why = `slip ${slip.id} is signed by ${person}, who is not a person in ${tenant}`;
-        throw new SignerGone("AUTHORIZATION_DENIED", `${name}: ${why}`, {
-          word: "not listed",
-          as_of,
-        });
-      }
-      // Suspended or deprovisioned: her agent gets nothing, and since step 19b her slips here are
-      // suspended (DSOR-IDN-07). One message for both: which one she is, is a fact about a person
-      // that the agent may not read (DSOR-ERR-01b; step 19's README, decision 16).
-      if (answer["status"] !== "active") {
+      // NEW IN STEP 45: suspended or gone, her agent gets nothing, and her slips here are suspended
+      // (DSOR-IDN-07). Gone takes the place of step 19's deprovisioned and of "not listed": a
+      // company's server says only that she is not here, not why (D4). One message for both:
+      // which one she is, is a fact about a person that the agent may not read (DSOR-ERR-01b;
+      // step 19's README, decision 16).
+      if (answer.status !== "active") {
         const whom = `whom the directory of ${tenant} does not list as active`;
         throw new SignerGone(
           "DELEGATION_REQUIRED",
           `${name}: slip ${slip.id} is signed by ${person}, ${whom}`,
-          { word: String(answer["status"]), as_of },
+          { word: answer.status, as_of },
         );
       }
-      return { roles: [...(answer["roles"] as string[])], source: "role_source", as_of };
+      return { roles: [...answer.roles], source: "role_source", as_of };
     },
   });
 }
@@ -298,22 +338,14 @@ function copyOf(answer: unknown): unknown {
   }
 }
 
-/** True for an answer DSoR can use: about this person, in this company, in a shape it can read. */
-function usable(
-  answer: unknown,
-  tenant: string,
-  person: string,
-): answer is Record<string, unknown> {
-  if (typeof answer !== "object" || answer === null || Array.isArray(answer)) return false;
-  const fields = answer as Record<string, unknown>;
-  if (fields["tenant"] !== tenant || fields["person"] !== person) return false;
-  if (fields["listed"] === false) return true;
-  if (fields["listed"] !== true) return false;
-  const { status, roles } = fields;
-  if (typeof status !== "string" || !STATUSES.has(status)) return false;
-  // DSoR reads the roles of an active signer only. A directory often sends none
-  // for a person it removed, and her slips are still suspended. Roles that are there must still
-  // be a list of words (step 19b's README, decision 15). Found by step 19b's review.
-  if (roles === undefined && status !== "active") return true;
-  return Array.isArray(roles) && roles.every((role) => typeof role === "string");
+/** True for an answer DSoR can use: in the proposal's shape, about this person, in this company. */
+// NEW IN STEP 45: the shape is the proposal's schema now, not a list of checks of its own. The
+// schema holds the rest of step 19b's decision 15: roles are a list of words, and empty unless
+// the person is active (D4).
+function usable(answer: unknown, tenant: string, person: string): answer is Answer {
+  if (!validateAnswer(answer)) return false;
+  const fields = answer as Answer;
+  // About the person and the company that DSoR asked about, and no other (D2; step 19's C10).
+  if (fields.tenant !== tenant || fields.person !== person) return false;
+  return Number.isFinite(timeOf(fields.as_of));
 }

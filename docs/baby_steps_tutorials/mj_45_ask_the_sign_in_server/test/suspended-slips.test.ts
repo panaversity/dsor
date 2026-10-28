@@ -1,5 +1,5 @@
 // Suspended slips. When a company's directory reports the person who signed a slip as
-// suspended, deprovisioned, or not listed, DSoR suspends every active slip she signed in that
+// suspended or gone (step 45's word for both kinds of missing), DSoR suspends every active slip she signed in that
 // company, in the call that heard it, with one record each (DSOR-IDN-07 in
 // specs/dsor/02-security.md, section 12.1; step 19b's README, C1 to C4, C8, and C9). Here the
 // slips and their records are in memory. test/suspended-slips.db.test.ts proves the
@@ -54,10 +54,6 @@ function notActive(
 ): string {
   const whom = `whom the directory of ${tenant} does not list as active`;
   return `"${name}": slip ${slip} is signed by ${person}, ${whom}`;
-}
-/** Step 18's refusal when the slip's company does not list its signer. */
-function notAPerson(name: string, slip = "del_100"): string {
-  return `"${name}": slip ${slip} is signed by user_123, who is not a person in org_456`;
 }
 /** Step 18's refusal of a slip that is not active: here, a suspended one. */
 function isSuspended(name: string, slip: string): string {
@@ -123,7 +119,12 @@ function counting(slips: MemorySlips): { store: SlipStore; tried: () => number }
 /** org_456's directory, giving this answer about any person: a shape the fake directory cannot make. */
 function answering(fields: Record<string, unknown>): Directory {
   return {
-    ask: async (person: string) => ({ tenant: "org_456", person, listed: true, ...fields }),
+    ask: async (person: string) => ({
+      tenant: "org_456",
+      person,
+      as_of: new Date().toISOString(),
+      ...fields,
+    }),
   };
 }
 
@@ -146,13 +147,14 @@ const THE_AGENTS = (request_id: string): Record<string, string> => ({
 });
 
 describe("C1: the directory reports user_123 as gone, and her active slips in org_456 are suspended in the same call", () => {
+  // Since step 45 a company says "gone" for a person who left and for one it never knew (D4).
   it.each([
-    ["suspended", SUSPENDED, "DELEGATION_REQUIRED", notActive],
-    ["deprovisioned", { status: "deprovisioned", roles: [] }, "DELEGATION_REQUIRED", notActive],
-    ["not listed", undefined, "AUTHORIZATION_DENIED", notAPerson],
+    ["suspended", "suspended", SUSPENDED, "DELEGATION_REQUIRED", notActive],
+    ["gone", "gone", { status: "gone", roles: [] }, "DELEGATION_REQUIRED", notActive],
+    ["no longer known, so gone", "gone", undefined, "DELEGATION_REQUIRED", notActive],
   ])(
     "DSOR-IDN-07: user_123 is %s at 02:00 on Tuesday: the agent is refused as in step 19, and del_100 and del_101 are suspended, one record each",
-    async (word, entry, code, message) => {
+    async (_label, word, entry, code, message) => {
       const slips = memorySlips(STORY_SLIPS);
       const { registry } = nightWith(slips, entry);
       at("2026-10-06T02:00");
@@ -217,10 +219,12 @@ describe("C1: the directory reports user_123 as gone, and her active slips in or
 
 describe("C1 and decision 15: an answer that says she is not active needs no roles", () => {
   // A real directory often sends no roles for a person it removed. Found by step 19b's review.
-  it("step 19b's decision 15: the directory says user_123 is deprovisioned and sends no roles: her slips are suspended", async () => {
+  // Since step 45 the proposal asks for an empty list, and an answer with none is one DSoR
+  // cannot use (step 45's README, D4).
+  it("step 19b's decision 15: the directory says user_123 is gone, with an empty list of roles: her slips are suspended", async () => {
     const slips = memorySlips(STORY_SLIPS);
     const directories = new Map<string, Directory>([
-      ["org_456", answering({ status: "deprovisioned" })],
+      ["org_456", answering({ status: "gone", roles: [] })],
       ["org_789", storyDirectories().get("org_789")!],
     ]);
     const answer = await call(
@@ -235,10 +239,7 @@ describe("C1 and decision 15: an answer that says she is not active needs no rol
       message: notActive("invoice.get"),
     });
     expect(await statusOf(slips, "org_456", "accounts-payable-fte")).toBe("suspended");
-    expect((await slips.changes()).map((change) => change.reason)).toStrictEqual([
-      "deprovisioned",
-      "deprovisioned",
-    ]);
+    expect((await slips.changes()).map((change) => change.reason)).toStrictEqual(["gone", "gone"]);
   });
 
   it.each([

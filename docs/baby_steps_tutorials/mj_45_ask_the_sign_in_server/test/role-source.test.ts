@@ -2,7 +2,7 @@
 // the person who signed it, at every call, and refuses when it cannot get a fresh enough
 // answer (DSOR-IDN-05 and DSOR-IDN-06 in specs/dsor/02-security.md, section 12.1; step 19's
 // README, C1 to C12).
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import {
   checkRoleSettings,
   createRoleSource,
@@ -38,6 +38,7 @@ import {
   slipRegistry,
   storyDirectories,
   keyed,
+  without,
 } from "./helpers.ts";
 
 const CREATE = { invoice: "dsor://org_456/invoice/INV-1008" };
@@ -455,14 +456,19 @@ describe("C3 and C4: with no answer, a kept answer counts only while it is young
     "step 19's decision 9: an answer that comes after %i ms: DSoR uses %s",
     async (ms, _used, expected) => {
       let late = false;
-      const HER = { tenant: "org_456", person: "user_123", listed: true, status: "active" };
+      // In the proposal's shape, read when the answer is made (step 45's README, D4).
+      const her = (roles: string[]): Record<string, unknown> => ({
+        tenant: "org_456",
+        person: "user_123",
+        status: "active",
+        roles,
+        as_of: new Date().toISOString(),
+      });
       const directory: Directory = {
         ask: async () =>
           late
-            ? new Promise((resolve) =>
-                setTimeout(() => resolve({ ...HER, roles: ["ap_clerk"] }), ms),
-              )
-            : { ...HER, roles: ["ap_supervisor"] },
+            ? new Promise((resolve) => setTimeout(() => resolve(her(["ap_clerk"])), ms))
+            : her(["ap_supervisor"]),
       };
       const registry = slipRegistry(
         undefined,
@@ -504,7 +510,7 @@ describe("C3 and C4: with no answer, a kept answer counts only while it is young
   it.each([
     ["is suspended", { status: "suspended", roles: ["ap_supervisor"] }, "DELEGATION_REQUIRED"],
     ["moves to ap_clerk", { status: "active", roles: ["ap_clerk"] }, "AUTHORIZATION_DENIED"],
-    ["is no longer listed", undefined, "AUTHORIZATION_DENIED"],
+    ["is gone, no longer listed (step 45's D4)", undefined, "DELEGATION_REQUIRED"],
   ])(
     "DSOR-IDN-06: user_123 %s at 01:40, the directory goes off at 01:45, and at 01:50 her agent is still refused",
     async (_change, entry, code) => {
@@ -557,9 +563,9 @@ describe("C3 and C4: with no answer, a kept answer counts only while it is young
         const answer = {
           tenant: "org_456",
           person: "user_123",
-          listed: true,
           status: "active",
           roles,
+          as_of: new Date().toISOString(),
         };
         if (after === 0) return answer;
         return new Promise((resolve) => setTimeout(() => resolve(answer), after));
@@ -657,9 +663,9 @@ describe("C5 and C6: each company's bound, and each company's answers", () => {
   });
 });
 
-describe("C7: a signer the directory reports as suspended or deprovisioned gives nothing", () => {
+describe("C7: a signer the directory reports as suspended or gone gives nothing", () => {
   it.each(
-    ["suspended", "deprovisioned"].flatMap((status) =>
+    ["suspended", "gone"].flatMap((status) =>
       OPERATIONS.map(([name, input]) => [status, name, input] as const),
     ),
   )(
@@ -697,7 +703,7 @@ describe("C7: a signer the directory reports as suspended or deprovisioned gives
 
 describe("C8: only the directory speaks for the absent signer's job", () => {
   it.each([["user_700, who works only in org_789", "user_700"]])(
-    "DSOR-IDN-03a: a slip in org_456 signed by %s, whom org_456's directory does not list, is refused at line ③",
+    "DSOR-IDN-03a: a slip in org_456 signed by %s, whom org_456's directory does not list, is refused at line ③ as gone (step 45's D4)",
     async (_who, signer) => {
       const lines: number[] = [];
       const answer = await call(
@@ -709,8 +715,8 @@ describe("C8: only the directory speaks for the absent signer's job", () => {
         (n) => lines.push(n),
       );
       expect(answer).toMatchObject({
-        code: "AUTHORIZATION_DENIED",
-        message: notAPerson("payment.create", signer),
+        code: "DELEGATION_REQUIRED",
+        message: `"payment.create": slip del_100 is signed by ${signer}, whom the directory of org_456 does not list as active`,
       });
       expect(lines).toStrictEqual([1, 2, 3, 11]);
     },
@@ -870,21 +876,33 @@ describe("C10: an answer DSoR cannot use is a fault, and is never used", () => {
   function answering(answer: unknown): Directory {
     return { ask: async () => structuredClone(answer) };
   }
-  const ABOUT_HER = { tenant: "org_456", person: "user_123", listed: true, status: "active" };
+  // An answer about user_123 in the proposal's shape, read now by the test's clock (step 45's
+  // README, D4). Each case below changes one thing, so it is refused for that thing alone.
+  function aboutHer(fields: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      tenant: "org_456",
+      person: "user_123",
+      status: "active",
+      roles: ["ap_supervisor"],
+      as_of: new Date().toISOString(),
+      ...fields,
+    };
+  }
 
   it.each([
+    ["about cfo_100, when asked about user_123", aboutHer({ person: "cfo_100", roles: ["CFO"] })],
+    ["for org_789, when asked for org_456", aboutHer({ tenant: "org_789" })],
+    ["with the status on_leave", aboutHer({ status: "on_leave" })],
+    ["with no roles", without(aboutHer(), "roles")],
+    ["with a role that is not text", aboutHer({ roles: [7] })],
+    ["with a field the proposal does not have, listed", aboutHer({ listed: true })],
+    ["with roles while gone (step 45's D4)", aboutHer({ status: "gone" })],
+    ["with no as_of (step 45's D4)", without(aboutHer(), "as_of")],
+    ["with an as_of that is not a time (step 45's D4)", aboutHer({ as_of: "yesterday" })],
     [
-      "about cfo_100, when asked about user_123",
-      { ...ABOUT_HER, person: "cfo_100", roles: ["CFO"] },
+      "with an as_of two minutes ahead of DSoR's clock (step 45's D4)",
+      aboutHer({ as_of: new Date(Date.now() + 120_000).toISOString() }),
     ],
-    [
-      "for org_789, when asked for org_456",
-      { ...ABOUT_HER, tenant: "org_789", roles: ["ap_supervisor"] },
-    ],
-    ["with the status on_leave", { ...ABOUT_HER, status: "on_leave", roles: ["ap_supervisor"] }],
-    ["with no roles", ABOUT_HER],
-    ["with a role that is not text", { ...ABOUT_HER, roles: [7] }],
-    ["with listed as text", { ...ABOUT_HER, listed: "yes", roles: ["ap_supervisor"] }],
     ["that is text", "yes"],
     ["that is null", null],
   ])(
@@ -912,10 +930,41 @@ describe("C10: an answer DSoR cannot use is a fault, and is never used", () => {
     },
   );
 
+  // Date.parse reads 30 February as 2 March, and the hour 24 as the next day's midnight. RFC 3339,
+  // which the proposal's schema names, has neither (step 45's README, D4). The clock is set so
+  // that each one, read as Date.parse reads it, would be 30 seconds old and count.
+  it.each([
+    ["30 February", "2026-03-02T00:00:30Z", "2026-02-30T00:00:00Z"],
+    ["the hour 24", "2026-10-07T00:00:30Z", "2026-10-06T24:00:00Z"],
+  ])(
+    "D4: an answer whose as_of names %s, a time that does not exist, is refused at line ③ with INTERNAL_ERROR, with no draft",
+    async (_case, now, as_of) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      onTestFinished(() => {
+        vi.useRealTimers();
+      });
+      vi.setSystemTime(new Date(now));
+      const directories = new Map<string, Directory>([
+        ...storyDirectories(),
+        ["org_456", answering(aboutHer({ as_of }))],
+      ]);
+      const rows: Payment[] = [];
+      const result = await call(
+        slipRegistry(undefined, undefined, rows, directories),
+        createLog(),
+        keyed(AGENT),
+        "payment.create",
+        { ...CREATE, expected_version: 1 },
+      );
+      expect(result).toMatchObject({ code: "INTERNAL_ERROR", message: CANNOT_USE });
+      expect(rows).toStrictEqual([]);
+    },
+  );
+
   it("step 19's decision 11: after an answer DSoR cannot use, the kept answer is forgotten too", async () => {
     vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
     try {
-      let next: () => Promise<unknown> = async () => ({ ...ABOUT_HER, roles: ["ap_supervisor"] });
+      let next: () => Promise<unknown> = async () => aboutHer();
       const directories = new Map<string, Directory>([
         ...storyDirectories(),
         ["org_456", { ask: () => next() }],
@@ -925,7 +974,7 @@ describe("C10: an answer DSoR cannot use is a fault, and is never used", () => {
       await call(registry, createLog(), AGENT, "invoice.get", READ);
       // 01:40: a strange answer. It is a fault, and it is not used.
       at("01:40");
-      next = async () => ({ ...ABOUT_HER, status: "on_leave", roles: ["ap_supervisor"] });
+      next = async () => aboutHer({ status: "on_leave" });
       expect(await call(registry, createLog(), AGENT, "invoice.get", READ)).toMatchObject({
         code: "INTERNAL_ERROR",
       });
@@ -940,7 +989,7 @@ describe("C10: an answer DSoR cannot use is a fault, and is never used", () => {
       });
       // 01:55: a clear answer again, and the agent works again.
       at("01:55");
-      next = async () => ({ ...ABOUT_HER, roles: ["ap_supervisor"] });
+      next = async () => aboutHer();
       expect(await call(registry, createLog(), AGENT, "invoice.get", READ)).toMatchObject({
         data: MASKED_1008_OF_456,
       });
@@ -952,7 +1001,7 @@ describe("C10: an answer DSoR cannot use is a fault, and is never used", () => {
   it("step 19's decision 17: DSoR reads an answer once, so roles that change between reads are read as they first were", async () => {
     let reads = 0;
     const tricky = {
-      ...ABOUT_HER,
+      ...aboutHer(),
       get roles(): string[] {
         reads += 1;
         return reads === 1 ? ["ap_clerk"] : ["ap_supervisor"];
@@ -979,7 +1028,7 @@ describe("C10: an answer DSoR cannot use is a fault, and is never used", () => {
   });
 
   it("step 19's decision 17: an answer whose fields sit on its prototype is one DSoR cannot use", async () => {
-    const hidden = Object.create({ ...ABOUT_HER, roles: ["ap_supervisor"] }) as unknown;
+    const hidden = Object.create(aboutHer()) as unknown;
     const rows: Payment[] = [];
     const answer = await call(
       slipRegistry(
@@ -1007,7 +1056,7 @@ describe("C10: an answer DSoR cannot use is a fault, and is never used", () => {
         throw new Error("off");
       },
     };
-    const planted: Kept = { answer: { ...ABOUT_HER, roles: ["ap_supervisor"] }, at: Date.now() };
+    const planted: Kept = { answer: aboutHer(), at: Date.now() };
     const kept = new Map([[keptKey("org_789", "user_123"), planted]]);
     const source = createRoleSource(settings, new Map([["org_789", off]]), kept);
     const DEL_103 = { ...DEL_102, id: "del_103", delegator: "user_123" } as Slip;

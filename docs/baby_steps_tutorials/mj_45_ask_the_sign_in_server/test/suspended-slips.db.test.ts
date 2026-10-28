@@ -189,7 +189,8 @@ describe("C1 and C5: the suspensions and their records, in the database", () => 
 
   it("step 19b's decision 5: each suspension leaves one delegation_change record that names DSoR, the directory's word, and the call, before the call's own record", async () => {
     await withOwnSigner(async (signer) => {
-      // Not listed: the directory no longer knows her (step 19b's README, decision 8).
+      // Gone: the directory no longer knows her (step 19b's README, decision 8; "not listed" before
+      // step 45's D4).
       signer.directories.get("org_456")!.set(signer.person, undefined);
       const request_id = requestId("s19b-records");
       const answer = await call(
@@ -199,10 +200,10 @@ describe("C1 and C5: the suspensions and their records, in the database", () => 
         "invoice.get",
         READ,
       );
-      expect(answer).toMatchObject({ code: "AUTHORIZATION_DENIED" });
+      expect(answer).toMatchObject({ code: "DELEGATION_REQUIRED" });
       expect(await changesOf(request_id)).toStrictEqual([
-        suspension(signer.slips[0], "not listed", request_id, signer.agents[0]),
-        suspension(signer.slips[1], "not listed", request_id, signer.agents[0]),
+        suspension(signer.slips[0], "gone", request_id, signer.agents[0]),
+        suspension(signer.slips[1], "gone", request_id, signer.agents[0]),
       ]);
       // Line ③ writes the suspensions' records, and line ⑪ the call's own, after them.
       const sql = `SELECT kind, result FROM dsor.audit
@@ -211,7 +212,7 @@ describe("C1 and C5: the suspensions and their records, in the database", () => 
       expect(rows).toStrictEqual([
         { kind: "delegation_change", result: "suspended" },
         { kind: "delegation_change", result: "suspended" },
-        { kind: "decision", result: "AUTHORIZATION_DENIED" },
+        { kind: "decision", result: "DELEGATION_REQUIRED" },
       ]);
     });
   });
@@ -605,7 +606,13 @@ describe("C7: two calls at once make one change and one record", () => {
             if (++questions === 2) release();
             setTimeout(release, 1500);
             await arrived;
-            return { tenant: "org_456", person, listed: true, ...SUSPENDED };
+            return {
+              tenant: "org_456",
+              person,
+              as_of: new Date().toISOString(),
+              ...SUSPENDED,
+              roles: [],
+            };
           },
         };
         const directories = new Map<string, Directory>([
