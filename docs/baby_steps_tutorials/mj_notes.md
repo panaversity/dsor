@@ -3213,6 +3213,58 @@ Raised while explaining step 44's architecture. No decision: Phase A of step 45 
 - **Do the people's rows stay in `src/principals.ts`?** `pnpm start` and the older tests still use
   them (44-6), while `pnpm serve` refuses their keys. Step 44's README leaves this to step 45.
   Options found: keep them for that world, or move the older tests to a world shaped like the SSO.
+- **Which role source is the default?** (Added 2026-10-28, from the learner's concern that many
+  companies run their own sign-in servers.) Okta and Microsoft Entra ID already send SCIM to any
+  app, with no code, so a company that uses one needs nothing from the Panaversity SSO. Better
+  Auth can receive SCIM but cannot send it. The spec's reference profile already chose SCIM:
+  [§41](../../specs/dsor/05-bindings.md#41-reference-profile-vertical-and-workflow-informative)
+  names it as the role source. Options found:
+  - (a) SCIM straight to DSoR, through step 43c's door, for a company with a directory. The lookup
+    only for a server that cannot send SCIM, such as Better Auth. `dsor_assignments` (step 43b)
+    for a small team, such as Panaversity ops with two or three operators.
+  - (b) The lookup for every company. A company's directory sends SCIM to the SSO first, as "A
+    company's own directory goes to the SSO" in the next section plans.
+  - (c) No default: each company picks.
+  - *Cost of (a):* DSoR keeps both the SCIM door and the lookup working, and a SCIM copy is only as
+    fresh as its sender. Okta sends soon after a change. Entra sends in rounds, about every 40
+    minutes. Claude Code recommends (a).
+- **Does the lookup ship as a Better Auth plugin, under DSoR's contract?** (Added 2026-10-28, from
+  the learner's question whether a native way exists.) This narrows option (a) of the first
+  question. Better Auth 1.7.14 has no built-in route that lets a machine ask about a person who is
+  not present (checked in its code). `get-active-member-role` answers only a signed-in member of
+  that company, with the role alone, and gives one 403 for both "the person left" and "the caller
+  is not a member". An after-hook can change its answer, but not who may ask.
+  `enableSessionForAPIKeys`, the only built-in way to sign a machine in, refuses a company's key
+  and turns a user's key into a full login on every route. Options found:
+  - (a) DSoR writes the contract: the request, the answer, and what each status means. A Better
+    Auth plugin, made with `createAuthEndpoint`, follows it, so any Better Auth server can install
+    it. The Panaversity SSO uses it first.
+  - (b) The route stays in the SSO's own code (panaversity/agentfactory#1331), and the contract is
+    written from it.
+  - *Cost of (a):* one more package to publish, and #1331's route moves into it. Claude Code
+    recommends (a).
+- **One test list for every role-source adapter?** (Added 2026-10-28.) An adapter is the code that
+  turns one source's answer into what DSoR's checks read: listed, active, roles, and as of when.
+  Steps 43b and 43c each have one, and step 45 would add a third. A new adapter can pass its own
+  tests and still break a guarantee. Options found:
+  - (a) One shared list that every adapter must pass. Once the source says a person left, the next
+    call is refused, and the slips they signed are suspended (DSOR-IDN-07). An answer older than
+    its bound refuses the call (DSOR-IDN-06). An answer about another person or another company
+    never counts. An answer the adapter does not understand is a fault, `INTERNAL_ERROR`: never
+    "no answer", never "yes". Claude Code recommends (a).
+  - (b) Each adapter keeps only its own tests.
+- **How much does DSoR depend on the Panaversity SSO?** (Added 2026-10-28, from the learner's
+  question whether this makes DSoR depend on one SSO.) In two ways, as planned today:
+  - *The SSO as the hub.* If every company's directory sends its people to the SSO first, DSoR
+    serves a company only through Panaversity's server. An SSO outage longer than the one-hour
+    bound then stops payments for every company at once. Options found: (a) no hub, as in option
+    (a) of "Which role source is the default?"; (b) the hub, as the next section plans.
+  - *The SSO's code names DSoR's roles.* `DSOR_ROLES` in the SSO's `src/lib/permissions.ts`
+    (#1331) lists six: `ap_clerk`, `ap_supervisor`, `CFO`, `tenant_admin`, `ops_operator`, and
+    `ops_admin`. A new role in DSoR's `roles.json` needs a release of the SSO, and every company
+    shares one list of names. Options found: (a) keep the list in the SSO; (b) the SSO keeps each
+    company's own role names as data, and DSoR maps them with a role map for each company, as
+    step 43c does.
 
 The next section changes two of these options. Option (c) of the first question needs a sign-in
 server other than ours, and option (b) of the second becomes possible.
@@ -3257,7 +3309,8 @@ and in 1.7.2's own code from the local pnpm store. The SSO runs 1.6.23. Its upgr
     authoritative issuer, but they stay as issued for up to an hour, and Q5 asks at every call.
 - **A company's own directory goes to the SSO.** Okta, Entra, or authentik can send people to the
   SSO through `@better-auth/scim`, with groups mapped to roles. DSoR keeps one role source, so the
-  chain needs no SCIM copy in DSoR, as step 43c had.
+  chain needs no SCIM copy in DSoR, as step 43c had. *Reopened on 2026-10-28* by "Which role
+  source is the default?" in "Questions for step 45's design".
 - **Decision: the SSO moves to 1.7 before step 45.** The learner took Claude Code's recommendation.
   The fix-list branch goes on top of the upgrade branch, locally, on a 1.7 release at least 48 hours
   old, and the SSO's DSoR tests run again. Nothing reaches production. Steps 45 to 49 then use one

@@ -125,8 +125,10 @@ Decided by the learner on 2026-10-28 ([`mj_notes.md`](mj_notes.md), the last two
 - No standard serves this lookup. Better Auth's organization plugin answers a signed-in member. Its
   SCIM plugin lists people only to the directory that sent them. Introspection needs the person's
   own token, which a slip's signer never sends.
-- Open design questions: whose contract the lookup is, how the system logins sign in, whether the
-  people's rows stay, and who can make DSoR hear "no answer"
+- Open design questions: whose contract the lookup is, which role source is the default, whether
+  the lookup ships as a Better Auth plugin, one test list for every role-source adapter, how much
+  DSoR depends on the Panaversity SSO, how the system logins sign in, whether the people's rows
+  stay, and who can make DSoR hear "no answer"
   ([`mj_notes.md`](mj_notes.md), "Questions for step 45's design").
 
 ### 46 · Who may approve, and up to how much
