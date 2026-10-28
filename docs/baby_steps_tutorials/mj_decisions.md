@@ -474,6 +474,60 @@ close in entries 35 to 37.
   two files.
 - **Built in** step 45e (its place proposed by Claude Code).
 
+## 38 · Every reply about a person is remembered for 10 seconds (2026-10-28), D21
+
+**Decided by:** the learner, on Claude Code's recommendation, before step 45c's code.
+
+- **What.** On each DSoR server, every reply about a person in a company, an answer, a failure, or a
+  fault, is remembered for 10 seconds from the moment DSoR asked. A call about her in that time sends
+  no question and gets what that reply gave.
+- **Why.** DSoR remembered only answers it could use, so every error was asked for again at once: a
+  `403` after a key was taken back cost a lookup at every call.
+- **Cost.** A server that recovers a second after a failure is not asked about her for up to 10
+  seconds.
+- **Rejected.** Failures only, so a fault is asked for again at once; the memory in the database, a
+  write for every failed lookup.
+- **Built in** step 45c.
+
+## 39 · A person whose lookups keep failing waits twice as long each time (2026-10-28), D22
+
+**Decided by:** the learner, on Claude Code's recommendation, before step 45c's code.
+
+- **What.** After failures in a row about one person, DSoR waits 10, 20, 40, 80, 160 seconds, then 5
+  minutes at most, before it asks about her again. Any reply starts her over at 10 seconds. While she
+  waits, her calls cannot be the trial.
+- **Why.** After an outage, a person whose own record fails could be every trial and keep the company
+  paused (step 45b's review, finding 2).
+- **Cost.** Once her record is fixed, DSoR may take up to 5 minutes to ask again; she uses her kept
+  answer meanwhile.
+- **Rejected.** Asking every 10 seconds; only the person of a failed trial sitting out the next trial.
+- **Built in** step 45c.
+
+## 40 · 20 lookups a minute about people DSoR knows nothing about (2026-10-28), D23
+
+**Decided by:** the learner, on Claude Code's recommendation, before step 45c's code.
+
+- **What.** Each DSoR server sends at most 20 lookups in any minute, for each company, about people it
+  keeps no active answer for, from people's own calls at line ②. People it keeps an active answer
+  for, and line ③, never wait for it.
+- **Why.** Anyone who signs up at a company's SSO can name the company, and each such call cost a
+  lookup with the company's key (step 45's review, finding 2).
+- **Cost.** Once strangers use it up, a real new employee is refused until the minute rolls on.
+- **Rejected.** 5 a minute, which an onboarding day runs into; 100 a minute.
+- **Built in** step 45c.
+
+## 41 · Over the budget, the stranger's words (2026-10-28), D24
+
+**Decided by:** the learner, on Claude Code's recommendation, before step 45c's code.
+
+- **What.** A call over the budget sends no question, and hears what anyone DSoR knows nothing about
+  hears: "the caller may not work in the tenant it named".
+- **Why.** As step 45's review fixed for every call from someone DSoR knows nothing about, no SSO
+  account learns which companies DSoR serves, or that one is busy (DSOR-ERR-01b).
+- **Cost.** A new employee hears that she does not work there, not "try again in a minute".
+- **Rejected.** `RATE_LIMITED`, which tells any SSO account that the company is a DSoR company.
+- **Built in** step 45c.
+
 ## Open
 
 - **The SSO writes a key's row on every check.** Better Auth updates `updatedAt` each time, so all
