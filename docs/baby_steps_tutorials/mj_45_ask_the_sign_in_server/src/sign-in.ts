@@ -201,7 +201,8 @@ export function ageSeconds(value: unknown): number | undefined {
 //   Panaversity SSO runs for the steps (decision 44-2). Never one that carries a name or password.
 //   Changed in step 44: localhost too, because the SSO's branch names itself http://localhost:3011
 //   in its own discovery document (found live 2026-10-27).
-function isTrustedAddress(value: unknown): boolean {
+// NEW IN STEP 45: exported, for each company's lookup address too (step 45's README, D11).
+export function isTrustedAddress(value: unknown): boolean {
   if (typeof value !== "string" || !URL.canParse(value)) return false;
   const url = new URL(value);
   if (url.username !== "" || url.password !== "") return false;

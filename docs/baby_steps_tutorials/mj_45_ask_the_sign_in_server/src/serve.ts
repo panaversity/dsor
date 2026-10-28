@@ -5,15 +5,19 @@
 // stopped program left. Then it listens on 127.0.0.1, port 8042 unless DSOR_HTTP_PORT names
 // another, and every request is answered by call(), over the database, with dsor.audit as its log
 // (DSOR-OPR-04a; step 42's README, claims C1, C2, and C7, decision D7).
+// Since step 45, each company's directory is its lookup on its sign-in server, from lookups.json,
+// with the company's key from the environment (step 45's README, C1 and D11).
 import { fileURLToPath } from "node:url";
-import { readRoleSettings } from "./authority.ts";
+import { checkRoleSettings, readRoleSettings } from "./authority.ts";
 import { readCatalog } from "./catalog.ts";
-import { fakeDirectory } from "./directory.ts";
 import { readInputs } from "./inputs.ts";
+import { lookupDirectory } from "./lookup.ts";
+import { checkLookups, keyVariable, readLookups } from "./lookups.ts";
 import { storeDifferences } from "./inspector.ts";
 import { readClassifications } from "./labels.ts";
 import { handlersFor } from "./operations.ts";
 import { readRoles } from "./permissions.ts";
+import { logins } from "./principals.ts";
 import { realLogins } from "./logins.ts";
 import { audienceProblem, checkSignIn, readSignIn } from "./sign-in.ts";
 import { remoteKeys } from "./tokens.ts";
@@ -44,7 +48,15 @@ function refuse(message: string): never {
   process.exit(1);
 }
 
-loadDotEnv(["DSOR_DB_URL", "DSOR_HTTP_PORT"]);
+// NEW IN STEP 45: the companies with a role source, whose lookups pnpm serve asks. role-sources.json
+//   is checked first, so a problem there is named as its own, not as a missing lookup.
+const roleCheck = checkRoleSettings(readRoleSettings(), logins.values());
+if (roleCheck.problems.length > 0) {
+  refuse(`role-sources.json refused to start:\n  ${roleCheck.problems.join("\n  ")}`);
+}
+const companies = [...roleCheck.settings.keys()];
+// And each company's key, which .env may set too.
+loadDotEnv(["DSOR_DB_URL", "DSOR_HTTP_PORT", ...companies.map(keyVariable)]);
 // No database named, no door: it never falls back to a log in memory (step 09's README, decision 15).
 try {
   requireEnv("DSOR_DB_URL");
@@ -57,20 +69,19 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
 }
 const pool = openPool(process.env["DSOR_DB_URL"] ?? "");
 
-// Each company's staff directory, fake, with the story's people, as pnpm start has them.
-const directories = new Map([
-  [
-    "org_456",
-    fakeDirectory("org_456", {
-      user_123: { status: "active", roles: ["ap_supervisor"] },
-      cfo_100: { status: "active", roles: ["CFO"] },
-    }),
-  ],
-  [
-    "org_789",
-    fakeDirectory("org_789", { user_700: { status: "active", roles: ["ap_supervisor"] } }),
-  ],
-]);
+// NEW IN STEP 45: each company's lookup on its sign-in server, from lookups.json, with the
+//   company's key from the environment, checked before any caller can ask. No fake directory
+//   answers here any more (step 45's README, C1 and D11).
+const { lookups, problems: lookupProblems } = checkLookups(readLookups(), companies);
+if (lookupProblems.length > 0) {
+  refuse(`lookups.json refused to start:\n  ${lookupProblems.join("\n  ")}`);
+}
+const directories = new Map(
+  [...lookups].map(([tenant, { address, key }]) => [
+    tenant,
+    lookupDirectory({ tenant, address, key }),
+  ]),
+);
 
 // The registry over the database, with the company's rules in dsor.controls, which the claims read
 //   inside their own transactions, as the database tests of step 28 on have it.
