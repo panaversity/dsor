@@ -86,8 +86,18 @@ describe("C4, D8, and D10: the pause is in each DSoR server's memory, and the ke
     const paused = dsor();
     server.replyStatus(503);
     // Changed in step 45c: a failed lookup about a person is remembered (step 45c's README, D21),
-    //   so the five failures in a row are five people's own calls, each about herself.
+    //   so the five failures in a row are five people's own calls, each about herself, and people
+    //   DSoR knows, since a stranger's failures do not count (step 45c's review, finding 3).
     for (const person of ["user_201", "user_202", "user_203", "user_204", "user_205"]) {
+      const at = Date.now() - 60_000;
+      const answer = {
+        tenant: "org_456",
+        person,
+        status: "active",
+        roles: ["ap_clerk"],
+        as_of: new Date(at).toISOString(),
+      };
+      await createDbAnswers(pool).keep("org_456", person, { answer, at, asked: at });
       await paused.roleSource.memberOf("org_456", person, '"invoice.get"').catch(() => undefined);
     }
     expect(server.asked()).toBe(5);

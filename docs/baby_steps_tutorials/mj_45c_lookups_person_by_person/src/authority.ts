@@ -46,7 +46,14 @@ export type RoleSource = {
   // And a person's own, at line ②, when she calls for herself (step 45's README,
   // C2; decision Q7).
   /** What a person who calls for herself holds in this company now, or a refusal. */
-  memberOf: (tenant: string, person: string, name: string) => Promise<SignerAuthority>;
+  memberOf: (
+    tenant: string,
+    person: string,
+    name: string,
+    // NEW IN STEP 45c: false when DSoR asks about the person who made a request, at its release:
+    //   she is not the caller (found by step 45c's review, finding 1).
+    own?: boolean,
+  ) => Promise<SignerAuthority>;
 };
 
 const SHIPPED = fileURLToPath(new URL("../role-sources.json", import.meta.url));
@@ -233,6 +240,10 @@ const BACKOFF_MAX_MS = 5 * 60 * 1000;
 const BUDGET = 20;
 const BUDGET_MS = 60 * 1000;
 
+// NEW IN STEP 45c: a stranger's own calls use the answer that she is gone for 10 minutes, so a
+// sign-up account costs one lookup in 10 minutes, not one in 10 seconds (step 45c's README, D26).
+const STRANGER_MS = 10 * 60 * 1000;
+
 // NEW IN STEP 45c: the latest lookup about one person in one company, on this DSoR server: the
 // lookup, in flight or with its reply, the moment DSoR asked, until when its reply is remembered,
 // and her failures in a row (D9, D21, D22).
@@ -304,7 +315,14 @@ export function createRoleSource(
     if (trial) run.trying = true;
     // NEW IN STEP 45c: in flight until its reply comes. Her failures in a row so far count on from
     //   the lookup before, so the backoff grows (D22).
-    const memory = { askedAt, until: Number.POSITIVE_INFINITY, failures: last?.failures ?? 0 };
+    // A memory that ended more than 5 minutes ago is gone, though the sweep has not reached it yet:
+    //   found while answering step 45c's review.
+    const recent = last !== undefined && askedAt < last.until + BACKOFF_MAX_MS;
+    const memory = {
+      askedAt,
+      until: Number.POSITIVE_INFINITY,
+      failures: recent ? last.failures : 0,
+    };
     const lookup = askWithin(directory, person).then((reply): Asked => {
       if (trial) run.trying = false;
       if (reply.answered) {
@@ -325,9 +343,13 @@ export function createRoleSource(
       }
       // One lookup is one failure, however many calls waited for it. The fifth in
       // a row starts a pause, and so does each failure after it, the trial's too (C4, C5).
-      // NEW IN STEP 45c: and one person counts once in a run (D25).
-      if (run.failed.size < FAILURES) run.failed.add(person);
-      if (run.failed.size >= FAILURES) run.pausedUntil = Date.now() + PAUSE_MS;
+      // NEW IN STEP 45c: and one person counts once in a run (D25). A stranger's failure does not
+      //   count: sign-up accounts whose records fail must not pause a company. Found by step 45c's
+      //   review, finding 3.
+      if (!budgeted) {
+        if (run.failed.size < FAILURES) run.failed.add(person);
+        if (run.failed.size >= FAILURES) run.pausedUntil = Date.now() + PAUSE_MS;
+      }
       // NEW IN STEP 45c: a failure is remembered for twice as long as the one before it (D22).
       memory.failures += 1;
       memory.until = askedAt + Math.min(REUSE_MS * 2 ** (memory.failures - 1), BACKOFF_MAX_MS);
@@ -392,8 +414,10 @@ export function createRoleSource(
     // would make it look new (step 19's README, decision 15).
     const recent = await kept.get(tenant, person);
     const since = recent === undefined ? Number.NaN : askedAt - recent.asked;
+    // NEW IN STEP 45c: a stranger's own call uses the answer that she is gone for 10 minutes (D26).
+    const window = budgeted && recent?.answer["status"] === "gone" ? STRANGER_MS : REUSE_MS;
     const reuse =
-      recent !== undefined && since >= 0 && since < REUSE_MS && askedAt - recent.at < setting.ms;
+      recent !== undefined && since >= 0 && since < window && askedAt - recent.at < setting.ms;
     // The lookup in flight about this person in this company, if there is one, and
     // a new one otherwise (D9).
     const asked: Asked = reuse
@@ -493,7 +517,12 @@ export function createRoleSource(
     },
     // The same question about a person who calls for herself, asked at line ②
     // (step 45's README, C2; decision Q7).
-    memberOf: async (tenant: string, person: string, name: string): Promise<SignerAuthority> => {
+    memberOf: async (
+      tenant: string,
+      person: string,
+      name: string,
+      own = true,
+    ): Promise<SignerAuthority> => {
       // Suspended or gone, she may not work in the company. The words are the ones line ② gives
       //   anyone who is not a member, so the answer does not say which one she is (DSOR-ERR-01b).
       const stranger = new Refusal(
@@ -511,13 +540,17 @@ export function createRoleSource(
         before !== undefined &&
         usable(before.answer, tenant, person) &&
         before.answer.status === "active";
+      // NEW IN STEP 45c: her own call, at line ②, spends the company's budget when DSoR knows
+      //   nothing about her (C4, D23), and hears the stranger's words. A release's question about
+      //   the person who made a request does neither: she is not the caller, and a company that
+      //   cannot answer now leaves the proposal waiting. Found by step 45c's review, finding 1; the
+      //   words turned an outage into a refusal there since step 45.
+      const stranger_here = own && !known;
       let found: { answer: Answer; as_of: string };
       try {
-        // NEW IN STEP 45c: her own call spends the company's budget when DSoR knows nothing about
-        //   her (C4, D23).
-        found = await current(tenant, person, name, person, !known);
+        found = await current(tenant, person, name, person, stranger_here);
       } catch (error) {
-        if (!known) throw stranger;
+        if (stranger_here) throw stranger;
         throw error;
       }
       if (found.answer.status !== "active") throw stranger;

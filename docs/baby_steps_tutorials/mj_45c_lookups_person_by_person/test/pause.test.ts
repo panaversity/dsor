@@ -3,6 +3,7 @@
 // D10, D16, and D17). The agent works under del_100, which user_123 signed, and DSoR asks a test
 // sign-in server for org_456. Only the date is faked: the network needs real timers.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { memoryAnswers, type KeptAnswers } from "../src/answers.ts";
 import type { Directory } from "../src/directory.ts";
 import { createLog } from "../src/log.ts";
 import { lookupDirectory } from "../src/lookup.ts";
@@ -47,7 +48,13 @@ beforeEach(async () => {
     user_123: { status: "active", roles: ["ap_supervisor"] },
     cfo_100: { status: "active", roles: ["CFO"] },
   });
-  registry = slipRegistry(undefined, undefined, [], new Map([["org_456", lookupOf(server)]]));
+  registry = slipRegistry(
+    undefined,
+    undefined,
+    [],
+    new Map([["org_456", lookupOf(server)]]),
+    knownAnswers(),
+  );
 });
 
 afterEach(async () => {
@@ -107,6 +114,35 @@ function driven(): {
 //   five calls about one person make one question. A run of five failures is five people's own
 //   calls, each about herself, as the pause's count of different people needs too (D25).
 const FIVE = ["user_201", "user_202", "user_203", "user_204", "user_205"];
+// Changed in step 45c, after its review: a stranger's failures do not count (finding 3), so these
+//   are people DSoR knows: it kept an active answer about each at 01:00.
+const KNOWN = [
+  ...FIVE,
+  "user_206",
+  "user_210",
+  "user_211",
+  "user_212",
+  "user_213",
+  "user_214",
+  "user_215",
+];
+
+/** Answers about the people DSoR knows, kept at 01:00. */
+function knownAnswers(): KeptAnswers {
+  const at = Date.parse(`${NIGHT}T01:00:00Z`);
+  return memoryAnswers(
+    KNOWN.map((person) => {
+      const answer = {
+        tenant: "org_456",
+        person,
+        status: "active",
+        roles: ["ap_clerk"],
+        as_of: `${NIGHT}T01:00:00Z`,
+      };
+      return ["org_456", person, { answer, at, asked: at }];
+    }),
+  );
+}
 
 /** One person's own call naming org_456, at line ②: whatever she hears, DSoR asks about her. */
 async function line2(person: string): Promise<void> {
@@ -225,7 +261,13 @@ describe("C4 and D10: after five failures in a row, the server is asked nothing 
 
   it("D10: a failure after the fifth, from a lookup already in flight, starts the pause again from its own moment", async () => {
     const drive = driven();
-    registry = slipRegistry(undefined, undefined, [], new Map([["org_456", drive.directory]]));
+    registry = slipRegistry(
+      undefined,
+      undefined,
+      [],
+      new Map([["org_456", drive.directory]]),
+      knownAnswers(),
+    );
     for (const person of FIVE.slice(0, 4)) {
       const heard = line2(person);
       await drive.fail(person);
@@ -337,7 +379,13 @@ describe("C5 and D16: when the pause is over, one call tries the server again", 
 describe("C6 and D17: any reply ends the run", () => {
   it("D17: a reply that comes during the pause ends it: the next call asks at once", async () => {
     const drive = driven();
-    registry = slipRegistry(undefined, undefined, [], new Map([["org_456", drive.directory]]));
+    registry = slipRegistry(
+      undefined,
+      undefined,
+      [],
+      new Map([["org_456", drive.directory]]),
+      knownAnswers(),
+    );
     const cfo = read(CFO);
     for (const person of FIVE) {
       const heard = line2(person);
@@ -387,7 +435,7 @@ describe("C7 and DSOR-TEN-02a: each company has its own run and its own pause", 
         ["org_456", lookupOf(server)],
         ["org_789", lookupOf(server789, "org_789")],
       ]);
-      registry = slipRegistry(undefined, undefined, [], both);
+      registry = slipRegistry(undefined, undefined, [], both, knownAnswers());
       await fivePeople();
       expect(server.asked()).toBe(5);
       const invoice = { invoice: "dsor://org_789/invoice/INV-1008" };

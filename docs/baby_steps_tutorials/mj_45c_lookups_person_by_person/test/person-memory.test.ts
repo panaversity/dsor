@@ -3,13 +3,15 @@
 // agent works under del_100, which user_123 signed, and DSoR asks a test sign-in server for org_456.
 // Only the date is faked: the network needs real timers.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createRoleSource, type RoleSettings } from "../src/authority.ts";
 import type { Directory } from "../src/directory.ts";
 import { createLog } from "../src/log.ts";
 import { lookupDirectory } from "../src/lookup.ts";
 import { call } from "../src/pipeline.ts";
 import type { Registry } from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
-import { AGENT, CFO, MASKED_1008_OF_456, slipRegistry } from "./helpers.ts";
+import { AGENT, CFO, DEL_100, MASKED_1008_OF_456, slipRegistry } from "./helpers.ts";
+import type { Slip } from "../src/slips.ts";
 import { NIGHT } from "./role-source-list.ts";
 import { startSignInServer, type SignInServer } from "./sign-in-server.ts";
 
@@ -181,5 +183,80 @@ describe("C2 and D22: a person whose lookups keep failing waits twice as long ea
       if (server.asked() > before) asks.push(second);
     }
     expect(asks).toStrictEqual([80, 90, 100]);
+  });
+});
+
+describe("C1 and C2, from the review: the memory's edges", () => {
+  it("D21: an answer up to a minute ahead is one a call can use: under a bound of 5 seconds, DSoR asks again 6 seconds later", async () => {
+    const settings: RoleSettings = new Map([
+      ["org_456", { kind: "idp_lookup", max_staleness: "PT5S", ms: 5000 }],
+    ]);
+    const source = createRoleSource(settings, new Map([["org_456", lookup()]]));
+    server.readAt(`${NIGHT}T02:00:30.000Z`);
+    await source.authorityOf("org_456", DEL_100 as Slip, '"invoice.get"');
+    server.readAt(undefined);
+    at("02:00:06");
+    expect(await source.authorityOf("org_456", DEL_100 as Slip, '"invoice.get"')).toMatchObject({
+      as_of: `${NIGHT}T02:00:06.000Z`,
+    });
+    expect(server.asked()).toBe(2);
+  });
+
+  it("D21: an answer more than a minute ahead is a fault, remembered for 10 seconds: the next read within them asks nothing", async () => {
+    server.readAt(`${NIGHT}T02:05:00.000Z`);
+    expect(await read()).toMatchObject({ code: "INTERNAL_ERROR" });
+    at("02:00:05");
+    expect(await read()).toMatchObject({ code: "INTERNAL_ERROR" });
+    expect(server.asked()).toBe(1);
+  });
+
+  it("D21: a failure is remembered from the moment DSoR asked, not from the moment the 2 seconds ran out", async () => {
+    at("01:59:00");
+    expect(await read()).toMatchObject({ data: MASKED_1008_OF_456 });
+    at("02:00:00");
+    server.hang();
+    const first = read();
+    while (server.asked() < 2) await new Promise((resolve) => setTimeout(resolve, 10));
+    at("02:00:02");
+    expect(await first).toMatchObject({ data: MASKED_1008_OF_456 });
+    // Remembered until 02:00:10, 10 seconds after DSoR asked, not until 02:00:12.
+    at("02:00:10.500");
+    const second = read();
+    while (server.asked() < 3) await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(server.asked()).toBe(3);
+    await second;
+  });
+
+  it("D21: a fault is remembered from the moment DSoR asked, though its reply came later", async () => {
+    server.answerAbout("cfo_100");
+    server.hold();
+    const first = read();
+    while (server.asked() < 1) await new Promise((resolve) => setTimeout(resolve, 10));
+    at("02:00:01.500");
+    server.release();
+    expect(await first).toMatchObject({ code: "INTERNAL_ERROR" });
+    server.answerAbout(undefined);
+    // Remembered until 02:00:10, 10 seconds after DSoR asked, not until 02:00:11.5.
+    at("02:00:10.500");
+    expect(await read()).toMatchObject({ data: MASKED_1008_OF_456 });
+    expect(server.asked()).toBe(2);
+  });
+
+  it("D22: a memory that ended over 5 minutes ago is gone: after a long quiet, her next failure waits 10 seconds again", async () => {
+    expect(await read()).toMatchObject({ data: MASKED_1008_OF_456 });
+    server.replyStatus(503);
+    // Failures at 02:00:10, 02:00:20, and 02:00:40: the third is remembered until 02:01:20.
+    for (const clock of ["02:00:10", "02:00:20", "02:00:40"]) {
+      at(clock);
+      await read();
+    }
+    expect(server.asked()).toBe(4);
+    // 02:07:00 is more than 5 minutes after 02:01:20: her failures start over at the next one.
+    at("02:07:00");
+    await read();
+    expect(server.asked()).toBe(5);
+    at("02:07:10");
+    await read();
+    expect(server.asked()).toBe(6);
   });
 });

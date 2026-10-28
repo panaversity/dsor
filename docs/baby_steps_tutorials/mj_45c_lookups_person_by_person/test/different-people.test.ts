@@ -65,7 +65,21 @@ beforeEach(async () => {
     user_123: { status: "active", roles: ["ap_supervisor"] },
     cfo_100: { status: "active", roles: ["CFO"] },
   });
-  const answers = memoryAnswers([keptAt0159()]);
+  // Changed after step 45c's review: a stranger's failures do not count (finding 3), so the people
+  //   whose lookups fail in these runs are people DSoR knows, with an answer kept at 01:00.
+  const known = ["user_201", "user_202", "user_203", "user_204", "user_205", "user_206"].map(
+    (person): [string, string, Kept] => {
+      const answer = {
+        tenant: "org_456",
+        person,
+        status: "active",
+        roles: ["ap_clerk"],
+        as_of: `${NIGHT}T01:00:00Z`,
+      };
+      return ["org_456", person, { answer, at: time("01:00:00"), asked: time("01:00:00") }];
+    },
+  );
+  const answers = memoryAnswers([keptAt0159(), ...known]);
   registry = slipRegistry(
     undefined,
     undefined,
@@ -153,5 +167,45 @@ describe("C3 and D25: the company's pause counts different people", () => {
     }
     expect(heard[0]).toBe("refused");
     expect(heard.slice(1)).toStrictEqual(Array.from({ length: heard.length - 1 }, () => "reads"));
+  });
+
+  it("D25: a stranger's failures do not count: ten sign-up accounts whose lookups fail start no pause (found by step 45c's review, finding 3)", async () => {
+    server.replyStatus(503);
+    for (let i = 1; i <= 10; i += 1) await line2(`signup_${i}`);
+    expect(server.asked()).toBe(10);
+    // Not paused: the agent's call asks about user_123.
+    await read();
+    expect(server.asked()).toBe(11);
+  });
+
+  it("D25: a stranger's failed trial does not start the pause again: the next call asks (found by step 45c's review, finding 3)", async () => {
+    server.replyStatus(503);
+    for (const person of ["user_201", "user_202", "user_203", "user_204", "user_205"]) {
+      await line2(person);
+    }
+    expect(server.asked()).toBe(5);
+    // 02:00:10, the pause is over. A sign-up account's call is the trial, and fails.
+    at("02:00:10");
+    await line2("signup_1");
+    expect(server.asked()).toBe(6);
+    // Its failure does not count, so no pause starts again: the agent's call is the next trial.
+    await read();
+    expect(server.asked()).toBe(7);
+  });
+
+  it("D23, D25: when the pause ends, a call over the budget is no trial, and leaves the trial to the next call", async () => {
+    for (let i = 1; i <= 20; i += 1) await line2(`signup_${i}`);
+    expect(server.asked()).toBe(20);
+    server.replyStatus(503);
+    for (const person of ["user_201", "user_202", "user_203", "user_204", "user_205"]) {
+      await line2(person);
+    }
+    expect(server.asked()).toBe(25);
+    at("02:00:10");
+    // The 21st sign-up account: no budget left, so no question, and no trial.
+    await line2("signup_21");
+    expect(server.asked()).toBe(25);
+    await read();
+    expect(server.asked()).toBe(26);
   });
 });

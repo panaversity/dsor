@@ -10,7 +10,7 @@ import { lookupDirectory } from "../src/lookup.ts";
 import { call } from "../src/pipeline.ts";
 import type { Registry } from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
-import { AGENT, CFO, MASKED_1008_OF_456, slipRegistry } from "./helpers.ts";
+import { AGENT, CFO, MASKED_1008_OF_456, SUPERVISOR, keyed, slipRegistry } from "./helpers.ts";
 import { NIGHT } from "./role-source-list.ts";
 import { startSignInServer, type SignInServer } from "./sign-in-server.ts";
 
@@ -52,7 +52,11 @@ beforeEach(async () => {
   at("09:00:00");
   server = await startSignInServer("org_456", {
     user_123: { status: "active", roles: ["ap_supervisor"] },
+    user_124: { status: "active", roles: ["ap_supervisor"] },
     cfo_100: { status: "active", roles: ["CFO"] },
+    ...Object.fromEntries(
+      KNOWN.map((person) => [person, { status: "active", roles: ["ap_clerk"] }]),
+    ),
   });
   registry = slipRegistry(undefined, undefined, [], new Map([["org_456", lookupOf(server)]]));
 });
@@ -65,6 +69,18 @@ afterEach(async () => {
 /** Someone reads INV-1008: the agent under del_100, unless another caller is named. */
 function read(caller: RequestEnvelope = AGENT): Promise<unknown> {
   return call(registry, createLog(), caller, "invoice.get", INVOICE);
+}
+
+// People DSoR knows: it kept an active answer about each at 01:00. Their failures count toward
+// the pause; a stranger's do not (found by step 45c's review, finding 3).
+const KNOWN = ["user_201", "user_202", "user_203", "user_204", "user_205"];
+
+/** Answers about the people DSoR knows, kept at 01:00, and any others given. */
+function knownAnswers(...more: [string, string, Kept][]): ReturnType<typeof memoryAnswers> {
+  return memoryAnswers([
+    ...KNOWN.map((person) => keptAbout(person, "01:00:00", ["ap_clerk"])),
+    ...more,
+  ]);
 }
 
 /** People who signed up at the SSO, none of them in org_456: signup_001, signup_002, … */
@@ -159,5 +175,154 @@ describe("C6 and DSOR-TEN-02a: each company has its own budget", () => {
     } finally {
       await server789.stop();
     }
+  });
+});
+
+// Found by step 45c's review, finding 1: a release asks about the person who made the request, who
+// is not the caller. That question spends no budget, and a company that cannot answer now leaves
+// the proposal waiting. user_124 is a second AP supervisor of org_456, with a key of her own.
+describe("C4: a release asks about the person who made the request, and spends no budget", () => {
+  /** A DSoR whose logins know user_124's key too. */
+  function withUser124(): Registry {
+    const base = slipRegistry(undefined, undefined, [], new Map([["org_456", lookupOf(server)]]));
+    return {
+      ...base,
+      logins: {
+        ...base.logins,
+        find: async (token: string) =>
+          token === "tok_x124"
+            ? { id: "user_124", type: "human" as const, memberships: [] }
+            : base.logins.find(token),
+      },
+    } as Registry;
+  }
+  const USER_124 = { token: "tok_x124", tenant: "org_456" };
+  const DRAFT = { ...INVOICE, expected_version: 1 };
+
+  /** user_123 prepares a payment of INV-1008, and a 403 at 02:01 erases DSoR's answer about her. */
+  async function preparedThenForgotten(): Promise<string> {
+    at("02:00:00");
+    const log = createLog();
+    const prepared = await call(
+      registry,
+      log,
+      { ...keyed(SUPERVISOR), mode: "propose_only" },
+      "payment.create",
+      DRAFT,
+    );
+    expect(prepared).toMatchObject({ outcome: "READY" });
+    at("02:00:30");
+    expect(await call(registry, log, USER_124, "invoice.get", INVOICE)).toHaveProperty("data");
+    at("02:01:00");
+    server.replyStatus(403);
+    expect(await call(registry, log, SUPERVISOR, "invoice.get", INVOICE)).toMatchObject({
+      code: "INTERNAL_ERROR",
+    });
+    server.replyStatus(undefined);
+    return (prepared as { proposal: string }).proposal;
+  }
+
+  it("D23: 20 sign-up accounts use up the budget, and user_124's release of user_123's waiting payment still commits", async () => {
+    registry = withUser124();
+    const proposal = await preparedThenForgotten();
+    at("02:02:00");
+    await line2(signUps(20));
+    at("02:02:01");
+    const released = await call(registry, createLog(), keyed(USER_124), "proposal.execute", {
+      proposal,
+    });
+    expect(released).toMatchObject({ outcome: "COMMITTED" });
+  });
+
+  it("DSOR-IDN-06: at a release, a company that cannot answer now about its requester leaves the proposal waiting, though DSoR knows nothing about her now (a bug since step 45)", async () => {
+    registry = withUser124();
+    const proposal = await preparedThenForgotten();
+    // user_124's own answer is used again for 10 seconds; then the SSO fails.
+    at("02:02:00");
+    expect(await call(registry, createLog(), USER_124, "invoice.get", INVOICE)).toHaveProperty(
+      "data",
+    );
+    server.replyStatus(503);
+    at("02:02:01");
+    const once = keyed(USER_124);
+    expect(await call(registry, createLog(), once, "proposal.execute", { proposal })).toMatchObject(
+      {
+        code: "FRESHNESS_UNSATISFIABLE",
+      },
+    );
+    // The SSO is back, and once the failure is no longer remembered, the same key releases it.
+    server.replyStatus(undefined);
+    at("02:02:31");
+    expect(await call(registry, createLog(), once, "proposal.execute", { proposal })).toMatchObject(
+      {
+        outcome: "COMMITTED",
+      },
+    );
+  });
+});
+
+describe("D26: a stranger's own calls use the answer that she is gone for 10 minutes", () => {
+  it("D26: the same 20 sign-up accounts call again a minute later, the budget fresh: no question, and the stranger's words", async () => {
+    await line2(signUps(20));
+    expect(server.asked()).toBe(20);
+    at("09:01:00");
+    for (const heard of await line2(signUps(20))) {
+      expect(heard).toMatchObject({ code: "AUTHORIZATION_DENIED", message: STRANGER });
+    }
+    expect(server.asked()).toBe(20);
+  });
+
+  it("D26: 10 minutes after her answer, a sign-up account is asked about again", async () => {
+    await line2(signUps(1));
+    at("09:09:59.999");
+    await line2(signUps(1));
+    expect(server.asked()).toBe(1);
+    at("09:10:00");
+    await line2(signUps(1));
+    expect(server.asked()).toBe(2);
+  });
+});
+
+describe("C4 and C5, from the review: the budget's edges", () => {
+  it("D24: a call over the budget is not remembered: once the minute rolls on, the same stranger is asked about", async () => {
+    await line2(signUps(20));
+    at("09:00:55");
+    await line2(["latecomer"]);
+    expect(server.asked()).toBe(20);
+    at("09:01:01");
+    await line2(["latecomer"]);
+    expect(server.asked()).toBe(21);
+  });
+
+  it("D23: budget moments from before a clock went back are dropped: the next stranger is asked about", async () => {
+    await line2(signUps(20));
+    at("08:00:00");
+    await line2(["latecomer"]);
+    expect(server.asked()).toBe(21);
+  });
+
+  it("D23, D25: during a pause, a stranger's call spends no budget: 20 strangers after it are all asked about", async () => {
+    registry = slipRegistry(
+      undefined,
+      undefined,
+      [],
+      new Map([["org_456", lookupOf(server)]]),
+      knownAnswers(),
+    );
+    server.replyStatus(503);
+    await line2(KNOWN);
+    expect(server.asked()).toBe(5);
+    // Paused until 09:00:10. Strangers call during it, and nothing is asked.
+    at("09:00:05");
+    await line2(signUps(25));
+    expect(server.asked()).toBe(5);
+    // 09:00:10: someone DSoR knows is the trial, and is answered: the run ends.
+    server.replyStatus(undefined);
+    at("09:00:10");
+    await line2(["user_201"]);
+    expect(server.asked()).toBe(6);
+    at("09:00:11");
+    await line2(signUps(20, 26));
+    expect(server.asked()).toBe(26);
   });
 });

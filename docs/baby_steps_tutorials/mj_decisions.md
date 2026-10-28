@@ -474,7 +474,7 @@ close in entries 35 to 37.
   two files.
 - **Built in** step 45e (its place proposed by Claude Code).
 
-## 38 · Every reply about a person is remembered for 10 seconds (2026-10-28), D21
+## 38 · Every reply about a person is remembered for 10 seconds (2026-10-29), D21
 
 **Decided by:** the learner, on Claude Code's recommendation, before step 45c's code.
 
@@ -489,7 +489,7 @@ close in entries 35 to 37.
   write for every failed lookup.
 - **Built in** step 45c.
 
-## 39 · A person whose lookups keep failing waits twice as long each time (2026-10-28), D22
+## 39 · A person whose lookups keep failing waits twice as long each time (2026-10-29), D22
 
 **Decided by:** the learner, on Claude Code's recommendation, before step 45c's code.
 
@@ -503,7 +503,7 @@ close in entries 35 to 37.
 - **Rejected.** Asking every 10 seconds; only the person of a failed trial sitting out the next trial.
 - **Built in** step 45c.
 
-## 40 · 20 lookups a minute about people DSoR knows nothing about (2026-10-28), D23
+## 40 · 20 lookups a minute about people DSoR knows nothing about (2026-10-29), D23
 
 **Decided by:** the learner, on Claude Code's recommendation, before step 45c's code.
 
@@ -515,8 +515,16 @@ close in entries 35 to 37.
 - **Cost.** Once strangers use it up, a real new employee is refused until the minute rolls on.
 - **Rejected.** 5 a minute, which an onboarding day runs into; 100 a minute.
 - **Built in** step 45c.
+- **The cost above was false (step 45c's review, 2026-10-29).** A call over the budget costs a
+  stranger nothing, and her "not a member" answer was used again for only 10 seconds, so four
+  sign-up accounts calling steadily kept the 20 used up, and a new employee out, for as long as they
+  kept calling. The learner then took D26 (entry 42). And a fault erases kept answers, so after a key
+  rotation done wrong a company's people all count as strangers and share the 20 (entry 43).
+- **And the budget counted a release's question too (step 45c's review, finding 1).** A release asks
+  about the person who made the request; over the budget it heard the stranger's words, and threw
+  the waiting payment away. Fixed in step 45c: only a person's own call spends the budget (entry 44).
 
-## 41 · Over the budget, the stranger's words (2026-10-28), D24
+## 41 · Over the budget, the stranger's words (2026-10-29), D24
 
 **Decided by:** the learner, on Claude Code's recommendation, before step 45c's code.
 
@@ -527,6 +535,52 @@ close in entries 35 to 37.
 - **Cost.** A new employee hears that she does not work there, not "try again in a minute".
 - **Rejected.** `RATE_LIMITED`, which tells any SSO account that the company is a DSoR company.
 - **Built in** step 45c.
+- **The "why" above claimed too much (step 45c's review, 2026-10-29).** The words reveal nothing, but
+  the time to answer does: a call naming a company DSoR serves waits for its sign-in server, and one
+  naming any other company is refused at once. So a stranger can already tell that org_456 is a DSoR
+  company, as since step 45. Told this, the learner kept the stranger's words: they meet
+  DSOR-ERR-01b, and say nothing in words about the company's load.
+
+## 42 · A stranger's own calls use "not a member" for 10 minutes (2026-10-29), D26
+
+**Decided by:** the learner, on Claude Code's recommendation, after step 45c's review.
+
+- **What.** When a person's own call hears that she is gone from the company, DSoR uses that answer
+  for her own calls for 10 minutes, not 10 seconds. Her company's other questions about her, such as
+  a slip's signer at line ③, still use it for 10 seconds.
+- **Why.** Each sign-up account then costs one lookup in 10 minutes. Keeping the budget of D23 used
+  up takes 200 accounts every 10 minutes, not 4.
+- **Cost.** Someone added to the company just after her first try waits up to 10 minutes.
+- **Rejected.** Keeping D23 as it was, with its true cost said; dropping the budget.
+- **Built in** step 45c.
+
+## 43 · A key rotation keeps people known: a step of its own (2026-10-29)
+
+**Decided by:** the learner, on Claude Code's recommendation, after step 45c's review.
+
+- **What.** A fault, such as a `403` during a key rotation done wrong, erases DSoR's kept answer about
+  each person it asks about (step 45's D2). They then count as strangers for the budget, so once the
+  key is fixed a company shares 20 lookups a minute until each person is asked again: about 25
+  minutes for 500 people on one DSoR server. A step of its own keeps a mark that DSoR once knew a
+  person as active, which a fault does not erase: a new column in `dsor.role_answers`.
+- **Cost.** Until then, a key rotation done wrong slows a large company's own calls for a while.
+- **Rejected.** Building it in step 45c, which would grow with a migration; leaving it.
+- **Built in** step 45f (its place proposed by Claude Code).
+
+## 44 · A release's question about its requester, fixed in step 45c (2026-10-29)
+
+**Decided by:** the learner, on Claude Code's recommendation, after step 45c's review.
+
+- **What.** At a release, DSoR asks again about the person who made a request, through the question a
+  person's own call asks. Since step 45, a company that could not answer about someone DSoR keeps no
+  active answer for gave the stranger's words there, and the release read them as "no": a `503` threw
+  a waiting payment away. Step 45c's budget made it worse. Step 45c fixes both: only a person's own
+  call spends the budget and hears the stranger's words; a release's question about its requester
+  hears what her company really said, so "cannot answer now" leaves the proposal waiting.
+- **Why.** A fix belongs in the earliest step that has it. Step 45c's budget touches the same line, so
+  it is fixed there first; steps 45 and 45b are proposed separately.
+- **Cost.** Until then, steps 45 and 45b keep the bug.
+- **Rejected.** Stopping step 45c to fix steps 45 and 45b first.
 
 ## Open
 
