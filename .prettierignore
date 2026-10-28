@@ -12,3 +12,7 @@ packages/spec/requirements.json
 # whitespace-only lines.
 docs/baby_steps_tutorials/*/schemas/
 docs/baby_steps_tutorials/*/src/schemas/
+
+# A step's proposals for the specification, such as step 45's role-source-answer schema, are
+# kept as they will land in packages/spec/schemas/, so they move there unchanged.
+docs/baby_steps_tutorials/*/proposals/
