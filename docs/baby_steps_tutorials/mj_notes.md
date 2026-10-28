@@ -3582,6 +3582,9 @@ recommendation first. The learner took each recommendation, after two questions 
 - **D10. A 2-second timeout, no retry, and a 10-second pause after five failures in a row.** In
   the pause, DSoR uses its kept answers, up to the one-hour bound. *Downside:* a server that
   answers in three seconds counts as no answer.
+- **D9 and the pause of D10 are step 45b's** (decided 2026-10-28), so that each step teaches one
+  idea. Step 45 keeps D10's 2-second timeout, because "a timeout means the server cannot answer
+  now" needs one.
 - **Closed by the specification:** "Which kind does each company use?" DSOR-IDN-05 makes every
   tenant set its own role source, and the tenant policy requires `role_source.kind`, so DSoR has
   no default.

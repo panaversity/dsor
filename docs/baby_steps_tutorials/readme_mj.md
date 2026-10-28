@@ -35,7 +35,8 @@ sign-in server that cannot answer a lookup (Q1, Q4).
 | [44 · Tokens made for DSoR](mj_44_tokens_made_for_dsor/README.md) | A person is who a token made for DSoR says | New: DSOR-RP-02b. Again: DSOR-IDN-01, DSOR-IDN-04a, DSOR-IDN-04b | Built |
 | Before 45 · The SSO on Better Auth 1.7 | The SSO's fix list moves onto its 1.7 upgrade. Not a DSoR step | None in DSoR. It gives 47, 48, and 49 the standard parts they need | Done on 1.7.2, in a draft pull request |
 | Before 45 (b) · The latest Better Auth, and a key for each company | One upgrade from `main` to 1.7.14, then the DSoR fix list on top of it, with a key from each company's owner. Not a DSoR step | None in DSoR. Step 45 keeps one key for each company | #1333 merged and live; #1331 in draft, on `main` |
-| 45 · Ask the sign-in server | DSoR asks the SSO, at every call, who a person is in a company now | Again, against a real server: DSOR-IDN-05, DSOR-IDN-06, DSOR-IDN-07, DSOR-IDN-03a, DSOR-DEL-02, DSOR-BND-02 | Next |
+| [45 · Ask the sign-in server](mj_45_ask_the_sign_in_server/README.md) | DSoR asks the company's sign-in server, through DSoR's own contract, who a person is in a company now, and reuses an answer for up to 10 seconds | Again, against a real server: DSOR-IDN-05, DSOR-IDN-06, DSOR-IDN-07, DSOR-IDN-03a, DSOR-DEL-02, DSOR-BND-02 | Design written |
+| 45b · Protect the sign-in server | One lookup in flight for each company and person, and a pause after five failures | Again: DSOR-IDN-06 | Planned |
 | 46 · Who may approve, and up to how much | Approver roles, each with a limit | New: DSOR-SOD-04a, DSOR-SOD-04b | Planned |
 | 47 · The approval door | Approvals only from DSoR's own approval app | Again: DSOR-APR-05a, DSOR-APR-05b, DSOR-SOD-01a. New: DSOR-RP-02c, DSOR-RP-02e | Planned |
 | 48 · The agent door (MCP), door A | An agent acting for a person who connected it | New: DSOR-RP-02a, DSOR-RP-02d, DSOR-OPR-03a, DSOR-IDN-02b, DSOR-RP-04, DSOR-RP-05a, DSOR-RP-06a, DSOR-RP-07a, DSOR-RP-07b, DSOR-DEL-03a, DSOR-DEL-03b, DSOR-RP-03, and the rest of DSOR-DEL-10 | Planned |
@@ -126,9 +127,9 @@ Decided by the learner on 2026-10-28 ([`mj_notes.md`](mj_notes.md), the last two
 - It replaces the people's rows in `src/principals.ts` and the fake staff directory in
   `src/serve.ts` with a stand-in that answers the contract (D7). The timer jobs keep their keys for
   now (D6). Every role-source adapter passes one shared test list (D5).
-- The answers live in DSoR's PostgreSQL, one lookup is in flight for each company and person, and
-  a lookup waits 2 seconds, with a 10-second pause after five failures (D8 to D10). Whether these
-  three make a step 45b is open.
+- The answers live in DSoR's PostgreSQL (D8), and a lookup waits at most 2 seconds, with no second
+  try (D10's timeout). One lookup in flight (D9) and the pause after five failures (the rest of
+  D10) are step 45b's.
 - The Panaversity SSO is the first server to answer the contract. Its lookup route, from draft pull
   request [panaversity/agentfactory#1331](https://github.com/panaversity/agentfactory/pull/1331) on
   Better Auth 1.7.14 (#1333), changes to match. DSoR holds one key for each company, made by that
@@ -139,6 +140,15 @@ Decided by the learner on 2026-10-28 ([`mj_notes.md`](mj_notes.md), the last two
 - Decisions D1 to D10, and the questions behind them: [`mj_notes.md`](mj_notes.md), "Step 45's
   design, the learner's answers". Every decision from step 43d on, in one place:
   [`mj_decisions.md`](mj_decisions.md).
+
+### 45b · Protect the sign-in server
+
+- On each DSoR server, one lookup is in flight for each company and person, and calls that arrive
+  meanwhile wait for its answer (D9). Fifty calls at the moment an answer expires make one lookup.
+- After five failures in a row, DSoR stops asking that company's server for 10 seconds and uses its
+  kept answers, up to the one-hour bound (D10).
+- Split from step 45 on 2026-10-28, to keep one new idea in each step
+  ([`mj_decisions.md`](mj_decisions.md), entry 23).
 
 ### 46 · Who may approve, and up to how much
 

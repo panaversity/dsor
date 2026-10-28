@@ -239,6 +239,7 @@ decided by the learner.
   the same pair wait for its answer.
 - **Why.** When a busy person's answer expires, 50 calls in flight would send 50 identical lookups.
 - **Cost.** A little code, and a waiting call is only as fast as that one lookup.
+- **Built in** step 45b (entry 23).
 
 ## 22 · A 2-second timeout, no retry, and a pause after five failures (2026-10-28), D10
 
@@ -249,11 +250,24 @@ decided by the learner.
   bound.
 - **Why.** Retries multiply the load exactly when a server is weakest.
 - **Rejected.** A timeout with no pause; retries with backoff.
+- **Built in** step 45 (the timeout) and step 45b (the pause), as entry 23 splits them.
+
+## 23 · Step 45b protects the sign-in server (2026-10-28)
+
+**Decided by:** the learner, on Claude Code's recommendation.
+
+- **What.** Step 45 holds D1 to D8, and D10's 2-second timeout with no second try. A new step
+  45b, "Protect the sign-in server", holds D9 (one lookup in flight) and D10's pause after five
+  failures.
+- **Why.** Each step teaches one new idea. Asking the server is one; protecting it under load is
+  another. Step 45 keeps the timeout, because "a timeout means the server cannot answer now"
+  needs one.
+- **Cost.** One more step in the map, and one more copy.
+- **Rejected.** All of D1 to D10 in step 45, which is two ideas at once; and D8 to D10 in step
+  45b, which gives the same answers two homes, built twice.
 
 ## Open
 
-- **One step or two?** Entries 21 and 22 protect the sign-in server under load. Step 45 may hold
-  them, or a step 45b may, to keep one new idea in each step.
 - **The SSO writes a key's row on every check.** Better Auth updates `updatedAt` each time, so all
   of one company's lookups write one row. At high volume the SSO could check DSoR keys without that
   write. That is the SSO's choice.
