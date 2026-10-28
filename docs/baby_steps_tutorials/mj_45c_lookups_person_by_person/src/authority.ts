@@ -213,8 +213,10 @@ const PAUSE_MS = 10 * 1000;
 
 // One company's server, as this DSoR server has found it: its failures in a row,
 // the end of its pause, and whether a call is trying it again (D10, D16).
+// NEW IN STEP 45c: the run counts people, not failures: the different people whose lookups failed
+//   in a row, up to five, so one person's broken record counts once (step 45c's README, D25).
 /** One company's run of failures on this DSoR server. */
-type Run = { failures: number; pausedUntil: number; trying: boolean };
+type Run = { failed: Set<string>; pausedUntil: number; trying: boolean };
 
 // One lookup, as every call that shares it reads it: the moment DSoR sent it,
 // and what came back (step 45b's README, D9).
@@ -274,9 +276,9 @@ export function createRoleSource(
     // After five failures in a row, a call asks nothing while the pause lasts, or
     // while another call tries the server again. It has no reply, at once, and uses the answer
     // kept, or is refused (C4, C5; D10, D16).
-    const run = runs.get(tenant) ?? { failures: 0, pausedUntil: 0, trying: false };
+    const run = runs.get(tenant) ?? { failed: new Set<string>(), pausedUntil: 0, trying: false };
     runs.set(tenant, run);
-    const trial = run.failures >= FAILURES;
+    const trial = run.failed.size >= FAILURES;
     // A pause that began later than DSoR's clock now came before a clock went back. It is over:
     // kept, it would last until the clock caught up, an hour for a clock set back an hour (found
     // while building; step 19's README, decision 15).
@@ -294,7 +296,7 @@ export function createRoleSource(
       if (reply.answered) {
         // Any reply, even one DSoR cannot use, shows the server is up, and ends
         // the run (C6, D17).
-        run.failures = 0;
+        run.failed.clear();
         // NEW IN STEP 45c: her failures in a row start over (D22). A reply that no call can use as
         //   an answer, a fault or one too old, is remembered for 10 seconds from the moment DSoR
         //   asked. An answer a call can use is kept, as before, and used again from there only
@@ -309,8 +311,9 @@ export function createRoleSource(
       }
       // One lookup is one failure, however many calls waited for it. The fifth in
       // a row starts a pause, and so does each failure after it, the trial's too (C4, C5).
-      run.failures += 1;
-      if (run.failures >= FAILURES) run.pausedUntil = Date.now() + PAUSE_MS;
+      // NEW IN STEP 45c: and one person counts once in a run (D25).
+      if (run.failed.size < FAILURES) run.failed.add(person);
+      if (run.failed.size >= FAILURES) run.pausedUntil = Date.now() + PAUSE_MS;
       // NEW IN STEP 45c: a failure is remembered for twice as long as the one before it (D22).
       memory.failures += 1;
       memory.until = askedAt + Math.min(REUSE_MS * 2 ** (memory.failures - 1), BACKOFF_MAX_MS);
