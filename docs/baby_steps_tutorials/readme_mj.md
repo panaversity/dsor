@@ -111,25 +111,28 @@ Decided by the learner on 2026-10-28 ([`mj_notes.md`](mj_notes.md), the last two
 
 ### 45 · Ask the sign-in server
 
-- Line ② for a person, and line ③ for a slip's signer, will ask the SSO's lookup route at every call:
-  is this person listed in this company, are they active, and which roles do they hold (Q5, Q7).
-- An answer will count only when it names the company and the person DSoR asked about. No answer
-  (a 429, a 5xx, a timeout) lets the kept answer count for up to one hour, then
-  `FRESHNESS_UNSATISFIABLE` and an alert. Any other answer is a fault, `INTERNAL_ERROR` (Q6, Q8).
-- A leaver will be refused at the next call, and their slips suspended.
+- Starts with a change to the specification: DSoR's own contract for the lookup kind, and two new
+  rules in [§12.1](../../specs/dsor/02-security.md#121-role-source) (D1, D2).
+- Line ② for a person, and line ③ for a slip's signer, will ask the company's sign-in server through
+  that contract: is this person in this company, are they active, and which roles do they hold (Q7).
+  An answer is reused for up to 10 seconds, so a flood of calls cannot flood the server (D3).
+- The answer holds `tenant`, `person`, a `status` of `active`, `suspended`, or `gone`, DSoR's role
+  names, and `as_of` (D4). It counts only when it names the company and the person DSoR asked
+  about. No answer (a 429, a 5xx, a timeout) lets the kept answer count for up to one hour, then
+  `FRESHNESS_UNSATISFIABLE` and an alert. Any other reply is a fault, `INTERNAL_ERROR` (Q6, Q8).
+- A leaver will be refused at the next ask, and their slips suspended.
 - It replaces the people's rows in `src/principals.ts` and the fake staff directory in
-  `src/serve.ts`.
-- It uses the Panaversity SSO's lookup route from draft pull request
-  [panaversity/agentfactory#1331](https://github.com/panaversity/agentfactory/pull/1331), now on Better
-  Auth 1.7.14 (#1333). DSoR holds one key for each company, made by that company's owner.
+  `src/serve.ts` with a stand-in that answers the contract (D7). The timer jobs keep their keys for
+  now (D6). Every role-source adapter passes one shared test list (D5).
+- The Panaversity SSO is the first server to answer the contract. Its lookup route, from draft pull
+  request [panaversity/agentfactory#1331](https://github.com/panaversity/agentfactory/pull/1331) on
+  Better Auth 1.7.14 (#1333), changes to match. DSoR holds one key for each company, made by that
+  company's owner.
 - No standard serves this lookup. Better Auth's organization plugin answers a signed-in member. Its
   SCIM plugin lists people only to the directory that sent them. Introspection needs the person's
   own token, which a slip's signer never sends.
-- Open design questions for DSoR: whose contract the lookup is, which kind each company uses, one
-  test list for every role-source adapter, who can make DSoR hear "no answer", and how the system
-  logins sign in. For the chain: whether the people's rows stay. Decided: the sign-in server gives
-  people DSoR's role names, and DSoR keeps no role map. The Panaversity SSO's own choices are in a
-  list of their own ([`mj_notes.md`](mj_notes.md), "Questions for step 45's design").
+- Decisions D1 to D7, and the questions behind them: [`mj_notes.md`](mj_notes.md), "Step 45's
+  design, the learner's answers".
 
 ### 46 · Who may approve, and up to how much
 

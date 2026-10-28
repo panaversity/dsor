@@ -3174,7 +3174,9 @@ first and add the real agent after. Part 7 needs 48c's real agent.
 
 ### Questions for step 45's design (2026-10-27)
 
-Raised while explaining step 44's architecture. No decision: Phase A of step 45 starts from them.
+Raised while explaining step 44's architecture. Phase A answered DSoR's questions on 2026-10-28:
+"Step 45's design, the learner's answers", after the next section. The Panaversity SSO's
+choices stay with the SSO.
 
 **Split on 2026-10-28.** The learner called out design bias. Step 44 ran against one real server,
 the Panaversity SSO, and step 45 plans to. Its shape leaked into DSoR's questions. A DSoR rule
@@ -3475,6 +3477,54 @@ and in 1.7.2's own code from the local pnpm store. The SSO runs 1.6.23. Its upgr
   GitHub did not start the CI jobs on the new head. A billing block on the account stopped them
   ("recent account payments have failed or your spending limit needs to be increased"). They run
   when someone fixes the billing and runs them again.
+
+### Step 45's design, the learner's answers (2026-10-28)
+
+Asked one decision at a time through the ask tool, each with its trade-off and Claude Code's
+recommendation first. The learner took each recommendation, after two questions of their own
+(below). Step 45 starts with a change to the specification, before any code.
+
+- **D1. The lookup follows DSoR's own contract, written in the specification.** Any sign-in server
+  can serve it, and the Panaversity SSO is the first. *Downside:* a spec change comes before step
+  45's code, and the SSO's route changes to match.
+- **D2. Two new MUST rules in [§12.1](../../specs/dsor/02-security.md#121-role-source), for every
+  DSoR.** An answer counts only when it names the tenant and the person that DSoR asked about. A
+  reply that is neither an answer nor "no answer" refuses the call with `INTERNAL_ERROR`, and the
+  kept answer is dropped. The replies that mean "no answer" (a 429, a 5xx, a timeout, no
+  connection) go in the contract's binding. "Role names are DSoR's" goes in §12.1 as a **Common
+  mistake**, not as a MUST, so that no deployment's map is forbidden. *Downside:* two more rules to
+  test, for every role source with a lookup.
+- **D3. DSoR reuses a person's answer for up to 10 seconds** (this tutorial's setting). A flood of
+  agent calls then makes about six lookups a minute, so it cannot make the sign-in server answer
+  429 and keep a removed role alive for an hour. This replaces Q5's "at every call". *Downside:* a
+  leaver is caught within 10 seconds, not at the very next call.
+- **D4. The answer holds `tenant`, `person`, `status`, `roles`, and `as_of`.** DSoR asks
+  `GET …?tenant=org_456&person=user_123` with that company's own key. `status` is `active`,
+  `suspended`, or `gone` (left the company, or no account), the two cases of DSOR-IDN-07. `roles`
+  holds DSoR's role names and counts only when the status is `active`. `as_of` says when the
+  server read its data, so DSoR can refuse an answer older than the bound, and it fills the spec's
+  `subjectAuthority.asOf`. *Downside:* the SSO's route changes: `tenant` and `person`, one `gone`
+  for its `not_member` and `no_account`, and an `as_of`.
+- **D5. One shared test list for every role-source adapter.** A leaver is refused at the next ask,
+  an answer older than the bound is refused, an answer about someone else never counts, and an
+  unclear reply is a fault. *Downside:* step 45 writes its tests in a shared form.
+- **D6. The timer jobs keep their keys in step 45,** with a note. A later step runs dsor-scheduler
+  and dsor-rates inside DSoR, never through the door, and the `scheduler` and `rate_loader` roles
+  go. *Downside:* two fixed keys live a step or two longer.
+- **D7. A stand-in that answers DSoR's contract** replaces the people's rows and the fake staff
+  directory, for `pnpm start` and the older tests. Every world takes one path, and the live run
+  still asks the real SSO. *Downside:* many older tests change in step 45.
+- **Closed by the specification:** "Which kind does each company use?" DSOR-IDN-05 makes every
+  tenant set its own role source, and the tenant policy requires `role_source.kind`, so DSoR has
+  no default.
+- **The learner's two questions on the way.** Does DSoR send the company and the person? Yes: line
+  ② takes them from the token and the active tenant, line ③ from the slip, and the answer repeats
+  both. Is `roles.json` a second place to manage roles? No: the sign-in server holds who has which
+  role, and `roles.json` holds what each role may do. A company manages its people in one place
+  and never edits `roles.json`, as with Microsoft Entra's app roles. The company's own limits, such
+  as 25,000 USD, are rules in DSoR.
+- **Next:** the specification change (the two rules, the contract's binding, and the common
+  mistake), then the SSO's route moves to the contract, then step 45 is built.
 
 ## Still unknown
 
