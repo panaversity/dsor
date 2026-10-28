@@ -405,6 +405,22 @@ learner's review.**
 - **Cost.** Until then, a company learns of an outage only from refused calls and their records.
 - **Rejected.** In step 45b, when a pause starts (two ideas in one step); dropping the alert.
 
+## 34 · One person's failing lookups and the pause, in step 45c (2026-10-28)
+
+**Decided by:** the learner, on Claude Code's recommendation, after step 45b's review.
+
+- **What.** Step 45b's review, finding 2: one person whose own lookups fail, say because the SSO
+  errors on her record, pauses org_456 for everyone after five of her calls. She can keep it paused
+  by being every trial. Step 45 had no such risk. Step 45c fixes it with each person's memory of her
+  lookups: the company's pause can count different people, and a person whose lookups keep failing
+  is asked less and less often, so that someone else's call becomes the trial.
+- **Why.** Step 45c gives each person a memory of her lookups anyway (entry 32).
+- **Cost.** Until 45c, one broken record at the SSO can pause org_456 again and again. No call acts
+  on an answer older than the hour, but a person with no kept answer is refused during each pause,
+  and after an hour every call is.
+- **Rejected.** Counting different people now, in step 45b: an outage seen through one person's calls
+  would no longer pause, and the step's stories and its real run would change.
+
 ## Open
 
 - **The SSO writes a key's row on every check.** Better Auth updates `updatedAt` each time, so all

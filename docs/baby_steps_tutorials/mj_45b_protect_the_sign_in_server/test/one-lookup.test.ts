@@ -3,6 +3,7 @@
 // signed, and DSoR asks a test sign-in server for org_456, which can hold its replies until the test
 // sends them. Only the date is faked: the network needs real timers.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { memoryAnswers } from "../src/answers.ts";
 import { createLog } from "../src/log.ts";
 import { lookupDirectory } from "../src/lookup.ts";
 import { call } from "../src/pipeline.ts";
@@ -108,7 +109,7 @@ describe("C1 and D9: calls about the same person share one lookup in flight", ()
 });
 
 describe("C2 and DSOR-TEN-02a: a call about someone else asks on its own", () => {
-  it("DSOR-TEN-02a: cfo_100's own call does not wait for the lookup about user_123: two lookups are in flight", async () => {
+  it("D9: cfo_100's own call does not wait for the lookup about user_123: two lookups are in flight", async () => {
     server.hold();
     const agent = read();
     const cfo = read(CFO);
@@ -184,6 +185,75 @@ describe("C3 and D9: each call that waited checks the shared answer as its own",
         identity: { subject_authority: { source: "role_source", as_of: `${NIGHT}T02:00:00.000Z` } },
       },
     ]);
+  });
+
+  /** The first read at 02:00:00 sends a lookup that the server holds; a second read comes at this time and waits for it. */
+  async function secondWaitsAt(time: string): Promise<[Promise<unknown>, Promise<unknown>]> {
+    server.hold();
+    const first = read();
+    await asked(server, 1);
+    at(time);
+    const second = read();
+    await wait(50);
+    return [first, second];
+  }
+
+  it("D3, D9: an answer a call waited for is used again for 10 seconds from the moment DSoR asked, not from when that call came", async () => {
+    const [first, second] = await secondWaitsAt("02:00:01.500");
+    server.release();
+    await Promise.all([first, second]);
+    at("02:00:10.500");
+    await read();
+    expect(server.asked()).toBe(2);
+  });
+
+  it("D9, DSOR-IDN-06: a call that waited measures the company's bound from the moment the lookup was sent", async () => {
+    const [first, second] = await secondWaitsAt("02:00:01");
+    // Read 59 minutes 59.5 seconds before DSoR asked: under org_456's hour then, over it a second later.
+    server.readAt(`${NIGHT}T01:00:00.500Z`);
+    server.release();
+    expect(await first).toMatchObject({ data: MASKED_1008_OF_456 });
+    expect(await second).toMatchObject({ data: MASKED_1008_OF_456 });
+  });
+
+  it("D9, D4: a call that waited measures the one minute ahead from the moment the lookup was sent", async () => {
+    const [first, second] = await secondWaitsAt("02:00:01");
+    // 60.5 seconds after DSoR asked: a fault, though under a minute after the second call came.
+    server.readAt(`${NIGHT}T02:01:00.500Z`);
+    server.release();
+    expect(await first).toMatchObject({ code: "INTERNAL_ERROR" });
+    expect(await second).toMatchObject({ code: "INTERNAL_ERROR" });
+  });
+
+  it("D9: a fault that a call waited for forgets only an answer DSoR asked for before the lookup was sent (step 19's README, decision 14)", async () => {
+    const answers = memoryAnswers();
+    registry = slipRegistry(
+      undefined,
+      undefined,
+      [],
+      new Map([["org_456", lookupOf(server)]]),
+      answers,
+    );
+    server.answerAbout("cfo_100");
+    const [first, second] = await secondWaitsAt("02:00:01");
+    // Meanwhile another DSoR server, which asked at 02:00:00.5, keeps its newer answer.
+    const as_of = `${NIGHT}T02:00:00.500Z`;
+    const newer = {
+      tenant: "org_456",
+      person: "user_123",
+      status: "active",
+      roles: ["ap_clerk"],
+      as_of,
+    };
+    await answers.keep("org_456", "user_123", {
+      answer: newer,
+      at: Date.parse(as_of),
+      asked: Date.parse(as_of),
+    });
+    server.release();
+    expect(await first).toMatchObject({ code: "INTERNAL_ERROR" });
+    expect(await second).toMatchObject({ code: "INTERNAL_ERROR" });
+    expect((await answers.get("org_456", "user_123"))?.answer).toStrictEqual(newer);
   });
 
   it("D9: del_100 and del_101, both signed by user_123, share one gone answer, and each refusal names its own slip", async () => {

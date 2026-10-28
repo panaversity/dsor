@@ -254,7 +254,11 @@ export function createRoleSource(
     const run = runs.get(tenant) ?? { failures: 0, pausedUntil: 0, trying: false };
     runs.set(tenant, run);
     const trial = run.failures >= FAILURES;
-    if (trial && (askedAt < run.pausedUntil || run.trying)) {
+    // A pause that began later than DSoR's clock now came before a clock went back. It is over:
+    // kept, it would last until the clock caught up, an hour for a clock set back an hour (found
+    // while building; step 19's README, decision 15).
+    const paused = askedAt < run.pausedUntil && askedAt >= run.pausedUntil - PAUSE_MS;
+    if (trial && (paused || run.trying)) {
       return Promise.resolve({ askedAt, answered: false });
     }
     // The pause is over: this call alone tries the server again (D16).
