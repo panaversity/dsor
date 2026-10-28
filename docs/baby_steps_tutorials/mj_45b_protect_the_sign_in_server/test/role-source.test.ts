@@ -557,9 +557,12 @@ describe("C3 and C4: with no answer, a kept answer counts only while it is young
     },
   );
 
+  // Changed in step 45b: on one DSoR server, the second call now waits for the first one's lookup
+  // (D9). So the two questions come from two DSoR servers that share the kept answers, as two
+  // servers on one database do (step 45's README, D8).
   it("step 19's decision 14: an older answer that arrives late never replaces a newer kept one", async () => {
     // Question A goes first, and its answer, ap_supervisor, takes 300 ms. Question B goes 10 ms
-    // later, and its answer, ap_clerk, the newer news, comes at once.
+    // later, from the other DSoR server, and its answer, ap_clerk, the newer news, comes at once.
     const queue = [
       { roles: ["ap_supervisor"], after: 300 },
       { roles: ["ap_clerk"], after: 0 },
@@ -580,15 +583,13 @@ describe("C3 and C4: with no answer, a kept answer counts only while it is young
         return new Promise((resolve) => setTimeout(() => resolve(answer), after));
       },
     };
-    const registry = slipRegistry(
-      undefined,
-      undefined,
-      [],
-      new Map<string, Directory>([...storyDirectories(), ["org_456", directory]]),
-    );
+    const directories = new Map<string, Directory>([...storyDirectories(), ["org_456", directory]]);
+    const shared = memoryAnswers();
+    const registry = slipRegistry(undefined, undefined, [], directories, shared);
+    const other = slipRegistry(undefined, undefined, [], directories, shared);
     const first = call(registry, createLog(), AGENT, "invoice.get", READ);
     await vi.advanceTimersByTimeAsync(10);
-    await call(registry, createLog(), AGENT, "invoice.get", READ);
+    await call(other, createLog(), AGENT, "invoice.get", READ);
     await vi.advanceTimersByTimeAsync(300);
     await first;
     // 01:35: the directory is off. The kept answer must be B's, ap_clerk.

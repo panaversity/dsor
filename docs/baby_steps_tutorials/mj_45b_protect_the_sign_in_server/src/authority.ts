@@ -206,6 +206,11 @@ function timeOf(as_of: string): number {
   return day <= new Date(Date.UTC(year, month, 0)).getUTCDate() ? Date.parse(as_of) : Number.NaN;
 }
 
+// NEW IN STEP 45b: one lookup, as every call that shares it reads it: the moment DSoR sent it,
+// and what came back (step 45b's README, D9).
+/** A lookup that calls share: when DSoR asked, and the reply, if one came in time. */
+type Asked = { askedAt: number } & ({ answered: true; answer: unknown } | { answered: false });
+
 /** DSoR's side of each company's role source, holding the answers it keeps. */
 export function createRoleSource(
   settings: RoleSettings,
@@ -216,6 +221,30 @@ export function createRoleSource(
   // keeps them (step 45's README, D8).
   kept: KeptAnswers = memoryAnswers(),
 ): RoleSource {
+  // NEW IN STEP 45b: the lookups in flight on this DSoR server, one for each company and person.
+  // A call about the same pair waits for the one in flight, and asks nothing. The key holds the
+  // company, as the kept answers' key does (step 45b's README, C1, C2, D9; DSOR-TEN-02a).
+  const flying = new Map<string, Promise<Asked>>();
+
+  /** The lookup a call reads: the one in flight about this person in this company, or a new one. */
+  function ask(tenant: string, person: string, directory: Directory): Promise<Asked> {
+    const key = JSON.stringify([tenant, person]);
+    const inFlight = flying.get(key);
+    if (inFlight !== undefined) return inFlight;
+    const askedAt = Date.now();
+    const lookup = askWithin(directory, person).then((reply): Asked => {
+      // The lookup has ended. The next call asks again, unless it can use the answer kept (D3).
+      flying.delete(key);
+      // One copy for every call that waited, which each copies again for itself (step 19's
+      // README, decision 17).
+      return reply.answered
+        ? { askedAt, answered: true, answer: copyOf(reply.answer) }
+        : { askedAt, answered: false };
+    });
+    flying.set(key, lookup);
+    return lookup;
+  }
+
   // The question both lines ask, about a slip's signer at line ③ and about a person
   // who calls for herself at line ②: what the company says about this person now, and as of
   // when (step 45's README, C2). `who` names the person in a refusal's words.
@@ -246,29 +275,37 @@ export function createRoleSource(
     const since = recent === undefined ? Number.NaN : askedAt - recent.asked;
     const reuse =
       recent !== undefined && since >= 0 && since < REUSE_MS && askedAt - recent.at < setting.ms;
-    const asked = reuse ? { answered: false as const } : await askWithin(directory, person);
+    // NEW IN STEP 45b: the lookup in flight about this person in this company, if there is one, and
+    // a new one otherwise (D9).
+    const asked: Asked = reuse
+      ? { askedAt, answered: false }
+      : await ask(tenant, person, directory);
     let answer: Answer;
     let at: number;
     if (asked.answered) {
+      // NEW IN STEP 45b: the moment DSoR asked is the moment the shared lookup was sent, which may
+      // be before this call came. Each call that waited reads the answer as that old, and checks it
+      // as its own, with every rule below (C3; D9, D13).
+      const sent = asked.askedAt;
       // One copy, read once, and every check and every use reads that copy, as line ①
       // copies the input (step 07's README, decision 9; step 19's README, decision 17).
       const copy = copyOf(asked.answer);
       // The time the server read its facts. Further than a minute ahead of
       // DSoR's clock, the answer is one DSoR cannot use (D4).
       const read = usable(copy, tenant, person) ? timeOf(copy.as_of) : Number.NaN;
-      if (!(read <= askedAt + AHEAD_MS)) {
+      if (!(read <= sent + AHEAD_MS)) {
         // An answer DSoR cannot use is a fault. The strange answer may be the very news DSoR
         // needs, so the kept answer goes too, unless DSoR learned it after it asked this
         // question (decisions 11 and 14). Found by step 19's review.
-        await kept.forget(tenant, person, askedAt);
+        await kept.forget(tenant, person, sent);
         throw new Refusal("INTERNAL_ERROR", cannotUse);
       }
       answer = copy as Answer;
       // The answer counts from the earlier of the server's time and the moment
       // DSoR asked (D13). Facts read longer ago than the company's bound establish nothing now,
       // though they came back at once (DSOR-IDN-06; break B3).
-      at = Math.min(read, askedAt);
-      if (!(askedAt - at < setting.ms)) {
+      at = Math.min(read, sent);
+      if (!(sent - at < setting.ms)) {
         const where = `from the directory of ${tenant} that is recent enough`;
         const why = `DSoR has no answer about ${who} ${where}`;
         throw new Refusal("FRESHNESS_UNSATISFIABLE", `${name}: ${why}`);
@@ -276,7 +313,7 @@ export function createRoleSource(
       // Older news never replaces newer: an answer whose facts are older than the kept ones is
       // not kept over them (decision 14). Found by step 19's review.
       // The store decides it, in one step, with the moment DSoR asked (D3, D8).
-      await kept.keep(tenant, person, { answer: copy as Answer, at, asked: askedAt });
+      await kept.keep(tenant, person, { answer: copy as Answer, at, asked: sent });
       // And the call decides on the newer news too. A reply from a server that
       // lags may be older than the answer DSoR keeps, and then the kept one decides: found by
       // step 45's review, finding 4 (step 19's README, decision 14).

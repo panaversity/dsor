@@ -39,6 +39,12 @@ export type SignInServer = {
   dropped: () => number;
   /** From now on, the server takes each request and never replies. */
   hang: () => void;
+  // NEW IN STEP 45b: so a test can hold a lookup in flight, and send calls while it waits (step
+  // 45b's README, D9).
+  /** From now on, the server keeps each reply back, until release() sends it. */
+  hold: () => void;
+  /** Sends every reply kept back, as the switches stand then, and keeps no more back. */
+  release: () => void;
   /** Closes the server, and every request it holds. */
   stop: () => Promise<void>;
 };
@@ -59,6 +65,8 @@ export async function startSignInServer(
   let hanging = false;
   let requests = 0;
   let redirecting = false;
+  let holding = false;
+  const held: (() => void)[] = [];
   const log: { tenant: string | null; person: string | null; authorization: string | undefined }[] =
     [];
   const sockets = new Set<Socket>();
@@ -82,42 +90,53 @@ export async function startSignInServer(
       });
       return;
     }
-    // A redirect to a lookup that would answer well: DSoR must not follow it (step 45's lookup.ts).
-    if (redirecting && !url.searchParams.has("via")) {
-      url.searchParams.set("via", "redirect");
-      response.writeHead(302, { location: `${url.pathname}${url.search}` }).end();
-      return;
-    }
-    if (status !== undefined) {
-      response.writeHead(status).end();
-      return;
-    }
-    if (request.headers.authorization !== `Bearer ${key}`) {
-      response.writeHead(401).end();
-      return;
-    }
-    const asked = url.searchParams.get("tenant");
-    if (asked !== tenant) {
-      response.writeHead(403).end();
-      return;
-    }
-    if (unreadable) {
-      response.writeHead(200, { "content-type": "text/html" }).end("<html>Sign in</html>");
-      return;
-    }
-    const person = about ?? url.searchParams.get("person") ?? "";
-    // A person this company does not know is gone: left, or never had an account (D4).
-    const entry = known.get(person) ?? { status: "gone", roles: [] };
-    const answer = {
-      tenant,
-      person,
-      status: entry.status,
-      roles: entry.status === "active" ? entry.roles : [],
-      as_of: readTime ?? new Date().toISOString(),
+    // The reply, sent now, or kept back until release() while the server holds its replies.
+    const reply = (): void => {
+      // A redirect to a lookup that would answer well: DSoR must not follow it (step 45's lookup.ts).
+      if (redirecting && !url.searchParams.has("via")) {
+        url.searchParams.set("via", "redirect");
+        response.writeHead(302, { location: `${url.pathname}${url.search}` }).end();
+        return;
+      }
+      if (status !== undefined) {
+        response.writeHead(status).end();
+        return;
+      }
+      if (request.headers.authorization !== `Bearer ${key}`) {
+        response.writeHead(401).end();
+        return;
+      }
+      const asked = url.searchParams.get("tenant");
+      if (asked !== tenant) {
+        response.writeHead(403).end();
+        return;
+      }
+      if (unreadable) {
+        response.writeHead(200, { "content-type": "text/html" }).end("<html>Sign in</html>");
+        return;
+      }
+      const person = about ?? url.searchParams.get("person") ?? "";
+      // A person this company does not know is gone: left, or never had an account (D4).
+      const entry = known.get(person) ?? { status: "gone", roles: [] };
+      const answer = {
+        tenant,
+        person,
+        status: entry.status,
+        roles: entry.status === "active" ? entry.roles : [],
+        as_of: readTime ?? new Date().toISOString(),
+      };
+      response
+        .writeHead(answeredWith, { "content-type": "application/json" })
+        .end(JSON.stringify(answer));
     };
-    response
-      .writeHead(answeredWith, { "content-type": "application/json" })
-      .end(JSON.stringify(answer));
+    if (holding) {
+      // A sender that gave up meanwhile gets nothing: its side is closed.
+      held.push(() => {
+        if (!response.destroyed) reply();
+      });
+      return;
+    }
+    reply();
   });
   server.on("connection", (socket) => {
     sockets.add(socket);
@@ -156,6 +175,13 @@ export async function startSignInServer(
     dropped: () => droppedRequests,
     hang: () => {
       hanging = true;
+    },
+    hold: () => {
+      holding = true;
+    },
+    release: () => {
+      holding = false;
+      for (const send of held.splice(0)) send();
     },
     stop: () =>
       new Promise<void>((resolve) => {

@@ -1,4 +1,5 @@
 // What the contract, registry, and envelope tests share. Not a test file itself.
+import type { KeptAnswers } from "../src/answers.ts";
 import type { Plugs } from "../src/connectors.ts";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -241,6 +242,9 @@ export function withoutControls(...given: Parameters<typeof buildRegistry>): Reg
   //   line ② finds her company, as her slip's line ③ does (step 45's README, C2 and D7).
   const directories = named ?? storyDirectories();
   const [, , , , , , , , , roleSettings, claims, own, brakes, lifetimes, policies] = given;
+  // NEW IN STEP 45b: and the kept answers, when the test gives them, so that two DSoR servers can
+  // share them, as two servers on one database do (step 45b's README, D9).
+  const answers = given[22];
   return buildRegistry(
     sources,
     code,
@@ -258,6 +262,13 @@ export function withoutControls(...given: Parameters<typeof buildRegistry>): Reg
     lifetimes,
     policies,
     NO_CONTROLS,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    answers,
   );
 }
 
@@ -758,6 +769,9 @@ export function slipRegistry(
   rows: Payment[] = [],
   // The story's directories, unless the test gives others.
   directories: Directories = storyDirectories(),
+  // NEW IN STEP 45b: the kept answers, this DSoR server's own unless the test gives a store that
+  // another one shares (D9).
+  answers?: KeptAnswers,
 ): Registry {
   return withoutControls(
     shipped,
@@ -769,6 +783,20 @@ export function slipRegistry(
     memoryPayments(rows),
     slips,
     directories,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    answers,
   );
 }
 
