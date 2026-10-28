@@ -251,6 +251,10 @@ decided by the learner.
 - **Why.** Retries multiply the load exactly when a server is weakest.
 - **Rejected.** A timeout with no pause; retries with backoff.
 - **Built in** step 45 (the timeout) and step 45b (the pause), as entry 23 splits them.
+- **Where (2026-10-28).** The run of failures and the pause live in each DSoR server's memory,
+  as D9's lookups in flight do. Claude Code stated it from D9's "on each server" and showed it to
+  the learner with step 45b's questions. Four DSoR servers make four runs, and a restart forgets
+  one.
 
 ## 23 · Step 45b protects the sign-in server (2026-10-28)
 
@@ -348,6 +352,58 @@ learner's review.**
 - **Why.** In this tutorial an alert belongs to a proposal (step 38b). A sign-in server that cannot
   answer has no proposal, so it needs a kind of alert of its own.
 - **Proposed.** Build it in step 45b, which is about a server that is down, or in a step of its own.
+- **Decided (2026-10-28).** A step of its own, after step 45b (entry 33).
+
+## 30 · After the pause, one call tries the server again (2026-10-28), D16
+
+**Decided by:** the learner, on Claude Code's recommendation, before step 45b's code.
+
+- **What.** When the 10-second pause is over, the first call asks: the trial. Until its lookup
+  ends, the other calls about that company act as in the pause, and a call about the same person
+  waits for it (D9). If the trial fails, a new pause starts at once.
+- **Why.** A server that is coming back meets one question, not a crowd.
+- **Cost.** For up to 2 more seconds, calls use kept answers though the server may be back.
+- **Rejected.** Every call asks after the pause, and five more failures pause again (a server still
+  down gets five or more questions every 10 seconds); every call asks, and the first failure pauses
+  again (a burst of questions as the server comes back).
+- **Built in** step 45b.
+
+## 31 · Any reply ends a run of failures (2026-10-28), D17
+
+**Decided by:** the learner, on Claude Code's recommendation, before step 45b's code.
+
+- **What.** A reply that DSoR cannot use, such as a `403`, is a fault, not a failure. It ends the
+  run of failures, and keeps step 45's meaning: `INTERNAL_ERROR`, and the kept answer is dropped.
+- **Why.** The pause is for a server that cannot answer. A server that replies is up.
+- **Cost.** After a company takes back DSoR's key, every call still asks, and gets a fast `403`,
+  until someone fixes the key.
+- **Rejected.** A fault counts as a failure: if the server answers one person's record wrongly, five
+  of her calls pause the whole company.
+- **Built in** step 45b.
+
+## 32 · A stranger's lookups get a step of their own (2026-10-28)
+
+**Decided by:** the learner, on Claude Code's recommendation, with step 45b's questions.
+
+- **What.** Step 45's review, finding 2: anyone with an SSO account can name org_456, and each such
+  call spends one of org_456's lookups, with org_456's key. The fix gets a step of its own: DSoR
+  asks about the same company and person at most once in 10 seconds, whatever the reply, and holds a
+  budget of lookups about people it knows nothing about.
+- **Why.** Step 45b keeps one idea. The fix needs numbers of its own, and a refusal of its own.
+- **Cost.** Until then, a flood of strangers can make org_456's lookups fail, and the pause then
+  keeps org_456 on its kept answers.
+- **Rejected.** Both halves in step 45b.
+
+## 33 · Q8's alert gets a step of its own (2026-10-28)
+
+**Decided by:** the learner, on Claude Code's recommendation, with step 45b's questions.
+
+- **What.** The alert of decision Q8, when DSoR cannot get a fresh answer from a company's sign-in
+  server, is built in a step of its own (entry 29).
+- **Why.** An alert in this tutorial belongs to a payment (step 38b). A server outage needs a new
+  kind of alert, with a record of its own.
+- **Cost.** Until then, a company learns of an outage only from refused calls and their records.
+- **Rejected.** In step 45b, when a pause starts (two ideas in one step); dropping the alert.
 
 ## Open
 
