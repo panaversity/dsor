@@ -3523,8 +3523,11 @@ recommendation first. The learner took each recommendation, after two questions 
   role, and `roles.json` holds what each role may do. A company manages its people in one place
   and never edits `roles.json`, as with Microsoft Entra's app roles. The company's own limits, such
   as 25,000 USD, are rules in DSoR.
-- **Next:** the specification change (the two rules, the contract's binding, and the common
-  mistake), then the SSO's route moves to the contract, then step 45 is built.
+- **The specification change, done the same day (v1.5.0):** DSOR-IDN-08 and DSOR-IDN-09 in
+  §12.1; DSOR-RP-12 to DSOR-RP-14 and the `role-source-answer` schema in §37.1; and the common
+  mistake. Three more choices, one at a time: three RP rules rather than a description, a JSON
+  Schema rather than prose, and an `as_of` up to one minute ahead of DSoR's clock read as now.
+- **Next:** the SSO's route moves to the contract, then step 45 is built.
 
 ## Still unknown
 

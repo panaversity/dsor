@@ -121,7 +121,7 @@ KSoR policy has a new version is still an
 
 ## Status
 
-This repository currently holds the **[specification, v1.4.0](https://github.com/panaversity/dsor/blob/main/docs/original_specs/DSoR_Specification_v1_4_0_Learners_Edition.md)**, its machine-readable
+This repository currently holds the **[specification, v1.5.0](specs/dsor/README.md)**, its machine-readable
 half, a tested toolchain, and the first step of a build-it-yourself tutorial. **The
 reference implementation has not been started.**
 [`docs/status.md`](docs/status.md) is the only authority on what is built.

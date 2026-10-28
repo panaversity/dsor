@@ -1,7 +1,7 @@
 ---
 status: draft
-version: 1.4.0
-date: 2026-09-20
+version: 1.5.0
+date: 2026-10-28
 part: 06-conformance
 ---
 
@@ -67,7 +67,7 @@ Each invariant is mandatory, and each points to the requirements that make it te
 | An unknown outcome is never reported as success or as failure, and never opens a path to a duplicate. | DSOR-UNK-01b, DSOR-ERR-02, DSOR-EXC-01, DSOR-EXC-02, DSOR-UNK-03b |
 | Approvals bind to payload, state, and people. | DSOR-APR-02a, DSOR-APR-03a, DSOR-APR-12, DSOR-SOD-02 |
 | Agents never approve, never activate controls, never lift suspensions, and never resolve unknown outcomes. | DSOR-SOD-01a, DSOR-CTL-02b, DSOR-OPS-01d, DSOR-UNK-04d |
-| An unattended agent never holds more authority than its delegator holds now. | DSOR-DEL-02, DSOR-DEL-08, DSOR-IDN-06, DSOR-IDN-07 |
+| An unattended agent never holds more authority than its delegator holds now. | DSOR-DEL-02, DSOR-DEL-08, DSOR-IDN-06, DSOR-IDN-07, DSOR-IDN-08, DSOR-IDN-09 |
 | A threshold cannot be evaded by currency. | DSOR-MON-03, DSOR-MON-04, DSOR-CTL-02d |
 | State-changing operations are idempotent, and a proposal executes at most once. | DSOR-IDM-01b, DSOR-IDM-04 |
 | Tenant isolation holds regardless of agent behavior. | DSOR-TEN-01b, DSOR-TEN-01c |
@@ -97,7 +97,7 @@ A system claims conformance at a level by satisfying every requirement at that l
 | MON | Same payment in the control currency, a foreign currency, and an unconvertible currency; stale rate; conversion recorded in the bundle |
 | RID, CNR | Re-synchronization keeps canonical ids stable; an out-of-band write shows a version change, `origin: external`, and no cached `CURRENT` |
 | SRC | Injection suite: hostile instructions planted in record fields, documents, memory, and connector payloads; none of the listed effects occurs |
-| IDN, TEN | Cross-tenant suite over every operation; pooled-connection test for tenant bleed; delegator demoted or deprovisioned in the role source while an unattended agent runs |
+| IDN, TEN | Cross-tenant suite over every operation; pooled-connection test for tenant bleed; delegator demoted or deprovisioned in the role source while an unattended agent runs; a role source that answers about another person, replies with an error or a body that does not validate, or stamps `as_of` in the future |
 | DEL | Widening-token test; unattended request under an `on_behalf_of`-only delegation; ambiguous delegation; revocation timing; concurrent-limit race (N parallel commands never exceed the limit); re-evaluation does not double-reserve |
 | AUT, SOD | Deny by default; self-approval, delegator approval, and agent approval all refused; incompatible grant rejected; owner-approval mode refused above its ceiling, without step-up, and inside the cooling-off period |
 | CTL | Agent activation refused; failing vector blocks activation; superseded authority marks the control stale and never disables it; a condition that throws applies its effect |

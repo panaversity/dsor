@@ -1,19 +1,20 @@
 ---
 status: draft
-version: 1.4.0
-date: 2026-09-20
+version: 1.5.0
+date: 2026-10-28
 claim: a governed operational data and action layer that stays safe when the AI worker using it is wrong, tricked, or hostile
 evidence: research/history.md · research/open-questions.md · packages/spec (schemas, examples, tests)
 ---
 
-# DSoR Specification v1.4.0
+# DSoR Specification v1.5.0
 
 **Data System of Record — governed operational data and action infrastructure for AI workers.**
 
 Draft for review. Written for students and junior developers: every section explains
-itself in plain words before it states its rules. v1.4.0 adds two STACK requirements
-(DSOR-CTX-07, DSOR-CTX-08) and splits the reference context store into Graphiti for
-memory and OpenViking for skills and resources. No other requirement and no schema changed.
+itself in plain words before it states its rules. v1.5.0 gives the identity-provider
+lookup a contract of DSoR's own (§37.1, DSOR-RP-12 to DSOR-RP-14, and the
+`role-source-answer` schema) and adds two L2 rules for every role source (DSOR-IDN-08,
+DSOR-IDN-09). No existing requirement or schema changed.
 
 | | |
 | --- | --- |

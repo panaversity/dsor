@@ -1,7 +1,7 @@
 ---
 status: draft
-version: 1.4.0
-date: 2026-09-20
+version: 1.5.0
+date: 2026-10-28
 part: 05-bindings
 ---
 
@@ -119,6 +119,48 @@ RLS is defense in depth. It does not replace DSoR authorization.
 Unattended tokens SHOULD be sender-constrained with DPoP (RFC 9449) or mutual TLS, and SHOULD be short-lived. The token MAY carry `delegation_id`; whether or not it does, DSoR resolves the delegation from its own store.
 
 `REQUIRE_STEP_UP_AUTHENTICATION` SHOULD be signalled with the OAuth step-up challenge (RFC 9470), naming the required `acr` value. For the Better Auth reference implementation, the binding uses the Better Auth MCP protected-resource integration with the CIMD plugin and its `mcp-2026-07-28` metadata profile. Authentication proves identity and token authority. It never replaces tenant resolution, delegation evaluation, authorization, controls, or approvals.
+
+### 37.1 Role-source lookup
+
+**In plain words.** A company can keep its people in a sign-in server that DSoR asks: the identity-provider lookup of [§12.1](02-security.md#121-role-source), `idp_lookup` in the tenant policy. DSoR asks one question: who is this person in this company now? The question and the answer below belong to DSoR and are the same for every sign-in server, so a company adds one small route to its own server, and DSoR needs no code for that server.
+
+**Why it matters.** Without one contract, each server answers in its own words. A server whose `403` means both "this person left" and "your credential is wrong" leaves DSoR two bad choices: refuse everyone, or let a leaver through.
+
+DSoR asks at the address configured for `org_456`'s role source, with a credential that the server issued for `org_456` alone, such as an API key or a client-credentials token:
+
+```http
+GET /dsor/lookup?tenant=org_456&person=user_123
+```
+
+The server answers `200` with a `role-source-answer` ([Appendix A](appendix-a-schemas.md)):
+
+```json
+{ "tenant": "org_456", "person": "user_123", "status": "active",
+  "roles": ["ap_supervisor"], "as_of": "2026-10-28T01:55:00Z" }
+```
+
+| Field | Meaning |
+|---|---|
+| `tenant`, `person` | The tenant and the person that DSoR asked about, repeated (DSOR-IDN-08). `person` is the server's own id for the person, the `sub` of their tokens |
+| `status` | `active`; `suspended`, a person who may not act for now; or `gone`, a person who left the tenant or has no account. These are the suspended and deprovisioned of DSOR-IDN-07 |
+| `roles` | DSoR's role names that the person holds in this tenant; empty unless `status` is `active` |
+| `as_of` | When the server read these facts. The answer's age, which the bound of DSOR-IDN-06 limits, runs from here. An `as_of` up to one minute ahead of DSoR's clock is read as now |
+
+| Reply | What DSoR does |
+|---|---|
+| `200` with a body that validates, and an `as_of` no more than one minute ahead | An answer (DSOR-RP-13), used only when it names whom DSoR asked about (DSOR-IDN-08) |
+| `429`, a `5xx`, a timeout, or no connection | The source cannot answer now: DSoR's kept answer counts until the bound (DSOR-RP-14, DSOR-IDN-06) |
+| Anything else, including `401`, `403`, `404`, and a `200` that does not validate | A fault: DSoR refuses with `INTERNAL_ERROR` and discards its kept answer (DSOR-IDN-09) |
+
+A person who left is `"status": "gone"` in a `200`, never an error code.
+
+**The rules**
+
+- **[DSOR-RP-12 · RP]** DSoR MUST send each `idp_lookup` request for one tenant and one person, with a credential that the role source issued for that tenant alone.
+- **[DSOR-RP-13 · RP]** DSoR MUST accept an `idp_lookup` reply as an answer only when it is a `200` whose body validates against the `role-source-answer` schema and whose `as_of` is no more than one minute ahead of DSoR's clock.
+- **[DSOR-RP-14 · RP]** DSoR MUST treat a `429`, a `5xx`, a timeout, or a failed connection from an `idp_lookup` role source as a sign that it cannot answer now.
+
+A deployment can reuse an answer for a few seconds, so that a flood of calls does not become a flood of lookups, as long as the answer's age stays within the bound.
 
 ## 38. MCP binding
 

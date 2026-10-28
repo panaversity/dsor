@@ -27,8 +27,8 @@ describe("DSOR-SCH-01: every example validates against its schema", () => {
     expect(validate(name, loadExample(name))).toBe(true);
   });
 
-  it("covers the thirteen artifacts of Appendix A", () => {
-    expect(artifacts).toHaveLength(13);
+  it("covers the fourteen artifacts of Appendix A", () => {
+    expect(artifacts).toHaveLength(14);
   });
 });
 
@@ -108,6 +108,22 @@ const rejections: [rule: string, schema: string, mutate: (doc: Json) => void][] 
     "DSOR-SCH-02: unknown top-level field outside `extensions`",
     "event",
     (d) => (d["surprise"] = true),
+  ],
+  ["DSOR-RP-13: role-source answer without as_of", "role-source-answer", (d) => delete d["as_of"]],
+  [
+    "DSOR-RP-13: role-source answer with a status outside the three",
+    "role-source-answer",
+    (d) => {
+      // found 2026-10-28: with its roles left in, the roles rule rejected this
+      // answer, and the status rule went untested.
+      d["status"] = "deleted";
+      d["roles"] = [];
+    },
+  ],
+  [
+    "DSOR-RP-13: role-source answer that keeps roles while not active",
+    "role-source-answer",
+    (d) => (d["status"] = "gone"),
   ],
 ];
 

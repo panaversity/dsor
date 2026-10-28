@@ -1,7 +1,7 @@
 ---
 status: draft
-version: 1.4.0
-date: 2026-09-20
+version: 1.5.0
+date: 2026-10-28
 part: 02-security
 ---
 
@@ -115,9 +115,11 @@ A principal may hold memberships in many tenants — an accounting firm's one Ac
 
 ### 12.1 Role source
 
-**In plain words.** When the agent runs at 2 a.m., the human who gave it permission is asleep and has no login token. DSoR still needs to know whether that human holds the job the permission depends on. So each tenant connects a *role source*, usually the company directory, that DSoR can ask. If DSoR cannot get a fresh answer, it says no.
+**In plain words.** When the agent runs at 2 a.m., the human who gave it permission is asleep and has no login token. DSoR still needs to know whether that human holds the job the permission depends on. So each tenant connects a *role source*, usually the company directory, that DSoR can ask. If DSoR cannot get a fresh answer about that exact person, it says no. A reply it cannot read is a fault, never a yes.
 
-**Why it matters.** `user_123` is moved to another department on Monday. Without a role source, the agent keeps paying vendors under her authority for months.
+**Why it matters.** `user_123` is moved to another department on Monday. Without a role source, the agent keeps paying vendors under her authority for months. An answer about someone else, or an error page that DSoR reads as a yes, does the same harm.
+
+For example, at 02:00 the agent pays `INV-1008` under `del_100`. DSoR asks `org_456`'s role source about `user_123` and hears `"status": "gone"`. DSoR suspends `del_100` (DSOR-IDN-07) and refuses the payment. For a role source that DSoR asks, [§37.1](05-bindings.md#371-role-source-lookup) gives the question and the answer.
 
 **The rules**
 
@@ -126,6 +128,10 @@ A principal may hold memberships in many tenants — an accounting firm's one Ac
 - **[DSOR-IDN-05 · L2]** Each tenant MUST configure a role source — directory synchronization such as SCIM, identity-provider lookup, or DSoR-held role assignments — from which DSoR can read the current roles of a principal who is not present in the request.
 - **[DSOR-IDN-06 · L2]** When the delegator's current authority cannot be established within the staleness bound of [§44](06-conformance.md#44-operational-bounds), DSoR MUST deny the command.
 - **[DSOR-IDN-07 · L2]** When the role source reports a delegator as deprovisioned or suspended, DSoR MUST suspend every delegation that principal granted.
+- **[DSOR-IDN-08 · L2]** DSoR MUST use a role-source answer only when it names the tenant and the principal that DSoR asked about.
+- **[DSOR-IDN-09 · L2]** When a role source replies with something that is neither an answer nor a sign that it cannot answer now, DSoR MUST refuse the request with `INTERNAL_ERROR` and discard the answer it kept for that principal.
+
+**Common mistake.** Keeping a second list of the company's people and roles in DSoR when the company already has a directory, or a map in DSoR from the directory's group names to DSoR's roles. The copy drifts: a person leaves in the directory and keeps a role in DSoR. Instead, the directory gives people DSoR's own role names, such as `ap_supervisor`, as roles made for DSoR: an app role, SCIM's `roles` attribute, or a group made only for DSoR. DSoR reads the names as they come, and a name that DSoR does not define grants nothing (DSOR-AUT-01b). DSoR-held role assignments stay the right choice for a company with no directory.
 
 ## 13. Delegation
 

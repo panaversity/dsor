@@ -34,7 +34,7 @@ checks who is asking, under whose authority, against which rules and which curre
 state, gets a human's sign-off when the rules demand one, makes sure nothing happens
 twice, and keeps the evidence.
 
-Today this repository holds the **specification** (v1.4.0), its machine-readable half
+Today this repository holds the **specification** (v1.5.0), its machine-readable half
 (JSON Schemas, examples, requirement registry, all tested), and an empty
 implementation package. The implementation is built in the five stages of
 [`docs/learn/learning-path.md`](docs/learn/learning-path.md).
@@ -157,6 +157,12 @@ Numbered, dated, never renumbered. A reversed decision stays, marked superseded.
     state (`DSOR-CTX-07`), and every model a context provider uses is a model boundary
     (`DSOR-CTX-08`). The agent reaches memory only through an adapter that sets the
     tenant partition; Graphiti's own MCP server is never an agent tool.
+13. **The lookup contract is DSoR's (2026-10-28).** A role source of the `idp_lookup`
+    kind answers DSoR's own question in DSoR's own shape
+    ([§37.1](specs/dsor/05-bindings.md#371-role-source-lookup), the `role-source-answer`
+    schema), never a server's own API. Any sign-in server serves it with a small route
+    of its own. The answer carries DSoR's role names: DSoR keeps no map from a
+    directory's names, and a name it does not define grants nothing.
 
 ## Product invariants
 

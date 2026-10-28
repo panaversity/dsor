@@ -111,8 +111,10 @@ Decided by the learner on 2026-10-28 ([`mj_notes.md`](mj_notes.md), the last two
 
 ### 45 · Ask the sign-in server
 
-- Starts with a change to the specification: DSoR's own contract for the lookup kind, and two new
-  rules in [§12.1](../../specs/dsor/02-security.md#121-role-source) (D1, D2).
+- Starts from specification v1.5.0: DSoR's own contract for the lookup kind in
+  [§37.1](../../specs/dsor/05-bindings.md#371-role-source-lookup) (DSOR-RP-12 to DSOR-RP-14, and the
+  `role-source-answer` schema), and DSOR-IDN-08 and DSOR-IDN-09 in
+  [§12.1](../../specs/dsor/02-security.md#121-role-source) (D1, D2).
 - Line ② for a person, and line ③ for a slip's signer, will ask the company's sign-in server through
   that contract: is this person in this company, are they active, and which roles do they hold (Q7).
   An answer is reused for up to 10 seconds, so a flood of calls cannot flood the server (D3).
