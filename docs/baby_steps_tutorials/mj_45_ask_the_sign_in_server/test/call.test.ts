@@ -3,14 +3,16 @@ import { describe, expect, it, vi } from "vitest";
 import { Refusal, type Answer, type ErrorEnvelope } from "../src/envelope.ts";
 import { memoryInvoices, type Invoice } from "../src/invoice.ts";
 import { call } from "../src/pipeline.ts";
-import { buildRegistry, type Handler } from "../src/registry.ts";
+import type { Handler } from "../src/registry.ts";
 import {
   AGENT,
   CFO,
+  COMMITTED,
   correlationFor,
   FROM_MEMORY,
   GOOD_ISSUE,
   handlers,
+  keyed,
   log,
   REFUSALS,
   refusedWith,
@@ -20,12 +22,11 @@ import {
   shippedRoles,
   shippedWithoutPredicates,
   SUPERVISOR,
-  THE_SUPERVISOR,
   THE_AGENT,
   THE_CFO,
+  THE_SUPERVISOR,
   UNEXPECTED,
-  keyed,
-  COMMITTED,
+  withoutControls,
 } from "./helpers.ts";
 
 // Every call carries the agent's login token, and every answer names the
@@ -147,7 +148,7 @@ describe("C6: a query's success is { data, correlation }", () => {
     // Since step 24, line ⑨ reads the invoice the contract binds, so the registry holds the
     // invoices (step 24's README, decision 2).
     // Since step 27, with no predicate where code runs (step 27's README, decision D20).
-    const issueHasCode = buildRegistry(
+    const issueHasCode = withoutControls(
       shippedWithoutPredicates,
       { ...handlers, "invoice.issue": spy },
       shippedRoles,

@@ -763,13 +763,15 @@ export function requesterOf(
   }
   // A person asks for herself, with the login DSoR gave her: what she holds comes from DSoR's own
   // table, which the token names, at the time of the call.
+  // NEW IN STEP 45: a person's comes from her company's lookup, which line ② asked, as of its
+  // answer. A system login's still comes from DSoR's own table (step 45's README, C2 and D6).
   return {
     identity_mode: "direct",
     subject: caller.id,
     subject_type: caller.type,
     actor_chain: [],
     active_tenant: tenant,
-    subject_authority: { source: "token", as_of: now },
+    subject_authority: caller.authority ?? { source: "token", as_of: now },
   };
 }
 

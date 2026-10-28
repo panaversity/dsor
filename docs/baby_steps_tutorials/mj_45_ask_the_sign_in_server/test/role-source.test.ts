@@ -731,12 +731,12 @@ describe("C8: only the directory speaks for the absent signer's job", () => {
     },
   );
 
-  it("DSOR-IDN-04b: DSoR's login table says ap_supervisor and the directory says ap_clerk: the directory decides", async () => {
+  // Changed in step 45: DSoR's login table holds no person, so it has nothing to say about
+  //   user_123 (step 45's README, C8).
+  it("DSOR-IDN-04b: DSoR's login table names nobody, and the directory says ap_clerk: the directory decides", async () => {
     const directories = storyDirectories();
     directories.get("org_456")!.set("user_123", { status: "active", roles: ["ap_clerk"] });
-    expect(logins.get("tok_2c91")?.memberships).toStrictEqual([
-      { tenant_id: "org_456", roles: ["ap_supervisor"] },
-    ]);
+    expect([...logins.values()].some((login) => login.id === "user_123")).toBe(false);
     const answer = await call(
       slipRegistry(undefined, undefined, [], directories),
       createLog(),
@@ -772,7 +772,6 @@ describe("C13: only a person whom DSoR knows signs a slip", () => {
   it.each([
     ["the agent firm-ap-fte, though the directory lists it", "firm-ap-fte"],
     ["the agent that holds the slip", "accounts-payable-fte"],
-    ["somebody DSoR does not know, though the directory lists them", "user_999"],
   ])(
     "step 19's decision 13: a slip signed by %s is refused at line ③, before the directory is asked",
     async (_who, signer) => {
@@ -801,6 +800,31 @@ describe("C13: only a person whom DSoR knows signs a slip", () => {
       expect(rows).toStrictEqual([]);
     },
   );
+
+  // Changed in step 45: DSoR's table holds no person, so it no longer knows who is one. A signer it
+  //   names as no person is still refused before the directory is asked, above. Anyone else is
+  //   her company's to answer for: a company that lists her as active vouches for her (step 45's
+  //   README, D15). Step 19's decision 13 asked DSoR's table to know her first.
+  it("D15: a slip signed by user_999, whom DSoR's table does not know and org_456's directory lists as active, counts: the company vouches for her", async () => {
+    const directories = storyDirectories();
+    const org456 = directories.get("org_456")!;
+    org456.set("user_999", { status: "active", roles: ["ap_supervisor"] });
+    const rows: Payment[] = [];
+    const answer = await call(
+      slipRegistry(
+        memorySlips([{ ...DEL_100, delegator: "user_999" }]),
+        undefined,
+        rows,
+        directories,
+      ),
+      createLog(),
+      keyed(AGENT),
+      "payment.create",
+      { ...CREATE, expected_version: 1 },
+    );
+    expect(answer).toMatchObject({ data: { status: "draft" } });
+    expect(org456.asked()).toBe(1);
+  });
 });
 
 describe("C9: an agent's record names the source and time of its signer's authority", () => {
@@ -1076,26 +1100,32 @@ describe("C10: an answer DSoR cannot use is a fault, and is never used", () => {
   });
 });
 
-describe("C11: a person who calls for herself does not need the directory", () => {
-  it("step 19's decision 2: with org_456's directory off, user_123's own draft is made, and cfo_100 reads INV-1008", async () => {
+// Changed in step 45: a person who calls for herself needs her company's answer too, at line ②
+//   (step 45's README, C2; decision Q7). Step 19's decision 2 asked nothing for her own call.
+describe("C11: a person who calls for herself needs her company's answer too", () => {
+  it("Q7: with org_456's directory off and nothing kept, user_123's own draft and cfo_100's read are refused at line ②, and nothing is drafted", async () => {
     const directories = storyDirectories();
     const org456 = directories.get("org_456")!;
     org456.turn("off");
     const rows: Payment[] = [];
     const registry = slipRegistry(undefined, undefined, rows, directories);
+    const lines: number[] = [];
     expect(
-      await call(registry, createLog(), keyed(SUPERVISOR), "payment.create", {
-        ...CREATE,
-        expected_version: 1,
-      }),
-    ).toMatchObject({
-      data: { status: "draft" },
-    });
+      await call(
+        registry,
+        createLog(),
+        keyed(SUPERVISOR),
+        "payment.create",
+        { ...CREATE, expected_version: 1 },
+        (n) => lines.push(n),
+      ),
+    ).toMatchObject({ code: "FRESHNESS_UNSATISFIABLE" });
+    expect(lines).toStrictEqual([1, 2, 11]);
     expect(await call(registry, createLog(), CFO, "invoice.get", READ)).toMatchObject({
-      data: { id: "INV-1008", amount: { value: "31400.00", currency: "USD" } },
+      code: "FRESHNESS_UNSATISFIABLE",
     });
-    expect(rows).toHaveLength(1);
-    expect(org456.asked()).toBe(0);
+    expect(rows).toStrictEqual([]);
+    expect(org456.asked()).toBe(2);
   });
 });
 

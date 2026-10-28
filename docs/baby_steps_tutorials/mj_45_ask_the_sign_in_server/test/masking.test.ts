@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import type { Answer } from "../src/envelope.ts";
 import { checkClassifications, readClassifications, type Kinds } from "../src/labels.ts";
+import { FAKE_LOGINS } from "../src/logins.ts";
 import { clearanceOf, show } from "../src/masking.ts";
 import { call } from "../src/pipeline.ts";
 import { logins, type Principal } from "../src/principals.ts";
@@ -96,12 +97,14 @@ describe("C2: for an agent, every field above its clearance is left out", () => 
 });
 
 describe("C2: each agent's clearance", () => {
-  it("DSOR-CLS-02a: both agents have the clearance internal, and no person has one", () => {
+  it("DSOR-CLS-02a: both agents have the clearance internal, and no person has one", async () => {
     expect(clearanceOfId("accounts-payable-fte")).toBe("internal");
     expect(clearanceOfId("firm-ap-fte")).toBe("internal");
-    expect(clearanceOfId("user_123")).toBeUndefined();
-    expect(clearanceOfId("cfo_100")).toBeUndefined();
-    expect(clearanceOfId("user_700")).toBeUndefined();
+    // Changed in step 45: a person is found at the stand-in, never in DSoR's table, and carries no
+    //   clearance (step 45's README, D7).
+    for (const key of ["tok_2c91", "tok_d4e8", "tok_e1a7"]) {
+      expect(clearanceOf((await FAKE_LOGINS.find(key)) as Principal)).toBeUndefined();
+    }
   });
 
   // Break Y6. Never a default that shows more (step 14's README, decision 2).

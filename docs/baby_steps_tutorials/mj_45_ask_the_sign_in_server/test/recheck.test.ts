@@ -65,6 +65,16 @@ async function switchOn(w: RuleWorld, text: Record<string, unknown>) {
 // Since step 45, an answer is used again for 10 seconds, and a change in the directory counts
 // from the first question after that (step 45's README, D3). These tests move DSoR's date 11
 // seconds on, as if the release came that much after the draft.
+// NEW IN STEP 45: user_123's own roles follow the directory too, so once it moves her to
+//   ap_clerk her own release is refused at line ⑨. user_124, a second AP supervisor, releases
+//   instead, and the check again still meets her slip's new job (step 45's README, C2).
+const USER_124: RequestEnvelope = { token: "tok_user_124", tenant: "org_456" };
+const SECOND_SUPERVISOR = {
+  id: "user_124",
+  type: "human",
+  memberships: [{ tenant_id: "org_456", roles: ["ap_supervisor"] }],
+} as unknown as Principal;
+
 /** Moves DSoR's date 11 seconds on. */
 function elevenSecondsOn(): void {
   vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + 11_000 });
@@ -205,12 +215,14 @@ describe("C3: every check runs again, for the person or agent that asked (DSOR-A
     );
   });
 
-  it("DSOR-APR-03a: the directory moves user_123, who signed del_100, to ap_clerk, and user_123's release of the agent's approved INV-1008 is invalidated: the agent may only prepare now", async () => {
+  it("DSOR-APR-03a: the directory moves user_123, who signed del_100, to ap_clerk, and user_124's release of the agent's approved INV-1008 is invalidated: the agent may only prepare now", async () => {
     const w = await ruleWorldOnTuesday();
     const { id, uri } = await approved(w);
     w.directories.get("org_456")!.set("user_123", { status: "active", roles: ["ap_clerk"] });
     elevenSecondsOn();
-    const answer = await release(w, SUPERVISOR, uri);
+    const answer = await withPlanted("tok_user_124", SECOND_SUPERVISOR, () =>
+      release(w, USER_124, uri),
+    );
     await expectInvalidated(w, answer, id, "APPROVED");
     expect((await afterwards(w, id)).cause).toBe(
       "the check at the release refused it: AUTHORIZATION_DENIED",
@@ -300,8 +312,10 @@ describe("C5: what an invalidated release leaves (DSOR-APR-03c, D4, D8)", () => 
     const { id, uri } = await approved(w);
     w.directories.get("org_456")!.set("user_123", { status: "active", roles: ["ap_clerk"] });
     elevenSecondsOn();
-    expect(await release(w, SUPERVISOR, uri)).toMatchObject({ code: "APPROVAL_INVALIDATED" });
-    expect(await release(w, SUPERVISOR, uri)).toMatchObject({
+    const again = (): ReturnType<typeof release> =>
+      withPlanted("tok_user_124", SECOND_SUPERVISOR, () => release(w, USER_124, uri));
+    expect(await again()).toMatchObject({ code: "APPROVAL_INVALIDATED" });
+    expect(await again()).toMatchObject({
       code: "CONFLICT",
       message: `proposal ${id} is INVALIDATED, and only an APPROVED or a READY proposal is released`,
     });
@@ -537,6 +551,8 @@ describe("C3: the guards the review found no test for (DSOR-APR-03a, DSOR-APR-03
       }),
     );
     expect(prepared).toMatchObject({ outcome: "READY" });
+    // Changed in step 45: 11 seconds later, so the check again asks user_150's company (D3).
+    elevenSecondsOn();
     const answer = await withPlanted("tok_150", person([]), () =>
       release(w, SUPERVISOR, uriOf(prepared)),
     );

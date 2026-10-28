@@ -115,6 +115,7 @@ import { checkStore, readStore, type StoreMap } from "./store.ts";
 import { memorySlips } from "./slips.ts";
 import { memoryAnswers } from "./answers.ts";
 import { fakeDirectory } from "./directory.ts";
+import { standInDirectories } from "./stand-in.ts";
 import { fakeKsor, type FakeKsor } from "./ksor.ts";
 import { parseUri } from "./uri.ts";
 
@@ -147,17 +148,12 @@ const pool = openPool(process.env["DSOR_DB_URL"] ?? "");
 // Each company's staff directory, fake, with the story's people. DSoR asks it
 // about the person who signed an agent's slip, at every call (step 19's README, decisions 1
 // and 2). Each company's setting is in role-sources.json, checked at start-up (decision 8).
-const directory456 = fakeDirectory("org_456", {
-  user_123: { status: "active", roles: ["ap_supervisor"] },
-  cfo_100: { status: "active", roles: ["CFO"] },
-});
-const directory789 = fakeDirectory("org_789", {
-  user_700: { status: "active", roles: ["ap_supervisor"] },
-});
-const directories = new Map([
-  ["org_456", directory456],
-  ["org_789", directory789],
-]);
+// Since step 45, the stand-in for each company's sign-in server, with the story's people, as
+// pnpm start's directories. DSoR asks it about a person who calls for herself too (step 45's
+// README, C2 and D7).
+const directories = standInDirectories();
+const directory456 = directories.get("org_456")!;
+const directory789 = directories.get("org_789")!;
 // NEW IN STEP 45: the answers DSoR keeps about each person, in memory, as pnpm start keeps them.
 //   An answer is used again for 10 seconds (step 45's README, D3). pnpm start tells the night in
 //   a moment, so where the story moves on and changes a person, it sets aside the answer kept
@@ -595,8 +591,10 @@ console.log(
 directory456.turn("off");
 console.log("directory off, the agent reads:", heard(await ask(AGENT, "invoice.get", INV_1008)));
 // DSoR restarts while the directory is off. The kept answers lived in memory, so they are
-// gone, and the agent is refused. user_123 calls for herself, and needs no directory
-// (decisions 2 and 3).
+// gone, and the agent is refused (decisions 2 and 3).
+// Changed in step 45: user_123's own call asks her company too, so she is refused as well. Her
+//   record names no company: DSoR could not confirm that she works there (step 45's README, C2;
+//   decision Q7; step 10's README, decision 6).
 const restarted = buildRegistry(
   readContracts(CONTRACTS),
   handlersFor(),
@@ -629,9 +627,11 @@ const herOwn = await call(
 answers.push(agentAfter, herOwn);
 console.log("after a restart, the agent reads:", heard(agentAfter));
 console.log("after a restart, user_123 reads:", heard(herOwn));
-// The claims are in the database, so the restart forgot none. user_123 sends
+// The directory is back. The claims are in the database, so the restart forgot none. user_123 sends
 // her first draft's request again, with its key, and hears the answer DSoR recorded then: a
 // draft, though she has cancelled it since (step 20's README, decision 7).
+// Changed in step 45: the directory comes back before her retry, which asks her company first.
+directory456.turn("on");
 const herRetry = await call(
   restarted,
   log,
@@ -642,7 +642,6 @@ const herRetry = await call(
 answers.push(herRetry);
 const status = "data" in herRetry ? (herRetry.data as Payment).status : "";
 console.log("after a restart, user_123's retry of her draft:", heard(herRetry), status);
-directory456.turn("on");
 
 // The suspension, told in memory. A suspension in the shared database is
 // permanent, and nothing in DSoR lifts one yet. So this part copies del_100 and del_101 from the

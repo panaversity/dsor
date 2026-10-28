@@ -36,12 +36,13 @@ import {
   shippedWith,
   source,
   STARTING_ROLES,
+  storyDirectories,
   SUPERVISOR,
+  testSlips,
   THE_AGENT,
   THE_CFO,
   THE_SUPERVISOR,
-  testSlips,
-  storyDirectories,
+  withoutControls,
 } from "./helpers.ts";
 
 // JSON text for a list nested 100,000 levels deep. JSON.parse reads it, but JSON.stringify
@@ -154,7 +155,7 @@ describe("C2: when two lines would refuse, the earlier one answers", () => {
 
   // No rule id: the same order for a query. Here the CFO role grants nothing at all.
   it("a query: cfo_100, who may not read, with a bad input, is denied, not told the input is bad", async () => {
-    const grantsNothing = buildRegistry(
+    const grantsNothing = withoutControls(
       shipped,
       handlers,
       rolesFile({ ...STARTING_ROLES, CFO: ["payment:reconcile", "alert:read"] }),
@@ -731,7 +732,7 @@ describe("C5: the code behind an operation is reached only through the checklist
 
   it("DSOR-OPR-04a: a caller who may not read never reaches invoice.get's code", async () => {
     const spy = vi.fn<Handler>(() => "ran");
-    const grantsNothing = buildRegistry(
+    const grantsNothing = withoutControls(
       shipped,
       { ...handlers, "invoice.get": spy },
       rolesFile({ ...STARTING_ROLES, CFO: ["payment:reconcile", "alert:read"] }),

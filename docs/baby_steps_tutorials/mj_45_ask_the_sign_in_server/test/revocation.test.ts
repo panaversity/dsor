@@ -14,7 +14,7 @@ import { createLog } from "../src/log.ts";
 import { handlersFor } from "../src/operations.ts";
 import { memoryPayments, type Payment } from "../src/payment.ts";
 import { checkPermission } from "../src/permissions.ts";
-import { logins, type Principal } from "../src/principals.ts";
+import type { Principal } from "../src/principals.ts";
 import { call } from "../src/pipeline.ts";
 import {
   memoryProposals,
@@ -43,12 +43,13 @@ import {
   shippedLabels,
   shippedRoles,
   source,
+  STORY_PEOPLE,
   storyDirectories,
+  type StorySlip,
   SUPERVISOR,
   USER_700,
-  withPlanted,
-  type StorySlip,
   withoutControls,
+  withPlanted,
 } from "./helpers.ts";
 
 const DEL_100_URI = "dsor://org_456/delegation/del_100";
@@ -734,8 +735,10 @@ describe("from step 25's review", () => {
       (role) => !shipped[role]!.includes("delegation:revoke"),
     );
     expect(without).toStrictEqual(["scheduler", "rate_loader"]);
-    const people = [...logins.values()].filter((login) => login.type === "human");
-    const theirs = people.flatMap((person) => person.memberships.flatMap((m) => m.roles));
+    // Changed in step 45: the people's jobs are in the story's directories, not DSoR's table
+    //   (step 45's README, D7).
+    const people = Object.values(STORY_PEOPLE).flatMap((listed) => Object.values(listed));
+    const theirs = people.flatMap((person) => person.roles);
     expect(theirs).not.toContain("scheduler");
     expect(theirs).not.toContain("rate_loader");
     expect(people.length).toBeGreaterThan(0);

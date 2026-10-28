@@ -28,6 +28,7 @@ import { call } from "../src/pipeline.ts";
 import { NO_CONTROLS } from "../src/rulebook.ts";
 import { memorySlips, NO_SLIPS, type SlipStore } from "../src/slips.ts";
 import { logins, type Principal } from "../src/principals.ts";
+import { STAND_IN_KEYS } from "../src/stand-in.ts";
 import {
   buildRegistry,
   readContracts,
@@ -77,6 +78,20 @@ export async function withPlanted<T>(
   principal: Principal,
   run: () => T | Promise<T>,
 ): Promise<T> {
+  // Changed in step 45: DSoR's table holds no person. A person is planted at the stand-in sign-in
+  //   server instead: a key that names her, and, in the story's directories, what each company she
+  //   works for says about her, with the roles the test gave her (step 45's README, D7).
+  if (principal.type === "human") {
+    const keys = STAND_IN_KEYS as Map<string, string>;
+    keys.set(token, principal.id);
+    PLANTED_PEOPLE.set(principal.id, principal);
+    try {
+      return await run();
+    } finally {
+      keys.delete(token);
+      PLANTED_PEOPLE.delete(principal.id);
+    }
+  }
   const table = logins as Map<string, Principal>;
   table.set(token, principal);
   try {
@@ -221,7 +236,10 @@ export function shippedWith(changed: Record<string, unknown>): ContractSource[] 
 // so a reader sees the world's idea (step 28's README, decision D18).
 /** buildRegistry with these settings, and no controls. */
 export function withoutControls(...given: Parameters<typeof buildRegistry>): Registry {
-  const [sources, code, roles, inputs, labels, invoices, payments, slips, directories] = given;
+  const [sources, code, roles, inputs, labels, invoices, payments, slips, named] = given;
+  // Changed in step 45: and the story's directories when the test names none, so a person's
+  //   line ② finds her company, as her slip's line ③ does (step 45's README, C2 and D7).
+  const directories = named ?? storyDirectories();
   const [, , , , , , , , , roleSettings, claims, own, brakes, lifetimes, policies] = given;
   return buildRegistry(
     sources,
@@ -595,20 +613,55 @@ export const UNDER_DEL_100: {
 // 19's README rather than read from src. Everyone holds the job that DSoR's login table gives
 // them, so a test that does not change a directory behaves as in step 18 (step 19's README,
 // decision 2).
+// Changed in step 45: DSoR's login table holds no person, and the directories are the only place
+// a person's job is written, as src/stand-in.ts has it, typed out again here. The two tenant
+// administrators join, admin_100 and admin_700 (step 45's README, D7).
 /** What each company's directory holds about the story's people. */
 export const STORY_PEOPLE: Record<string, Record<string, Person>> = {
   org_456: {
     user_123: { status: "active", roles: ["ap_supervisor"] },
     cfo_100: { status: "active", roles: ["CFO"] },
+    admin_100: { status: "active", roles: ["tenant_admin"] },
   },
-  org_789: { user_700: { status: "active", roles: ["ap_supervisor"] } },
+  org_789: {
+    user_700: { status: "active", roles: ["ap_supervisor"] },
+    admin_700: { status: "active", roles: ["tenant_admin"] },
+  },
 };
+
+// NEW IN STEP 45: the people a test plants with withPlanted, while the test runs (D7).
+const PLANTED_PEOPLE = new Map<string, Principal>();
 
 /** The story's two directories, new and on, so a test may switch or change its own. */
 export function storyDirectories(): Map<string, FakeDirectory> {
   return new Map(
-    Object.entries(STORY_PEOPLE).map(([tenant, people]) => [tenant, fakeDirectory(tenant, people)]),
+    Object.entries(STORY_PEOPLE).map(([tenant, people]) => [
+      tenant,
+      knowingPlanted(tenant, fakeDirectory(tenant, people)),
+    ]),
   );
+}
+
+// NEW IN STEP 45: a story directory knows each person a test planted who works in its company, with
+//   the roles the test gave her, unless the test set or forgot her on this directory itself.
+/** The directory, knowing the planted people of its company too. */
+function knowingPlanted(tenant: string, directory: FakeDirectory): FakeDirectory {
+  const decided = new Set<string>();
+  return Object.freeze({
+    ask: async (person: string): Promise<unknown> => {
+      const answer = await directory.ask(person);
+      const planted = PLANTED_PEOPLE.get(person)?.memberships.find((m) => m.tenant_id === tenant);
+      const gone = (answer as { status?: unknown }).status === "gone";
+      if (planted === undefined || decided.has(person) || !gone) return answer;
+      return { ...(answer as object), status: "active", roles: [...planted.roles] };
+    },
+    set: (person: string, entry: Person | undefined): void => {
+      decided.add(person);
+      directory.set(person, entry);
+    },
+    turn: directory.turn,
+    asked: directory.asked,
+  });
 }
 
 /** The slips the shared test registries hold: the story's three, and intake-fte's. */

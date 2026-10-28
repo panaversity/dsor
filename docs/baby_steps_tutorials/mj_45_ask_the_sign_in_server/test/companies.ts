@@ -77,6 +77,15 @@ export function swaps(example: unknown, home: string): Swap[] {
 export function movedTo(home: string, example: unknown): unknown {
   let moved = example;
   for (const [path, text] of texts(example)) {
+    // Changed in step 45: a citation of the company's KSoR moves too, so a same-company call is a
+    //   request of that company. Until step 45, org_789's rule draft was refused for its owner's job
+    //   before its citation was read. The draft no longer reads an owner's job (step 45's README,
+    //   D15), so the citation is read, and an unmoved one came back as org_456's data.
+    const cited = `ksor://${WRITTEN_IN}/`;
+    if (text.startsWith(cited)) {
+      moved = replaced(moved, path, `ksor://${home}/${text.slice(cited.length)}`);
+      continue;
+    }
     const match = uriOf(WRITTEN_IN).exec(text);
     if (match === null) continue;
     const [, entity = "", id = ""] = match;

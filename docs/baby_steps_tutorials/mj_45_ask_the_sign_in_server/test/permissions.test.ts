@@ -6,6 +6,7 @@ import type { ClassificationSource } from "../src/labels.ts";
 import { checkRoles, permissionsOf } from "../src/permissions.ts";
 import { logins, whoIsCalling, type Membership, type Principal } from "../src/principals.ts";
 import { call } from "../src/pipeline.ts";
+import { STAND_IN_KEYS } from "../src/stand-in.ts";
 import {
   buildRegistry,
   type Contract,
@@ -17,19 +18,15 @@ import type { RequestEnvelope } from "../src/request.ts";
 import {
   AGENT,
   BAD_REQUEST_ID,
-  CFO,
-  GOOD_ISSUE,
-  STARTING_ROLES,
-  SUPERVISOR,
-  THE_AGENT,
-  THE_CFO,
-  THE_SUPERVISOR,
   type Caller,
+  CFO,
   contract,
   correlationFor,
   extraField,
+  GOOD_ISSUE,
   handlers,
   inputsWith,
+  labelsWith,
   log,
   notGranted,
   notTheCaller,
@@ -37,17 +34,23 @@ import {
   registry,
   rolesFile,
   shipped,
-  labelsWith,
   shippedInputs,
   shippedLabels,
   shippedRoles,
   shippedWith,
   shippedWithoutPredicates,
   source,
-  without,
-  testSlips,
-  withPlanted,
+  STARTING_ROLES,
+  STORY_PEOPLE,
   storyDirectories,
+  SUPERVISOR,
+  testSlips,
+  THE_AGENT,
+  THE_CFO,
+  THE_SUPERVISOR,
+  without,
+  withoutControls,
+  withPlanted,
 } from "./helpers.ts";
 
 /** The shipped operations plus one more, whose contract and code the test writes. */
@@ -164,8 +167,10 @@ describe("C1: every permission is <resource>:<action>, checked at start-up", () 
   // any caller arrives.
   it("DSOR-AUT-01a: a principal holding a role that is not in the table stops start-up", async () => {
     const noCfo = rolesFile({ ap_agent: ["invoice:read"], ap_supervisor: ["invoice:read"] });
+    // Changed in step 45: DSoR's table holds no person, so a timer job's login names the role the
+    //   table lacks (step 45's README, D7).
     expect(refusal(() => buildRegistry(shipped, handlers, noCfo))).toMatch(
-      'roles.json: cfo_100 holds the role "CFO", which the table does not have',
+      'roles.json: dsor-scheduler holds the role "scheduler", which the table does not have',
     );
   });
 
@@ -276,8 +281,9 @@ describe("C1: every permission is <resource>:<action>, checked at start-up", () 
     const message = refusal(() => buildRegistry(shippedWith(noRisk), handlers, table));
     expect(message).toMatch("invoice.get.json: must have required property 'risk'");
     expect(message).toMatch('roles.json: the role "ap_agent" grants "invoice:*"');
+    // Changed in step 45: a timer job's login, since DSoR's table holds no person (D7).
     expect(message).toMatch(
-      'roles.json: cfo_100 holds the role "CFO", which the table does not have',
+      'roles.json: dsor-scheduler holds the role "scheduler", which the table does not have',
     );
   });
 
@@ -289,6 +295,17 @@ describe("C1: every permission is <resource>:<action>, checked at start-up", () 
     );
   });
 });
+
+// NEW IN STEP 45: a person is no longer in DSoR's table. Her key names her at the stand-in, and her
+//   roles are the ones the story's directory gives her, as line ② finds them (step 45's README,
+//   C2 and D7). Any other login is found in DSoR's table, as before.
+/** Whom a login names, with the roles the call would hold in org_456. */
+function holderOf(token: string): Principal {
+  const person = STAND_IN_KEYS.get(token);
+  if (person === undefined) return whoIsCalling({ token });
+  const roles = STORY_PEOPLE["org_456"]?.[person]?.roles ?? [];
+  return { id: person, type: "human", memberships: [{ tenant_id: "org_456", roles: [...roles] }] };
+}
 
 describe("C2: a caller holds the permissions of its roles, and only those", () => {
   // And the scheduler role, which holds proposal:expire alone (step 25c's README,
@@ -379,9 +396,7 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
   ])(
     "DSOR-AUT-01a: %s holds exactly the permissions its roles grant",
     async (_who, token, held) => {
-      expect([...permissionsOf(whoIsCalling({ token }), registry.roles, "org_456")].sort()).toEqual(
-        held,
-      );
+      expect([...permissionsOf(holderOf(token), registry.roles, "org_456")].sort()).toEqual(held);
     },
   );
 
@@ -480,7 +495,7 @@ describe("C2: a caller holds the permissions of its roles, and only those", () =
   // No rule id. Found by the review: one table shared by every registry passed, because
   // the tests happened to build their registries in a harmless order.
   it("building a second registry does not change what the first one grants", async () => {
-    const first = buildRegistry(
+    const first = withoutControls(
       shipped,
       handlers,
       shippedRoles,
@@ -520,7 +535,7 @@ describe("C3: a call whose permission the caller does not hold is refused", () =
       CFO: ["payment:reconcile", "alert:read"],
     });
     const answer = await call(
-      buildRegistry(shipped, handlers, grantsNothing),
+      withoutControls(shipped, handlers, grantsNothing),
       log,
       CFO,
       "invoice.get",
@@ -729,7 +744,7 @@ describe("C5: who is calling, then the contract, then the permission, then 'is i
     const issueHasCode = { ...handlers, "invoice.issue": () => "issued" };
     // Since step 27, with no predicate where code runs (step 27's README, decision D20).
     const answer = await call(
-      buildRegistry(shippedWithoutPredicates, issueHasCode, shippedRoles),
+      withoutControls(shippedWithoutPredicates, issueHasCode, shippedRoles),
       log,
       CFO,
       "invoice.issue",
@@ -746,7 +761,7 @@ describe("C5: who is calling, then the contract, then the permission, then 'is i
       ...STARTING_ROLES,
       CFO: ["payment:reconcile", "alert:read", "invoice:read", "invoice:issue.propose"],
     });
-    const proposing = buildRegistry(shipped, handlers, proposeOnly);
+    const proposing = withoutControls(shipped, handlers, proposeOnly);
     const refused = denied("invoice.issue", "invoice:issue", THE_CFO);
     expect(await call(proposing, log, CFO, "invoice.issue", {})).toStrictEqual({
       ...refused,

@@ -137,7 +137,9 @@ describe("C3: every principal has a type and at least one tenant membership", ()
     // Seven, with dsor-scheduler, of type system (step 25c's README, decision D1).
     // Eight, with dsor-rates, of type system too (step 26's README, decision D1).
     // Nine, with admin_700, org_789's tenant administrator (step 28's README, decision D19).
-    expect(principals).toHaveLength(9);
+    // Changed in step 45: four, the two agents and the two timer jobs. The five people left the
+    //   table for the stand-in sign-in server (step 45's README, D7).
+    expect(principals).toHaveLength(4);
     for (const principal of principals) {
       expect(["human", "agent", "application", "system"]).toContain(principal.type);
       expect(principal.memberships.length).toBeGreaterThan(0);
@@ -153,8 +155,8 @@ describe("C3: every principal has a type and at least one tenant membership", ()
   // decision 2).
   const FOUND: [string, string, string, string[], object][] = [
     ["tok_7f3a", "accounts-payable-fte", "agent", [], { clearance: "internal" }],
-    ["tok_2c91", "user_123", "human", ["ap_supervisor"], {}],
-    ["tok_d4e8", "cfo_100", "human", ["CFO"], {}],
+    // Changed in step 45: user_123's and cfo_100's keys are the stand-in's now, and name a person
+    //   with no company until line ② asks (test/people.test.ts; step 45's README, D7).
   ];
   it.each(FOUND)(
     "DSOR-IDN-01: the token %s finds %s, with a type and a membership",
@@ -176,10 +178,8 @@ describe("C3: every principal has a type and at least one tenant membership", ()
         memberships: inOrg456([]),
         clearance: "internal",
       },
-      tok_2c91: { id: "user_123", type: "human", memberships: inOrg456(["ap_supervisor"]) },
-      tok_d4e8: { id: "cfo_100", type: "human", memberships: inOrg456(["CFO"]) },
-      // Org_456's tenant administrator (step 25's README, decision L2).
-      tok_a100: { id: "admin_100", type: "human", memberships: inOrg456(["tenant_admin"]) },
+      // Changed in step 45: user_123, cfo_100, admin_100, user_700, and admin_700 left the table
+      //   for the stand-in sign-in server (step 45's README, D7).
       tok_9b52: {
         id: "firm-ap-fte",
         type: "agent",
@@ -190,17 +190,6 @@ describe("C3: every principal has a type and at least one tenant membership", ()
           { tenant_id: "org_456", roles: [] },
           { tenant_id: "org_789", roles: [] },
         ],
-      },
-      tok_e1a7: {
-        id: "user_700",
-        type: "human",
-        memberships: [{ tenant_id: "org_789", roles: ["ap_supervisor"] }],
-      },
-      // Org_789's tenant administrator (step 28's README, decision D19).
-      tok_a700: {
-        id: "admin_700",
-        type: "human",
-        memberships: [{ tenant_id: "org_789", roles: ["tenant_admin"] }],
       },
       // The timer's login, neither a person nor an agent, with the scheduler
       // role in each company (step 25c's README, decisions D1 and D10).

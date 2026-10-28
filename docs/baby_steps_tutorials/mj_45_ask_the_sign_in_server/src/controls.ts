@@ -508,10 +508,13 @@ export function ruleProblems(
   }
   // Its owner is a person who works in its company, who can switch it on in person
   // (DSOR-CTL-01a: "a named human owner"; step 28's README, decision D11).
+  // Changed in step 45: DSoR's table holds no person to read her companies from. A login it
+  //   names as no person is refused here. That she works in the company, her company says when
+  //   she acts: only its owner switches a rule on, in person, and line ② asks her company then
+  //   (step 45's README, C2 and D15).
   const owner = principalNamed(control.owner);
-  const works = owner?.memberships.some((m) => m.tenant_id === tenant) === true;
-  if (owner?.type !== "human" || !works) {
-    return [`${name}: its owner ${control.owner} is not a person who works in ${tenant}`];
+  if (owner !== undefined && owner.type !== "human") {
+    return [`${name}: its owner ${control.owner} is not a person`];
   }
   // It cites a source this step can check (step 28b's README, decision D13).
   const citation = citationProblem(control.authority, tenant);

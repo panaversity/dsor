@@ -12,6 +12,7 @@ import { effectivePermissions, peopleOnly } from "../src/permissions.ts";
 import { releases } from "../src/release.ts";
 import { call } from "../src/pipeline.ts";
 import { logins, type Principal } from "../src/principals.ts";
+import { STAND_IN_KEYS } from "../src/stand-in.ts";
 import { dsorMover } from "../src/proposals.ts";
 import type { Slip } from "../src/slips.ts";
 import {
@@ -32,7 +33,7 @@ import {
   swaps,
   waysFrom,
 } from "./companies.ts";
-import { forComparing, keyed } from "./helpers.ts";
+import { STORY_PEOPLE, forComparing, keyed } from "./helpers.ts";
 
 /** A principal the suite attacks as: its id, and the login token DSoR gave it. */
 export type Attacker = { id: string; token: string };
@@ -74,6 +75,45 @@ function permissionOf(registry: Registry, operation: string): unknown {
   return (authorization as { permission?: unknown } | undefined)?.permission;
 }
 
+// NEW IN STEP 45: DSoR's own table holds no person, so the suite attacks with its logins and with
+//   each of the story's people, by her key at the stand-in, with the jobs the story's directories
+//   give her, as line ② finds them (step 45's README, C2 and D7).
+/** Every login the suite may attack with, and the principal each stands for. */
+function everyLogin(): [string, Principal][] {
+  const people = [...STAND_IN_KEYS].map(([token, id]): [string, Principal] => [
+    token,
+    {
+      id,
+      type: "human",
+      memberships: Object.entries(STORY_PEOPLE).flatMap(([tenant_id, listed]) => {
+        const entry = listed[id];
+        return entry?.status === "active" ? [{ tenant_id, roles: [...entry.roles] }] : [];
+      }),
+    },
+  ]);
+  return [...logins, ...people].sort(([a], [b]) => rank(a) - rank(b));
+}
+
+// The order of step 44's table, which held the people among the agents. The reports name the
+//   attackers in this order, so they read as before. A login a test plants comes last.
+const STEP_44_ORDER = [
+  "tok_7f3a",
+  "tok_2c91",
+  "tok_d4e8",
+  "tok_a100",
+  "tok_9b52",
+  "tok_e1a7",
+  "tok_a700",
+  "tok_5c4e",
+  "tok_3b8f",
+];
+
+/** Where a login comes in step 44's order. */
+function rank(token: string): number {
+  const at = STEP_44_ORDER.indexOf(token);
+  return at === -1 ? STEP_44_ORDER.length : at;
+}
+
 /** Every principal that lines ③ and ⑤ let call the operation in this company. */
 export async function attackersOf(
   registry: Registry,
@@ -86,7 +126,7 @@ export async function attackersOf(
   // DSoR's own table of logins, in its order. A caller who may not call the operation
   // would be refused at line ⑤, before the URI's company is checked, and prove nothing
   // (step 12's README, decision 4).
-  for (const [token, principal] of logins) {
+  for (const [token, principal] of everyLogin()) {
     if (typeof permission !== "string" || contract === undefined) continue;
     // The same for line ③. An agent's command is refused there, before the
     // URI's company is checked. The suite asks line ③'s own question, so an agent that a

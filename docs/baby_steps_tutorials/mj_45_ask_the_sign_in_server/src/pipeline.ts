@@ -295,7 +295,7 @@ export async function call(
     const login = await Promise.resolve()
       .then(() => registry.logins.find(token))
       .catch(() => undefined);
-    const { caller, copy, key, named, supersedes } = line(1, () => {
+    const first = line(1, () => {
       // The caller's own request id labels every answer, when DSoR can use it (step 05's
       // README, decisions 6 and 7). It is read inside the try, so an envelope whose
       // request_id cannot be read gets an answer, not a throw. Found by step 07's review,
@@ -337,16 +337,33 @@ export async function call(
       modeOfRecord = named ?? "execute";
       return { caller: found, copy, key, named, supersedes };
     });
+    const { copy, key, named, supersedes } = first;
+    // NEW IN STEP 45: line ② may learn, for a person, what she holds now.
+    let caller = first.caller;
 
     // ② Resolve tenant. The company comes from the envelope, and DSoR checks
     //   in its own table that the caller is a member of it (DSOR-IDN-03a, DSOR-SRC-02a).
+    //   Since step 45, a person's membership comes from her company's lookup instead.
     //   Right after ①, before the operation is looked up, so a stranger to a company learns
     //   nothing there (step 10's README, decision 2). Then any company the arguments name
     //   must be the active one (DSOR-SRC-02b; step 10's README, decision 4).
-    const tenant = line(2, () => {
+    const tenant = await line(2, async () => {
       // The envelope comes from outside the program, so it may even be null. Read once.
       const named = request?.tenant;
       if (isTenantId(named)) claimedTenant = named;
+      // NEW IN STEP 45: a person's companies and roles come from her company's sign-in server,
+      //   asked about who line ① found, for the company the envelope names: never from a row
+      //   in DSoR's code, never from a claim in her token. A person it does not list as active
+      //   is not a member, and the next line refuses her (step 45's README, C2; decision Q7).
+      if (caller.type === "human" && isTenantId(named)) {
+        // The name the caller sent, cut and quoted: the contract is not looked up yet.
+        const held = await registry.roleSource.memberOf(named, caller.id, preview(name));
+        caller = {
+          ...caller,
+          memberships: [{ tenant_id: named, roles: held.roles }],
+          authority: { source: held.source, as_of: held.as_of },
+        };
+      }
       const active = activeTenant(named, caller);
       tenantOfRecord = active;
       // Line ①'s copy, never the input again (step 07's README, decision 9). Found by the

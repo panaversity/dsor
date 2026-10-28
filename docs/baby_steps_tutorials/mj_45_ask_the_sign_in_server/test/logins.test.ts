@@ -105,7 +105,6 @@ describe("C2: every refused login hears one answer, at line ①, recorded before
       "a token for cfo_100 whose act names the agent acting for her",
       () => sso.sign("cfo_100", { act: { sub: "accounts-payable-fte" } }),
     ],
-    ["a good token for user_555, whom DSoR's table does not list", () => sso.sign("user_555")],
     ["a good token for the agent, accounts-payable-fte", () => sso.sign("accounts-payable-fte")],
     ["a good token for dsor-scheduler, a system login", () => sso.sign("dsor-scheduler")],
     ["cfo_100's step-42 key, tok_d4e8", async () => "tok_d4e8"],
@@ -199,21 +198,19 @@ describe("C3: companies and roles come only from DSoR's table, by the token's su
     });
   });
 
-  it("Step 44, 44-10: a good token for user_555, whom nobody listed, hears AUTHENTICATION_REQUIRED, and the record says why", async () => {
+  // Changed in step 45: a good token names a person, whoever DSoR's table lists, and line ② asks
+  //   her company. org_456 does not list user_555, so she hears what every stranger hears, and
+  //   the record names her token's login (step 45's README, C2).
+  it("C2: a good token for user_555, whom org_456 does not list, is refused at line ②, and the record names the token's login", async () => {
     const kept = createLog();
     const answer = await asServed(await sso.sign("user_555"), "invoice.get", INV_1008, kept);
-    expect(answer).toStrictEqual(NO_LOGIN);
+    expect(answer).toMatchObject({
+      code: "AUTHORIZATION_DENIED",
+      message: "the caller may not work in the tenant it named",
+    });
     const [record] = await kept.records();
-    // Changed by decision 44-11: the cause "unlisted", among the others.
-    expect(record?.extensions).toStrictEqual({
-      [OUR_EXTENSIONS]: {
-        refused_token: {
-          cause: "unlisted",
-          issuer: sso.issuer,
-          subject: "user_555",
-          client: PEOPLE_APP,
-        },
-      },
+    expect(record?.extensions).toMatchObject({
+      [OUR_EXTENSIONS]: { login: { issuer: sso.issuer, client: PEOPLE_APP } },
     });
   });
 });

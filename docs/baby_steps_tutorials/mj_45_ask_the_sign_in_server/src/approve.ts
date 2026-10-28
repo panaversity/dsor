@@ -245,7 +245,8 @@ async function approve(input: unknown, work: OwnStores): Promise<unknown> {
       mode: "direct",
       subject: caller.id,
       actor_chain: [],
-      subject_authority: { source: "token", as_of: now },
+      // NEW IN STEP 45: where line ② learned the approver's roles, and as of when (C2).
+      subject_authority: caller.authority ?? { source: "token", as_of: now },
     },
     cause: `approved by ${caller.id}`,
     correlation,

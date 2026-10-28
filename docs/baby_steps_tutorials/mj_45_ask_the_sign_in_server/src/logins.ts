@@ -5,6 +5,7 @@
 //   DSOR-IDN-04b; step 44's README, claims C3 and C4, decisions 44-5, 44-6, 44-7, and 44-10).
 import type { TokenOfRecord } from "./log.ts";
 import { logins as STEP_42, type Principal } from "./principals.ts";
+import { STAND_IN_KEYS } from "./stand-in.ts";
 import type { SignIn } from "./sign-in.ts";
 import {
   checkedLogin,
@@ -44,9 +45,15 @@ export function tokenOfRecord(
 }
 
 // Step 42's table, as every world had it until now (decision 44-6).
+// NEW IN STEP 45: or a person's key at the stand-in sign-in server, which names her and nothing
+//   more. What she holds, line ② asks her company (step 45's README, C2 and D7).
 export const FAKE_LOGINS: LoginSource = Object.freeze({
-  find: async (token: unknown): Promise<Principal | undefined> =>
-    typeof token === "string" ? STEP_42.get(token) : undefined,
+  find: async (token: unknown): Promise<Principal | undefined> => {
+    if (typeof token !== "string") return undefined;
+    const person = STAND_IN_KEYS.get(token);
+    if (person !== undefined) return { id: person, type: "human", memberships: [] };
+    return STEP_42.get(token);
+  },
 });
 
 // Three parts separated by dots, as every signed token has, is a token; anything else is a key. A
@@ -56,8 +63,9 @@ function hasTokenForm(token: unknown): token is string {
 }
 
 /**
- * pnpm serve's logins. A token must be made for DSoR (tokens.ts), and its subject must be a person
- * in the table, whose companies and roles come from the table, never from the token. A key counts
+ * pnpm serve's logins. A token must be made for DSoR (tokens.ts), and its subject is a person.
+ * Since step 45, her companies and roles come from her company's lookup, which line ② asks, never
+ * from the table and never from the token (step 45's README, C2). A key counts
  * for anyone in the table who is not a person, an agent, an application, or a system login: a
  * person's key is refused (decisions 44-5 and 44-6; worded so by step 44's review).
  */
@@ -66,11 +74,11 @@ export function realLogins(
   keys: KeySets,
   table: ReadonlyMap<string, Principal> = STEP_42,
 ): LoginSource {
-  // The people of the table, by id. Only a person signs in with a token: a token whose subject
-  //   names an agent or a system login makes nobody that agent.
-  const people = new Map(
-    [...table.values()].filter((p) => p.type === "human").map((p) => [p.id, p]),
-  );
+  // Only a person signs in with a token: a token whose subject names an agent, an application, or
+  //   a system login in the table makes nobody that login.
+  // Changed in step 45: the table holds no person, so any other subject is a person, whose
+  //   companies and roles line ② asks of her company (step 45's README, C2).
+  const others = new Set([...table.values()].filter((p) => p.type !== "human").map((p) => p.id));
   return Object.freeze({
     find: async (
       token: unknown,
@@ -81,11 +89,10 @@ export function realLogins(
       }
       const login = await checkedLogin(token, signIn, keys);
       if ("unavailable" in login || "refused" in login) return login;
-      const person = people.get(login.subject);
-      // A good token for nobody in the table is refused as every bad login is, and its record
-      //   names the login, so an administrator can see why (decisions 44-10 and 44-11).
-      if (person === undefined) return { refused: "unlisted", signer: { ...login } };
-      return { signed: login, caller: person };
+      // A good token for a login that is no person is refused as every bad login is, and its
+      //   record names the login, so an administrator can see why (decisions 44-10 and 44-11).
+      if (others.has(login.subject)) return { refused: "unlisted", signer: { ...login } };
+      return { signed: login, caller: { id: login.subject, type: "human", memberships: [] } };
     },
   });
 }

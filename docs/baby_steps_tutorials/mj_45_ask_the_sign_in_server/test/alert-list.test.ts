@@ -24,6 +24,7 @@ import {
   keyed,
   shipped,
   shippedRoles,
+  storyDirectories,
   SUPERVISOR,
   USER_700,
 } from "./helpers.ts";
@@ -411,6 +412,8 @@ describe("the review", () => {
     args[1] = handlersFor();
     args[2] = shippedRoles;
     args[11] = ownWorkFor();
+    // Changed in step 45: and the story's directories, so user_123's line ② finds her company (C2).
+    args[8] = storyDirectories();
     args[20] = keeping;
     const registry = buildRegistry(...args);
     await call(registry, createLog(), SUPERVISOR, "alert.list", {});

@@ -472,14 +472,18 @@ describe("C9: no suspension is tried for an answer DSoR cannot use, for no answe
     expect(await statusOf(slips, "org_456", "accounts-payable-fte")).toBe("active");
   });
 
-  it("step 19's decision 2: user_123 calls for herself while the directory says suspended: the directory is not asked, and no suspension is tried", async () => {
+  // Changed in step 45: line ② asks about a person's own call too, and refuses a suspended person
+  //   with the words every stranger hears. It suspends nothing: her agent's next call does
+  //   (step 45's README, C2; decision Q7).
+  it("Q7: user_123 calls for herself while the directory says suspended: she is refused at line ②, and no suspension is tried", async () => {
     const slips = memorySlips(STORY_SLIPS);
     const { store, tried } = counting(slips);
     const { registry, org456 } = nightWith(store, SUSPENDED);
     expect(await call(registry, createLog(), SUPERVISOR, "invoice.get", READ)).toMatchObject({
-      data: { tenant_id: "org_456", id: "INV-1008" },
+      code: "AUTHORIZATION_DENIED",
+      message: "the caller may not work in the tenant it named",
     });
-    expect(org456.asked()).toBe(0);
+    expect(org456.asked()).toBe(1);
     expect(tried()).toBe(0);
     expect(await statusOf(slips, "org_456", "accounts-payable-fte")).toBe("active");
   });

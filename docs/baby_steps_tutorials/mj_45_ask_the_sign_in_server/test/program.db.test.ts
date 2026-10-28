@@ -404,7 +404,10 @@ describe("the program", () => {
       );
       expect(output).toMatch("directory off, the agent reads: answered, INV-1008");
       expect(output).toMatch("after a restart, the agent reads: FRESHNESS_UNSATISFIABLE");
-      expect(output).toMatch("after a restart, user_123 reads: answered, INV-1008");
+      // Changed in step 45: her own call asks her company too, which is off, and the restart forgot
+      //   what DSoR kept (step 45's README, C2; decision Q7). Her retry comes once it is back.
+      expect(output).toMatch("after a restart, user_123 reads: FRESHNESS_UNSATISFIABLE");
+      expect(output).toMatch("after a restart, user_123's retry of her draft: answered");
       // The changed payee, told in memory (step 21's README, decision 13).
       expect(output).toMatch("  02:05, the agent reads INV-1008: version 1, VENDOR-44");
       expect(output).toMatch("  02:06, the payee changes: INV-1008 is version 2, VENDOR-99");
@@ -450,7 +453,10 @@ describe("the program's log", () => {
   // company. The program reads org_456's and org_789's, and says how many it cannot read
   // (step 11's README, decision 6).
   it(
-    "DSOR-EXE-02: prints the 32 records of its 35 calls that it can read, in order, and says it cannot read 3",
+    // Changed in step 45: 31 and 4. user_123's own read after the restart is refused at line ②,
+    //   since her company cannot answer and DSoR keeps nothing, so its record names no company
+    //   (step 45's README, C2; decision Q7).
+    "DSOR-EXE-02: prints the 31 records of its 35 calls that it can read, in order, and says it cannot read 4",
     { timeout: 180_000 },
     () => {
       const run = start();
@@ -460,8 +466,8 @@ describe("the program's log", () => {
       // any more. They still go up, in the order of the calls.
       const numbers = lines.map((l) => Number(l.split(" ")[0]));
       expect(numbers).toStrictEqual([...numbers].sort((a, b) => a - b));
-      expect(new Set(numbers).size).toBe(32);
-      // Each record ends with its company. The three calls refused before line ② have
+      expect(new Set(numbers).size).toBe(31);
+      // Each record ends with its company. The four calls refused at line ② or before it have
       // none, and are not here.
       expect(lines.map((l) => l.split(" ").slice(1).join(" "))).toStrictEqual([
         "invoice.get@1 ALLOW ok org_456",
@@ -510,15 +516,15 @@ describe("the program's log", () => {
         "invoice.get@1 ALLOW ok org_456",
         "invoice.get@1 ALLOW ok org_456",
         "invoice.get@1 DENY FRESHNESS_UNSATISFIABLE org_456",
-        "invoice.get@1 ALLOW ok org_456",
-        // User_123's retry after the restart, a replay.
+        // Changed in step 45: user_123's own read after the restart is refused at line ②, and not
+        //   here. Her retry comes once the directory is back, a replay.
         "payment.create@1 ALLOW ok org_456",
       ]);
       // A fact and one inference, and the line says which: every call answered, and an
       // answer leaves only after its record is committed. Found by the review: the line
       // used to state the 3 as if it had read them.
       expect(run.stdout).toMatch(
-        "35 calls answered, so 35 records were written. dsor_runtime reads 32 of them, in org_456 and org_789, and cannot read the other 3",
+        "35 calls answered, so 35 records were written. dsor_runtime reads 31 of them, in org_456 and org_789, and cannot read the other 4",
       );
       expect(run.stdout).toMatch("code: 'EVIDENCE_STORE_UNAVAILABLE'");
     },

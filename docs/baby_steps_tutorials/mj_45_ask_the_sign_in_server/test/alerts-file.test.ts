@@ -38,26 +38,34 @@ describe("C6: start-up checks alerts.json", () => {
     expect(alerts.get("org_456")).toStrictEqual({ ...GOOD, escalate_ms: 59 * 60 * 1000 });
   });
 
-  it("DSOR-UNK-04c: the person is checked: an agent, a system login, someone of another company, and nobody are refused", () => {
-    for (const who of ["accounts-payable-fte", "dsor-scheduler", "user_700", "nobody_1"]) {
+  // Changed in step 45: DSoR's table holds no person, so only a login it knows as no person is
+  //   refused here. Whether someone works in the company, her company says when she acts
+  //   (step 45's README, D15).
+  it("DSOR-UNK-04c: the person is checked: an agent and a system login are refused", () => {
+    for (const who of ["accounts-payable-fte", "dsor-scheduler"]) {
       expect(problemsOf({ ...GOOD, escalate_to: who })).toStrictEqual([
-        `alerts.json: org_456's escalate_to "${who}" is not a person of org_456`,
+        `alerts.json: org_456's escalate_to "${who}" is not a person`,
       ]);
     }
   });
 
+  it("D15: start-up no longer reads a person's job: user_700 of org_789, and nobody_1, pass; org_456's lookup decides when they act", () => {
+    for (const who of ["user_700", "nobody_1"]) {
+      expect(problemsOf({ ...GOOD, escalate_to: who })).toStrictEqual([]);
+    }
+  });
+
   // Found by step 38b's review, M3: cfo_100 was the person, and could not settle the payment.
-  it("DSOR-UNK-04c: a person who holds no payment:reconcile in the company is refused: admin_100, a tenant administrator", () => {
-    // Changed in step 38c: and no alert:read (step 38c's README, decision D9).
-    expect(problemsOf({ ...GOOD, escalate_to: "admin_100" })).toStrictEqual([
-      'alerts.json: org_456\'s escalate_to "admin_100" holds no payment:reconcile in org_456',
-      'alerts.json: org_456\'s escalate_to "admin_100" holds no alert:read in org_456',
-    ]);
+  // Changed in step 45: start-up no longer checks what the person holds, as step 38b's review
+  //   (M3) had it: DSoR's table holds no person (step 45's README, D15, open).
+  it("D15: start-up no longer reads the escalation person's job: admin_100, who holds no payment:reconcile, passes", () => {
+    expect(problemsOf({ ...GOOD, escalate_to: "admin_100" })).toStrictEqual([]);
   });
 
   // Found by step 38c's review, H1: a role table without alert:read started cleanly, and then
   //   nobody could list an alert.
-  it("DSOR-UNK-04c: a receivers role, and a person, that hold no alert:read are refused", () => {
+  // Changed in step 45: the role only. The person's job is no longer read (D15).
+  it("DSOR-UNK-04c: a receivers role that holds no alert:read is refused", () => {
     const without = Object.fromEntries(
       [...ROLES].map(([role, held]) => [
         role,
@@ -68,25 +76,23 @@ describe("C6: start-up checks alerts.json", () => {
     const text = JSON.stringify({ org_456: GOOD, org_789: ORG_789 });
     const problems = checkAlerts({ file: "alerts.json", text }, logins.values(), roles).problems;
     expect(problems).toStrictEqual([
-      'alerts.json: org_456\'s escalate_to "cfo_100" holds no alert:read in org_456',
       'alerts.json: org_456\'s receivers "ap_supervisor" is a role that holds no alert:read',
-      'alerts.json: org_789\'s escalate_to "user_700" holds no alert:read in org_789',
       'alerts.json: org_789\'s receivers "ap_supervisor" is a role that holds no alert:read',
     ]);
   });
 
-  it("DSOR-UNK-04b: the receivers are checked: a role not in the table, one no person of the company holds, and one held only in another company are refused", () => {
+  // Changed in step 45: who holds a role is the company's to say, so a role no person of the
+  //   company holds is no longer found here (D15). scheduler is refused for holding no
+  //   alert:read, and CFO in org_789 passes.
+  it("DSOR-UNK-04b: the receivers are checked: a role not in the table, and one that holds no alert:read, are refused", () => {
     expect(problemsOf({ ...GOOD, receivers: "treasurer" })).toStrictEqual([
       'alerts.json: org_456\'s receivers "treasurer" is not a role in roles.json',
     ]);
     // dsor-scheduler holds scheduler in org_456, and it is not a person.
     expect(problemsOf({ ...GOOD, receivers: "scheduler" })).toStrictEqual([
-      'alerts.json: org_456\'s receivers "scheduler" is a role no person of org_456 holds',
+      'alerts.json: org_456\'s receivers "scheduler" is a role that holds no alert:read',
     ]);
-    // Found by step 38b's review: cfo_100 holds CFO in org_456 only, so no person of org_789 does.
-    expect(problemsOf(GOOD, { org_789: { ...ORG_789, receivers: "CFO" } })).toStrictEqual([
-      'alerts.json: org_789\'s receivers "CFO" is a role no person of org_789 holds',
-    ]);
+    expect(problemsOf(GOOD, { org_789: { ...ORG_789, receivers: "CFO" } })).toStrictEqual([]);
   });
 
   it("DSOR-UNK-04b: alert_within is checked against §44's minute: PT1M passes, PT61S and words that are not a duration are refused", () => {

@@ -71,7 +71,12 @@ export async function checkDelegation(
   // README, decision 15). DSoR's own table must know the signer, as a person,
   // before her company's directory is asked about her job, because a directory lists service
   // accounts too. Found by step 19's review (step 19's README, decision 13).
-  if (principalNamed(slip.delegator)?.type !== "human") {
+  // Changed in step 45: the table holds no person any more, only agents, applications, and the
+  //   timer jobs' logins. A signer it names is no person, and is refused here. Anyone else is
+  //   her company's to answer for, at line ③'s last question, which refuses a person the company
+  //   does not list as active (step 45's README, C8 and D15).
+  const named = principalNamed(slip.delegator);
+  if (named !== undefined && named.type !== "human") {
     const why = `slip ${slip.id} is signed by ${slip.delegator}, who is not a person in ${tenant}`;
     throw new Refusal("AUTHORIZATION_DENIED", `${name}: ${why}`);
   }

@@ -88,7 +88,23 @@ describe("C3: rule.draft writes the next version, a draft (step 28's README, dec
 });
 
 describe("C3: line ⑨ checks a draft as start-up checks a version (step 28's README, decision D11)", () => {
-  const owner = (who: string) => `its owner ${who} is not a person who works in org_456`;
+  // NEW IN STEP 45: a person's job is no longer read at the draft. user_700 of org_789 may be named
+  //   the owner, and only she switches the version on, in person, where line ② asks org_456 about
+  //   her and refuses her (step 45's README, D15).
+  it("D15: a draft naming user_700 of org_789 as its owner is kept, and user_700 cannot switch it on in org_456", async () => {
+    const w = await ruleWorldOnTuesday();
+    const answer = await draft(w, CFO, { ...textOf(version9()), owner: "user_700" });
+    expect(answer).toMatchObject({ outcome: "COMMITTED" });
+    const USER_700_IN_456 = { token: "tok_e1a7", tenant: "org_456" };
+    expect(await ruleCall(w, USER_700_IN_456, "rule.activate", { version: 9 })).toMatchObject({
+      code: "AUTHORIZATION_DENIED",
+      message: "the caller may not work in the tenant it named",
+    });
+  });
+
+  // Changed in step 45: DSoR's table holds no person, so only a login it knows as no person is
+  //   refused as an owner (step 45's README, D15).
+  const owner = (who: string) => `its owner ${who} is not a person`;
   it.each([
     [
       "a condition that is not CEL",
@@ -125,8 +141,6 @@ describe("C3: line ⑨ checks a draft as start-up checks a version (step 28's RE
       "its condition loops with all, which this step refuses: a loop's time has no bound",
     ],
     ["an agent as its owner", { owner: "accounts-payable-fte" }, owner("accounts-payable-fte")],
-    ["a person of org_789 as its owner", { owner: "user_700" }, owner("user_700")],
-    ["an owner nobody knows", { owner: "user_900" }, owner("user_900")],
   ])(
     "DSOR-CTL-01a: a draft with %s is refused VALIDATION_FAILED, before any work, and nothing is kept",
     async (_what, fields, problem) => {
@@ -254,11 +268,11 @@ describe("C8: start-up checks a version's owner and its id (step 28's README, de
     return { file: "controls.json", text: JSON.stringify(data) };
   }
 
-  it("DSOR-CTL-01a: start-up refuses a version whose owner is not a person who works in its company", async () => {
+  it("DSOR-CTL-01a: start-up refuses a version whose owner is not a person", async () => {
     expect(
       await refusalAtStart(() => startWith(withRule({ owner: "accounts-payable-fte" }))),
     ).toContain(
-      "controls.json: org_456's control high-value-payment: its owner accounts-payable-fte is not a person who works in org_456",
+      "controls.json: org_456's control high-value-payment: its owner accounts-payable-fte is not a person",
     );
   });
 

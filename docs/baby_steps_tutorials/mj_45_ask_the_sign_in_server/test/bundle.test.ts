@@ -320,7 +320,9 @@ describe("C2: a bundle names the facts of its decision (step 33's README, D4 and
     ]);
   });
 
-  it("DSOR-AUD-03a: a person's own call names the person, in direct mode, from the login, under no slip: cfo_100's approval is committed", async () => {
+  // Changed in step 45: her authority comes from her company's lookup, which line ② asked
+  //   (step 45's README, C2).
+  it("DSOR-AUD-03a: a person's own call names the person, in direct mode, with the role source's answer, under no slip: cfo_100's approval is committed", async () => {
     const w = await ruleWorldOnTuesday();
     await approved(w);
     const bundle = await lastBundle(w);
@@ -330,12 +332,29 @@ describe("C2: a bundle names the facts of its decision (step 33's README, D4 and
         mode: "direct",
         subject: "cfo_100",
         actor_chain: [],
-        subject_authority: { source: "token" },
+        subject_authority: { source: "role_source" },
       },
       authority: { authorization: "ALLOW", controls: [] },
       execution: { result: "committed", semantics: "atomic" },
     });
     expect(bundle.authority).not.toHaveProperty("delegation");
+  });
+
+  // NEW IN STEP 45: and her move to APPROVED names it too. Found by piece 5's breaks: no test read
+  //   the move's own record (step 45's README, C2).
+  it("C2: cfo_100's move to APPROVED names her company's role source as her authority", async () => {
+    const w = await ruleWorldOnTuesday();
+    await approved(w);
+    const moves = (await w.proposals.transitions()).filter((move) => move.result === "APPROVED");
+    expect(moves).toMatchObject([
+      {
+        identity: {
+          mode: "direct",
+          subject: "cfo_100",
+          subject_authority: { source: "role_source" },
+        },
+      },
+    ]);
   });
 
   it("DSOR-AUD-03a: user_123's draft of INV-1005, a draft invoice, says DENY and not_executed, names its DENIED proposal as the key of its execution, and keeps the answer and its reason", async () => {

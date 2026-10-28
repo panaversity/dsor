@@ -43,6 +43,10 @@ export type RoleSettingsSource = { file: string; text: string };
 /** DSoR's side of the role source: the signer's current authority, or a refusal. */
 export type RoleSource = {
   authorityOf: (tenant: string, slip: Slip, name: string) => Promise<SignerAuthority>;
+  // NEW IN STEP 45: and a person's own, at line ②, when she calls for herself (step 45's README,
+  // C2; decision Q7).
+  /** What a person who calls for herself holds in this company now, or a refusal. */
+  memberOf: (tenant: string, person: string, name: string) => Promise<SignerAuthority>;
 };
 
 const SHIPPED = fileURLToPath(new URL("../role-sources.json", import.meta.url));
@@ -212,88 +216,102 @@ export function createRoleSource(
   // keeps them (step 45's README, D8).
   kept: KeptAnswers = memoryAnswers(),
 ): RoleSource {
+  // NEW IN STEP 45: the question both lines ask, about a slip's signer at line ③ and about a person
+  //   who calls for herself at line ②: what the company says about this person now, and as of
+  //   when (step 45's README, C2). `who` names the person in a refusal's words.
+  /** The answer DSoR may use about this person now, and its time, or a refusal. */
+  async function current(
+    tenant: string,
+    person: string,
+    name: string,
+    who: string,
+  ): Promise<{ answer: Answer; as_of: string }> {
+    const setting = settings.get(tenant);
+    const directory = directories.get(tenant);
+    // Start-up gives every company where a login works a setting. A company with no setting
+    // or no directory here is a fault in DSoR's own set-up, not an outage.
+    if (setting === undefined || directory === undefined) {
+      throw new Refusal("INTERNAL_ERROR", `DSoR has no role source for ${tenant}`);
+    }
+    const cannotUse = `the directory of ${tenant} answered with something DSoR cannot use`;
+
+    // The question. An answer is never later than the moment DSoR asked: the directory may
+    // have changed a moment after it answered (step 19's README, decision 14).
+    const askedAt = Date.now();
+    // NEW IN STEP 45: not at every call any more. An answer DSoR asked for less than 10
+    // seconds ago is used again, and the server is not asked, while the answer is under the
+    // company's bound too (D3). Never one asked for in the future: a clock that went back
+    // would make it look new (step 19's README, decision 15).
+    const recent = await kept.get(tenant, person);
+    const since = recent === undefined ? Number.NaN : askedAt - recent.asked;
+    const reuse =
+      recent !== undefined && since >= 0 && since < REUSE_MS && askedAt - recent.at < setting.ms;
+    const asked = reuse ? { answered: false as const } : await askWithin(directory, person);
+    let answer: Answer;
+    let at: number;
+    if (asked.answered) {
+      // One copy, read once, and every check and every use reads that copy, as line ①
+      // copies the input (step 07's README, decision 9; step 19's README, decision 17).
+      const copy = copyOf(asked.answer);
+      // NEW IN STEP 45: the time the server read its facts. Further than a minute ahead of
+      // DSoR's clock, the answer is one DSoR cannot use (D4).
+      const read = usable(copy, tenant, person) ? timeOf(copy.as_of) : Number.NaN;
+      if (!(read <= askedAt + AHEAD_MS)) {
+        // An answer DSoR cannot use is a fault. The strange answer may be the very news DSoR
+        // needs, so the kept answer goes too, unless DSoR learned it after it asked this
+        // question (decisions 11 and 14). Found by step 19's review.
+        await kept.forget(tenant, person, askedAt);
+        throw new Refusal("INTERNAL_ERROR", cannotUse);
+      }
+      answer = copy as Answer;
+      // NEW IN STEP 45: the answer counts from the earlier of the server's time and the moment
+      // DSoR asked (D13). Facts read longer ago than the company's bound establish nothing now,
+      // though they came back at once (DSOR-IDN-06; break B3).
+      at = Math.min(read, askedAt);
+      if (!(askedAt - at < setting.ms)) {
+        const where = `from the directory of ${tenant} that is recent enough`;
+        const why = `DSoR has no answer about ${who} ${where}`;
+        throw new Refusal("FRESHNESS_UNSATISFIABLE", `${name}: ${why}`);
+      }
+      // Older news never replaces newer: an answer whose facts are older than the kept ones is
+      // not kept over them (decision 14). Found by step 19's review.
+      // NEW IN STEP 45: the store decides it, in one step, with the moment DSoR asked (D3, D8).
+      await kept.keep(tenant, person, { answer: copy as Answer, at, asked: askedAt });
+    } else {
+      // No answer: the kept one counts only while it is under the company's bound
+      // (DSOR-IDN-06; step 19's README, decisions 3, 4, and 5). Never one from the future: a
+      // clock that went back would make an old answer look young (decision 15).
+      // NEW IN STEP 45: an answer used again takes this path too (D3). After a wait, the kept
+      // answer is read again: another call may have kept a newer one meanwhile.
+      const last = reuse ? recent : await kept.get(tenant, person);
+      const age = last === undefined ? Number.NaN : Date.now() - last.at;
+      if (last === undefined || !(age >= 0 && age < setting.ms)) {
+        // The message names no bound: how long a kept answer lasts is the company's to know
+        // (decision 16).
+        const where = `from the directory of ${tenant} that is recent enough`;
+        const why = `DSoR has no answer about ${who} ${where}`;
+        throw new Refusal("FRESHNESS_UNSATISFIABLE", `${name}: ${why}`);
+      }
+      // Checked again at every use: a kept answer about someone else, or from another
+      // company, is a fault too, and goes (step 19's README, C10).
+      if (!usable(last.answer, tenant, person)) {
+        await kept.forget(tenant, person, last.asked);
+        throw new Refusal("INTERNAL_ERROR", cannotUse);
+      }
+      answer = last.answer;
+      at = last.at;
+    }
+
+    // The time of the answer used, which line ⑪ records (step 19's README, decision 7).
+    // And which a suspension's record names too (step 19b's README, decision 5).
+    return { answer, as_of: new Date(at).toISOString() };
+  }
+
   return Object.freeze({
     authorityOf: async (tenant: string, slip: Slip, name: string): Promise<SignerAuthority> => {
       const person = slip.delegator;
-      const setting = settings.get(tenant);
-      const directory = directories.get(tenant);
-      // Start-up gives every company where a login works a setting. A company with no setting
-      // or no directory here is a fault in DSoR's own set-up, not an outage.
-      if (setting === undefined || directory === undefined) {
-        throw new Refusal("INTERNAL_ERROR", `DSoR has no role source for ${tenant}`);
-      }
-      const cannotUse = `the directory of ${tenant} answered with something DSoR cannot use`;
-
-      // The question. An answer is never later than the moment DSoR asked: the directory may
-      // have changed a moment after it answered (step 19's README, decision 14).
-      const askedAt = Date.now();
-      // NEW IN STEP 45: not at every call any more. An answer DSoR asked for less than 10
-      // seconds ago is used again, and the server is not asked, while the answer is under the
-      // company's bound too (D3). Never one asked for in the future: a clock that went back
-      // would make it look new (step 19's README, decision 15).
-      const recent = await kept.get(tenant, person);
-      const since = recent === undefined ? Number.NaN : askedAt - recent.asked;
-      const reuse =
-        recent !== undefined && since >= 0 && since < REUSE_MS && askedAt - recent.at < setting.ms;
-      const asked = reuse ? { answered: false as const } : await askWithin(directory, person);
-      let answer: Answer;
-      let at: number;
-      if (asked.answered) {
-        // One copy, read once, and every check and every use reads that copy, as line ①
-        // copies the input (step 07's README, decision 9; step 19's README, decision 17).
-        const copy = copyOf(asked.answer);
-        // NEW IN STEP 45: the time the server read its facts. Further than a minute ahead of
-        // DSoR's clock, the answer is one DSoR cannot use (D4).
-        const read = usable(copy, tenant, person) ? timeOf(copy.as_of) : Number.NaN;
-        if (!(read <= askedAt + AHEAD_MS)) {
-          // An answer DSoR cannot use is a fault. The strange answer may be the very news DSoR
-          // needs, so the kept answer goes too, unless DSoR learned it after it asked this
-          // question (decisions 11 and 14). Found by step 19's review.
-          await kept.forget(tenant, person, askedAt);
-          throw new Refusal("INTERNAL_ERROR", cannotUse);
-        }
-        answer = copy as Answer;
-        // NEW IN STEP 45: the answer counts from the earlier of the server's time and the moment
-        // DSoR asked (D13). Facts read longer ago than the company's bound establish nothing now,
-        // though they came back at once (DSOR-IDN-06; break B3).
-        at = Math.min(read, askedAt);
-        if (!(askedAt - at < setting.ms)) {
-          const where = `from the directory of ${tenant} that is recent enough`;
-          const why = `DSoR has no answer about ${person}, who signed slip ${slip.id}, ${where}`;
-          throw new Refusal("FRESHNESS_UNSATISFIABLE", `${name}: ${why}`);
-        }
-        // Older news never replaces newer: an answer whose facts are older than the kept ones is
-        // not kept over them (decision 14). Found by step 19's review.
-        // NEW IN STEP 45: the store decides it, in one step, with the moment DSoR asked (D3, D8).
-        await kept.keep(tenant, person, { answer: copy as Answer, at, asked: askedAt });
-      } else {
-        // No answer: the kept one counts only while it is under the company's bound
-        // (DSOR-IDN-06; step 19's README, decisions 3, 4, and 5). Never one from the future: a
-        // clock that went back would make an old answer look young (decision 15).
-        // NEW IN STEP 45: an answer used again takes this path too (D3). After a wait, the kept
-        // answer is read again: another call may have kept a newer one meanwhile.
-        const last = reuse ? recent : await kept.get(tenant, person);
-        const age = last === undefined ? Number.NaN : Date.now() - last.at;
-        if (last === undefined || !(age >= 0 && age < setting.ms)) {
-          // The message names no bound: how long a kept answer lasts is the company's to know
-          // (decision 16).
-          const where = `from the directory of ${tenant} that is recent enough`;
-          const why = `DSoR has no answer about ${person}, who signed slip ${slip.id}, ${where}`;
-          throw new Refusal("FRESHNESS_UNSATISFIABLE", `${name}: ${why}`);
-        }
-        // Checked again at every use: a kept answer about someone else, or from another
-        // company, is a fault too, and goes (step 19's README, C10).
-        if (!usable(last.answer, tenant, person)) {
-          await kept.forget(tenant, person, last.asked);
-          throw new Refusal("INTERNAL_ERROR", cannotUse);
-        }
-        answer = last.answer;
-        at = last.at;
-      }
-
-      // The time of the answer used, which line ⑪ records (step 19's README, decision 7).
-      // And which a suspension's record names too (step 19b's README, decision 5).
-      const as_of = new Date(at).toISOString();
+      const who = `${person}, who signed slip ${slip.id},`;
+      const { answer, as_of } = await current(tenant, person, name, who);
       // NEW IN STEP 45: suspended or gone, her agent gets nothing, and her slips here are suspended
       // (DSOR-IDN-07). Gone takes the place of step 19's deprovisioned and of "not listed": a
       // company's server says only that she is not here, not why (D4). One message for both:
@@ -306,6 +324,17 @@ export function createRoleSource(
           `${name}: slip ${slip.id} is signed by ${person}, ${whom}`,
           { word: answer.status, as_of },
         );
+      }
+      return { roles: [...answer.roles], source: "role_source", as_of };
+    },
+    // NEW IN STEP 45: the same question about a person who calls for herself, asked at line ②
+    //   (step 45's README, C2; decision Q7).
+    memberOf: async (tenant: string, person: string, name: string): Promise<SignerAuthority> => {
+      const { answer, as_of } = await current(tenant, person, name, person);
+      // Suspended or gone, she may not work in the company. The words are the ones line ② gives
+      //   anyone who is not a member, so the answer does not say which one she is (DSOR-ERR-01b).
+      if (answer.status !== "active") {
+        throw new Refusal("AUTHORIZATION_DENIED", "the caller may not work in the tenant it named");
       }
       return { roles: [...answer.roles], source: "role_source", as_of };
     },

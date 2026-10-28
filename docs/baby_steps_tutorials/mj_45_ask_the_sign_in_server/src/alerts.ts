@@ -54,11 +54,11 @@ const FIELDS = ["receivers", "escalate_to", "alert_within", "escalate_after", "s
 // §44's ceilings: an alert within one minute, a person within one hour.
 const MINUTE = 60 * 1000;
 const HOUR = 60 * MINUTE;
-// The permission that settles an unknown payment: the person an alert goes to must hold it, or
-//   the escalation reaches someone who cannot act (found by step 38b's review, M3).
-const SETTLES = "payment:reconcile";
-// And the permission alert.list's contract names. The receivers role and the
-//   person must hold it, or the alerts reach nobody (found by step 38c's review, H1).
+// The permission alert.list's contract names. The receivers role must hold it, or the alerts
+//   reach nobody (found by step 38c's review, H1).
+// Changed in step 45: start-up no longer checks that the person an escalation goes to holds
+//   payment:reconcile and alert:read (step 38b's review, M3). DSoR's table holds no person, and
+//   her company says what she holds when she acts (step 45's README, D15).
 const SEES = "alert:read";
 
 /** The problems of one company's line, or its checked alerts. */
@@ -83,27 +83,16 @@ function checkOne(
   const problems: string[] = [];
   const named = (field: string, value: string): string =>
     `${file}: ${tenant}'s ${field} ${JSON.stringify(value)}`;
-  // A person: a human with a membership in this company. Never an agent or a system login.
-  const people = principals.filter(
-    (p) => p.type === "human" && p.memberships.some((m) => m.tenant_id === tenant),
-  );
-  // The roles one person holds in this company.
-  const rolesOf = (p: Principal): string[] =>
-    p.memberships.filter((m) => m.tenant_id === tenant).flatMap((m) => m.roles);
-  const person = people.find((p) => p.id === escalate_to);
-  if (person === undefined) {
-    problems.push(`${named("escalate_to", escalate_to)} is not a person of ${tenant}`);
-  } else {
-    for (const permission of [SETTLES, SEES]) {
-      if (!rolesOf(person).some((role) => roles.get(role)?.has(permission) === true)) {
-        problems.push(`${named("escalate_to", escalate_to)} holds no ${permission} in ${tenant}`);
-      }
-    }
+  // Changed in step 45: DSoR's own table holds no person, so start-up reads no one's job here
+  //   (step 45's README, D15). escalate_to must not be a login DSoR knows as no person, and
+  //   receivers must be a role of roles.json that sees the alert. Whether a person holds a job in
+  //   the company, her company says when she acts, at line ②.
+  const known = principals.find((p) => p.id === escalate_to);
+  if (known !== undefined && known.type !== "human") {
+    problems.push(`${named("escalate_to", escalate_to)} is not a person`);
   }
   if (!roles.has(receivers)) {
     problems.push(`${named("receivers", receivers)} is not a role in roles.json`);
-  } else if (!people.some((p) => rolesOf(p).includes(receivers))) {
-    problems.push(`${named("receivers", receivers)} is a role no person of ${tenant} holds`);
   } else if (roles.get(receivers)?.has(SEES) !== true) {
     problems.push(`${named("receivers", receivers)} is a role that holds no ${SEES}`);
   }

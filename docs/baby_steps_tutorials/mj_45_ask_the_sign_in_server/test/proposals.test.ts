@@ -436,7 +436,8 @@ describe("a command's proposal, through the checklist", () => {
       subject_type: "human",
       actor_chain: [],
       active_tenant: "org_456",
-      subject_authority: { source: "token", as_of: expect.any(String) },
+      // Changed in step 45: from her company's lookup, which line ② asked (C2).
+      subject_authority: { source: "role_source", as_of: expect.any(String) },
     });
   });
 

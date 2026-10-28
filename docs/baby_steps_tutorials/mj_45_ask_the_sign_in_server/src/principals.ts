@@ -37,6 +37,9 @@ export type Principal = {
   type: PrincipalType;
   memberships: Membership[];
   clearance?: Label;
+  // NEW IN STEP 45: for a person, set by line ②: where her roles came from, her company's
+  // lookup, and as of when. A record of her own call names it (step 45's README, C2).
+  authority?: { source: "role_source"; as_of: string };
 };
 
 // The principals of steps 05 to 09 belong to one company, org_456.
@@ -54,14 +57,12 @@ export const logins: ReadonlyMap<string, Principal> = new Map([
   // Internal, so amounts are masked. §19.2's example gives it
   // confidential (step 14's README, decision 2).
   ["tok_7f3a", { ...principal("accounts-payable-fte", "agent", []), clearance: "internal" }],
-  ["tok_2c91", principal("user_123", "human", ["ap_supervisor"])],
-  ["tok_d4e8", principal("cfo_100", "human", ["CFO"])],
-  // Org_456's tenant administrator, who may tear up any slip of the company
-  // (DSOR-DEL-04a). The specification defines no such role, so tenant_admin is this tutorial's
-  // own (step 25's README, decision L2).
-  ["tok_a100", principal("admin_100", "human", ["tenant_admin"])],
-  // An accounting firm's agent, working for two client companies, and org_789's own
-  // supervisor (step 10's README, decision 7). Since step 18 the firm's agent holds no role:
+  // Changed in step 45: the people are gone from this table: user_123, cfo_100, admin_100,
+  // user_700, and admin_700. Whom a person's key names is the stand-in sign-in server's to say,
+  // and what she holds, her company's, which line ② asks (src/stand-in.ts; step 45's README,
+  // C2, C8, and D7). The agents and the timer jobs' logins stay (D6).
+  // An accounting firm's agent, working for two client companies (step 10's README,
+  // decision 7). Since step 18 the firm's agent holds no role:
   // its power in each company comes from that company's slip, del_101 and del_102.
   [
     "tok_9b52",
@@ -74,25 +75,6 @@ export const logins: ReadonlyMap<string, Principal> = new Map([
         { tenant_id: "org_456", roles: [] },
         { tenant_id: "org_789", roles: [] },
       ],
-    },
-  ],
-  [
-    "tok_e1a7",
-    {
-      id: "user_700",
-      type: "human",
-      memberships: [{ tenant_id: "org_789", roles: ["ap_supervisor"] }],
-    },
-  ],
-  // Org_789's tenant administrator, who may draft and manage org_789's rules. So
-  // the cross-tenant suite attacks the rule commands from both companies, as it attacks every
-  // operation (step 12's README, outcome 5; step 28's README, decision D19).
-  [
-    "tok_a700",
-    {
-      id: "admin_700",
-      type: "human",
-      memberships: [{ tenant_id: "org_789", roles: ["tenant_admin"] }],
     },
   ],
   // dsor-scheduler, a login of the specification's subject type system: neither

@@ -9,7 +9,7 @@ import type { Payment } from "../src/payment.ts";
 import { effectivePermissions } from "../src/permissions.ts";
 import { call } from "../src/pipeline.ts";
 import { createDbSlips } from "../src/postgres.ts";
-import type { Principal } from "../src/principals.ts";
+import { logins, type Principal } from "../src/principals.ts";
 import { buildRegistry, type Handler } from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import { memorySlips, NO_SLIPS, type SlipStore } from "../src/slips.ts";
@@ -379,24 +379,45 @@ describe("C3: the agent may use only what its slip lists and its signer holds no
   // step 18's review, line ③ refuses it (step 18's README, decisions 15 and 18). Since step
   // 19's review, from DSoR's own table, before the directory is asked (step 19's README,
   // decision 13).
-  it.each([
-    ["an agent", "firm-ap-fte"],
-    ["nobody DSoR knows", "user_999"],
-  ])("step 18's decision 15: a slip signed by %s is refused at line ③", async (_, delegator) => {
+  // Changed in step 45: nobody DSoR knows, user_999, is no longer refused by DSoR's table, which
+  //   holds no person: her company answers for her, below (step 45's README, D15).
+  it.each([["an agent", "firm-ap-fte"]])(
+    "step 18's decision 15: a slip signed by %s is refused at line ③",
+    async (_, delegator) => {
+      const lines: number[] = [];
+      const answer = await call(
+        slipRegistry(with100({ delegator })),
+        createLog(),
+        AGENT,
+        "invoice.get",
+        READ,
+        (n) => lines.push(n),
+      );
+      expect(answer).toMatchObject({
+        code: "AUTHORIZATION_DENIED",
+        message: `"invoice.get": slip del_100 is signed by ${delegator}, who is not a person in org_456`,
+      });
+      expect(lines).toStrictEqual([1, 2, 3, 11]);
+    },
+  );
+
+  // NEW IN STEP 45: user_999, whom org_456's company does not list, is gone, as a person who left
+  //   is (step 45's README, D4 and D15).
+  it("D15: a slip signed by user_999, whom DSoR does not know and org_456 does not list, is refused at line ③ as gone, and suspended", async () => {
     const lines: number[] = [];
-    const answer = await call(
-      slipRegistry(with100({ delegator })),
-      createLog(),
-      AGENT,
-      "invoice.get",
-      READ,
-      (n) => lines.push(n),
+    const slips = with100({ delegator: "user_999" });
+    const answer = await call(slipRegistry(slips), createLog(), AGENT, "invoice.get", READ, (n) =>
+      lines.push(n),
     );
     expect(answer).toMatchObject({
-      code: "AUTHORIZATION_DENIED",
-      message: `"invoice.get": slip del_100 is signed by ${delegator}, who is not a person in org_456`,
+      code: "DELEGATION_REQUIRED",
+      message:
+        '"invoice.get": slip del_100 is signed by user_999, whom the directory of org_456 does not list as active',
     });
     expect(lines).toStrictEqual([1, 2, 3, 11]);
+    expect((await slips.find("org_456", "accounts-payable-fte"))?.slip).toMatchObject({
+      status: "suspended",
+    });
   });
 
   it("step 18's decision 15: a slip signed by an application is refused at line ③, though the application's role holds the permission", async () => {
@@ -996,13 +1017,15 @@ describe("found by step 18's review", () => {
   // Line ③ finds a slip's signer by name, so one name must be one principal (step 18's
   // README, decision 19). Found by step 18's review: with two, the order of the logins
   // decided the signer's power.
+  // Changed in step 45: an agent's second key, since DSoR's table holds no person (step 45's
+  //   README, D7). A person's keys are the stand-in's.
   it("step 18's decision 19: two logins that name one principal stop start-up, named", async () => {
-    const twin = person("user_123", ["CFO"]);
+    const twin = { ...(logins.get("tok_7f3a") as Principal) };
     const message = await withPlanted("tok_twin", twin, () =>
       refusal(() => buildRegistry(shipped, handlers, shippedRoles)),
     );
     expect(message).toBe(
-      "the registry refused to start:\n  two logins name user_123, so DSoR could not tell which of them signed a slip",
+      "the registry refused to start:\n  two logins name accounts-payable-fte, so DSoR could not tell which of them signed a slip",
     );
   });
 });

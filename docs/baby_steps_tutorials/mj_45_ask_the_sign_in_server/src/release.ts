@@ -203,17 +203,21 @@ export async function askerNow(
       authority: { source: authority.source, as_of: authority.as_of },
     };
   }
-  // A person who asked for herself: what she holds in DSoR's own table now.
-  const person = principalNamed(requester.subject);
-  if (person === undefined) {
-    const why = `${requester.subject}, who asked, has no login now`;
-    throw new Refusal("AUTHORIZATION_DENIED", why, "internal");
-  }
+  // A person who asked for herself: what she holds now.
+  // Changed in step 45: asked of her company, as line ② asks, never of DSoR's table, which holds
+  //   no person (step 45's README, C2 and D7). A company that cannot answer now leaves the
+  //   proposal waiting, as for a slip's signer (decision D15).
+  const held = await roleSource.memberOf(tenant, requester.subject, JSON.stringify(target.id));
+  const person: Principal = {
+    id: requester.subject,
+    type: "human",
+    memberships: [{ tenant_id: tenant, roles: held.roles }],
+  };
   checkPermission(person, target, roles, tenant, undefined, undefined, found.mode);
   return {
-    roles: person.memberships.find((m) => m.tenant_id === tenant)?.roles ?? [],
+    roles: [...held.roles],
     slip: undefined,
-    authority: { source: "token", as_of: new Date().toISOString() },
+    authority: { source: held.source, as_of: held.as_of },
   };
 }
 

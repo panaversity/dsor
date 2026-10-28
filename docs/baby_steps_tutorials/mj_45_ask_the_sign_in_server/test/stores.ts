@@ -16,11 +16,24 @@ import {
   shippedInputs,
   shippedLabels,
   shippedRoles,
+  storyDirectories,
 } from "./helpers.ts";
 
 /** The shipped operations, reading through this store. */
 export function registryOver(store: InvoiceStore): Registry {
-  return buildRegistry(shipped, handlers, shippedRoles, shippedInputs, shippedLabels, store);
+  // Changed in step 45: with the story's directories, so a person's line ② finds her company
+  //   (step 45's README, C2).
+  return buildRegistry(
+    shipped,
+    handlers,
+    shippedRoles,
+    shippedInputs,
+    shippedLabels,
+    store,
+    undefined,
+    undefined,
+    storyDirectories(),
+  );
 }
 
 /** Calls "test.run" as this caller. Its code is the handler, and it reads through this store. */
