@@ -6,7 +6,13 @@
 // decision 1). DSoR's side of the question is in authority.ts.
 
 /** What a directory holds about one person: whether they still work there, and their jobs. */
-export type Person = { status: string; roles: string[] };
+export type Person = {
+  status: string;
+  roles: string[];
+  // NEW IN STEP 45e: and what kind of account it is, when the directory says (step 45e's README,
+  //   D18). Until the servers send it, an entry may leave it out (D30, the expand move).
+  type?: string;
+};
 
 // The directory answers with whatever it answers. DSoR checks the answer before it uses it,
 // so the answer has no type here (step 19's README, decision 11).
@@ -52,8 +58,10 @@ export function fakeDirectory(tenant: string, people: Record<string, Person>): F
       const entry = kept.get(person);
       const as_of = new Date().toISOString();
       if (entry === undefined) return { tenant, person, status: "gone", roles: [], as_of };
-      const { status, roles } = structuredClone(entry);
-      return { tenant, person, status, roles: status === "active" ? roles : [], as_of };
+      const { status, roles, type } = structuredClone(entry);
+      const answer = { tenant, person, status, roles: status === "active" ? roles : [], as_of };
+      // NEW IN STEP 45e: the type, when the entry has one (D18, D30).
+      return type === undefined ? answer : { ...answer, type };
     },
     set: (person: string, entry: Person | undefined): void => {
       if (entry === undefined) kept.delete(person);

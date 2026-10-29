@@ -8,7 +8,7 @@ import { memoryAnswers, type KeptAnswers } from "./answers.ts";
 import type { Directories, Directory } from "./directory.ts";
 import { Refusal, type ErrorCode } from "./envelope.ts";
 import { keysWrittenTwice } from "./json.ts";
-import type { Principal } from "./principals.ts";
+import type { Principal, PrincipalType } from "./principals.ts";
 // NEW IN STEP 45e: sign-in.json names the server whose ids DSoR's tokens use (D20).
 import { checkSignIn, readSignIn } from "./sign-in.ts";
 import type { Slip } from "./slips.ts";
@@ -33,6 +33,23 @@ export class SignerGone extends Refusal {
   }
 }
 
+// NEW IN STEP 45e: the refusal when a company says an account is no person. It has the stranger's
+//   code and words, so the caller hears what every non-member hears, and it carries the type, so
+//   line ② can name it in the record (step 45e's README, C2; D27).
+/** The stranger's refusal, which carries, for the record only, what kind of account it is. */
+export class NotAPerson extends Refusal {
+  readonly type: PrincipalType;
+
+  constructor(type: PrincipalType) {
+    super("AUTHORIZATION_DENIED", "the caller may not work in the tenant it named");
+    this.type = type;
+  }
+}
+
+// NEW IN STEP 45e: and what kind of account she is, by her company's answer (step 45e's README, C3).
+/** What a person who calls for herself holds in this company now, and what kind of account she is. */
+export type MemberAuthority = SignerAuthority & { type: PrincipalType };
+
 /** One company's role source setting, once start-up has checked it. */
 export type RoleSetting = { kind: "idp_lookup"; max_staleness: string; ms: number };
 
@@ -55,7 +72,7 @@ export type RoleSource = {
     // False when DSoR asks about the person who made a request, at its release:
     // she is not the caller (found by step 45c's review, finding 1).
     own?: boolean,
-  ) => Promise<SignerAuthority>;
+  ) => Promise<MemberAuthority>;
 };
 
 const SHIPPED = fileURLToPath(new URL("../role-sources.json", import.meta.url));
@@ -542,7 +559,7 @@ export function createRoleSource(
       person: string,
       name: string,
       own = true,
-    ): Promise<SignerAuthority> => {
+    ): Promise<MemberAuthority> => {
       // Suspended or gone, she may not work in the company. The words are the ones line ② gives
       //   anyone who is not a member, so the answer does not say which one she is (DSOR-ERR-01b).
       const stranger = new Refusal(
@@ -559,7 +576,10 @@ export function createRoleSource(
       const known =
         before !== undefined &&
         usable(before.answer, tenant, person, issuer) &&
-        before.answer.status === "active";
+        before.answer.status === "active" &&
+        // NEW IN STEP 45e: and a person. DSoR knows an account its company says is no person as no
+        //   member, so an outage tells it no more than a stranger hears (step 45e's README, D27).
+        typeOf(before.answer) === "human";
       // Her own call, at line ②, spends the company's budget when DSoR knows
       // nothing about her (C4, D23), and hears the stranger's words. A release's question about
       // the person who made a request does neither: she is not the caller, and a company that
@@ -574,9 +594,22 @@ export function createRoleSource(
         throw error;
       }
       if (found.answer.status !== "active") throw stranger;
-      return { roles: [...found.answer.roles], source: "role_source", as_of: found.as_of };
+      // NEW IN STEP 45e: and an account its company says is no person is no member either. It
+      //   hears the same words, and a release that asks about it throws the proposal away (step
+      //   45e's README, C2 and C4; D27). Line ② writes the type on the caller (C3).
+      const type = typeOf(found.answer);
+      if (type !== "human") throw new NotAPerson(type);
+      const { roles } = found.answer;
+      return { roles: [...roles], source: "role_source", as_of: found.as_of, type };
     },
   });
+}
+
+// NEW IN STEP 45e: an answer that names no type is read as a person's until the servers send one
+//   (step 45e's README, D30, the expand move).
+/** The kind of account an answer is about. */
+function typeOf(answer: Answer): PrincipalType {
+  return answer.type ?? "human";
 }
 
 /** The directory's answer, or none if it fails or takes longer than DSoR waits. */

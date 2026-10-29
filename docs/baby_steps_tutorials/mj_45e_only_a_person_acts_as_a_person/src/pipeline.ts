@@ -82,7 +82,9 @@ import { NO_PAYMENTS, unlocked, type PaymentStore } from "./payment.ts";
 import { checkResultSize } from "./pages.ts";
 import { checkPermission, effectivePermissions, permissionsOf } from "./permissions.ts";
 import { clearanceOf, maskRefusal, show } from "./masking.ts";
-import { callerIds, callerOf, checkNamedPrincipals } from "./principals.ts";
+import { callerIds, callerOf, checkNamedPrincipals, type PrincipalType } from "./principals.ts";
+// NEW IN STEP 45e: the refusal of an account its company says is no person (D27).
+import { NotAPerson } from "./authority.ts";
 import {
   callerMover,
   closeProposal,
@@ -237,6 +239,9 @@ export async function call(
   // What line ① learned about the call's token: the issuer and client of one that
   //   counts, or why one was refused and who it speaks for (decisions 44-10 and 44-11).
   let tokenOfCall: TokenOfRecord | undefined;
+  // NEW IN STEP 45e: the kind of account a person's company says she is, when line ② refused her
+  //   for it. The record names it; the caller hears the stranger's words (step 45e's README, C2).
+  let notAPersonOfRecord: PrincipalType | undefined;
   // The label of each read the code makes, noted by the bound store. Only the
   // checklist holds this notebook (step 15's README, decision 5).
   const reads = newReads();
@@ -357,9 +362,19 @@ export async function call(
       // is not a member, and the next line refuses her (step 45's README, C2; decision Q7).
       if (caller.type === "human" && isTenantId(named)) {
         // The name the caller sent, cut and quoted: the contract is not looked up yet.
-        const held = await registry.roleSource.memberOf(named, caller.id, preview(name));
+        const held = await registry.roleSource
+          .memberOf(named, caller.id, preview(name))
+          // NEW IN STEP 45e: an account its company says is no person hears the stranger's words,
+          //   and its record names the type (step 45e's README, C2; D27).
+          .catch((thrown: unknown) => {
+            if (thrown instanceof NotAPerson) notAPersonOfRecord = thrown.type;
+            throw thrown;
+          });
         caller = {
           ...caller,
+          // NEW IN STEP 45e: the kind of account her company says she is, never the login's
+          //   guess, so every check after line ② reads the company's word (step 45e's README, C3).
+          type: held.type,
           memberships: [{ tenant_id: named, roles: held.roles }],
           authority: { source: held.source, as_of: held.as_of },
         };
@@ -2412,6 +2427,8 @@ export async function call(
       evidence.asserted,
       // And the login of a good token for nobody DSoR lists (decision 44-10).
       tokenOfCall,
+      // NEW IN STEP 45e: and the type of an account line ② refused as no person (D27).
+      notAPersonOfRecord,
     );
     const bundle = bundleOf(decision, evidence, registry.contracts.get(name));
     if (bundle === undefined) return { decision, bundle };
