@@ -406,11 +406,21 @@ and a time that a paused call never reads.
 - **D15** (entry 28) was reviewed after this step was built: its three gaps go to steps 45d and 45e
   (entries 35 to 37).
 
+### Found later, and fixed here
+
+- **A release threw a waiting payment away when the sign-in server could not answer** (step 45c's
+  review, finding 1; entry 44 of [`../mj_decisions.md`](../mj_decisions.md)). Since step 45, a
+  release asks again about the person who made the request, with the question line ② asks. For
+  someone DSoR kept no active answer about, a `503` gave the words every stranger hears, and the
+  release read them as "no": `APPROVAL_INVALIDATED`. Now only a person's own call hears the
+  stranger's words. The release hears `FRESHNESS_UNSATISFIABLE`, and the proposal waits. Fixed on
+  2026-10-29 in step 45 too, with a test that fails without the fix.
+
 ## The rules this step meets
 
 | Rule | What it says | Spec | Tests |
 |---|---|---|---|
-| DSOR-IDN-06 | With no authority recent enough, the command is refused | [§12.1](../../../specs/dsor/02-security.md#121-role-source) | `test/pause.test.ts` (C4) |
+| DSOR-IDN-06 | With no authority recent enough, the command is refused | [§12.1](../../../specs/dsor/02-security.md#121-role-source) | `test/pause.test.ts` (C4), `test/people.test.ts` (a release that waits) |
 | DSOR-TEN-02a | Caches, counters, and the rest are keyed by company | [§14](../../../specs/dsor/02-security.md#14-multi-tenancy) | `test/one-lookup.test.ts` (C2), `test/pause.test.ts` (C7) |
 
 The shared lookup, the pause, the trial, and the fault rule are this tutorial's decisions: those
