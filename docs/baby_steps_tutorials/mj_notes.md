@@ -259,6 +259,17 @@ limits cover callers' requests, not DSoR's own questions, so this too is the tut
 release's question about a request's maker must not spend it, nor turn an outage into "no" (entry
 44).
 
+### Where does a person's type come from, when DSoR keeps no people?
+
+Found in step 45e's understanding session (2026-10-29). DSOR-IDN-01 asks DSoR to give every caller
+a type before any other processing, and DSOR-SOD-01b asks that an approver be `human`. §12.1 says a
+role source gives "the current roles of a principal", and nothing about the principal's type. Since
+step 45 this tutorial keeps no table of people, so DSoR has no source for the type of a person's
+account: a script account that its company lists with a role passes as a person, signs slips, and
+approves. The tutorial's proposal: the role source's answer carries `type` and `issuer` (entries 35
+and 37 of `mj_decisions.md`). To raise: should §12.1 say that a role source answers the principal's
+type, and whose ids it uses?
+
 ## Proposals for the specification
 
 Changes the learner has decided to propose. None of them is in the specification. They go to it
@@ -3630,6 +3641,49 @@ recommendation first. The learner took each recommendation, after two questions 
   the specification". Until it lands, step 45's tests are titled by these decisions (D2, D4,
   …), as step 44's were by 44-1 and Q2. **Next:** the SSO's route moves to the contract, then
   step 45 is built.
+
+### Understanding step 45e, only a person acts as a person (2026-10-29)
+
+Five parts, with two stories, finance and Panaversity ops. A real run on step 45c's code, in a
+scratch copy, settled each prediction. No code was written.
+
+- **Part 1.** Since step 45, DSoR calls every account that a token names a person, unless its own
+  table names it. `svc_ap_bot`, a script account that org_456 lists as CFO, approved PAY-901. Step
+  29's guard on the caller's type passed, because a token's login is always `human`.
+- **Part 2.** The reply about the script and the reply about cfo_100 look the same. DSoR's own
+  table can name the script, and line ① then refuses its token before any lookup, but that list is
+  kept twice. 45e adds `type` to the company's reply (D18, entry 35).
+- **Part 3.** "A person" counts at line ② (her own call), at line ③ (a slip's signer), at the
+  approval, and at a release's question about the person who asked. An agent under a slip that the
+  script signed read INV-1008, and the record named the script as the subject.
+- **Part 4.** One id, two servers. A clerk whose id names the CFO's deputy on org_456's HR server
+  approved PAY-901. D2's check compares text, so it passed. 45e adds `issuer` (D20, entry 37).
+  OpenID Connect identifies a person by the issuer and `sub` together.
+- **Part 5.** The answer's schema refuses unknown fields (`additionalProperties: false`). When the
+  server sends `type` before DSoR knows the field, cfo_100's next call hears `INTERNAL_ERROR`, her
+  kept answer is erased, and her call after that hears the stranger's words. The upgrade needs an
+  order.
+
+**The miss.** In part 5 the prediction expected DSoR to ignore fields it does not know, as many web
+clients do. DSoR's check of the contract is strict. One miss, so no habit is named yet.
+
+**Questions for 45e's design** (Phase A starts from these; none is decided):
+
+1. What a non-person hears at line ②: the stranger's words (DSOR-ERR-01b), or a refusal that says
+   only a person may call for herself.
+2. A slip whose signer is not a person: refuse each call, or also suspend her slips, as for `gone`
+   (DSOR-IDN-07).
+3. A release whose requester is now not a person: invalidate it, as for a requester who left.
+4. An answer from another issuer: a fault that erases the kept answer (as D2 does), or a refusal of
+   the call only.
+5. During the upgrade, an answer without `type` or `issuer`: a fault (the server upgrades first),
+   or a person for a while (the hole stays open). And the order: DSoR accepts the fields, then the
+   server sends them, then DSoR requires them.
+6. Unknown fields in a reply: keep the strict schema, or ignore them. This decides every later
+   change to the contract too.
+7. Which types a reply may carry: all four of §12, or `human` and one word for "not a person".
+8. How the Panaversity SSO marks a script account is the SSO's own choice, for its notes, not
+   DSoR's (the four-company check).
 
 ## Still unknown
 
