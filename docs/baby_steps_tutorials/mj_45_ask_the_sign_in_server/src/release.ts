@@ -207,7 +207,14 @@ export async function askerNow(
   // Changed in step 45: asked of her company, as line ② asks, never of DSoR's table, which holds
   //   no person (step 45's README, C2 and D7). A company that cannot answer now leaves the
   //   proposal waiting, as for a slip's signer (decision D15).
-  const held = await roleSource.memberOf(tenant, requester.subject, JSON.stringify(target.id));
+  // Not her own call: a company that cannot answer now about her is no refusal (found by step
+  //   45c's review, finding 1).
+  const held = await roleSource.memberOf(
+    tenant,
+    requester.subject,
+    JSON.stringify(target.id),
+    false,
+  );
   const person: Principal = {
     id: requester.subject,
     type: "human",

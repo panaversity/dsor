@@ -46,7 +46,14 @@ export type RoleSource = {
   // NEW IN STEP 45: and a person's own, at line ②, when she calls for herself (step 45's README,
   // C2; decision Q7).
   /** What a person who calls for herself holds in this company now, or a refusal. */
-  memberOf: (tenant: string, person: string, name: string) => Promise<SignerAuthority>;
+  memberOf: (
+    tenant: string,
+    person: string,
+    name: string,
+    // False when DSoR asks about the person who made a request, at its release: she is not the
+    //   caller (found by step 45c's review, finding 1).
+    own?: boolean,
+  ) => Promise<SignerAuthority>;
 };
 
 const SHIPPED = fileURLToPath(new URL("../role-sources.json", import.meta.url));
@@ -337,7 +344,12 @@ export function createRoleSource(
     },
     // NEW IN STEP 45: the same question about a person who calls for herself, asked at line ②
     //   (step 45's README, C2; decision Q7).
-    memberOf: async (tenant: string, person: string, name: string): Promise<SignerAuthority> => {
+    memberOf: async (
+      tenant: string,
+      person: string,
+      name: string,
+      own = true,
+    ): Promise<SignerAuthority> => {
       // Suspended or gone, she may not work in the company. The words are the ones line ② gives
       //   anyone who is not a member, so the answer does not say which one she is (DSOR-ERR-01b).
       const stranger = new Refusal(
@@ -355,11 +367,15 @@ export function createRoleSource(
         before !== undefined &&
         usable(before.answer, tenant, person) &&
         before.answer.status === "active";
+      // Only her own call hears the stranger's words when her company cannot answer. A release's
+      //   question about the person who made a request is not her call, and a company that cannot
+      //   answer now leaves the proposal waiting. Found by step 45c's review, finding 1: the
+      //   stranger's words were a "no", and a 503 threw the waiting payment away.
       let found: { answer: Answer; as_of: string };
       try {
         found = await current(tenant, person, name, person);
       } catch (error) {
-        if (!known) throw stranger;
+        if (own && !known) throw stranger;
         throw error;
       }
       if (found.answer.status !== "active") throw stranger;

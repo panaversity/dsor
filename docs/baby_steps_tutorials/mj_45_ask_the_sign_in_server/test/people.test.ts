@@ -262,6 +262,61 @@ describe("C2 and Q7: line ② asks a person's company what she holds", () => {
     });
   });
 
+  // Found by step 45c's review, finding 1, and fixed in this step too: a release asks about the
+  //   person who made the request, and she is not the caller. Her company's "cannot answer now"
+  //   was heard as the stranger's "no", and the release threw the waiting payment away.
+  it("DSOR-IDN-06: at a release, a company that cannot answer now about its requester leaves the proposal waiting, though DSoR knows nothing about her now (found by step 45c's review)", async () => {
+    // user_124, a second AP supervisor whose key DSoR knows too, releases user_123's payment.
+    server.set("user_124", { status: "active", roles: ["ap_supervisor"] });
+    const base = registry;
+    registry = {
+      ...base,
+      logins: {
+        ...base.logins,
+        find: async (token: string) =>
+          token === "tok_x124"
+            ? { id: "user_124", type: "human" as const, memberships: [] }
+            : base.logins.find(token),
+      },
+    } as Registry;
+    const USER_124 = { token: "tok_x124", tenant: "org_456" };
+    const log = createLog();
+    const prepared = await call(
+      registry,
+      log,
+      { ...keyed(SUPERVISOR), mode: "propose_only" },
+      "payment.create",
+      DRAFT,
+    );
+    expect(prepared).toMatchObject({ outcome: "READY" });
+    const proposal = "proposal" in prepared ? prepared.proposal : "";
+    at("02:00:30");
+    expect(await call(registry, log, USER_124, "invoice.get", INVOICE)).toHaveProperty("data");
+    // At 02:01, a reply DSoR cannot use is a fault, and erases its answer about user_123 (C6, D2).
+    at("02:01:00");
+    server.replyStatus(403);
+    expect(await call(registry, log, SUPERVISOR, "invoice.get", INVOICE)).toMatchObject({
+      code: "INTERNAL_ERROR",
+    });
+    server.replyStatus(undefined);
+    // user_124's own answer is new at 02:02, and used again for 10 seconds (D3). Then the server
+    //   cannot answer.
+    at("02:02:00");
+    expect(await call(registry, log, USER_124, "invoice.get", INVOICE)).toHaveProperty("data");
+    server.replyStatus(503);
+    at("02:02:01");
+    const once = keyed(USER_124);
+    expect(await call(registry, log, once, "proposal.execute", { proposal })).toMatchObject({
+      code: "FRESHNESS_UNSATISFIABLE",
+    });
+    // The server answers again a second later, and the same key releases the waiting payment.
+    server.replyStatus(undefined);
+    at("02:02:02");
+    expect(await call(registry, log, once, "proposal.execute", { proposal })).toMatchObject({
+      outcome: "COMMITTED",
+    });
+  });
+
   it("C2: the bundle of user_123's own draft says her authority came from the role source, as of 02:00", async () => {
     const log = createLog();
     expect(await call(registry, log, keyed(SUPERVISOR), "payment.create", DRAFT)).toMatchObject({

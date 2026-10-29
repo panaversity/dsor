@@ -575,6 +575,16 @@ DSoR after all.
 - **The proposal.** The lookup contract is not in the specification yet. `proposals/` holds its
   schema, and `mj_notes.md` its sentences, until they are proposed together.
 
+### Found later, and fixed here
+
+- **A release threw a waiting payment away when the sign-in server could not answer** (step 45c's
+  review, finding 1; entry 44 of [`../mj_decisions.md`](../mj_decisions.md)). A release asks again
+  about the person who made the request, with the question line ② asks. For someone DSoR kept no
+  active answer about, a `503` gave the words every stranger hears, and the release read them as
+  "no": `APPROVAL_INVALIDATED`. Now only a person's own call hears the stranger's words. The
+  release hears `FRESHNESS_UNSATISFIABLE`, and the proposal waits. Fixed on 2026-10-29, with a
+  test that fails without the fix.
+
 ## The rules this step meets
 
 | Rule | What it says | Spec | Tests |
@@ -583,7 +593,7 @@ DSoR after all.
 | DSOR-IDN-04a | Roles come only from an issuer or role source the company trusts | [§12](../../../specs/dsor/02-security.md#12-identity-and-principals) | `test/people.test.ts` (C2) |
 | DSOR-IDN-04b | A claim from anywhere else decides nothing | [§12](../../../specs/dsor/02-security.md#12-identity-and-principals) | `test/people.test.ts` (C2), `test/logins.test.ts` |
 | DSOR-IDN-05 | Each company has a role source that DSoR asks about a person who is not in the request | [§12.1](../../../specs/dsor/02-security.md#121-role-source) | `test/lookup.test.ts`, `test/lookup-replies.test.ts`, `test/lookups.test.ts` (C1) |
-| DSOR-IDN-06 | With no authority recent enough, the command is refused | [§12.1](../../../specs/dsor/02-security.md#121-role-source) | `test/lookup.test.ts`, `test/lookup-replies.test.ts` (C5), `test/answers.test.ts`, `test/answers.db.test.ts` |
+| DSOR-IDN-06 | With no authority recent enough, the command is refused | [§12.1](../../../specs/dsor/02-security.md#121-role-source) | `test/lookup.test.ts`, `test/lookup-replies.test.ts` (C5), `test/answers.test.ts`, `test/answers.db.test.ts`, `test/people.test.ts` (a release that waits) |
 | DSOR-IDN-07 | A signer reported suspended or gone has every slip she signed suspended | [§12.1](../../../specs/dsor/02-security.md#121-role-source) | `test/lookup.test.ts`, `test/suspended-slips.test.ts` (C4) |
 | DSOR-AUT-01b | No permission granted, no operation | [§15](../../../specs/dsor/02-security.md#15-authorization) | `test/role-source.test.ts`, `test/people.test.ts` (C4) |
 | DSOR-DEL-02 | Effective authority is the slip's grants cut down to the signer's authority now | [§13](../../../specs/dsor/02-security.md#13-delegation) | `test/role-source.test.ts`, `test/recheck.test.ts` (C4) |
