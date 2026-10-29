@@ -173,7 +173,7 @@ Decided by the learner on 2026-10-28 ([`mj_notes.md`](mj_notes.md), the last two
   own calls; over it, the stranger's words at once (D23, D24). A stranger's own calls use "not a
   member" for 10 minutes (D26). Run for real: 25 new SSO accounts, 20 lookups.
 - Its review found that a release spent the budget and threw a waiting payment away, a bug since
-  step 45 for a `503`: fixed here, and proposed for steps 45 and 45b (entry 44).
+  step 45 for a `503`: fixed here, and in steps 45 and 45b on 2026-10-29 (entry 44).
 - From the reviews of steps 45 and 45b ([`mj_decisions.md`](mj_decisions.md), entries 32 and 34);
   decided and built on 2026-10-29 (entries 38 to 44).
 

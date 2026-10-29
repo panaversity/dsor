@@ -388,8 +388,9 @@ when she was the next caller, so her backoff did not start over. Fixed, with a t
   server asks again at once, about everyone, as step 45b's did.
 - **A key rotation that makes everyone a stranger,** after a fault erases their kept answers, is step
   45f's (entry 43).
-- **Steps 45 and 45b keep the release bug** that this step fixes (entry 44): a `503` at a release of
-  a person's own request, about someone DSoR keeps no active answer about, throws the proposal away.
+- **Steps 45 and 45b had the release bug** that this step fixes (entry 44): a `503` at a release of
+  a person's own request, about someone DSoR kept no active answer about, threw the proposal away.
+  Fixed in both on 2026-10-29.
 - **Someone added to a company just after her first try** waits up to 10 minutes (D26's downside).
 - **The answer's `type` and `issuer`** are step 45e's (entries 35 and 37), and **the escalation
   person and Q8's alert** step 45d's (entries 33 and 36).

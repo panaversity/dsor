@@ -581,6 +581,10 @@ close in entries 35 to 37.
   it is fixed there first; steps 45 and 45b are proposed separately.
 - **Cost.** Until then, steps 45 and 45b keep the bug.
 - **Rejected.** Stopping step 45c to fix steps 45 and 45b first.
+- **Fixed in steps 45 and 45b on 2026-10-29.** The same change in each: only a person's own call
+  hears the stranger's words when her company cannot answer, and a release's question about its
+  requester hears what her company said. Each step's `test/people.test.ts` has the test, which gave
+  `APPROVAL_INVALIDATED` before the fix.
 
 ## Open
 
