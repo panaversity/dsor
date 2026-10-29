@@ -617,6 +617,72 @@ close in entries 35 to 37.
 - **Rejected.** Building it after step 45e; treating a `403` as "cannot answer now", which changes
   step 45's D2 and lets old answers count for up to an hour after a company revokes DSoR's key.
 
+## 47 · A non-person is a non-member, at line ② and at a release (2026-10-30), D27
+
+**Decided by:** the learner, on Claude Code's recommendation, before step 45e's code.
+
+- **What.** When a company's answer gives an account any type but `human`, line ② refuses the
+  account's own call with the words every stranger hears, and a release that asks again about such
+  a requester throws the proposal away. DSoR's record of the refusal names the type.
+- **Why.** As step 45 does for "suspended" and "gone", the reply does not say what DSoR knows about
+  an account (DSOR-ERR-01b). A release reads the refusal as "no", as for a requester who left.
+- **Cost.** A script's owner hears only "may not work in the tenant"; the reason is in the record,
+  not in the reply.
+- **Rejected.** Words of its own ("only a person may call for herself"), which tell any account that
+  DSoR knows its kind; checking only at line ②, which lets a script's earlier request be released.
+- **Built in** step 45e.
+
+## 48 · A slip that no person signed is refused, and its signer's slips are suspended (2026-10-30), D28
+
+**Decided by:** the learner, on Claude Code's recommendation, before step 45e's code.
+
+- **What.** At line ③, when a slip's signer is not `human` by her company's answer, the call is
+  refused with `DELEGATION_REQUIRED`, in the words a signer who left gets, and every slip she signed
+  in that company is suspended first, with a record that names the type: the path of DSOR-IDN-07.
+- **Why.** §13 calls a slip "a permission slip from a human to an agent". A slip that no person
+  signed puts no person behind the agent, and a suspension records once that it is broken.
+- **Cost.** A person marked as a script by mistake keeps her slips suspended after the company fixes
+  the mark, and DSoR has no operation that lifts a slip's suspension yet ("Who may lift a slip's
+  hold?" in `mj_notes.md`).
+- **Rejected.** Refusing each call only, which records nothing once, and lets a mark that flips back
+  make the slip work again with no one looking.
+- **Built in** step 45e.
+
+## 49 · An answer from another issuer is a fault (2026-10-30), D29
+
+**Decided by:** the learner, on Claude Code's recommendation, before step 45e's code.
+
+- **What.** An answer whose `issuer` is not the one in `sign-in.json` is a fault, as an answer about
+  someone else is (step 45's D2): `INTERNAL_ERROR`, and DSoR's kept answer about that person is
+  erased.
+- **Why.** A lookup that answers in another server's ids is a set-up mistake that must be fixed now,
+  and the fault makes it loud at once.
+- **Cost.** After the lookup's address is fixed, the people whose kept answers were erased count as
+  strangers, and their own calls wait for step 45c's budget (entry 43's case, parked by entry 46).
+  Agents' calls at line ③ do not wait.
+- **Rejected.** Reading it like "cannot answer now", which keeps the kept answers and recovers at
+  once, but makes an exception to D2 and hides the cause for up to an hour.
+- **Built in** step 45e.
+
+## 50 · Expand, then contract (2026-10-30), D30
+
+**Decided by:** the learner, on Claude Code's recommendation, before step 45e's code.
+
+- **What.** The answer's contract stays strict: a field DSoR does not know is a fault. The two new
+  fields ship in three moves. DSoR first accepts `type` and `issuer` as optional, and reads an
+  answer without them as before; then the servers send them; then DSoR requires them. Step 45e's
+  final code requires them.
+- **Why.** A real run (step 45e's understanding session, part 5): a server that sends the fields
+  before DSoR knows them makes every answer a fault, and its people hear `INTERNAL_ERROR`, then the
+  stranger's words. A DSoR that requires the fields before the server sends them fails the same way.
+  One side must bend for a while.
+- **Cost.** Two DSoR releases. Until the second, a company whose server has not upgraded stays
+  exposed, and DSoR waits for its slowest company.
+- **Rejected.** Ignoring unknown fields, as OpenID Connect does with claims, which changes step 45's
+  D2 test and lets an older DSoR ignore a later field that says "no"; a setting per company, which
+  leaves a company exposed as long as its setting says so, and adds a setting forever.
+- **Built in** step 45e.
+
 ## Open
 
 - **The SSO writes a key's row on every check.** Better Auth updates `updatedAt` each time, so all
