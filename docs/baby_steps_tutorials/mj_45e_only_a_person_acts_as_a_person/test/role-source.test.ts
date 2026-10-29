@@ -67,7 +67,8 @@ function noFreshAnswer(
 
 /** The message when the directory does not list the signer as active, whatever it says. */
 function notActive(name: string): string {
-  const whom = "whom the directory of org_456 does not list as active";
+  // NEW IN STEP 45e: "an active person", for a signer who left or who is no person (D28).
+  const whom = "whom the directory of org_456 does not list as an active person";
   return `"${name}": slip del_100 is signed by user_123, ${whom}`;
 }
 
@@ -724,9 +725,10 @@ describe("C8: only the directory speaks for the absent signer's job", () => {
         { ...CREATE, expected_version: 1 },
         (n) => lines.push(n),
       );
+      // NEW IN STEP 45e: "an active person", for a signer who left or who is no person (D28).
       expect(answer).toMatchObject({
         code: "DELEGATION_REQUIRED",
-        message: `"payment.create": slip del_100 is signed by ${signer}, whom the directory of org_456 does not list as active`,
+        message: `"payment.create": slip del_100 is signed by ${signer}, whom the directory of org_456 does not list as an active person`,
       });
       expect(lines).toStrictEqual([1, 2, 3, 11]);
     },

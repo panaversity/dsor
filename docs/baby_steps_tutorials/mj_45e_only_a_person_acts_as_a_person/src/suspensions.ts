@@ -3,6 +3,7 @@
 // every active slip she signed in
 // that company, before it refuses the call (DSOR-IDN-07 in specs/dsor/02-security.md, section
 // 12.1; step 19b's README, decisions 1 to 8).
+// NEW IN STEP 45e: and so when it reports her as no person (step 45e's README, C5; D28).
 import { SignerGone } from "./authority.ts";
 import { Refusal, type Correlation } from "./envelope.ts";
 import type { SlipStore } from "./slips.ts";

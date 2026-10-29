@@ -68,7 +68,8 @@ describe("C1 and C6: the answer learns type and issuer, and does not need them y
   it("D18: each of §12's four types is a type DSoR can read", async () => {
     for (const type of ["human", "agent", "application", "system"]) {
       const { registry } = dsor(aboutHer({ type, issuer: SSO }));
-      // Line ③ reads every one of them. What a type other than human may do is piece 4's.
+      // Line ③ reads every one of them. A type other than human is refused for what it is, not
+      //   as an answer DSoR cannot use (step 45e's README, C5).
       expect(await draft(registry)).not.toMatchObject({ message: CANNOT_USE });
     }
   });

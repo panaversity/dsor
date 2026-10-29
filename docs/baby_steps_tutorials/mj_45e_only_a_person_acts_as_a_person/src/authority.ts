@@ -21,7 +21,8 @@ export type SignerAuthority = { roles: string[]; source: "role_source"; as_of: s
 // code and message, so the agent hears nothing new, and it carries the directory's word and the
 // time of its answer, so line ③ can suspend her slips before it refuses (DSOR-IDN-07; step 19b's
 // README, decision 4). It names no company and no person: line ③ uses its own (decision 4).
-/** A refusal that carries the directory's report: the signer is suspended or gone. */
+// NEW IN STEP 45e: or as no person, and then its word is the type (step 45e's README, D28).
+/** A refusal that carries the directory's report: the signer is suspended, gone, or no person. */
 export class SignerGone extends Refusal {
   readonly word: string;
   readonly as_of: string;
@@ -542,12 +543,17 @@ export function createRoleSource(
       // company's server says only that she is not here, not why (D4). One message for both:
       // which one she is, is a fact about a person that the agent may not read (DSOR-ERR-01b;
       // step 19's README, decision 16).
-      if (answer.status !== "active") {
-        const whom = `whom the directory of ${tenant} does not list as active`;
+      // NEW IN STEP 45e: and so for a signer her company says is no person: a slip is a person's
+      //   permission, and no person stands behind this one. The words gain "person", so they are
+      //   true for both. Her slips' records name the type, where a person who left has her status
+      //   (step 45e's README, C5; D28).
+      const type = typeOf(answer);
+      if (answer.status !== "active" || type !== "human") {
+        const whom = `whom the directory of ${tenant} does not list as an active person`;
         throw new SignerGone(
           "DELEGATION_REQUIRED",
           `${name}: slip ${slip.id} is signed by ${person}, ${whom}`,
-          { word: answer.status, as_of },
+          { word: answer.status !== "active" ? answer.status : type, as_of },
         );
       }
       return { roles: [...answer.roles], source: "role_source", as_of };

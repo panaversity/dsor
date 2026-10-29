@@ -1,9 +1,9 @@
-// NEW IN STEP 45e: only a person acts as a person (step 45e's README, C2, C3, and C4; D27). Every
+// NEW IN STEP 45e: only a person acts as a person (step 45e's README, C2 to C5; D27 and D28). Every
 // token's login names a person, so DSoR takes the kind of account from her company's answer.
 // svc_ap_bot is a script account: a program that signs in at org_456's sign-in server with a
 // password, as a person does. org_456 lists it as its CFO. A non-person is a non-member: when
 // org_456 says svc_ap_bot is an application, it reads nothing for itself, approves nothing, and a
-// payment it prepared is thrown away at its release.
+// payment it prepared is thrown away at its release. And no agent works under a slip it signed.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { memoryAnswers } from "../src/answers.ts";
 import type { FakeDirectory } from "../src/directory.ts";
@@ -13,8 +13,14 @@ import { call } from "../src/pipeline.ts";
 import type { Principal } from "../src/principals.ts";
 import type { Registry } from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
+import { memorySlips, type MemorySlips, type Slip } from "../src/slips.ts";
 import {
   CFO,
+  DEL_100,
+  DEL_101,
+  DEL_102,
+  FIRM_IN_456,
+  INTAKE_SLIP,
   keyed,
   NOT_A_MEMBER,
   OUR_EXTENSIONS,
@@ -60,6 +66,11 @@ async function waiting(w: RuleWorld): Promise<{ id: string; uri: string; payload
 /** The state of the proposal now. */
 async function stateOf(w: RuleWorld, id: string): Promise<string | undefined> {
   return (await w.proposals.get("org_456", id))?.state;
+}
+
+/** Sets DSoR's clock to this time of the story's night, in UTC. */
+function at(time: string): void {
+  vi.setSystemTime(new Date(`${NIGHT}T${time}Z`));
 }
 
 describe("C2: a person's own call counts only when her company says she is human (D27)", () => {
@@ -195,11 +206,6 @@ describe("C4: a release asks again about the person who asked for herself (D27)"
   let registry: Registry;
   let org456: FakeDirectory;
 
-  /** Sets DSoR's clock to this time of the story's night, in UTC. */
-  function at(time: string): void {
-    vi.setSystemTime(new Date(`${NIGHT}T${time}Z`));
-  }
-
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["Date"] });
     at("02:00:00");
@@ -240,5 +246,86 @@ describe("C4: a release asks again about the person who asked for herself (D27)"
       await call(registry, createLog(), keyed(SUPERVISOR), "proposal.execute", { proposal }),
     ).toMatchObject({ outcome: "COMMITTED" });
     expect(rows).toHaveLength(1);
+  });
+});
+
+describe("C5: a slip counts only while its company says its signer is human (D28)", () => {
+  // svc_ap_bot signed two slips in org_456: del_101, firm-ap-fte's, and del_190, intake-fte's.
+  //   user_123 signed del_100, the story's slip for accounts-payable-fte.
+  const SIGNED = [
+    DEL_100,
+    { ...DEL_101, delegator: "svc_ap_bot" },
+    DEL_102,
+    { ...INTAKE_SLIP, delegator: "svc_ap_bot" },
+  ];
+  // Step 19's words for a signer who left, with one word more: they are true for both.
+  const NOT_AN_ACTIVE_PERSON = "whom the directory of org_456 does not list as an active person";
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    at("02:00:00");
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** The story's registry with those slips, and org_456 saying svc_ap_bot is this kind of account. */
+  function signedBySvc(type: string) {
+    const slips = memorySlips(SIGNED);
+    const directories = storyDirectories();
+    const org456 = directories.get("org_456")!;
+    org456.set("svc_ap_bot", { status: "active", roles: ["ap_supervisor"], type });
+    const rows: Payment[] = [];
+    return { slips, org456, rows, registry: slipRegistry(slips, undefined, rows, directories) };
+  }
+
+  /** The status of the slip this agent holds in org_456, as the store reads it. */
+  async function statusOf(slips: MemorySlips, agent: string): Promise<unknown> {
+    return ((await slips.find("org_456", agent))?.slip as Slip | undefined)?.status;
+  }
+
+  it("D28: firm-ap-fte reads INV-1008 under del_101, which svc_ap_bot signed and org_456 says is an application: DELEGATION_REQUIRED, and both slips svc_ap_bot signed in org_456 are suspended, each with a record that names application", async () => {
+    const { slips, registry } = signedBySvc("application");
+    expect(await call(registry, createLog(), FIRM_IN_456, "invoice.get", INVOICE)).toMatchObject({
+      code: "DELEGATION_REQUIRED",
+      message: `"invoice.get": slip del_101 is signed by svc_ap_bot, ${NOT_AN_ACTIVE_PERSON}`,
+    });
+    expect(await statusOf(slips, "firm-ap-fte")).toBe("suspended");
+    expect(await statusOf(slips, "intake-fte")).toBe("suspended");
+    expect(await statusOf(slips, "accounts-payable-fte")).toBe("active");
+    expect(await slips.changes()).toMatchObject([
+      { result: "suspended", reason: "application", tenant: "org_456", delegation: "del_101" },
+      { result: "suspended", reason: "application", tenant: "org_456", delegation: "del_190" },
+    ]);
+  });
+
+  it("D28: the same slip reads INV-1008 while org_456 says svc_ap_bot is human, and nothing is suspended", async () => {
+    const { slips, registry } = signedBySvc("human");
+    expect(await call(registry, createLog(), FIRM_IN_456, "invoice.get", INVOICE)).toMatchObject({
+      data: { id: "INV-1008" },
+    });
+    expect(await slips.changes()).toStrictEqual([]);
+  });
+
+  // The check again at a release asks about the slip's signer too (step 31's README, D1).
+  it("D28: firm-ap-fte prepares a payment of INV-1008 under del_101 at 02:00. At 02:00:11 org_456 says svc_ap_bot is an application, and user_123's release throws the payment away", async () => {
+    const { org456, rows, registry } = signedBySvc("human");
+    const log = createLog();
+    const prepared = await call(
+      registry,
+      log,
+      { ...keyed(FIRM_IN_456), mode: "propose_only" },
+      "payment.create",
+      DRAFT,
+    );
+    expect(prepared).toMatchObject({ outcome: "READY" });
+    at("02:00:11");
+    org456.set("svc_ap_bot", { status: "active", roles: ["ap_supervisor"], type: "application" });
+    const proposal = "proposal" in prepared ? String(prepared.proposal) : "";
+    expect(
+      await call(registry, log, keyed(SUPERVISOR), "proposal.execute", { proposal }),
+    ).toMatchObject({ code: "APPROVAL_INVALIDATED" });
+    expect(rows).toStrictEqual([]);
   });
 });

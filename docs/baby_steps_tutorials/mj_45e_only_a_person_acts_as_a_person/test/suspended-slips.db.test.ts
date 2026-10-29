@@ -635,7 +635,8 @@ describe("C7: two calls at once make one change and one record", () => {
           call(other, log, signer.second, "invoice.get", READ),
         ]);
         // Both heard the directory's word, not the slip's status: both tried a suspension.
-        const whom = `whom the directory of org_456 does not list as active`;
+        // NEW IN STEP 45e: "an active person", for a signer who left or who is no person (D28).
+        const whom = `whom the directory of org_456 does not list as an active person`;
         expect(answers).toMatchObject([
           {
             message: `"invoice.get": slip ${signer.slips[0]} is signed by ${signer.person}, ${whom}`,

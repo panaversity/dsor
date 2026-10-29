@@ -52,7 +52,8 @@ function notActive(
   person = "user_123",
   tenant = "org_456",
 ): string {
-  const whom = `whom the directory of ${tenant} does not list as active`;
+  // NEW IN STEP 45e: "an active person", for a signer who left or who is no person (D28).
+  const whom = `whom the directory of ${tenant} does not list as an active person`;
   return `"${name}": slip ${slip} is signed by ${person}, ${whom}`;
 }
 /** Step 18's refusal of a slip that is not active: here, a suspended one. */

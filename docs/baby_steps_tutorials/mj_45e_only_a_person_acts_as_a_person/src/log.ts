@@ -132,6 +132,7 @@ export type DelegationChange = {
   result: "suspended" | "revoked";
   // The directory's word: suspended or gone (step 45). For the people who read
   // the log, never for the agent.
+  // NEW IN STEP 45e: or the type of a signer who is no person, such as application (D28).
   reason: string;
   // The call that heard it: its whole correlation, as the call's own record has it
   // (DSOR-COR-01a; step 19b's README, decision 14).

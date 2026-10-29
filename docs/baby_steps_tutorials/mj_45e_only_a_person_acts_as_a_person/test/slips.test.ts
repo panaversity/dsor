@@ -359,9 +359,10 @@ describe("C3: the agent may use only what its slip lists and its signer holds no
       const lines: number[] = [];
       const slips = with100({ delegator: "user_700" });
       const answer = await call(slipRegistry(slips), log, AGENT, name, input, (n) => lines.push(n));
+      // NEW IN STEP 45e: "an active person", for a signer who left or who is no person (D28).
       expect(answer).toMatchObject({
         code: "DELEGATION_REQUIRED",
-        message: `"${name}": slip del_100 is signed by user_700, whom the directory of org_456 does not list as active`,
+        message: `"${name}": slip del_100 is signed by user_700, whom the directory of org_456 does not list as an active person`,
         retry: "never",
       });
       expect(lines).toStrictEqual([1, 2, 3, 11]);
@@ -409,10 +410,11 @@ describe("C3: the agent may use only what its slip lists and its signer holds no
     const answer = await call(slipRegistry(slips), createLog(), AGENT, "invoice.get", READ, (n) =>
       lines.push(n),
     );
+    // NEW IN STEP 45e: "an active person", for a signer who left or who is no person (D28).
     expect(answer).toMatchObject({
       code: "DELEGATION_REQUIRED",
       message:
-        '"invoice.get": slip del_100 is signed by user_999, whom the directory of org_456 does not list as active',
+        '"invoice.get": slip del_100 is signed by user_999, whom the directory of org_456 does not list as an active person',
     });
     expect(lines).toStrictEqual([1, 2, 3, 11]);
     expect((await slips.find("org_456", "accounts-payable-fte"))?.slip).toMatchObject({
