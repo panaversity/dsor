@@ -50,8 +50,8 @@ export type RoleSource = {
     tenant: string,
     person: string,
     name: string,
-    // NEW IN STEP 45c: false when DSoR asks about the person who made a request, at its release:
-    //   she is not the caller (found by step 45c's review, finding 1).
+    // False when DSoR asks about the person who made a request, at its release:
+    // she is not the caller (found by step 45c's review, finding 1).
     own?: boolean,
   ) => Promise<SignerAuthority>;
 };
@@ -220,8 +220,8 @@ const PAUSE_MS = 10 * 1000;
 
 // One company's server, as this DSoR server has found it: its failures in a row,
 // the end of its pause, and whether a call is trying it again (D10, D16).
-// NEW IN STEP 45c: the run counts people, not failures: the different people whose lookups failed
-//   in a row, up to five, so one person's broken record counts once (step 45c's README, D25).
+// The run counts people, not failures: the different people whose lookups failed
+// in a row, up to five, so one person's broken record counts once (step 45c's README, D25).
 /** One company's run of failures on this DSoR server. */
 type Run = { failed: Set<string>; pausedUntil: number; trying: boolean };
 
@@ -230,21 +230,21 @@ type Run = { failed: Set<string>; pausedUntil: number; trying: boolean };
 /** A lookup that calls share: when DSoR asked, and the reply, if one came in time. */
 type Asked = { askedAt: number } & ({ answered: true; answer: unknown } | { answered: false });
 
-// NEW IN STEP 45c: a person whose lookups keep failing waits twice as long each time before DSoR
+// A person whose lookups keep failing waits twice as long each time before DSoR
 // asks about her again: 10 seconds, then 20, 40, 80, 160, and 5 minutes at most (step 45c's
 // README, D22).
 const BACKOFF_MAX_MS = 5 * 60 * 1000;
 
-// NEW IN STEP 45c: each DSoR server sends at most 20 lookups in any minute, for each company, about
+// Each DSoR server sends at most 20 lookups in any minute, for each company, about
 // people it knows nothing about, from their own calls (step 45c's README, D23).
 const BUDGET = 20;
 const BUDGET_MS = 60 * 1000;
 
-// NEW IN STEP 45c: a stranger's own calls use the answer that she is gone for 10 minutes, so a
+// A stranger's own calls use the answer that she is gone for 10 minutes, so a
 // sign-up account costs one lookup in 10 minutes, not one in 10 seconds (step 45c's README, D26).
 const STRANGER_MS = 10 * 60 * 1000;
 
-// NEW IN STEP 45c: the latest lookup about one person in one company, on this DSoR server: the
+// The latest lookup about one person in one company, on this DSoR server: the
 // lookup, in flight or with its reply, the moment DSoR asked, until when its reply is remembered,
 // and her failures in a row (D9, D21, D22).
 /** What one DSoR server remembers of its latest lookup about one person. */
@@ -263,14 +263,14 @@ export function createRoleSource(
   // The lookups in flight on this DSoR server, one for each company and person.
   // A call about the same pair waits for the one in flight, and asks nothing. The key holds the
   // company, as the kept answers' key does (step 45b's README, C1, C2, D9; DSOR-TEN-02a).
-  // NEW IN STEP 45c: and once its reply has come, it is remembered for a while: 10 seconds, or
+  // And once its reply has come, it is remembered for a while: 10 seconds, or
   // longer after failures in a row (step 45c's README, C1, C2, D21, D22). The oldest come first.
   const people = new Map<string, Memory>();
   // And each company's run of failures, keyed by company, so one company's outage
   // never pauses another (C7, D10; DSOR-TEN-02a). In memory too: a restart forgets a run.
   const runs = new Map<string, Run>();
-  // NEW IN STEP 45c: and each company's budget: the moments of its lookups about people DSoR knows
-  //   nothing about in the last minute, 20 at most (C4, D23; DSOR-TEN-02a).
+  // And each company's budget: the moments of its lookups about people DSoR knows
+  // nothing about in the last minute, 20 at most (C4, D23; DSOR-TEN-02a).
   const budgets = new Map<string, number[]>();
 
   /**
@@ -281,14 +281,14 @@ export function createRoleSource(
     tenant: string,
     person: string,
     directory: Directory,
-    // NEW IN STEP 45c: the company's bound, which an answer used again from memory must not pass.
+    // The company's bound, which an answer used again from memory must not pass.
     bound: number,
-    // NEW IN STEP 45c: true for a person's own call about herself, when DSoR knows nothing about her.
+    // True for a person's own call about herself, when DSoR knows nothing about her.
     budgeted: boolean,
   ): Promise<Asked> {
     const key = JSON.stringify([tenant, person]);
     const askedAt = Date.now();
-    // NEW IN STEP 45c: a lookup in flight, or one whose reply is still remembered: the same reply,
+    // A lookup in flight, or one whose reply is still remembered: the same reply,
     // and no question (D9, D21, D22). Not one DSoR made later than its clock now: it came before a
     // clock went back (step 19's README, decision 15).
     const last = people.get(key);
@@ -307,14 +307,14 @@ export function createRoleSource(
     if (trial && (paused || run.trying)) {
       return Promise.resolve({ askedAt, answered: false });
     }
-    // NEW IN STEP 45c: a question about someone DSoR knows nothing about, from her own call, spends
-    //   one of the company's 20 lookups of this minute. With none left, no question, at once: it is
-    //   no failure, and nothing is remembered (C4, C5; D23, D24).
+    // A question about someone DSoR knows nothing about, from her own call, spends
+    // one of the company's 20 lookups of this minute. With none left, no question, at once: it is
+    // no failure, and nothing is remembered (C4, C5; D23, D24).
     if (budgeted && !spend(tenant, askedAt)) return Promise.resolve({ askedAt, answered: false });
     // The pause is over: this call alone tries the server again (D16).
     if (trial) run.trying = true;
-    // NEW IN STEP 45c: in flight until its reply comes. Her failures in a row so far count on from
-    //   the lookup before, so the backoff grows (D22).
+    // In flight until its reply comes. Her failures in a row so far count on from
+    // the lookup before, so the backoff grows (D22).
     // A memory that ended more than 5 minutes ago is gone, though the sweep has not reached it yet:
     //   found while answering step 45c's review.
     const recent = last !== undefined && askedAt < last.until + BACKOFF_MAX_MS;
@@ -329,11 +329,11 @@ export function createRoleSource(
         // Any reply, even one DSoR cannot use, shows the server is up, and ends
         // the run (C6, D17).
         run.failed.clear();
-        // NEW IN STEP 45c: her failures in a row start over (D22). A reply that no call can use as
-        //   an answer, a fault or one too old, is remembered for 10 seconds from the moment DSoR
-        //   asked. An answer a call can use is kept, as before, and used again from there only
-        //   while it is under the company's bound (D3, D21): found by step 45's test of a bound of
-        //   5 seconds.
+        // Her failures in a row start over (D22). A reply that no call can use as
+        // an answer, a fault or one too old, is remembered for 10 seconds from the moment DSoR
+        // asked. An answer a call can use is kept, as before, and used again from there only
+        // while it is under the company's bound (D3, D21): found by step 45's test of a bound of
+        // 5 seconds.
         memory.failures = 0;
         // One copy for every call that waited, which each copies again for itself (step 19's
         // README, decision 17).
@@ -343,14 +343,14 @@ export function createRoleSource(
       }
       // One lookup is one failure, however many calls waited for it. The fifth in
       // a row starts a pause, and so does each failure after it, the trial's too (C4, C5).
-      // NEW IN STEP 45c: and one person counts once in a run (D25). A stranger's failure does not
-      //   count: sign-up accounts whose records fail must not pause a company. Found by step 45c's
-      //   review, finding 3.
+      // And one person counts once in a run (D25). A stranger's failure does not
+      // count: sign-up accounts whose records fail must not pause a company. Found by step 45c's
+      // review, finding 3.
       if (!budgeted) {
         if (run.failed.size < FAILURES) run.failed.add(person);
         if (run.failed.size >= FAILURES) run.pausedUntil = Date.now() + PAUSE_MS;
       }
-      // NEW IN STEP 45c: a failure is remembered for twice as long as the one before it (D22).
+      // A failure is remembered for twice as long as the one before it (D22).
       memory.failures += 1;
       memory.until = askedAt + Math.min(REUSE_MS * 2 ** (memory.failures - 1), BACKOFF_MAX_MS);
       return { askedAt, answered: false };
@@ -361,7 +361,7 @@ export function createRoleSource(
     return lookup;
   }
 
-  // NEW IN STEP 45c: one of the company's lookups of this minute, if one is left (D23).
+  // One of the company's lookups of this minute, if one is left (D23).
   /** Spends one lookup about someone DSoR knows nothing about, and false if none is left. */
   function spend(tenant: string, now: number): boolean {
     // This minute's only. One from the future came before a clock went back (decision 15).
@@ -374,8 +374,8 @@ export function createRoleSource(
     return left;
   }
 
-  // NEW IN STEP 45c: a memory goes 5 minutes after it ended, so the map holds only the people asked
-  //   about lately. The oldest come first, and the first that is not old yet ends the sweep (D21).
+  // A memory goes 5 minutes after it ended, so the map holds only the people asked
+  // about lately. The oldest come first, and the first that is not old yet ends the sweep (D21).
   /** Forgets the memories that ended more than 5 minutes ago. */
   function forgetOld(now: number): void {
     for (const [key, memory] of people) {
@@ -393,7 +393,7 @@ export function createRoleSource(
     person: string,
     name: string,
     who: string,
-    // NEW IN STEP 45c: whether a question spends the company's budget (D23).
+    // Whether a question spends the company's budget (D23).
     budgeted = false,
   ): Promise<{ answer: Answer; as_of: string }> {
     const setting = settings.get(tenant);
@@ -414,7 +414,7 @@ export function createRoleSource(
     // would make it look new (step 19's README, decision 15).
     const recent = await kept.get(tenant, person);
     const since = recent === undefined ? Number.NaN : askedAt - recent.asked;
-    // NEW IN STEP 45c: a stranger's own call uses the answer that she is gone for 10 minutes (D26).
+    // A stranger's own call uses the answer that she is gone for 10 minutes (D26).
     const window = budgeted && recent?.answer["status"] === "gone" ? STRANGER_MS : REUSE_MS;
     const reuse =
       recent !== undefined && since >= 0 && since < window && askedAt - recent.at < setting.ms;
@@ -540,11 +540,11 @@ export function createRoleSource(
         before !== undefined &&
         usable(before.answer, tenant, person) &&
         before.answer.status === "active";
-      // NEW IN STEP 45c: her own call, at line ②, spends the company's budget when DSoR knows
-      //   nothing about her (C4, D23), and hears the stranger's words. A release's question about
-      //   the person who made a request does neither: she is not the caller, and a company that
-      //   cannot answer now leaves the proposal waiting. Found by step 45c's review, finding 1; the
-      //   words turned an outage into a refusal there since step 45.
+      // Her own call, at line ②, spends the company's budget when DSoR knows
+      // nothing about her (C4, D23), and hears the stranger's words. A release's question about
+      // the person who made a request does neither: she is not the caller, and a company that
+      // cannot answer now leaves the proposal waiting. Found by step 45c's review, finding 1; the
+      // words turned an outage into a refusal there since step 45.
       const stranger_here = own && !known;
       let found: { answer: Answer; as_of: string };
       try {
@@ -582,7 +582,7 @@ async function askWithin(
   }
 }
 
-// NEW IN STEP 45c: the answer a call can use, judged as each call judges it below: about this
+// The answer a call can use, judged as each call judges it below: about this
 // person in this company, at most a minute ahead, and under the company's bound when DSoR asked
 // (step 45c's README, D21).
 /** True for an answer that a call reading it could use, as of the moment DSoR asked. */

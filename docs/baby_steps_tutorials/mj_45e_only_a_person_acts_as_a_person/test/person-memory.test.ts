@@ -1,4 +1,4 @@
-// NEW IN STEP 45c: every reply about a person is remembered for 10 seconds, and a person whose
+// Every reply about a person is remembered for 10 seconds, and a person whose
 // lookups keep failing waits twice as long each time (step 45c's README, C1, C2, C6, D21, D22). The
 // agent works under del_100, which user_123 signed, and DSoR asks a test sign-in server for org_456.
 // Only the date is faked: the network needs real timers.

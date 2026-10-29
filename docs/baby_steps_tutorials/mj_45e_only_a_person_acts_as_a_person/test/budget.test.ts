@@ -1,4 +1,4 @@
-// NEW IN STEP 45c: each DSoR server sends at most 20 lookups in any minute, for each company, about
+// Each DSoR server sends at most 20 lookups in any minute, for each company, about
 // people it knows nothing about, from their own calls at line ②. Over the budget, a call sends no
 // question and hears the stranger's words at once (step 45c's README, C4 to C6, D23, D24). DSoR asks
 // a test sign-in server for org_456. Only the date is faked.

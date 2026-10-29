@@ -1,4 +1,4 @@
-// NEW IN STEP 45c: the company's pause counts different people. One person's failures count once,
+// The company's pause counts different people. One person's failures count once,
 // and a person who waits for her next lookup is never the trial (step 45c's README, C3, D25). The
 // agent works under del_100, which user_123 signed, and DSoR asks a test sign-in server for
 // org_456. A stand-in in front of it errors on one person's record. Only the date is faked.
