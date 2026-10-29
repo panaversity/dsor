@@ -9,6 +9,8 @@ import type { Directories, Directory } from "./directory.ts";
 import { Refusal, type ErrorCode } from "./envelope.ts";
 import { keysWrittenTwice } from "./json.ts";
 import type { Principal } from "./principals.ts";
+// NEW IN STEP 45e: sign-in.json names the server whose ids DSoR's tokens use (D20).
+import { checkSignIn, readSignIn } from "./sign-in.ts";
 import type { Slip } from "./slips.ts";
 import { isTenantId } from "./uri.ts";
 
@@ -192,7 +194,20 @@ type Answer = {
   status: "active" | "suspended" | "gone";
   roles: string[];
   as_of: string;
+  // NEW IN STEP 45e: what kind of account the answer is about, one of §12's four, and the server
+  //   whose ids it uses. Both may be missing until the servers send them (step 45e's README, C1 and
+  //   C6; D18, D20, D30).
+  type?: "human" | "agent" | "application" | "system";
+  issuer?: string;
 };
+
+// NEW IN STEP 45e: the server whose ids DSoR's tokens use, from sign-in.json, which start-up checks
+//   (step 44's README, claim C5). None when the file is wrong, and then no answer that names an
+//   issuer counts (step 45e's README, D20).
+/** The issuer in sign-in.json, the one an answer must name, or none if the file is wrong. */
+function shippedIssuer(): string | undefined {
+  return checkSignIn(readSignIn()).signIn?.issuer;
+}
 
 // An answer's as_of may run ahead of DSoR's clock by one minute at most, and then
 // counts as the moment DSoR asked; further ahead, the reply is one DSoR cannot use (D4, D13).
@@ -259,6 +274,9 @@ export function createRoleSource(
   // Or in DSoR's PostgreSQL, so every DSoR server shares them, and a restart
   // keeps them (step 45's README, D8).
   kept: KeptAnswers = memoryAnswers(),
+  // NEW IN STEP 45e: the server whose ids an answer must use: sign-in.json's, unless a test names
+  //   another (step 45e's README, C1; D20).
+  issuer: string | undefined = shippedIssuer(),
 ): RoleSource {
   // The lookups in flight on this DSoR server, one for each company and person.
   // A call about the same pair waits for the one in flight, and asks nothing. The key holds the
@@ -338,7 +356,9 @@ export function createRoleSource(
         // One copy for every call that waited, which each copies again for itself (step 19's
         // README, decision 17).
         const copy = copyOf(reply.answer);
-        memory.until = good(copy, tenant, person, askedAt, bound) ? askedAt : askedAt + REUSE_MS;
+        memory.until = good(copy, tenant, person, issuer, askedAt, bound)
+          ? askedAt
+          : askedAt + REUSE_MS;
         return { askedAt, answered: true, answer: copy };
       }
       // One lookup is one failure, however many calls waited for it. The fifth in
@@ -435,7 +455,7 @@ export function createRoleSource(
       const copy = copyOf(asked.answer);
       // The time the server read its facts. Further than a minute ahead of
       // DSoR's clock, the answer is one DSoR cannot use (D4).
-      const read = usable(copy, tenant, person) ? timeOf(copy.as_of) : Number.NaN;
+      const read = usable(copy, tenant, person, issuer) ? timeOf(copy.as_of) : Number.NaN;
       if (!(read <= sent + AHEAD_MS)) {
         // An answer DSoR cannot use is a fault. The strange answer may be the very news DSoR
         // needs, so the kept answer goes too, unless DSoR learned it after it asked this
@@ -461,7 +481,7 @@ export function createRoleSource(
       // lags may be older than the answer DSoR keeps, and then the kept one decides: found by
       // step 45's review, finding 4 (step 19's README, decision 14).
       const newest = await kept.get(tenant, person);
-      if (newest !== undefined && newest.at > at && usable(newest.answer, tenant, person)) {
+      if (newest !== undefined && newest.at > at && usable(newest.answer, tenant, person, issuer)) {
         answer = newest.answer;
         at = newest.at;
       }
@@ -482,7 +502,7 @@ export function createRoleSource(
       }
       // Checked again at every use: a kept answer about someone else, or from another
       // company, is a fault too, and goes (step 19's README, C10).
-      if (!usable(last.answer, tenant, person)) {
+      if (!usable(last.answer, tenant, person, issuer)) {
         await kept.forget(tenant, person, last.asked);
         throw new Refusal("INTERNAL_ERROR", cannotUse);
       }
@@ -538,7 +558,7 @@ export function createRoleSource(
       const before = await kept.get(tenant, person);
       const known =
         before !== undefined &&
-        usable(before.answer, tenant, person) &&
+        usable(before.answer, tenant, person, issuer) &&
         before.answer.status === "active";
       // Her own call, at line ②, spends the company's budget when DSoR knows
       // nothing about her (C4, D23), and hears the stranger's words. A release's question about
@@ -590,10 +610,11 @@ function good(
   answer: unknown,
   tenant: string,
   person: string,
+  issuer: string | undefined,
   askedAt: number,
   bound: number,
 ): boolean {
-  if (!usable(answer, tenant, person)) return false;
+  if (!usable(answer, tenant, person, issuer)) return false;
   const read = timeOf(answer.as_of);
   return read <= askedAt + AHEAD_MS && askedAt - Math.min(read, askedAt) < bound;
 }
@@ -613,10 +634,20 @@ function copyOf(answer: unknown): unknown {
 // The shape is the proposal's schema now, not a list of checks of its own. The
 // schema holds the rest of step 19b's decision 15: roles are a list of words, and empty unless
 // the person is active (D4).
-function usable(answer: unknown, tenant: string, person: string): answer is Answer {
+function usable(
+  answer: unknown,
+  tenant: string,
+  person: string,
+  issuer: string | undefined,
+): answer is Answer {
   if (!validateAnswer(answer)) return false;
   const fields = answer as Answer;
   // About the person and the company that DSoR asked about, and no other (D2; step 19's C10).
   if (fields.tenant !== tenant || fields.person !== person) return false;
+  // NEW IN STEP 45e: and in the ids of DSoR's own sign-in server, exactly. An answer in another
+  //   server's ids may be about someone else with the same id: a fault, as one about someone else
+  //   is (step 45e's README, C1; D20, D29). Until the servers send it, an answer may name none
+  //   (D30, the expand move).
+  if (fields.issuer !== undefined && fields.issuer !== issuer) return false;
   return Number.isFinite(timeOf(fields.as_of));
 }

@@ -930,6 +930,10 @@ describe("C10: an answer DSoR cannot use is a fault, and is never used", () => {
     ["with no roles", without(aboutHer(), "roles")],
     ["with a role that is not text", aboutHer({ roles: [7] })],
     ["with a field the proposal does not have, listed", aboutHer({ listed: true })],
+    // NEW IN STEP 45e: a type outside §12's four, and an issuer that is not sign-in.json's (step
+    //   45e's README, C1; D18, D20, D29).
+    ["with the type robot (step 45e's D18)", aboutHer({ type: "robot" })],
+    ["in another server's ids (step 45e's D29)", aboutHer({ issuer: "https://hr.org456.example" })],
     ["with roles while gone (step 45's D4)", aboutHer({ status: "gone" })],
     ["with no as_of (step 45's D4)", without(aboutHer(), "as_of")],
     ["with an as_of that is not a time (step 45's D4)", aboutHer({ as_of: "yesterday" })],
