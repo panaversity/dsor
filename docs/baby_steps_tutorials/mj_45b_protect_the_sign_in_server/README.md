@@ -394,7 +394,7 @@ and a time that a paused call never reads.
 - **A stranger can still spend a company's lookups** (step 45's review, finding 2). The pause limits
   how often a failing server is asked, but many strangers whose lookups the server turns away with
   `429`s can keep org_456 on its kept answers. Step 45c (entry 32).
-- **Q8's alert.** DSoR still raises no alert when it cannot get a fresh answer. Step 45d (entry 33).
+- **Q8's alert.** DSoR still raises no alert when it cannot get a fresh answer. Step 50 (entries 33 and 45).
 - **Four DSoR servers, four runs.** Each DSoR server finds an outage on its own, makes five failures
   of its own, and sends a trial of its own. A pause that every server shares would need the
   database, and a write at each failure.
@@ -403,8 +403,8 @@ and a time that a paused call never reads.
   3), for up to 10 seconds.
 - **The trial is whoever comes first,** a stranger's call too. That is safe: any reply ends the run,
   and a stranger's `gone` is a reply.
-- **D15** (entry 28) was reviewed after this step was built: its three gaps go to steps 45d and 45e
-  (entries 35 to 37).
+- **D15** (entry 28) was reviewed after this step was built: its three gaps go to steps 45e and 50
+  (entries 35 to 37, and 45).
 
 ### Found later, and fixed here
 
@@ -429,4 +429,4 @@ tests are titled by D3, D4, D8, D9, D10, D13, D16, and D17.
 **Next:** step 45c, a stranger cannot spend a company's lookups. DSoR will ask about the same company
 and person at most once in 10 seconds, whatever the reply, spend at most a budget of lookups on
 people it knows nothing about, and pause a company only when different people's lookups fail
-(entries 32 and 34). Then step 45d, the alert of decision Q8 (entry 33).
+(entries 32 and 34). The alert of decision Q8 comes in step 50 (entries 33 and 45).

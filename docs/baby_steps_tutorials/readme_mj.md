@@ -38,16 +38,16 @@ sign-in server that cannot answer a lookup (Q1, Q4).
 | [45 · Ask the sign-in server](mj_45_ask_the_sign_in_server/README.md) | DSoR asks the company's sign-in server, through DSoR's own contract, who a person is in a company now, and reuses an answer for up to 10 seconds | Again, against a real server: DSOR-IDN-05, DSOR-IDN-06, DSOR-IDN-07, DSOR-IDN-03a, DSOR-DEL-02, DSOR-BND-02 | Built, run for real against the SSO; D15 reviewed (entries 35 to 37), and Q8's alert is step 45d |
 | [45b · Protect the sign-in server](mj_45b_protect_the_sign_in_server/README.md) | One lookup in flight for each company and person, and a pause after five failures, then one trial | Again, against a real server: DSOR-IDN-06, DSOR-TEN-02a | Built, run for real against the SSO |
 | [45c · Lookups, person by person](mj_45c_lookups_person_by_person/README.md) | Every reply about a person remembered for 10 seconds, a wait that doubles while her lookups keep failing, a pause that counts different people, and 20 lookups a minute about people DSoR knows nothing about | Again, against a real server: DSOR-IDN-06, DSOR-TEN-02a, DSOR-ERR-01b | Built, run for real against the SSO |
-| 45d · Alerts and the sign-in server | The alert of decision Q8, with a record of its own, and an escalation that goes only to someone who can act | Again: DSOR-IDN-06 | Planned |
+| 45d · Moved into step 50 | Q8's alert and the escalation check are built in step 50 (entry 45) | None | Moved |
 | 45e · Only a person acts as a person | The lookup's answer says what kind of account it is about, and whose ids it uses | Again: DSOR-IDN-01, DSOR-SOD-01a | Planned |
-| 45f · A key rotation keeps people known | A mark that DSoR once knew a person as active, which a fault does not erase | Again: DSOR-IDN-06 | Planned |
+| 45f · A key rotation keeps people known | A mark that DSoR once knew a person as active, which a fault does not erase | Again: DSOR-IDN-06 | Parked (entry 46) |
 | 46 · Who may approve, and up to how much | Approver roles, each with a limit | New: DSOR-SOD-04a, DSOR-SOD-04b | Planned |
 | 47 · The approval door | Approvals only from DSoR's own approval app | Again: DSOR-APR-05a, DSOR-APR-05b, DSOR-SOD-01a. New: DSOR-RP-02c, DSOR-RP-02e | Planned |
 | 48 · The agent door (MCP), door A | An agent acting for a person who connected it | New: DSOR-RP-02a, DSOR-RP-02d, DSOR-OPR-03a, DSOR-IDN-02b, DSOR-RP-04, DSOR-RP-05a, DSOR-RP-06a, DSOR-RP-07a, DSOR-RP-07b, DSOR-DEL-03a, DSOR-DEL-03b, DSOR-RP-03, and the rest of DSOR-DEL-10 | Planned |
 | 48b · Two MCP traps | Attacks on the agent door | New: DSOR-RP-08, DSOR-RP-09a, DSOR-RP-09b | Planned |
 | 48c · A real agent | An injection test suite, then a real agent | New: DSOR-SRC-01a, DSOR-SRC-01b | Planned |
 | 49 · An agent with nobody present, door B | The agent signs in with its own key | New: DSOR-RP-10, DSOR-RP-11, DSOR-IDN-02a, DSOR-DEL-09. Again: DSOR-DEL-07, DSOR-DEL-08 | Planned |
-| 50 · The right people hear | Alerts go to a role, not a fixed name | Again: DSOR-UNK-04c | Planned |
+| 50 · The right people hear | Alerts go to a role, not a fixed name, and a company hears when its sign-in server cannot answer | Again: DSOR-UNK-04c | Planned |
 | 51 · Skills with OpenViking | The official map's step 49 | DSOR-CTX-05a, DSOR-CTX-05b, DSOR-CTX-05c | Planned |
 | 52 · Memory with Graphiti | The official map's step 50 | DSOR-CTX-01, DSOR-CTX-02, DSOR-CTX-07, DSOR-CTX-08 | Planned |
 | 53 · The whole digital employee | The official map's step 51 | DSOR-CNF-01, DSOR-MOD-02, DSOR-BND-01 | Planned |
@@ -177,14 +177,11 @@ Decided by the learner on 2026-10-28 ([`mj_notes.md`](mj_notes.md), the last two
 - From the reviews of steps 45 and 45b ([`mj_decisions.md`](mj_decisions.md), entries 32 and 34);
   decided and built on 2026-10-29 (entries 38 to 44).
 
-### 45d · Alerts and the sign-in server
+### 45d · Moved into step 50
 
-- The alert of decision Q8: the company's alert receivers will hear when DSoR cannot get a fresh
-  answer from its sign-in server. An alert today belongs to a payment (step 38b), so this one needs
-  a kind and a record of its own ([`mj_decisions.md`](mj_decisions.md), entries 29 and 33).
-- When the sweep escalates an alert, DSoR will ask the company about the escalation person. One who
-  is not active, or cannot see alerts and settle a payment, is not reached, and the alert records
-  it (D19, entry 36).
+Q8's alert and the escalation person's check are built in step 50, which already planned the alert,
+and whose escalation to a role (Q10) leaves no single person to check
+([`mj_decisions.md`](mj_decisions.md), entry 45).
 
 ### 45e · Only a person acts as a person
 
@@ -196,13 +193,14 @@ Decided by the learner on 2026-10-28 ([`mj_notes.md`](mj_notes.md), the last two
 - Both come from the learner's review of D15 (entry 28), and are part of the lookup proposal in
   [`mj_notes.md`](mj_notes.md).
 
-### 45f · A key rotation keeps people known
+### 45f · A key rotation keeps people known (parked)
 
 - A fault, such as a `403` during a key rotation done wrong, erases DSoR's kept answer about each
   person it asks about (step 45's D2), so they all count as strangers for step 45c's budget, and a
   company shares 20 lookups a minute until each is asked again. DSoR will keep a mark that it once
   knew a person as active, which a fault does not erase: a new column in `dsor.role_answers`
-  ([`mj_decisions.md`](mj_decisions.md), entry 43). Its place is Claude Code's proposal.
+  ([`mj_decisions.md`](mj_decisions.md), entry 43). Parked on 2026-10-29: built only if a real run
+  shows it (entry 46).
 
 ### 46 · Who may approve, and up to how much
 
@@ -259,7 +257,10 @@ person's.
 ### 50 · The right people hear
 
 `escalate_to` will name a role, not a person (Q10). The first freshness refusal will raise an alert
-(Q8), and a suspended slip with waiting work will alert the administrators (Q9).
+(Q8), and a suspended slip with waiting work will alert the administrators (Q9). Q8's alert needs a
+kind and a record of its own, since an alert belongs to a payment today (step 38b). It came here
+from step 45d, with the escalation person's check, which Q10 makes unneeded unless step 50's design
+keeps a person ([`mj_decisions.md`](mj_decisions.md), entries 33, 36, and 45).
 
 ### 51 to 53 · Part 7
 

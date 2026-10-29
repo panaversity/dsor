@@ -153,7 +153,7 @@ After the review, the learner's, on 2026-10-29:
   up to 10 minutes.
 - **A key rotation that makes everyone a stranger gets a step of its own,** step 45f (entry 43).
   *Downside:* until then, after a key rotation done wrong, a large company's own calls are slow for
-  a while.
+  a while. Parked later, on 2026-10-29 (entry 46).
 - **The release's question is fixed in this step, and steps 45 and 45b later** (entry 44).
 
 The memories and the budget are kept by each DSoR server itself, not in the database, as D9 and D10
@@ -370,7 +370,7 @@ Put to the learner, with the true facts:
   "not a member" answer was used again for only 10 seconds, so four accounts calling steadily kept
   the budget used up for as long as they liked. The learner took D26: 10 minutes. After a key
   rotation done wrong, a fault erases every kept answer, and a whole company shares the 20: a step of
-  its own, 45f (entry 43).
+  its own, 45f (entry 43), parked on 2026-10-29 (entry 46).
 - **D24's claim went too far (finding 4).** The words reveal nothing; the time to answer does. The
   learner kept the stranger's words, and the claim now says what they do and do not hide.
 
@@ -386,14 +386,14 @@ when she was the next caller, so her backoff did not start over. Fixed, with a t
   until the minute rolls on (D23 and D24's downsides).
 - **A restart forgets.** The memories and the budget live in each DSoR server's memory, so a restarted
   server asks again at once, about everyone, as step 45b's did.
-- **A key rotation that makes everyone a stranger,** after a fault erases their kept answers, is step
-  45f's (entry 43).
+- **A key rotation that makes everyone a stranger,** after a fault erases their kept answers, is
+  parked until a real run shows it (entries 43 and 46).
 - **Steps 45 and 45b had the release bug** that this step fixes (entry 44): a `503` at a release of
   a person's own request, about someone DSoR kept no active answer about, threw the proposal away.
   Fixed in both on 2026-10-29.
 - **Someone added to a company just after her first try** waits up to 10 minutes (D26's downside).
 - **The answer's `type` and `issuer`** are step 45e's (entries 35 and 37), and **the escalation
-  person and Q8's alert** step 45d's (entries 33 and 36).
+  person and Q8's alert** step 50's (entries 33, 36, and 45).
 
 ## The rules this step meets
 
@@ -406,6 +406,6 @@ when she was the next caller, so her backoff did not start over. Fixed, with a t
 The memory, the backoff, the pause that counts people, and the budget are this tutorial's
 decisions: those tests are titled by D21 to D25.
 
-**Next:** step 45d, alerts and the sign-in server. A company's alert receivers will hear when DSoR
-cannot get a fresh answer from its sign-in server (decision Q8, entry 33), and the sweep will ask
-about the escalation person when it escalates (D19, entry 36).
+**Next:** step 45e, only a person acts as a person. The lookup's answer will say what kind of
+account it is about, and DSoR will act as a person only on `human` (D18, entry 35). It will also
+name the sign-in server whose ids it uses (D20, entry 37). Q8's alert moved into step 50 (entry 45).

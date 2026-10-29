@@ -397,7 +397,7 @@ close in entries 35 to 37.
   keeps org_456 on its kept answers.
 - **Rejected.** Both halves in step 45b.
 
-## 33 · Q8's alert gets a step of its own (2026-10-28)
+## 33 · Q8's alert gets a step of its own (2026-10-28). Moved into step 50 by entry 45
 
 **Decided by:** the learner, on Claude Code's recommendation, with step 45b's questions.
 
@@ -408,6 +408,7 @@ close in entries 35 to 37.
   kind of alert, with a record of its own.
 - **Cost.** Until then, a company learns of an outage only from refused calls and their records.
 - **Rejected.** In step 45b, when a pause starts (two ideas in one step); dropping the alert.
+- **Moved on 2026-10-29** by entry 45: built in step 50, which already planned this alert.
 
 ## 34 · One person's failing lookups and the pause, in step 45c (2026-10-28)
 
@@ -444,7 +445,7 @@ close in entries 35 to 37.
   learner rejected for roles.
 - **Built in** step 45e (its place proposed by Claude Code).
 
-## 36 · The sweep asks about the escalation person when it escalates (2026-10-28), D19
+## 36 · The sweep asks about the escalation person when it escalates (2026-10-28), D19. Moved into step 50 by entry 45
 
 **Decided by:** the learner, on Claude Code's recommendation, in the review of D15 (entry 28).
 
@@ -458,6 +459,8 @@ close in entries 35 to 37.
 - **Rejected.** Asking at start-up, which waits on every company's sign-in server and proves her job
   at one moment only (D15's own reason); leaving it.
 - **Built in** step 45d, with Q8's alert (its place proposed by Claude Code).
+- **Moved on 2026-10-29** by entry 45: to step 50, whose escalation to a role (Q10) is expected to
+  leave no single person to check. Step 50's design settles whether the check is still needed.
 
 ## 37 · The lookup's answer names its issuer (2026-10-28), D20
 
@@ -554,7 +557,7 @@ close in entries 35 to 37.
 - **Rejected.** Keeping D23 as it was, with its true cost said; dropping the budget.
 - **Built in** step 45c.
 
-## 43 · A key rotation keeps people known: a step of its own (2026-10-29)
+## 43 · A key rotation keeps people known: a step of its own (2026-10-29). Parked by entry 46
 
 **Decided by:** the learner, on Claude Code's recommendation, after step 45c's review.
 
@@ -566,6 +569,7 @@ close in entries 35 to 37.
 - **Cost.** Until then, a key rotation done wrong slows a large company's own calls for a while.
 - **Rejected.** Building it in step 45c, which would grow with a migration; leaving it.
 - **Built in** step 45f (its place proposed by Claude Code).
+- **Parked on 2026-10-29** by entry 46: built only if a real run shows it.
 
 ## 44 · A release's question about its requester, fixed in step 45c (2026-10-29)
 
@@ -585,6 +589,33 @@ close in entries 35 to 37.
   hears the stranger's words when her company cannot answer, and a release's question about its
   requester hears what her company said. Each step's `test/people.test.ts` has the test, which gave
   `APPROVAL_INVALIDATED` before the fix.
+
+## 45 · Step 45d moves into step 50 (2026-10-29)
+
+**Decided by:** the learner, on Claude Code's recommendation, after step 45c.
+
+- **What.** Q8's alert (entry 33) and the escalation person's check (D19, entry 36) are not a step
+  45d. They are built in step 50, "The right people hear", which already planned the same alert,
+  and whose escalation to a role (Q10) leaves no single person to check.
+- **Why.** The plan listed Q8's alert twice. A step 45d would build a kind of alert that step 50
+  builds again, and a check that step 50 drops.
+- **Cost.** Until step 50, a company learns of an outage of its sign-in server only from refused
+  calls and their records, and an escalation can go to someone who left the company.
+- **Rejected.** Keeping step 45d; building only D19's check now.
+
+## 46 · Step 45f is parked (2026-10-29)
+
+**Decided by:** the learner, on Claude Code's recommendation, after step 45c.
+
+- **What.** The mark that keeps people known after a fault (entry 43) is not built now. It is built
+  only if a real run shows a key problem that keeps a company's people waiting for the budget.
+- **Why.** The case is rare: a key rotation done wrong. It heals by itself, an agent's call at line
+  ③ never waits for the budget, and the fix needs a migration.
+- **Cost.** After a key rotation done wrong, a large company's people can hear "not a member" from
+  their own calls for a while: about 25 minutes for 500 people on one DSoR server, as step 45c's
+  budget lets DSoR ask about each of them again.
+- **Rejected.** Building it after step 45e; treating a `403` as "cannot answer now", which changes
+  step 45's D2 and lets old answers count for up to an hour after a company revokes DSoR's key.
 
 ## Open
 
