@@ -39,7 +39,7 @@ sign-in server that cannot answer a lookup (Q1, Q4).
 | [45b · Protect the sign-in server](mj_45b_protect_the_sign_in_server/README.md) | One lookup in flight for each company and person, and a pause after five failures, then one trial | Again, against a real server: DSOR-IDN-06, DSOR-TEN-02a | Built, run for real against the SSO |
 | [45c · Lookups, person by person](mj_45c_lookups_person_by_person/README.md) | Every reply about a person remembered for 10 seconds, a wait that doubles while her lookups keep failing, a pause that counts different people, and 20 lookups a minute about people DSoR knows nothing about | Again, against a real server: DSOR-IDN-06, DSOR-TEN-02a, DSOR-ERR-01b | Built, run for real against the SSO |
 | 45d · Moved into step 50 | Q8's alert and the escalation check are built in step 50 (entry 45) | None | Moved |
-| [45e · Only a person acts as a person](mj_45e_only_a_person_acts_as_a_person/README.md) | The lookup's answer says what kind of account it is about, and whose ids it uses | Again: DSOR-IDN-01, DSOR-SOD-01a | Partly built (2026-10-30): the fields and every refusal. The SSO's answer, the required fields, the review, and the live run wait |
+| [45e · Only a person acts as a person](mj_45e_only_a_person_acts_as_a_person/README.md) | The lookup's answer says what kind of account it is about, and whose ids it uses | Again: DSOR-IDN-01, DSOR-SOD-01a, DSOR-SOD-01b, DSOR-IDN-07 | Built, run for real against the SSO, which answers `human` for every account until it can mark a script's account |
 | 45f · A key rotation keeps people known | A mark that DSoR once knew a person as active, which a fault does not erase | Again: DSOR-IDN-06 | Parked (entry 46) |
 | 46 · Who may approve, and up to how much | Approver roles, each with a limit | New: DSOR-SOD-04a, DSOR-SOD-04b | Planned |
 | 47 · The approval door | Approvals only from DSoR's own approval app | Again: DSOR-APR-05a, DSOR-APR-05b, DSOR-SOD-01a. New: DSOR-RP-02c, DSOR-RP-02e | Planned |
@@ -192,9 +192,9 @@ and whose escalation to a role (Q10) leaves no single person to check
   not its token issuer (D20, entry 37).
 - Both come from the learner's review of D15 (entry 28), and are part of the lookup proposal in
   [`mj_notes.md`](mj_notes.md).
-- Partly built on 2026-10-30, in
-  [`mj_45e_only_a_person_acts_as_a_person`](mj_45e_only_a_person_acts_as_a_person/README.md). What
-  is built and what waits is in that README's status note.
+- Built on 2026-10-30, in
+  [`mj_45e_only_a_person_acts_as_a_person`](mj_45e_only_a_person_acts_as_a_person/README.md), with
+  the learner's decisions D27 to D30 (entries 47 to 50), and run for real against the SSO.
 
 ### 45f · A key rotation keeps people known (parked)
 
