@@ -1,0 +1,12 @@
+{
+  "company": "dsor://org_456/tenant/org_456",
+  "change": {
+    "kind": "user.create",
+    "account": {
+      "user_name": "suite_scim",
+      "external_id": "0b6f1d1e-3c3a-4a52-9a43-000000000043",
+      "display_name": "A person no company has",
+      "active": true
+    }
+  }
+}

@@ -1,0 +1,4 @@
+{
+  "org_456": { "address": "http://localhost:3011/api/dsor/lookup" },
+  "org_789": { "address": "http://localhost:3011/api/dsor/lookup" }
+}

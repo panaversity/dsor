@@ -1,0 +1,4 @@
+{
+  "ap_supervisor": ["invoice:read", "invoice:issue", "payment:create", "payment:cancel"],
+  "CFO": ["invoice:read"]
+}

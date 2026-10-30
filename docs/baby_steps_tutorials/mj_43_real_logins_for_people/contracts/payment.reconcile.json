@@ -1,0 +1,49 @@
+{
+  "id": "payment.reconcile",
+  "version": 1,
+  "kind": "command",
+  "effect": "mutating",
+  "input": {
+    "schema": "PaymentReconcileRequest"
+  },
+  "output": {
+    "schema": "PaymentReconciliation"
+  },
+  "authorization": {
+    "permission": "payment:reconcile"
+  },
+  "tenancy": {
+    "required": true
+  },
+  "delegation": {
+    "required": false
+  },
+  "idempotency": {
+    "required": true
+  },
+  "concurrency": {
+    "strategy": "none"
+  },
+  "execution": {
+    "semantics": "atomic"
+  },
+  "risk": {
+    "level": "high"
+  },
+  "preconditions": {
+    "freshness": "current",
+    "predicates": []
+  },
+  "controls": [],
+  "audit": {
+    "level": "full"
+  },
+  "connector_requirements": {
+    "outcome_lookup": true
+  },
+  "extensions": {
+    "org.panaversity.steps": {
+      "no_agents": true
+    }
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "connectors": [
+    {
+      "id": "accounting",
+      "contract_version": 1,
+      "region": "dsor-database",
+      "external": false,
+      "capabilities": {
+        "transactions": true,
+        "optimistic_concurrency": true,
+        "downstream_idempotency": false,
+        "outcome_lookup": false,
+        "events": false,
+        "batch": false,
+        "row_level_security": true,
+        "freshness": ["current"]
+      },
+      "write_exclusivity": "exclusive",
+      "extensions": {
+        "org.panaversity.steps": { "shares_dsor_transaction": true }
+      }
+    },
+    {
+      "id": "fake-bank",
+      "contract_version": 1,
+      "region": "in-memory",
+      "external": true,
+      "capabilities": {
+        "transactions": false,
+        "optimistic_concurrency": false,
+        "downstream_idempotency": true,
+        "outcome_lookup": true,
+        "events": false,
+        "batch": false,
+        "row_level_security": false,
+        "freshness": ["current"]
+      },
+      "write_exclusivity": "exclusive",
+      "extensions": {
+        "org.panaversity.steps": { "shares_dsor_transaction": false }
+      }
+    }
+  ],
+  "companies": { "*": { "records": "accounting", "bank": "fake-bank" } }
+}

@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:dsor:schema:1.3:connector",
+  "title": "connector",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "contract_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "region": {
+      "type": "string"
+    },
+    "external": {
+      "type": "boolean"
+    },
+    "capabilities": {
+      "type": "object",
+      "properties": {
+        "transactions": {
+          "type": "boolean"
+        },
+        "optimistic_concurrency": {
+          "type": "boolean"
+        },
+        "downstream_idempotency": {
+          "type": "boolean"
+        },
+        "outcome_lookup": {
+          "type": "boolean"
+        },
+        "events": {
+          "type": "boolean"
+        },
+        "batch": {
+          "type": "boolean"
+        },
+        "row_level_security": {
+          "type": "boolean"
+        },
+        "freshness": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "urn:dsor:schema:1.3:common#/$defs/freshness"
+          }
+        }
+      },
+      "required": [
+        "transactions",
+        "optimistic_concurrency",
+        "downstream_idempotency",
+        "outcome_lookup",
+        "events",
+        "batch",
+        "row_level_security",
+        "freshness"
+      ],
+      "additionalProperties": false
+    },
+    "write_exclusivity": {
+      "enum": [
+        "exclusive",
+        "shared"
+      ]
+    },
+    "change_detection": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "enum": [
+            "webhook",
+            "cdc",
+            "polling"
+          ]
+        },
+        "max_detection_lag_seconds": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "method",
+        "max_detection_lag_seconds"
+      ]
+    },
+    "field_fidelity": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": {
+          "enum": [
+            "exact",
+            "lossy",
+            "derived",
+            "unsupported"
+          ]
+        }
+      }
+    },
+    "extensions": {
+      "$ref": "urn:dsor:schema:1.3:common#/$defs/extensions"
+    }
+  },
+  "required": [
+    "id",
+    "contract_version",
+    "region",
+    "external",
+    "capabilities",
+    "write_exclusivity"
+  ],
+  "additionalProperties": false,
+  "if": {
+    "properties": {
+      "write_exclusivity": {
+        "const": "shared"
+      }
+    }
+  },
+  "then": {
+    "required": [
+      "change_detection"
+    ]
+  }
+}

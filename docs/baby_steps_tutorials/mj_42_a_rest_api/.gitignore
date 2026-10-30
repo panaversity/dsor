@@ -1,0 +1,14 @@
+node_modules/
+*.log
+.DS_Store
+
+# Secrets never go into git. From step 09 this folder has a .env file.
+.env
+.env.*
+!.env.example
+
+# Each learner's checkpoints belong to their own database (step 39b's README, decision D11).
+checkpoints/
+
+# Each learner's channels hold the events of their own database (step 40's README, decision D9).
+events/

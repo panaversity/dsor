@@ -41,6 +41,11 @@ meet two new ideas on the same day.
 - **Tests carry rule numbers.** A test is titled with the rule it proves, for example
   `DSOR-EXE-02: a denied command is recorded before the response`. When you finish a
   step you can say exactly which rules of the specification your code now meets.
+  [`rules-met.md`](rules-met.md) collects them: rule, step, and the test that proves it.
+- **From step 01, each step ends with "Think it through".** A green test run means the tests you
+  wrote pass, not that you wrote the right ones. So a reviewer who has not seen the
+  work attacks each step, and its README records what was found and what was left open
+  on purpose. The next step starts from that list.
 
 ### What is inside every step directory
 
@@ -48,7 +53,8 @@ meet two new ideas on the same day.
 NN_step_name/
   README.md            In plain words · Why it matters · What changed since the last step ·
                        Run it · Break it · Build it yourself with Claude Code ·
-                       Check yourself · The rules this step meets
+                       Check yourself · Think it through (from step 01) ·
+                       The rules this step meets
   src/                 the code so far, with the new part marked  // NEW IN STEP NN
   test/                the tests so far, plus the new ones, titled by rule id
   package.json         the project and its scripts: start, test, typecheck, check
@@ -300,16 +306,7 @@ Do the break-it exercise for real. Paste the actual output into this step's READ
 Then restore the code and run pnpm check.
 ```
 
-**6. Ask for a hostile review.**
-
-```text
-Start a fresh subagent that has not seen this session. Have it review this step as an
-attacker and as a strict teacher, against DSOR-EXE-01a and DSOR-OPR-04a: is each rule
-proved by a test that would fail if the code were wrong? Is there exactly one new idea?
-Fix what it finds, or tell me why a finding is wrong.
-```
-
-**7. Prove it runs by itself.**
+**6. Prove it runs by itself.**
 
 ```text
 Run pnpm install --frozen-lockfile and pnpm check here. Then copy this folder to a
@@ -317,17 +314,30 @@ temporary place outside the repository, run the same two commands there, and del
 copy. Show me what each command printed.
 ```
 
+**7. Ask for a hostile review.**
+
+```text
+Start a fresh subagent that has not seen this session. Have it review this step as an
+attacker and as a strict teacher, against DSOR-EXE-01a and DSOR-OPR-04a: is each rule
+proved by a test that would fail if the code were wrong? Is there exactly one new idea?
+Does the README teach, and is every analogy one the write-for-learners skill already
+uses? Fix what it finds, or record it in the README under "Think it through".
+```
+
 **8. Land it.** Leave the step session. The last changes are outside the step's folder,
 so they are yours: in this page, turn the step's name into a link and update the status
-line at the top; update [`docs/status.md`](../status.md); run `pnpm guard` at the
-repository root to check every link and rule number; then commit on a branch and open a
-pull request. One step per pull request.
+line at the top; add the step's rows to [`rules-met.md`](rules-met.md); update
+[`docs/status.md`](../status.md); run `pnpm guard` at the repository root to check every
+link and rule number; then commit on a branch and open a pull request. One step per
+pull request.
 
 ### Learner mode: build your own copy
 
 The finished steps are there to read. You will learn far more by building each one
 yourself and comparing. Keep your copies beside the finished ones, with `my_` in front
-of the name, on a branch or fork of your own:
+of the name, on a branch or fork of your own. When several people push their copies to
+one repository, use your initials instead, such as `mj_`, so two copies of a step never
+share a folder name:
 
 ```bash
 cd docs/baby_steps_tutorials
@@ -420,7 +430,11 @@ parser and the formatter.
 
 Stop calling functions directly. Everything a caller can do becomes a named
 *operation* with a spec sheet called a *contract*: `invoice.get` reads, `invoice.issue`
-changes. A registry loads the contracts.
+changes. Both contracts ship here, because only a command's contract has to declare
+idempotency, concurrency, semantics and preconditions, and that is what makes the schema
+worth validating against. A registry loads the contracts and refuses a bad one before
+any request runs. Only the query is carried out; `invoice.issue` waits for step 04, so
+this step stays one idea.
 **New:** JSON Schema validation (ajv). **Spec:**
 [§7](../../specs/dsor/01-model.md#7-operations-and-the-operation-contract) ·
 DSOR-OPR-01, DSOR-OPR-02a, DSOR-OPR-02b.
@@ -429,19 +443,29 @@ DSOR-OPR-01, DSOR-OPR-02a, DSOR-OPR-02b.
 ### 04 · `04_result_and_error_envelopes`
 
 Every answer gets the same outer shape. Every error gets a code and says whether a
-retry is safe.
-**Spec:** [§28](../../specs/dsor/03-execution.md#28-result-and-error-envelopes) ·
-DSOR-ERR-01a, DSOR-SCH-01.
-**Done when:** every response in the tests validates against its schema.
+retry is safe. Every answer carries a `request_id` that DSoR made. `invoice.issue` is
+carried out here, because a command is what makes an envelope worth having: "this
+invoice is already issued" needs a code a caller can act on, and a query's refusals are
+too thin to show that.
+**Spec:** [§28](../../specs/dsor/03-execution.md#28-result-and-error-envelopes),
+[§32](../../specs/dsor/03-execution.md#32-correlation) · DSOR-ERR-01a, DSOR-SCH-01,
+DSOR-COR-01b.
+**Done when:** every error response in the tests validates against its schema, and
+issuing an invoice twice returns an error envelope rather than throwing. A query's
+success cannot validate yet, because no result-envelope outcome fits a query
+([open question 19](../../research/open-questions.md#found-by-the-baby-steps-added-2026-09-26)).
 
 ### 05 · `05_who_is_calling`
 
 Turn every caller into a *principal*: a person, an agent, or an app. For now a fake
 login header is enough. The important rule starts here: DSoR decides who you are from
 the login, never from the arguments.
-**Spec:** [§12](../../specs/dsor/02-security.md#12-identity-and-principals) ·
-DSOR-IDN-01, DSOR-SRC-02a.
-**Done when:** putting `"principal": "cfo_100"` inside the arguments changes nothing.
+**Spec:** [§11](../../specs/dsor/02-security.md#11-source-trust-and-the-instruction-boundary),
+[§12](../../specs/dsor/02-security.md#12-identity-and-principals) · DSOR-IDN-01,
+DSOR-SRC-02a, and DSOR-SRC-02b for a principal (steps 10 and 18 add tenant and
+delegation ids).
+**Done when:** putting `"principal": "cfo_100"` inside the arguments does not change who
+is calling, and the call is refused with `AUTHORIZATION_DENIED`.
 
 ### 06 · `06_permissions_deny_by_default`
 
@@ -493,8 +517,11 @@ other, and sensitive fields are hidden from agents.
 A `tenant_id` on every row. Every request works inside exactly one company.
 **Spec:** [§14](../../specs/dsor/02-security.md#14-multi-tenancy) · DSOR-TEN-01a,
 DSOR-IDN-03a, DSOR-SRC-02b.
-**Done when:** a URI for another company returns the same "not found" as a URI that
-does not exist.
+**Done when:** a URI for another company is refused with `TENANT_MISMATCH` that reveals
+nothing — the same words whether that company or that invoice exists — before any
+lookup. (This line said "the same not found as a URI that does not exist"; DSOR-SRC-02b
+names `TENANT_MISMATCH` or `AUTHORIZATION_DENIED`, and the spec is authoritative over
+this map.)
 
 ### 11 · `11_row_level_security`
 
@@ -654,7 +681,7 @@ written in CEL, a tiny safe expression language, with its own test cases that ru
 the control is switched on.
 **New:** CEL. **Spec:**
 [§17](../../specs/dsor/02-security.md#17-policy-compilation-from-authority-to-control) ·
-DSOR-CTL-01a, DSOR-CTL-05, DSOR-CTL-07, DSOR-CTL-02c, DSOR-AUT-02b.
+DSOR-CTL-01a, DSOR-CTL-05, DSOR-CTL-07, DSOR-CTL-02c, DSOR-AUT-02a, DSOR-AUT-02b.
 **Break it:** write the rule as `amount > 25000 && currency == "USD"` and pay
 50,000,000 PKR straight through it.
 
@@ -674,7 +701,8 @@ fingerprint of the exact request, and it expires.
 **New:** hashing canonical JSON. **Spec:**
 [§26.3](../../specs/dsor/03-execution.md#263-what-an-approval-binds),
 [§26.5](../../specs/dsor/03-execution.md#265-the-approval-channel) · DSOR-APR-02a,
-DSOR-APR-02b, DSOR-APR-05a, DSOR-APR-09.
+DSOR-APR-02b, DSOR-APR-05a, DSOR-APR-09, and DSOR-AUT-02c: when two rules each ask for
+an approval, both must be given.
 **Done when:** approving with the wrong fingerprint is refused.
 
 ### 30 · `30_who_may_not_approve`
@@ -690,8 +718,10 @@ DSOR-SOD-01a, DSOR-SOD-02, DSOR-SOD-04c.
 Hours pass between approval and execution. `proposal.execute` runs every check again
 on live data, and it runs the stored request only. The caller cannot send a new one.
 **Spec:** [§26.4](../../specs/dsor/03-execution.md#264-re-evaluation-at-execution) ·
-DSOR-APR-03a, DSOR-APR-03b, DSOR-APR-03c, DSOR-APR-10, DSOR-APR-13.
-**Done when:** suspending VENDOR-44 after approval makes the proposal `INVALIDATED`.
+DSOR-APR-03a, DSOR-APR-03b, DSOR-APR-03c, DSOR-APR-03d, DSOR-APR-10, DSOR-APR-11, DSOR-APR-13.
+**Done when:** a stricter rule switched on after the approval makes the proposal `INVALIDATED`.
+Changed by the learner's build of this step (its D1): DSoR keeps no vendor record until step 32's
+preconditions, so suspending VENDOR-44 moves to step 32.
 
 ### 32 · `32_preconditions_and_one_attempt_at_a_time`
 
@@ -700,7 +730,8 @@ invoice is issued. Only one attempt may be open on a payment, and an invoice's u
 amount already counts payments that are waiting.
 **Spec:** [§25.1](../../specs/dsor/03-execution.md#251-in-flight-exclusivity) ·
 DSOR-EXC-01, DSOR-EXC-02, DSOR-FRS-02a.
-**Done when:** drafting PAY-902 for the same invoice is refused while PAY-901 waits.
+**Done when:** drafting PAY-902 for the same invoice is refused while PAY-901 waits, and
+suspending VENDOR-44 after an approval makes the proposal `INVALIDATED` at its release.
 
 ### 33 · `33_the_decision_bundle`
 
@@ -917,7 +948,8 @@ emergency brake really is, measured.
 DSOR-MOD-02, DSOR-BND-01.
 **Done when:** you can explain every line of the
 [security invariants](../../specs/dsor/06-conformance.md#45-security-invariants) by
-pointing at the step where you built it.
+pointing at the step where you built it. [`rules-met.md`](rules-met.md) will be your
+index: each rule, the step that proved it, and the tests.
 
 ---
 
@@ -937,5 +969,5 @@ new idea, a copy of the previous step plus a marked diff, tests written first an
 titled by rule id, a break-it exercise you really performed, and a README in plain
 words. A step is done when `pnpm check` is green inside its folder, and again in a
 copy of the folder outside the repository. When a step lands, remove nothing from this
-page, turn the step's name into a link, update [`docs/status.md`](../status.md), and
-run `pnpm guard` at the repository root.
+page, turn the step's name into a link, add its rows to [`rules-met.md`](rules-met.md),
+update [`docs/status.md`](../status.md), and run `pnpm guard` at the repository root.

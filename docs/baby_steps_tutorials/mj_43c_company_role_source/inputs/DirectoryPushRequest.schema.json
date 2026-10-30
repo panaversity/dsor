@@ -1,0 +1,215 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DirectoryPushRequest",
+  "description": "The input of directory.push: one change a company's directory sends to DSoR's copy of it, as the SCIM door translates one SCIM request (step 43c's README, decision D1). It names its company as rate.load does, so line \u2461 refuses any other, and its change is one of seven kinds, each with the fields it needs. A user and a group are keyed by their externalId, the uuid their directory gave them; a member is named by the id DSoR gave its user. A pushed user is an account, never a user: since step 05 an argument named user is refused, so a request never names a principal (DSOR-SRC-02b). This tutorial's own schema: the specification names no operation that keeps a directory's copy.",
+  "type": "object",
+  "properties": {
+    "company": {
+      "$ref": "urn:dsor:schema:1.3:common#/$defs/resourceUri",
+      "type": "string",
+      "pattern": "^dsor://[^/]+/tenant/",
+      "description": "The call's own company, dsor://org_456/tenant/org_456, as rate.load names it. The SCIM door writes it from the company its token names, never from the request: line \u2461 refuses any other company (DSOR-TEN-02b; step 43c's README, decision D3)."
+    },
+    "change": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "user.create"
+            },
+            "account": {
+              "$ref": "#/$defs/account"
+            }
+          },
+          "required": ["kind", "account"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "user.replace"
+            },
+            "id": {
+              "$ref": "#/$defs/id"
+            },
+            "account": {
+              "$ref": "#/$defs/account"
+            }
+          },
+          "required": ["kind", "id", "account"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "user.delete"
+            },
+            "id": {
+              "$ref": "#/$defs/id"
+            }
+          },
+          "required": ["kind", "id"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "group.delete"
+            },
+            "id": {
+              "$ref": "#/$defs/id"
+            }
+          },
+          "required": ["kind", "id"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "group.create"
+            },
+            "group": {
+              "$ref": "#/$defs/group"
+            }
+          },
+          "required": ["kind", "group"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "group.replace"
+            },
+            "id": {
+              "$ref": "#/$defs/id"
+            },
+            "group": {
+              "$ref": "#/$defs/group"
+            }
+          },
+          "required": ["kind", "id", "group"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "group.change"
+            },
+            "id": {
+              "$ref": "#/$defs/id"
+            },
+            "operations": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 100,
+              "description": "The PATCH's operations, in its order: members added, removed, or made exactly these; or a new name (the review of step 43c, finding 2).",
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "op": {
+                        "enum": ["add", "remove", "replace"]
+                      },
+                      "members": {
+                        "$ref": "#/$defs/members"
+                      }
+                    },
+                    "required": ["op", "members"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "op": {
+                        "const": "rename"
+                      },
+                      "name": {
+                        "$ref": "#/$defs/name"
+                      }
+                    },
+                    "required": ["op", "name"],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            }
+          },
+          "required": ["kind", "id", "operations"],
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "required": ["company", "change"],
+  "additionalProperties": false,
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "description": "The id DSoR gave a user or a group at its first push."
+    },
+    "externalId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "description": "The uuid the company's directory gave the user or group. Required: a row DSoR cannot key is refused, never kept (decision D5)."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "members": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/id"
+      },
+      "maxItems": 1000
+    },
+    "group": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "external_id": {
+          "$ref": "#/$defs/externalId"
+        },
+        "members": {
+          "$ref": "#/$defs/members"
+        }
+      },
+      "required": ["name", "external_id", "members"],
+      "additionalProperties": false
+    },
+    "account": {
+      "type": "object",
+      "properties": {
+        "user_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "The directory's username. At the first push it becomes the person's DSoR id, so it must be one: the command's own check refuses any other (decision D5)."
+        },
+        "external_id": {
+          "$ref": "#/$defs/externalId"
+        },
+        "display_name": {
+          "$ref": "#/$defs/name"
+        },
+        "active": {
+          "type": "boolean"
+        }
+      },
+      "required": ["user_name", "external_id", "active"],
+      "additionalProperties": false
+    }
+  }
+}

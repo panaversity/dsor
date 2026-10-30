@@ -1,0 +1,40 @@
+{
+  "name": "@dsor-steps/mj-43b-people-and-roles",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Step 43b, learner build: each company's people and their roles live in DSoR's own table, the role source dsor_assignments; tenant admins add and remove people and grant and revoke roles, and a role that may approve or grant needs a second admin's role.confirm.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "start": "node src/main.ts",
+    "serve": "node src/serve.ts",
+    "invite": "node src/invite.ts",
+    "grant": "node src/grant.ts",
+    "dev-issuer": "node src/dev-issuer.ts",
+    "migrate": "node src/migrate.ts",
+    "test": "vitest run",
+    "test:db": "vitest run --config vitest.db.config.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "pnpm typecheck && pnpm test",
+    "verify-audit": "node src/verify-audit.ts",
+    "checkpoint-keys": "node src/checkpoint-keys.ts",
+    "checkpoint-audit": "node src/checkpoint-audit.ts",
+    "send-events": "node src/send-events.ts"
+  },
+  "dependencies": {
+    "@marcbachmann/cel-js": "8.0.0",
+    "ajv": "8.20.0",
+    "jose": "6.2.12",
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/pg": "8.23.1",
+    "typescript": "7.0.2",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "packageManager": "pnpm@11.22.0"
+}

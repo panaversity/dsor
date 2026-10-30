@@ -1,0 +1,15 @@
+{
+  "org_456": [
+    { "group": "65f59cd5-727e-4dfd-bbca-bd79023adb29", "name": "Finance-Approvers", "role": "CFO" },
+    {
+      "group": "4c4650fa-861e-4480-acd5-6ab376c04683",
+      "name": "AP-Supervisors",
+      "role": "ap_supervisor"
+    },
+    {
+      "group": "f029a971-5869-4063-9241-499171bb694a",
+      "name": "Tenant-Admins",
+      "role": "tenant_admin"
+    }
+  ]
+}

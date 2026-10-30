@@ -1,0 +1,46 @@
+{
+  "id": "person.add",
+  "version": 1,
+  "kind": "command",
+  "effect": "mutating",
+  "input": {
+    "schema": "PersonAddRequest"
+  },
+  "output": {
+    "schema": "PersonAdded"
+  },
+  "authorization": {
+    "permission": "person:add"
+  },
+  "tenancy": {
+    "required": true
+  },
+  "delegation": {
+    "required": false
+  },
+  "idempotency": {
+    "required": true
+  },
+  "concurrency": {
+    "strategy": "none"
+  },
+  "execution": {
+    "semantics": "atomic"
+  },
+  "risk": {
+    "level": "high"
+  },
+  "preconditions": {
+    "freshness": "current",
+    "predicates": []
+  },
+  "controls": [],
+  "audit": {
+    "level": "full"
+  },
+  "extensions": {
+    "org.panaversity.steps": {
+      "people_only": true
+    }
+  }
+}

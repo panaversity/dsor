@@ -1,0 +1,60 @@
+{
+  "schemas": {
+    "app": { "side": "company", "runtime": ["USAGE"] },
+    "dsor": { "side": "dsor", "runtime": ["USAGE"] },
+    "public": { "side": "none", "runtime": ["USAGE"] }
+  },
+  "tables": {
+    "app.invoices": {
+      "kind": "business",
+      "tenant": "tenant_id",
+      "runtime": { "table": ["SELECT"] }
+    },
+    "app.payments": {
+      "kind": "business-written",
+      "tenant": "tenant_id",
+      "runtime": {
+        "table": ["SELECT"],
+        "columns": {
+          "INSERT": [
+            "tenant_id",
+            "invoice_id",
+            "vendor_id",
+            "amount_value",
+            "amount_currency",
+            "status"
+          ],
+          "UPDATE": ["status"]
+        }
+      }
+    },
+    "dsor.audit": {
+      "kind": "append-only",
+      "tenant": "tenant",
+      "runtime": {
+        "table": ["SELECT"],
+        "columns": {
+          "INSERT": [
+            "record_id",
+            "kind",
+            "operation",
+            "authorization",
+            "result",
+            "reason",
+            "correlation",
+            "tenant",
+            "extensions",
+            "resources",
+            "row_count",
+            "connector"
+          ]
+        }
+      }
+    },
+    "dsor.migrations": {
+      "kind": "bookkeeping",
+      "tenant": null,
+      "runtime": { "table": [] }
+    }
+  }
+}

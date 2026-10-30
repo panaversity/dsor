@@ -1,0 +1,5 @@
+{
+  "invoice": "dsor://org_456/invoice/INV-1008",
+  "payment": "dsor://org_456/payment/PAY-901",
+  "expected_version": 1
+}

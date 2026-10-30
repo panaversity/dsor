@@ -1,0 +1,31 @@
+{
+  "name": "@dsor-steps/mj-38b-alert-and-escalate",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Step 38b, learner build: an unknown payment raises an alert at once, and escalates to a named person after an hour (DSOR-UNK-04b, DSOR-UNK-04c)",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "start": "node src/main.ts",
+    "migrate": "node src/migrate.ts",
+    "test": "vitest run",
+    "test:db": "vitest run --config vitest.db.config.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "pnpm typecheck && pnpm test"
+  },
+  "dependencies": {
+    "@marcbachmann/cel-js": "8.0.0",
+    "ajv": "8.20.0",
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/pg": "8.23.1",
+    "typescript": "7.0.2",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "packageManager": "pnpm@11.22.0"
+}

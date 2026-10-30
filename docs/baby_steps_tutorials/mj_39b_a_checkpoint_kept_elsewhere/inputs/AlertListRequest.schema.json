@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AlertListRequest",
+  "description": "The input of alert.list: how many alerts the caller would like, and where the page starts, as invoice.list's input is (step 13's README, decisions 1 to 5). The limit is a wish: DSoR cuts it down to its own maximum. The cursor is the last id of the page before, a proposal's id, a place in the caller's own company only. The caller names no company, no person, and no state: whom alerts.json names decides which alerts they see (step 38c's README, decisions D1 and D3). This tutorial's own schema: the specification names no operation that lists alerts.",
+  "type": "object",
+  "properties": {
+    "limit": { "type": "integer", "minimum": 1 },
+    "cursor": { "type": "string", "pattern": "^[A-Za-z0-9_.\\-]+$", "maxLength": 64 }
+  },
+  "additionalProperties": false
+}

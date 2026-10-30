@@ -1,0 +1,12 @@
+{
+  "id": "invoice.get",
+  "version": 1,
+  "kind": "query",
+  "effect": "read",
+  "input": { "schema": "InvoiceGetRequest" },
+  "output": { "schema": "Invoice" },
+  "authorization": { "permission": "invoice:read" },
+  "tenancy": { "required": true },
+  "risk": { "level": "low" },
+  "audit": { "level": "standard" }
+}

@@ -1,0 +1,197 @@
+// What the specification's schema refuses, by step 03's claims (C1 to C7 in step 03's
+// README). Every registry here is built with the role table too (step
+// 06's README, decision 1).
+import { describe, expect, it } from "vitest";
+import { buildRegistry } from "../src/registry.ts";
+import {
+  contract,
+  handlers,
+  refusal,
+  shipped,
+  shippedInputs,
+  shippedRoles,
+  shippedWith,
+  source,
+  without,
+} from "./helpers.ts";
+
+describe("C2: a contract passes the specification's own schema", () => {
+  it("DSOR-OPR-01: the nine shipped contracts pass", async () => {
+    const registry = buildRegistry(shipped, handlers, shippedRoles);
+    // invoice.list. Step 17's two commands, payment.cancel and payment.create.
+    // And delegation.revoke, DSoR's own command. And the brake's two, DSoR's own commands too.
+    // NEW IN STEP 25c: and the sweep, DSoR's own command too (step 25c's README, decision L3).
+    expect([...registry.contracts.keys()].sort()).toEqual([
+      "control.lift",
+      "control.suspend",
+      "delegation.revoke",
+      "invoice.get",
+      "invoice.issue",
+      "invoice.list",
+      "payment.cancel",
+      "payment.create",
+      "proposal.expire_due",
+    ]);
+  });
+
+  it("DSOR-OPR-01: a risk level the schema does not list is refused", async () => {
+    const bad = { ...contract("invoice.get"), risk: { level: "extreme" } };
+    expect(refusal(() => buildRegistry(shippedWith(bad), handlers, shippedRoles))).toMatch(
+      /\/risk\/level/,
+    );
+  });
+});
+
+const ALWAYS_REQUIRED = [
+  "id",
+  "version",
+  "kind",
+  "effect",
+  "input",
+  "output",
+  "authorization",
+  "tenancy",
+  "risk",
+  "audit",
+];
+const COMMAND_ONLY = [
+  "delegation",
+  "idempotency",
+  "concurrency",
+  "execution",
+  "preconditions",
+  "controls",
+];
+
+describe("C3: a field every contract needs, left out, is refused", () => {
+  it.each(ALWAYS_REQUIRED)("DSOR-OPR-02a: a contract without %s is refused", async (field) => {
+    const bad = without(contract("invoice.issue"), field);
+    expect(refusal(() => buildRegistry([source(bad)], {}, shippedRoles))).toMatch(
+      `must have required property '${field}'`,
+    );
+  });
+});
+
+describe("C4: a command needs 6 more fields, and a query does not", () => {
+  it.each(COMMAND_ONLY)("DSOR-OPR-02a: a command without %s is refused", async (field) => {
+    const bad = without(contract("invoice.issue"), field);
+    expect(refusal(() => buildRegistry([source(bad)], {}, shippedRoles))).toMatch(
+      `must have required property '${field}'`,
+    );
+  });
+
+  it("DSOR-OPR-02a: a query without the 6 command fields is accepted", async () => {
+    const query = contract("invoice.get");
+    for (const field of COMMAND_ONLY) expect(query).not.toHaveProperty(field);
+    // Only the input schema this one contract names, or start-up refuses
+    // the others as unused. invoice.list's is one of them.
+    const inputs = shippedInputs.filter((s) => s.file === "InvoiceGetRequest.schema.json");
+    expect(
+      buildRegistry([source(query)], {}, shippedRoles, inputs).contracts.has("invoice.get"),
+    ).toBe(true);
+  });
+
+  it("DSOR-OPR-02a: a query whose effect is not read is refused", async () => {
+    const bad = { ...contract("invoice.get"), effect: "mutating" };
+    expect(refusal(() => buildRegistry([source(bad)], {}, shippedRoles))).toMatch(/\/effect/);
+  });
+
+  // The schema asks for more fields when a command cannot be undone. A hand-written list
+  // of the 16 field names would miss these, so they prove the real schema is used (C2).
+  const APPROVER = { permission: "invoice:issue", approve_permission: "invoice:approve" };
+  const IN_FLIGHT = { exclusive_over: ["invoice"] };
+
+  it("DSOR-OPR-02a: a command that can never be undone, without in_flight, is refused", async () => {
+    const bad = {
+      ...contract("invoice.issue"),
+      execution: { semantics: "non_compensatable" },
+      authorization: APPROVER,
+    };
+    expect(refusal(() => buildRegistry([source(bad)], {}, shippedRoles))).toMatch(
+      "must have required property 'in_flight'",
+    );
+  });
+
+  it("DSOR-OPR-02a: a command that can never be undone, without an approver, is refused", async () => {
+    const bad = {
+      ...contract("invoice.issue"),
+      execution: { semantics: "non_compensatable" },
+      in_flight: IN_FLIGHT,
+    };
+    expect(refusal(() => buildRegistry([source(bad)], {}, shippedRoles))).toMatch(
+      "/authorization must have required property 'approve_permission'",
+    );
+  });
+
+  it.each([["compensatable"], ["saga"]])(
+    "DSOR-OPR-02a: a %s command without compensated_by is refused",
+    async (semantics) => {
+      const bad = { ...contract("invoice.issue"), execution: { semantics } };
+      expect(refusal(() => buildRegistry([source(bad)], {}, shippedRoles))).toMatch(
+        "/execution must have required property 'compensated_by'",
+      );
+    },
+  );
+
+  // The same contracts with the missing field put back are accepted. So the refusals
+  // above are for that field, not for something else.
+  it("DSOR-OPR-02a: the same commands, with those fields, are accepted", async () => {
+    const neverUndone = {
+      ...contract("invoice.issue"),
+      execution: { semantics: "non_compensatable" },
+      authorization: APPROVER,
+      in_flight: IN_FLIGHT,
+    };
+    const undoable = {
+      ...contract("invoice.issue"),
+      execution: { semantics: "compensatable", compensated_by: ["invoice.cancel"] },
+    };
+    // Since step 17, the undo must be a real command, with a contract and code (DSOR-EXE-05c;
+    // step 17's README, decision 8). Until then, a name alone was accepted.
+    const cancel = { ...contract("invoice.issue"), id: "invoice.cancel" };
+    const withCancel = [source(cancel, "invoice.cancel.json")];
+    const cancelCode = { "invoice.cancel": () => ({}) };
+    // Only the input schema these contracts name, or start-up refuses the
+    // others as unused. invoice.list's is one of them.
+    const inputs = shippedInputs.filter((s) => s.file === "InvoiceIssueRequest.schema.json");
+    for (const good of [neverUndone, undoable]) {
+      const built = buildRegistry([source(good), ...withCancel], cancelCode, shippedRoles, inputs);
+      expect(built.contracts.has("invoice.issue")).toBe(true);
+    }
+  });
+});
+
+// The four fields DSOR-OPR-02b names. Each is missing inside an object that is there,
+// which is where code is most tempted to guess: `contract.risk.level ?? "low"`.
+describe("C6: nothing is filled in for the four fields the rule names", () => {
+  it.each([
+    ["risk level", { risk: {} }, "/risk must have required property 'level'"],
+    [
+      "execution semantics",
+      { execution: {} },
+      "/execution must have required property 'semantics'",
+    ],
+    ["idempotency", { idempotency: {} }, "/idempotency must have required property 'required'"],
+  ])(
+    "DSOR-OPR-02b: a command with no %s is refused, not given one",
+    async (_why, change, problem) => {
+      const bad = { ...contract("invoice.issue"), ...change };
+      expect(refusal(() => buildRegistry([source(bad)], {}, shippedRoles))).toMatch(problem);
+    },
+  );
+
+  // Found by the review: a guess made only for queries passed every test above.
+  it("DSOR-OPR-02b: a query with no risk level is refused, not given one", async () => {
+    const bad = { ...contract("invoice.get"), risk: {} };
+    expect(refusal(() => buildRegistry([source(bad)], {}, shippedRoles))).toMatch(
+      "/risk must have required property 'level'",
+    );
+  });
+
+  it("DSOR-OPR-02b: a contract with no effect is refused, not given one", async () => {
+    const bad = without(contract("invoice.get"), "effect");
+    expect(refusal(() => buildRegistry([source(bad)], {}, shippedRoles))).toMatch(
+      "must have required property 'effect'",
+    );
+  });
+});

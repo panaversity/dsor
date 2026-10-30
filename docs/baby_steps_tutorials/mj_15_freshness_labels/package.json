@@ -1,0 +1,30 @@
+{
+  "name": "@dsor-steps/mj-15-freshness-labels",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Baby step 15: every query answer says how old its data is, from the store that served the read, and a cached value is never current. The end of Stage 2. Built from a copy of step 14.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "start": "node src/main.ts",
+    "migrate": "node src/migrate.ts",
+    "test": "vitest run",
+    "test:db": "vitest run --config vitest.db.config.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "pnpm typecheck && pnpm test"
+  },
+  "dependencies": {
+    "ajv": "8.20.0",
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/pg": "8.23.1",
+    "typescript": "7.0.2",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "packageManager": "pnpm@11.22.0"
+}

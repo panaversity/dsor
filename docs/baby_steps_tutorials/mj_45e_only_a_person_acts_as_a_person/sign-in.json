@@ -1,0 +1,10 @@
+{
+  "issuer": "http://localhost:3011",
+  "jwks": "http://localhost:3011/api/auth/jwks",
+  "algorithms": ["RS256"],
+  "max_age": "1h",
+  "audience": "http://127.0.0.1:8042",
+  "other_audiences": ["http://localhost:3011/api/auth/oauth2/userinfo"],
+  "scope": "dsor",
+  "clients": ["dsor-people"]
+}

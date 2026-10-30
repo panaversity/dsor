@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RuleDraftRequest",
+  "description": "The input of rule.draft: the rule's address, the text of its new version, and the person's reason, which the log keeps (step 28's README, decisions D7 and D11). This tutorial's own schema: the specification names no operation that drafts a control. The address is dsor://org_456/rule/high-value-payment; its /rule/ part is this tutorial's. The text is a control as control.schema.json shapes it, without the six fields DSoR sets itself: id, version, status, compiled_by, reviewed_by, and effective_from. Line ⑨ checks the rest against control.schema.json.",
+  "type": "object",
+  "properties": {
+    "rule": {
+      "$ref": "urn:dsor:schema:1.3:common#/$defs/resourceUri",
+      "type": "string",
+      "pattern": "^dsor://[^/]+/rule/"
+    },
+    "draft": {
+      "type": "object",
+      "propertyNames": {
+        "enum": [
+          "operation",
+          "condition",
+          "effect",
+          "authority",
+          "owner",
+          "on_stale",
+          "stale_grace",
+          "tests",
+          "extensions"
+        ]
+      },
+      "properties": {
+        "condition": { "type": "string", "maxLength": 2000 },
+        "owner": { "type": "string", "maxLength": 64 },
+        "tests": { "type": "array", "maxItems": 50 }
+      }
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "description": "Why the version is drafted, in the person's own words, for the people who read the log."
+    }
+  },
+  "required": ["rule", "draft", "reason"],
+  "additionalProperties": false
+}

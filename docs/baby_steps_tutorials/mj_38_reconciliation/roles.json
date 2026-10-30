@@ -1,0 +1,33 @@
+{
+  "ap_supervisor": [
+    "invoice:read",
+    "invoice:issue",
+    "payment:create",
+    "payment:cancel",
+    "payment:execute",
+    "payment:reconcile",
+    "delegation:revoke",
+    "control:suspend",
+    "proposal:approve",
+    "payment:approve"
+  ],
+  "CFO": [
+    "invoice:read",
+    "delegation:revoke",
+    "rule:draft",
+    "rule:manage",
+    "proposal:approve",
+    "payment:approve"
+  ],
+  "ap_clerk": ["invoice:read", "payment:create.propose", "delegation:revoke"],
+  "tenant_admin": [
+    "delegation:revoke",
+    "control:suspend",
+    "rule:draft",
+    "rule:manage",
+    "proposal:approve",
+    "payment:approve"
+  ],
+  "scheduler": ["proposal:expire", "rule:check", "payment:reconcile"],
+  "rate_loader": ["rate:load"]
+}

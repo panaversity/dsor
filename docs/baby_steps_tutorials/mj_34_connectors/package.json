@@ -1,0 +1,31 @@
+{
+  "name": "@dsor-steps/mj-34-connectors",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Step 34 of the DSoR baby steps, a learner build: connectors. The company's records (invoices, vendors, payments) sit behind a connector that publishes an honest declaration of what its system can do, checked against connector.schema.json. DSoR works out what each operation needs from its contract, refuses to start when the default connector lacks it, refuses a company's calls at line 4 when that company's connector is out of service, and keeps the connector's credentials out of every answer and record.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "start": "node src/main.ts",
+    "migrate": "node src/migrate.ts",
+    "test": "vitest run",
+    "test:db": "vitest run --config vitest.db.config.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "pnpm typecheck && pnpm test"
+  },
+  "dependencies": {
+    "@marcbachmann/cel-js": "8.0.0",
+    "ajv": "8.20.0",
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/pg": "8.23.1",
+    "typescript": "7.0.2",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "packageManager": "pnpm@11.22.0"
+}

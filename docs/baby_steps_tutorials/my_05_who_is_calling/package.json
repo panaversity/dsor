@@ -1,0 +1,27 @@
+{
+  "name": "@dsor-steps/my-05-who-is-calling",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Baby step 05 (learner copy): every caller becomes a principal, and who you are comes from the login, never from the arguments.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "start": "node src/main.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "check": "pnpm typecheck && pnpm test"
+  },
+  "dependencies": {
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "typescript": "7.0.2",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "packageManager": "pnpm@11.22.0"
+}

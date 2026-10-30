@@ -1,0 +1,16 @@
+{
+  "org_456": {
+    "receivers": "ap_supervisor",
+    "escalate_to": "cfo_100",
+    "alert_within": "PT0S",
+    "escalate_after": "PT59M",
+    "sweep_every": "PT1M"
+  },
+  "org_789": {
+    "receivers": "ap_supervisor",
+    "escalate_to": "user_700",
+    "alert_within": "PT0S",
+    "escalate_after": "PT59M",
+    "sweep_every": "PT1M"
+  }
+}

@@ -1,0 +1,766 @@
+# Our decisions (the mj_ builds)
+
+The decisions behind our learner builds, in one place: what was decided, why, what it costs, what
+was rejected, and who decided. Entries are numbered and dated. A number is never reused, and a
+decision that is reversed stays here, marked superseded, as in [`AGENTS.md`](../../AGENTS.md).
+
+This file starts on 2026-10-26, with the identity work that leads to step 45. Older decisions stay
+where they were made: see "Earlier decisions" at the end.
+
+**Who decides.** The learner decides, and Claude Code recommends. Where Claude Code chose, the
+entry says so, and the learner can still reverse it.
+
+## 1 · The sign-in server holds who has which role (2026-10-26)
+
+**Decided by:** the learner, on Claude Code's recommendation (step 43d, Q1).
+
+- **What.** People, membership, and who holds which role in which company live in the company's
+  sign-in server. DSoR keeps what each role may do (`roles.json`), the slips, the rules, the
+  approvals, and the evidence.
+- **Why.** A copy of the people in DSoR drifts. A person who left keeps acting until someone edits
+  DSoR too.
+- **Cost.** DSoR depends on that server, and whoever runs the company there can grant money roles.
+- **Rejected.** People and roles only in DSoR's own table. That stays as the kind for a company with
+  no directory (entry 8).
+
+## 2 · DSoR asks at every call (2026-10-26). Superseded by entry 11
+
+**Decided by:** the learner (step 43d, Q5).
+
+- **What.** Lines ② and ③ asked the sign-in server at every call. The kept answer counted only when
+  no answer came.
+- **Superseded on 2026-10-28** by entry 11: a flood of agent calls became a flood of lookups.
+
+## 3 · An answer says whom it is about, and "no answer" is not a fault (2026-10-26)
+
+**Decided by:** the learner (step 43d, Q6).
+
+- **What.** An answer counts only when it names the company and the person DSoR asked about. A
+  `429`, a `5xx`, a timeout, or no connection means "cannot answer now": the kept answer counts
+  until the bound. Any other reply is a fault: `INTERNAL_ERROR`, and the kept answer is dropped.
+- **Why.** A misrouted answer, or an error page, must never read as "still employed".
+- **Cost.** A server bug that returns a wrong body stops the agents at once. That is the safe side.
+- **Now** part of the proposal for the specification (entries 10 and 17).
+
+## 4 · A person's own call asks too (2026-10-26)
+
+**Decided by:** the learner (step 43d, Q7).
+
+- **What.** A caller's roles come from the lookup, not from their token. One rule for every caller.
+- **Why.** A token's roles are a photo from when it was made, up to an hour old.
+- **Cost.** One lookup for each person who calls, as well as for each slip's signer.
+
+## 5 · One hour, with an alert at once (2026-10-26)
+
+**Decided by:** the learner (step 43d, Q8).
+
+- **What.** `max_staleness` is one hour for both stories. At the first `FRESHNESS_UNSATISFIABLE`, the
+  company's alert receivers hear.
+- **Why.** One hour meets the L3 bound of DSOR-IDN-06.
+- **Cost.** A sign-in server that is down for more than an hour stops agents and approvals.
+
+## 6 · A DSoR rule must hold for four kinds of company (2026-10-28)
+
+**Decided by:** the learner, who called out design bias.
+
+- **What.** Before a choice becomes DSoR's rule, it is checked against four companies: (1) one on
+  Okta or Microsoft Entra, which sends SCIM; (2) one with a sign-in server it built; (3) a small team
+  with no directory; (4) Panaversity, on Better Auth. A choice that holds only for (4) is the
+  Panaversity SSO's setup, and it is recorded with the SSO.
+- **Why.** The only real server we had run against was shaping DSoR's questions.
+- **Cost.** Every design question takes one more pass.
+
+## 7 · DSoR owns the role names, and keeps no role map (2026-10-28)
+
+**Decided by:** the learner.
+
+- **What.** DSoR names the roles and says what each may do (`roles.json`). The company's directory
+  gives people those names: an app role, SCIM's `roles` attribute, or a group made for DSoR. DSoR
+  reads them as they come, and a name it does not define grants nothing (DSOR-AUT-01b).
+- **Why.** A naming problem belongs to the sign-in server and is fixed there. A map in DSoR is a
+  second place to manage roles. Microsoft Entra's app roles work the same way.
+- **Cost.** Each company names its roles DSoR's way in its directory.
+- **Rejected.** A role map for each company (step 43c's `role-maps.json`, which stays in 43c); a
+  `roles.json` for each company; Better Auth's table of roles for each company, for now.
+
+## 8 · Each company chooses its role source, and there is no default (2026-10-28)
+
+**Decided by:** the specification (DSOR-IDN-05, and the tenant policy's required `role_source`),
+confirmed by entry 6.
+
+- **What.** SCIM for a directory that sends it; the lookup for a server that answers DSoR's
+  contract; DSoR's own table for a company with no directory.
+- **Rejected.** One default kind, which fails at least two of the four companies; and a hub, where
+  every company's directory feeds the Panaversity SSO. A hub holds only for Panaversity, and that one
+  server down for more than an hour would stop every company's payments.
+
+## 9 · DSoR writes the lookup's contract (2026-10-28), D1
+
+**Decided by:** the learner, on Claude Code's recommendation.
+
+- **What.** The lookup follows a question and an answer of DSoR's own, the same for every sign-in
+  server. The Panaversity SSO is the first server to answer it.
+- **Why.** No standard serves this question, and one server's own API would tie DSoR to that server.
+  Better Auth's own member route answers only a signed-in member, and its `403` means both "this
+  person left" and "you are not a member".
+- **Cost.** The SSO's route had to change (done in #1331). The contract waits in a proposal
+  (entry 17).
+- **Rejected.** The SSO's route as it was; SCIM only, which fails a home-built server and Better
+  Auth.
+
+## 10 · Two rules for every role source (2026-10-28), D2
+
+**Decided by:** the learner, on Claude Code's recommendation.
+
+- **What.** Proposed as MUST rules for §12.1: an answer counts only when it names the tenant and the
+  person asked about; a reply that is neither an answer nor "cannot answer now" refuses the request
+  with `INTERNAL_ERROR` and drops the kept answer. The replies that mean "cannot answer now" go in the
+  contract's binding. "Role names are DSoR's" goes in as a common mistake, not as a MUST.
+- **Cost.** Two more rules to test, for every role source that answers.
+
+## 11 · An answer is reused for up to 10 seconds (2026-10-28), D3
+
+**Decided by:** the learner, on Claude Code's recommendation. Replaces entry 2.
+
+- **What.** DSoR reuses a person's answer for up to 10 seconds, then asks again.
+- **Why.** At every call, 500 agent calls a minute made 500 lookups. The server answered `429`, DSoR
+  kept its last answer for up to an hour, and a role removed at 1:55 kept working until about 2:55.
+- **Cost.** A person who left is caught within 10 seconds, not at the very next call.
+- **Rejected.** A `429` as a fault (a flood that times out the server still keeps the old answer); a
+  shorter bound for `429` only; keeping the hour as it was.
+
+## 12 · The answer's shape (2026-10-28), D4
+
+**Decided by:** the learner, on Claude Code's recommendation.
+
+- **What.** DSoR asks with `tenant` and `person`, using that company's own key. The answer holds
+  `tenant`, `person`, `status` (`active`, `suspended`, or `gone`), `roles` (DSoR's names, empty unless
+  `active`), and `as_of` (when the server read its data).
+- **Why.** `suspended` and `gone` are the two cases of DSOR-IDN-07. `as_of` lets DSoR refuse an answer
+  older than the bound, and it fills the spec's `subjectAuthority.asOf`.
+- **Rejected.** Four states, as the SSO had (its two kinds of `gone` came from one server); two states
+  with no `as_of`.
+- **The learner's questions on the way.** DSoR sends the company and the person: line ② takes them
+  from the token and the request's company, and line ③ from the slip. `roles.json` is not a second
+  place to manage roles: the directory says who holds a role, and DSoR says what the role may do.
+
+## 13 · One test list for every role-source adapter (2026-10-28), D5
+
+**Decided by:** the learner, on Claude Code's recommendation.
+
+- **What.** Every adapter passes the same tests: a person who left is refused at the next ask, and
+  the slips they signed are suspended; an answer older than the bound is refused; an answer about
+  someone else never counts; an unclear reply is a fault.
+- **Why.** A new adapter could pass its own tests and still let a leaver through.
+- **Cost.** Step 45 writes its tests in a shared form.
+
+## 14 · The timer jobs keep their keys for now (2026-10-28), D6
+
+**Decided by:** the learner, on Claude Code's recommendation.
+
+- **What.** `dsor-scheduler` and `dsor-rates` keep their fixed keys in step 45, with a note. A later
+  step runs them inside DSoR, and the `scheduler` and `rate_loader` roles go.
+- **Why.** Step 45 keeps to one idea.
+- **Cost.** Two fixed keys live a step or two longer.
+
+## 15 · A stand-in answers the contract in tests (2026-10-28), D7
+
+**Decided by:** the learner, on Claude Code's recommendation.
+
+- **What.** `pnpm start` and the older tests use a small stand-in that answers DSoR's contract. The
+  people's rows in `src/principals.ts` and the fake staff directory go. The live run still asks the
+  real SSO.
+- **Cost.** Many older tests change in step 45.
+
+## 16 · The contract's form in the specification (2026-10-28)
+
+**Decided by:** the learner, on Claude Code's recommendation.
+
+- **What.** Three reference-profile rules (the request; what counts as an answer; what means "cannot
+  answer now"), a JSON Schema for the answer, and an `as_of` up to one minute ahead of DSoR's clock
+  read as now. More than a minute ahead is a fault.
+- **Rejected.** A description with no rules; prose with no schema; any future `as_of` as a fault (a
+  clock two seconds fast would stop every agent); DSoR's own time in place of `as_of`.
+
+## 17 · A change to the specification is a proposal (2026-10-28)
+
+**Decided by:** the learner.
+
+- **What.** On this branch, a change to the specification is written in `mj_notes.md`, "Proposals
+  for the specification". All proposals go to the specification together, later, in a pull request
+  of their own. Until one lands, a step titles its tests by its own decisions, never by a
+  requirement id the specification does not have.
+- **Why.** The specification changes only through its own reviewed pull request.
+- **History.** The lookup contract was first written straight into the specification (`e2f6965d`)
+  and reverted the same day (`d32c5679`). That commit still holds the full text.
+
+## 18 · No SSO setting named after DSoR (2026-10-28)
+
+**Decided by:** the learner.
+
+- **What.** The SSO keeps `OAUTH_MCP_AUDIENCES`, which lists DSoR's audience as before. A rename to
+  `OAUTH_DSOR_AUDIENCES`, with a migration 0015 for one-hour DSoR tokens, was dropped.
+- **Why.** A general sign-in server should not name one product: the same bias as entry 6. DSoR does
+  not need it, because step 44 refuses any token older than `max_age` after its `iat`, one hour in
+  its `sign-in.json`.
+- **Cost.** The learner dislikes `OAUTH_MCP_AUDIENCES` too. It stays for now.
+
+## 19 · The SSO review's fixes: four kept, one dropped (2026-10-28)
+
+**Decided by:** Claude Code, as lead, at the learner's word ("keep what you want"), with entry 18
+decided by the learner.
+
+- **What.** The #1333 session had reviewed #1331 and left five fixes uncommitted. Four are committed
+  on #1331 and pushed (`9081c0a24`): migration 0013 stops at its first error; the lookup limits
+  refused keys (20 in 60 seconds from one address), but never a key that verified in the last 15
+  minutes; a DSoR role in an invitation counts only if its sender is still an owner when it is
+  accepted; the unused `dsor:lookup` scope is removed.
+- **Why.** Each fixes a real gap, and CI's whole SSO job passes on them.
+- **Dropped.** The fifth fix (entry 18).
+
+## 20 · The answers live in DSoR's PostgreSQL (2026-10-28), D8
+
+**Decided by:** the learner, on Claude Code's recommendation, from the learner's question about load.
+
+- **What.** One table of answers (tenant, person, status, roles, `as_of`, when received). It holds the
+  10-second reuse and the kept answers.
+- **Why.** Every DSoR server shares it, it survives a restart, and it is the evidence a decision
+  bundle needs: "`user_123` held `ap_supervisor` as of 01:55".
+- **Cost.** One indexed read for each call, and one write for each lookup, in the store DSoR already
+  has.
+- **Rejected.** Each server's memory (four servers ask four times, disagree for up to 10 seconds, and
+  lose the kept answers on a restart); Redis (a new service, which may evict a kept answer).
+
+## 21 · One lookup in flight for each company and person (2026-10-28), D9
+
+**Decided by:** the learner, on Claude Code's recommendation.
+
+- **What.** On each server, while a lookup for a company and a person is in flight, other calls for
+  the same pair wait for its answer.
+- **Why.** When a busy person's answer expires, 50 calls in flight would send 50 identical lookups.
+- **Cost.** A little code, and a waiting call is only as fast as that one lookup.
+- **Built in** step 45b (entry 23).
+
+## 22 · A 2-second timeout, no retry, and a pause after five failures (2026-10-28), D10
+
+**Decided by:** the learner, on Claude Code's recommendation.
+
+- **What.** A lookup waits at most 2 seconds and is never retried. After five failures in a row, DSoR
+  stops asking that company's server for 10 seconds and uses its kept answers, up to the one-hour
+  bound.
+- **Why.** Retries multiply the load exactly when a server is weakest.
+- **Rejected.** A timeout with no pause; retries with backoff.
+- **Built in** step 45 (the timeout) and step 45b (the pause), as entry 23 splits them.
+- **Where (2026-10-28).** The run of failures and the pause live in each DSoR server's memory,
+  as D9's lookups in flight do. Claude Code stated it from D9's "on each server" and showed it to
+  the learner with step 45b's questions. Four DSoR servers make four runs, and a restart forgets
+  one.
+
+## 23 · Step 45b protects the sign-in server (2026-10-28)
+
+**Decided by:** the learner, on Claude Code's recommendation.
+
+- **What.** Step 45 holds D1 to D8, and D10's 2-second timeout with no second try. A new step
+  45b, "Protect the sign-in server", holds D9 (one lookup in flight) and D10's pause after five
+  failures.
+- **Why.** Each step teaches one new idea. Asking the server is one; protecting it under load is
+  another. Step 45 keeps the timeout, because "a timeout means the server cannot answer now"
+  needs one.
+- **Cost.** One more step in the map, and one more copy.
+- **Rejected.** All of D1 to D10 in step 45, which is two ideas at once; and D8 to D10 in step
+  45b, which gives the same answers two homes, built twice.
+
+## 24 · Each company's lookup address is in a file, and its key in the environment (2026-10-28), D11
+
+**Decided by:** the learner, on Claude Code's recommendation, from checking step 45's design.
+
+- **What.** `lookups.json` names each company's lookup address. Each company key comes from an
+  environment variable, such as `DSOR_LOOKUP_KEY_ORG_456`. Start-up refuses a company that has a
+  lookup and no key.
+- **Why.** The specification's `role_source` setting holds only `kind` and `max_staleness`, and
+  DSOR-SCH-02 keeps our own fields out of it. A key in a file is readable by whatever reads the
+  folder, and DSOR-CNR-02 forbids that.
+- **Rejected.** The address under `extensions` in `role-sources.json`; every setting in the
+  environment.
+
+## 25 · The proposal's schema lives in its own folder (2026-10-28), D12
+
+**Decided by:** the learner, on Claude Code's recommendation.
+
+- **What.** `proposals/role-source-answer.schema.json` in step 45. `schemas/` keeps only the
+  specification's copies, byte for byte, so a reader can tell a rule from a proposal by where the
+  file is. When the proposal lands, the file moves to `schemas/` unchanged.
+- **Rejected.** The proposal in `schemas/`, with a note.
+
+## 26 · An answer is as old as the earlier of two times (2026-10-28), D13
+
+**Decided by:** the learner, on Claude Code's recommendation.
+
+- **What.** An answer's `as_of` is the earlier of the server's `as_of` and the moment DSoR asked.
+- **Why.** Step 19's decision 14 says an answer is never later than the moment DSoR asked; D4 adds
+  the server's own time. Together, an answer read three hours ago counts as three hours old, and
+  one up to a minute ahead counts as the moment DSoR asked.
+- **Rejected.** The server's time only (a clock ahead makes an answer look fresher); DSoR's time
+  only (a cached answer looks fresh, which is break B3).
+
+## 27 · The company key travels as Authorization: Bearer (2026-10-28), D14
+
+**Decided by:** the learner, on Claude Code's recommendation, while step 45's test server was
+written.
+
+- **What.** DSoR sends each company key as `Authorization: Bearer <key>`.
+- **Why.** The proposed contract said only "a credential for that tenant alone". The HTTP
+  standard for a credential (RFC 6750) works for any server, and keeps a product's habit out of
+  DSoR's contract (entry 6).
+- **Cost.** The Panaversity SSO's route reads `x-api-key` today, and must read Bearer too.
+- **Rejected.** `x-api-key`, Better Auth's habit; a header that each company sets.
+
+## 28 · With no person in DSoR's table, start-up reads no one's job (2026-10-28), D15
+
+**Decided by:** Claude Code, during step 45's build, on its own recommendation. **Reviewed by the
+learner on 2026-10-28:** its direction stays, with no list of people in DSoR, and its three gaps
+close in entries 35 to 37.
+
+- **What.** D7 took the people out of DSoR's own table. Three checks read a person's job there, and
+  now read only what DSoR itself knows. A slip's signer is refused at line ③ only when DSoR's table
+  names her as an agent, an application, or a timer job; anyone else, her company answers for. A
+  control's owner, and `alerts.json`'s escalation person, are refused only when DSoR's table names
+  them as no person. A receivers role must be in `roles.json` and hold `alert:read`. Whether a
+  person works in the company, and in which job, her company says when she acts, at line ②.
+- **Why.** Asking the company at start-up proves a membership at one moment only, and makes DSoR's
+  start-up wait on the sign-in server. A control's owner switches it on in person, so line ② checks
+  her then.
+- **Cost.** A company's server decides who is a person: a service account it lists as an active
+  member can sign a slip (step 19's decision 13 guarded against that). And start-up no longer
+  catches an escalation to someone who cannot settle a payment (step 38b's review, M3).
+- **Rejected.** Keeping a list of people's ids in DSoR, which D7 removed; asking each company's
+  lookup at start-up.
+- **The review's attack (2026-10-28).** A service account that the company's SSO lists as an
+  active member, with a role, signs in through `dsor-people` and acts in direct mode: it reads
+  unmasked, drafts with no slip, and approves as a CFO. The answer says nothing about the kind of
+  account. An escalation can go to someone who cannot see alerts. And a company's lookup may sit on
+  another server than the token's issuer, which may give the same id to someone else.
+- **Proposed, for the learner:** the answer carries `kind`, and DSoR acts only on `person`; the
+  sweep asks the lookup about the escalation person; start-up refuses a lookup whose origin is not
+  the issuer's. The learner took the first two, and, for the third, the answer names its issuer
+  instead (entries 35 to 37).
+
+## 29 · Q8's alert is not built in step 45 (2026-10-28)
+
+**Found by:** Claude Code, after step 45's build. **Waits for the learner's decision.**
+
+- **What.** Entry 5 says that at the first `FRESHNESS_UNSATISFIABLE`, the company's alert receivers
+  hear. Step 45 refuses the call and records it, but raises no alert.
+- **Why.** In this tutorial an alert belongs to a proposal (step 38b). A sign-in server that cannot
+  answer has no proposal, so it needs a kind of alert of its own.
+- **Proposed.** Build it in step 45b, which is about a server that is down, or in a step of its own.
+- **Decided (2026-10-28).** A step of its own, after step 45b (entry 33).
+
+## 30 · After the pause, one call tries the server again (2026-10-28), D16
+
+**Decided by:** the learner, on Claude Code's recommendation, before step 45b's code.
+
+- **What.** When the 10-second pause is over, the first call asks: the trial. Until its lookup
+  ends, the other calls about that company act as in the pause, and a call about the same person
+  waits for it (D9). If the trial fails, a new pause starts at once.
+- **Why.** A server that is coming back meets one question, not a crowd.
+- **Cost.** For up to 2 more seconds, calls use kept answers though the server may be back.
+- **Rejected.** Every call asks after the pause, and five more failures pause again (a server still
+  down gets five or more questions every 10 seconds); every call asks, and the first failure pauses
+  again (a burst of questions as the server comes back).
+- **Built in** step 45b.
+
+## 31 · Any reply ends a run of failures (2026-10-28), D17
+
+**Decided by:** the learner, on Claude Code's recommendation, before step 45b's code.
+
+- **What.** A reply that DSoR cannot use, such as a `403`, is a fault, not a failure. It ends the
+  run of failures, and keeps step 45's meaning: `INTERNAL_ERROR`, and the kept answer is dropped.
+- **Why.** The pause is for a server that cannot answer. A server that replies is up.
+- **Cost.** After a company takes back DSoR's key, every call still asks, and gets a fast `403`,
+  until someone fixes the key.
+- **Rejected.** A fault counts as a failure: if the server answers one person's record wrongly, five
+  of her calls pause the whole company.
+- **Built in** step 45b.
+
+## 32 · A stranger's lookups get a step of their own (2026-10-28)
+
+**Decided by:** the learner, on Claude Code's recommendation, with step 45b's questions.
+
+- **What.** Step 45's review, finding 2: anyone with an SSO account can name org_456, and each such
+  call spends one of org_456's lookups, with org_456's key. The fix gets a step of its own, step
+  45c in the map (its place proposed by Claude Code): DSoR
+  asks about the same company and person at most once in 10 seconds, whatever the reply, and holds a
+  budget of lookups about people it knows nothing about.
+- **Why.** Step 45b keeps one idea. The fix needs numbers of its own, and a refusal of its own.
+- **Cost.** Until then, a flood of strangers can make org_456's lookups fail, and the pause then
+  keeps org_456 on its kept answers.
+- **Rejected.** Both halves in step 45b.
+
+## 33 · Q8's alert gets a step of its own (2026-10-28). Moved into step 50 by entry 45
+
+**Decided by:** the learner, on Claude Code's recommendation, with step 45b's questions.
+
+- **What.** The alert of decision Q8, when DSoR cannot get a fresh answer from a company's sign-in
+  server, is built in a step of its own (entry 29): step 45d in the map, its place proposed by
+  Claude Code.
+- **Why.** An alert in this tutorial belongs to a payment (step 38b). A server outage needs a new
+  kind of alert, with a record of its own.
+- **Cost.** Until then, a company learns of an outage only from refused calls and their records.
+- **Rejected.** In step 45b, when a pause starts (two ideas in one step); dropping the alert.
+- **Moved on 2026-10-29** by entry 45: built in step 50, which already planned this alert.
+
+## 34 · One person's failing lookups and the pause, in step 45c (2026-10-28)
+
+**Decided by:** the learner, on Claude Code's recommendation, after step 45b's review.
+
+- **What.** Step 45b's review, finding 2: one person whose own lookups fail, say because the SSO
+  errors on her record, pauses org_456 for everyone after five of her calls. She can keep it paused
+  by being every trial. Step 45 had no such risk. Step 45c fixes it with each person's memory of her
+  lookups: the company's pause can count different people, and a person whose lookups keep failing
+  is asked less and less often, so that someone else's call becomes the trial.
+- **Why.** Step 45c gives each person a memory of her lookups anyway (entry 32).
+- **Cost.** Until 45c, one broken record at the SSO can pause org_456 again and again. No call acts
+  on an answer older than the hour, but a person with no kept answer is refused during each pause,
+  and after an hour every call is.
+- **Rejected.** Counting different people now, in step 45b: an outage seen through one person's calls
+  would no longer pause, and the step's stories and its real run would change.
+
+## 35 · The lookup's answer says who is a person (2026-10-28), D18
+
+**Decided by:** the learner, on Claude Code's recommendation, in the review of D15 (entry 28).
+
+- **What.** The lookup's answer gains `type`, from the specification's own list of principal types:
+  `human`, `agent`, `application`, or `system` (§12). DSoR treats an account as a person only when
+  its company's answer says `human`: for a person's own call at line ②, for a slip's signer at line
+  ③, and for an approval. Any other type is refused as no person.
+- **Why.** DSOR-IDN-01 asks DSoR to give every caller a type, and DSOR-SOD-01a forbids an agent to
+  approve. Since D15, DSoR gives "human" to any login its own table does not name, so a script
+  account that a company lists as CFO could approve payments as a person (step 45's review,
+  finding 1). The company knows its accounts; DSoR should not guess.
+- **Cost.** Each company's server must know which accounts are people. The Panaversity SSO marks
+  none today, so it answers `human` for all until it does: how it marks a script account is the
+  SSO's own choice, for its notes. The contract and the SSO's route change again.
+- **Rejected.** Keeping D15 as built; a list of people's ids in DSoR, the double management the
+  learner rejected for roles.
+- **Built in** step 45e (its place proposed by Claude Code).
+
+## 36 · The sweep asks about the escalation person when it escalates (2026-10-28), D19. Moved into step 50 by entry 45
+
+**Decided by:** the learner, on Claude Code's recommendation, in the review of D15 (entry 28).
+
+- **What.** When the sweep escalates an alert, DSoR asks the company's lookup about the person
+  `alerts.json` names. If she is not active, or her roles cannot see alerts and settle a payment,
+  the alert records that the escalation did not reach her, and stays with the receivers.
+- **Why.** Since D15, start-up no longer checks her job (step 38b's review, M3). An escalation to
+  someone who left, or who cannot see alerts, reached nobody who could act, and nobody heard
+  (step 45's review, finding 6).
+- **Cost.** One lookup for each escalation, and a new kind of alert record.
+- **Rejected.** Asking at start-up, which waits on every company's sign-in server and proves her job
+  at one moment only (D15's own reason); leaving it.
+- **Built in** step 45d, with Q8's alert (its place proposed by Claude Code).
+- **Moved on 2026-10-29** by entry 45: to step 50, whose escalation to a role (Q10) is expected to
+  leave no single person to check. Step 50's design settles whether the check is still needed.
+
+## 37 · The lookup's answer names its issuer (2026-10-28), D20
+
+**Decided by:** the learner, on Claude Code's recommendation, in the review of D15 (entry 28).
+
+- **What.** The lookup's answer gains `issuer`: the sign-in server whose ids `person` uses. DSoR
+  uses an answer only when its `issuer` is the one in `sign-in.json`.
+- **Why.** Tokens come from one issuer, and a company's lookup could sit on another server with ids
+  of its own, where `user_123` is someone else: she would get that person's roles (step 45's
+  review, finding 8). The answer says which ids it speaks, so a mismatch is refused, not used.
+- **Cost.** A second new field in the contract; each server must know whose ids it uses.
+- **Rejected.** Start-up refusing a lookup on another server than the issuer, which also refuses a
+  company whose roles live on another server with the same ids; leaving it to whoever writes the
+  two files.
+- **Built in** step 45e (its place proposed by Claude Code).
+
+## 38 · Every reply about a person is remembered for 10 seconds (2026-10-29), D21
+
+**Decided by:** the learner, on Claude Code's recommendation, before step 45c's code.
+
+- **What.** On each DSoR server, every reply about a person in a company, an answer, a failure, or a
+  fault, is remembered for 10 seconds from the moment DSoR asked. A call about her in that time sends
+  no question and gets what that reply gave.
+- **Why.** DSoR remembered only answers it could use, so every error was asked for again at once: a
+  `403` after a key was taken back cost a lookup at every call.
+- **Cost.** A server that recovers a second after a failure is not asked about her for up to 10
+  seconds.
+- **Rejected.** Failures only, so a fault is asked for again at once; the memory in the database, a
+  write for every failed lookup.
+- **Built in** step 45c.
+
+## 39 · A person whose lookups keep failing waits twice as long each time (2026-10-29), D22
+
+**Decided by:** the learner, on Claude Code's recommendation, before step 45c's code.
+
+- **What.** After failures in a row about one person, DSoR waits 10, 20, 40, 80, 160 seconds, then 5
+  minutes at most, before it asks about her again. Any reply starts her over at 10 seconds. While she
+  waits, her calls cannot be the trial.
+- **Why.** After an outage, a person whose own record fails could be every trial and keep the company
+  paused (step 45b's review, finding 2).
+- **Cost.** Once her record is fixed, DSoR may take up to 5 minutes to ask again; she uses her kept
+  answer meanwhile.
+- **Rejected.** Asking every 10 seconds; only the person of a failed trial sitting out the next trial.
+- **Built in** step 45c.
+
+## 40 · 20 lookups a minute about people DSoR knows nothing about (2026-10-29), D23
+
+**Decided by:** the learner, on Claude Code's recommendation, before step 45c's code.
+
+- **What.** Each DSoR server sends at most 20 lookups in any minute, for each company, about people it
+  keeps no active answer for, from people's own calls at line ②. People it keeps an active answer
+  for, and line ③, never wait for it.
+- **Why.** Anyone who signs up at a company's SSO can name the company, and each such call cost a
+  lookup with the company's key (step 45's review, finding 2).
+- **Cost.** Once strangers use it up, a real new employee is refused until the minute rolls on.
+- **Rejected.** 5 a minute, which an onboarding day runs into; 100 a minute.
+- **Built in** step 45c.
+- **The cost above was false (step 45c's review, 2026-10-29).** A call over the budget costs a
+  stranger nothing, and her "not a member" answer was used again for only 10 seconds, so four
+  sign-up accounts calling steadily kept the 20 used up, and a new employee out, for as long as they
+  kept calling. The learner then took D26 (entry 42). And a fault erases kept answers, so after a key
+  rotation done wrong a company's people all count as strangers and share the 20 (entry 43).
+- **And the budget counted a release's question too (step 45c's review, finding 1).** A release asks
+  about the person who made the request; over the budget it heard the stranger's words, and threw
+  the waiting payment away. Fixed in step 45c: only a person's own call spends the budget (entry 44).
+
+## 41 · Over the budget, the stranger's words (2026-10-29), D24
+
+**Decided by:** the learner, on Claude Code's recommendation, before step 45c's code.
+
+- **What.** A call over the budget sends no question, and hears what anyone DSoR knows nothing about
+  hears: "the caller may not work in the tenant it named".
+- **Why.** As step 45's review fixed for every call from someone DSoR knows nothing about, no SSO
+  account learns which companies DSoR serves, or that one is busy (DSOR-ERR-01b).
+- **Cost.** A new employee hears that she does not work there, not "try again in a minute".
+- **Rejected.** `RATE_LIMITED`, which tells any SSO account that the company is a DSoR company.
+- **Built in** step 45c.
+- **The "why" above claimed too much (step 45c's review, 2026-10-29).** The words reveal nothing, but
+  the time to answer does: a call naming a company DSoR serves waits for its sign-in server, and one
+  naming any other company is refused at once. So a stranger can already tell that org_456 is a DSoR
+  company, as since step 45. Told this, the learner kept the stranger's words: they meet
+  DSOR-ERR-01b, and say nothing in words about the company's load.
+
+## 42 · A stranger's own calls use "not a member" for 10 minutes (2026-10-29), D26
+
+**Decided by:** the learner, on Claude Code's recommendation, after step 45c's review.
+
+- **What.** When a person's own call hears that she is gone from the company, DSoR uses that answer
+  for her own calls for 10 minutes, not 10 seconds. Her company's other questions about her, such as
+  a slip's signer at line ③, still use it for 10 seconds.
+- **Why.** Each sign-up account then costs one lookup in 10 minutes. Keeping the budget of D23 used
+  up takes 200 accounts every 10 minutes, not 4.
+- **Cost.** Someone added to the company just after her first try waits up to 10 minutes.
+- **Rejected.** Keeping D23 as it was, with its true cost said; dropping the budget.
+- **Built in** step 45c.
+
+## 43 · A key rotation keeps people known: a step of its own (2026-10-29). Parked by entry 46
+
+**Decided by:** the learner, on Claude Code's recommendation, after step 45c's review.
+
+- **What.** A fault, such as a `403` during a key rotation done wrong, erases DSoR's kept answer about
+  each person it asks about (step 45's D2). They then count as strangers for the budget, so once the
+  key is fixed a company shares 20 lookups a minute until each person is asked again: about 25
+  minutes for 500 people on one DSoR server. A step of its own keeps a mark that DSoR once knew a
+  person as active, which a fault does not erase: a new column in `dsor.role_answers`.
+- **Cost.** Until then, a key rotation done wrong slows a large company's own calls for a while.
+- **Rejected.** Building it in step 45c, which would grow with a migration; leaving it.
+- **Built in** step 45f (its place proposed by Claude Code).
+- **Parked on 2026-10-29** by entry 46: built only if a real run shows it.
+
+## 44 · A release's question about its requester, fixed in step 45c (2026-10-29)
+
+**Decided by:** the learner, on Claude Code's recommendation, after step 45c's review.
+
+- **What.** At a release, DSoR asks again about the person who made a request, through the question a
+  person's own call asks. Since step 45, a company that could not answer about someone DSoR keeps no
+  active answer for gave the stranger's words there, and the release read them as "no": a `503` threw
+  a waiting payment away. Step 45c's budget made it worse. Step 45c fixes both: only a person's own
+  call spends the budget and hears the stranger's words; a release's question about its requester
+  hears what her company really said, so "cannot answer now" leaves the proposal waiting.
+- **Why.** A fix belongs in the earliest step that has it. Step 45c's budget touches the same line, so
+  it is fixed there first; steps 45 and 45b are proposed separately.
+- **Cost.** Until then, steps 45 and 45b keep the bug.
+- **Rejected.** Stopping step 45c to fix steps 45 and 45b first.
+- **Fixed in steps 45 and 45b on 2026-10-29.** The same change in each: only a person's own call
+  hears the stranger's words when her company cannot answer, and a release's question about its
+  requester hears what her company said. Each step's `test/people.test.ts` has the test, which gave
+  `APPROVAL_INVALIDATED` before the fix.
+
+## 45 · Step 45d moves into step 50 (2026-10-29)
+
+**Decided by:** the learner, on Claude Code's recommendation, after step 45c.
+
+- **What.** Q8's alert (entry 33) and the escalation person's check (D19, entry 36) are not a step
+  45d. They are built in step 50, "The right people hear", which already planned the same alert,
+  and whose escalation to a role (Q10) leaves no single person to check.
+- **Why.** The plan listed Q8's alert twice. A step 45d would build a kind of alert that step 50
+  builds again, and a check that step 50 drops.
+- **Cost.** Until step 50, a company learns of an outage of its sign-in server only from refused
+  calls and their records, and an escalation can go to someone who left the company.
+- **Rejected.** Keeping step 45d; building only D19's check now.
+
+## 46 · Step 45f is parked (2026-10-29)
+
+**Decided by:** the learner, on Claude Code's recommendation, after step 45c.
+
+- **What.** The mark that keeps people known after a fault (entry 43) is not built now. It is built
+  only if a real run shows a key problem that keeps a company's people waiting for the budget.
+- **Why.** The case is rare: a key rotation done wrong. It heals by itself, an agent's call at line
+  ③ never waits for the budget, and the fix needs a migration.
+- **Cost.** After a key rotation done wrong, a large company's people can hear "not a member" from
+  their own calls for a while: about 25 minutes for 500 people on one DSoR server, as step 45c's
+  budget lets DSoR ask about each of them again.
+- **Rejected.** Building it after step 45e; treating a `403` as "cannot answer now", which changes
+  step 45's D2 and lets old answers count for up to an hour after a company revokes DSoR's key.
+
+## 47 · A non-person is a non-member, at line ② and at a release (2026-10-30), D27
+
+**Decided by:** the learner, on Claude Code's recommendation, before step 45e's code.
+
+- **What.** When a company's answer gives an account any type but `human`, line ② refuses the
+  account's own call with the words every stranger hears, and a release that asks again about such
+  a requester throws the proposal away. DSoR's record of the refusal names the type.
+- **Why.** As step 45 does for "suspended" and "gone", the reply does not say what DSoR knows about
+  an account (DSOR-ERR-01b). A release reads the refusal as "no", as for a requester who left.
+- **Cost.** A script's owner hears only "may not work in the tenant"; the reason is in the record,
+  not in the reply.
+- **Rejected.** Words of its own ("only a person may call for herself"), which tell any account that
+  DSoR knows its kind; checking only at line ②, which lets a script's earlier request be released.
+- **Built in** step 45e.
+
+## 48 · A slip that no person signed is refused, and its signer's slips are suspended (2026-10-30), D28
+
+**Decided by:** the learner, on Claude Code's recommendation, before step 45e's code.
+
+- **What.** At line ③, when a slip's signer is not `human` by her company's answer, the call is
+  refused with `DELEGATION_REQUIRED`, in the words a signer who left gets, and every slip she signed
+  in that company is suspended first, with a record that names the type: the path of DSOR-IDN-07.
+- **Why.** §13 calls a slip "a permission slip from a human to an agent". A slip that no person
+  signed puts no person behind the agent, and a suspension records once that it is broken.
+- **Cost.** A person marked as a script by mistake keeps her slips suspended after the company fixes
+  the mark, and DSoR has no operation that lifts a slip's suspension yet ("Who may lift a slip's
+  hold?" in `mj_notes.md`).
+- **Rejected.** Refusing each call only, which records nothing once, and lets a mark that flips back
+  make the slip work again with no one looking.
+- **Built in** step 45e.
+
+## 49 · An answer from another issuer is a fault (2026-10-30), D29
+
+**Decided by:** the learner, on Claude Code's recommendation, before step 45e's code.
+
+- **What.** An answer whose `issuer` is not the one in `sign-in.json` is a fault, as an answer about
+  someone else is (step 45's D2): `INTERNAL_ERROR`, and DSoR's kept answer about that person is
+  erased.
+- **Why.** A lookup that answers in another server's ids is a set-up mistake that must be fixed now,
+  and the fault makes it loud at once.
+- **Cost.** After the lookup's address is fixed, the people whose kept answers were erased count as
+  strangers, and their own calls wait for step 45c's budget (entry 43's case, parked by entry 46).
+  Agents' calls at line ③ do not wait.
+- **Rejected.** Reading it like "cannot answer now", which keeps the kept answers and recovers at
+  once, but makes an exception to D2 and hides the cause for up to an hour.
+- **Built in** step 45e.
+
+## 50 · Expand, then contract (2026-10-30), D30
+
+**Decided by:** the learner, on Claude Code's recommendation, before step 45e's code.
+
+- **What.** The answer's contract stays strict: a field DSoR does not know is a fault. The two new
+  fields ship in three moves. DSoR first accepts `type` and `issuer` as optional, and reads an
+  answer without them as before; then the servers send them; then DSoR requires them. Step 45e's
+  final code requires them.
+- **Why.** A real run (step 45e's understanding session, part 5): a server that sends the fields
+  before DSoR knows them makes every answer a fault, and its people hear `INTERNAL_ERROR`, then the
+  stranger's words. A DSoR that requires the fields before the server sends them fails the same way.
+  One side must bend for a while.
+- **Cost.** Two DSoR releases. Until the second, a company whose server has not upgraded stays
+  exposed, and DSoR waits for its slowest company.
+- **Rejected.** Ignoring unknown fields, as OpenID Connect does with claims, which changes step 45's
+  D2 test and lets an older DSoR ignore a later field that says "no"; a setting per company, which
+  leaves a company exposed as long as its setting says so, and adds a setting forever.
+- **Built in** step 45e.
+
+## 51 · A release asks again what each approver is (2026-10-30), D31
+
+**Decided by:** the learner, on Claude Code's recommendation, after step 45e's review (finding 1).
+
+- **What.** At a release, DSoR asks each approver's company again, as it asks about the requester,
+  what kind of account she is. When the company now says she is not `human`, her approval no longer
+  counts, and the proposal is thrown away with `SOD_VIOLATION`. When the company cannot answer now,
+  the proposal waits. Only the type is asked about: an approver who left still counts.
+- **Why.** DSOR-APR-03a re-evaluates segregation of duties against current state at execution, and
+  DSOR-SOD-01b is one of those rules. Since step 45e a type can change: the review's real run had
+  `svc_ap_bot` approve PAY-901 while its company still said `human`, and PAY-901 was paid after the
+  company marked it `application`.
+- **Cost.** One more lookup per approver at each release, and a release waits while the company's
+  server cannot answer. An approver who left after approving still counts: whether her job still
+  allows the approval is step 46's question, who may approve and up to how much.
+- **Rejected.** Asking about the type and the job together, which voids the approvals of a CFO who
+  leaves and decides part of step 46 now; keeping the approval as given, which lets a script's
+  approval outlive its re-marking for the proposal's lifetime, 7 days.
+- **Built in** step 45e.
+
+## 52 · A non-person's own calls use its answer for 10 minutes (2026-10-30), D32
+
+**Decided by:** the learner, on Claude Code's recommendation, after step 45e's review (finding 2).
+
+- **What.** When a company's answer says an account is not `human`, DSoR uses that answer for the
+  account's own calls for 10 minutes, as entry 42 (D26) does for a person who is gone. Its
+  company's other questions about it still use the answer for 10 seconds.
+- **Why.** D27 makes a non-person a stranger, so its own calls spend the company's budget of 20
+  lookups a minute (D23). In the review's real run, four scripts that read every 10 seconds used up
+  the budget in 50 seconds, and a new person heard the stranger's words.
+- **Cost.** When the company fixes a person marked as a script by mistake, her own calls hear the
+  stranger's words for up to 10 more minutes.
+- **Rejected.** Spending no budget on a non-person, which tells it during an outage that the
+  company's server is down; keeping 10 seconds, which lets a few scripts lock new people out.
+- **Built in** step 45e.
+
+## Open
+
+- **The SSO writes a key's row on every check.** Better Auth updates `updatedAt` each time, so all
+  of one company's lookups write one row. At high volume the SSO could check DSoR keys without that
+  write. That is the SSO's choice.
+- **Six points from the SSO's review:** a `user_deleted` row keeps the deleted user's email; deleting
+  a company revokes its keys with no record; the lookup answers for a disabled company; batched
+  history writes can leave gaps; a failed rollback can leave a live, unrecorded key; the client-IP
+  parsing is copied three times. The limit's address also trusts the first `X-Forwarded-For` hop,
+  which a caller can fake.
+- **Back in the chain later:** the SCIM door (step 43c) and DSoR's own people table (step 43b), as
+  role-source kinds; the timer jobs inside DSoR (entry 14).
+- **The proposals** go to the specification together (entry 17).
+
+## What we know about production (2026-10-28)
+
+- **The `mj_` builds are teaching code.** Each step is a folder of its own, written to be read. The
+  real implementation, `@panaversity/dsor`, is not started ([`docs/status.md`](../status.md)). It is
+  built in the five stages of [`docs/learn/learning-path.md`](../learn/learning-path.md).
+- **After step 45, steps 46 to 53 remain:** who may approve and up to how much, the approval door,
+  the agent door (with its two traps and a real agent), an agent with nobody present, the right
+  people hear, and part 7.
+- **On a host such as Google Cloud Run,** several servers run at once, and they stop when idle:
+  - State lives in PostgreSQL (entry 20), not in a server's memory. Cloud SQL fits.
+  - Timed work (sweeps, rates, the outbox sender) gets no CPU between requests by default. It needs
+    Cloud Scheduler and Cloud Run jobs, or CPU that is always on.
+  - DSoR's public https address goes in its settings, because the token check compares it.
+  - Each company's DSoR key goes in a secret store, such as Secret Manager, that the agent can never
+    read (DSOR-CNR-02).
+- **The SSO side:** #1331 is a draft. It needs GitHub's billing fixed, its CI green, and migrations
+  0013 and 0014 applied by hand in production before it merges.
+
+## Earlier decisions
+
+Before 2026-10-26, decisions were recorded where they were made:
+
+- each step's README, in "The design, before any code" and "Think it through";
+- [`mj_notes.md`](mj_notes.md), in sections such as "Step 19, the design", "Step 23, the decisions
+  and the build", "Step 26, understanding and the decisions", "Step 31, check again at execution",
+  "Step 33, the decision bundle", "Step 43c's design, the learner's answers", "Step 43d's design,
+  the learner's answers", "Step 44's design, the learner's answers", "The reopened answers,
+  decided", "The extended chain, with three decisions", and "Better Auth 1.7 against the chain";
+- the map, [`readme_mj.md`](readme_mj.md).
+
+The entries above repeat the decisions from step 43d on, so this file can be read alone.

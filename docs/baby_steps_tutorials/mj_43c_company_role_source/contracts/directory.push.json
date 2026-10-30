@@ -1,0 +1,46 @@
+{
+  "id": "directory.push",
+  "version": 1,
+  "kind": "command",
+  "effect": "mutating",
+  "input": {
+    "schema": "DirectoryPushRequest"
+  },
+  "output": {
+    "schema": "DirectoryPushed"
+  },
+  "authorization": {
+    "permission": "directory:push"
+  },
+  "tenancy": {
+    "required": true
+  },
+  "delegation": {
+    "required": false
+  },
+  "idempotency": {
+    "required": true
+  },
+  "concurrency": {
+    "strategy": "none"
+  },
+  "execution": {
+    "semantics": "atomic"
+  },
+  "risk": {
+    "level": "high"
+  },
+  "preconditions": {
+    "freshness": "current",
+    "predicates": []
+  },
+  "controls": [],
+  "audit": {
+    "level": "full"
+  },
+  "extensions": {
+    "org.panaversity.steps": {
+      "system_only": true
+    }
+  }
+}

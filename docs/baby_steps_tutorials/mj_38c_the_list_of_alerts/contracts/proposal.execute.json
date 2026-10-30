@@ -1,0 +1,23 @@
+{
+  "id": "proposal.execute",
+  "version": 1,
+  "kind": "command",
+  "effect": "mutating",
+  "input": { "schema": "ProposalExecuteRequest" },
+  "output": { "schema": "Payment" },
+  "authorization": { "permission": "proposal:execute" },
+  "tenancy": { "required": true },
+  "delegation": { "required": false },
+  "idempotency": { "required": true },
+  "concurrency": { "strategy": "none" },
+  "execution": { "semantics": "atomic" },
+  "risk": { "level": "high" },
+  "preconditions": { "freshness": "current", "predicates": [] },
+  "controls": [],
+  "audit": { "level": "full" },
+  "extensions": {
+    "org.panaversity.steps": {
+      "release": true
+    }
+  }
+}

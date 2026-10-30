@@ -21,6 +21,12 @@ for a human. An agent may gather evidence; it does not settle these alone.
    inside a record, and CEL terminates. `@marcbachmann/cel-js` 8.0.0 ran the spec's
    vectors with flat `dsor_*` functions on 2026-09-19. Not yet checked: its behavior
    with `now`, with large lists, and its error types for DSOR-CTL-07.
+   Step 27's learner build, `mj_27_controls_in_cel`, checked some of it. `now` works as a
+   timestamp, registered as `google.protobuf.Timestamp`. A missing field gives "No such key", a
+   call that no function takes gives "found no matching overload", and an error thrown inside a
+   `dsor_*` function keeps its own words; each applies the control's effect. Large lists are not
+   checked. And `matches` runs with JavaScript's backtracking regular expressions, not RE2:
+   `"^(a+)+$"` took 692 ms on 26 characters, so the build refuses `matches` at start-up (see 113).
 4. **A recorded DENY is replayed for the same idempotency key** (§22). After a human
    fixes the permission, the caller needs a new key. Is that the behavior users
    expect, or should denials not claim a key?
@@ -40,6 +46,13 @@ for a human. An agent may gather evidence; it does not settle these alone.
    embeds?
 9. **The rate source contract.** §9 names a tenant rate source. What interface does it
    have, and how is a stale or missing rate reported?
+   Step 26's learner build, `mj_26_money_done_right`, answers one way. A rate source is a series
+   of sheets: how much of each currency one unit of the sheet's base buys, as the source wrote
+   it. DSoR's own command `rate.load` takes a sheet from a login of subject type `system`,
+   `dsor-rates`, and writes it once in DSoR's own store. A missing or stale rate is reported to the
+   agent as `LIMIT_EXCEEDED`, "no usable rate", with no currency, because the currency is the
+   bill's and the agent's clearance may hide it. The decision's record names the currency and the
+   cause.
 10. **Tokenized fields as command inputs** (DSOR-CLS-02c). The rule exists; the token
     format and lifetime do not.
 11. **MCP catalog size.** §38.1 recommends domain-scoped endpoints. Nothing has
@@ -69,3 +82,1064 @@ for a human. An agent may gather evidence; it does not settle these alone.
     has tenant, user, and agent scopes of its own. The cross-tenant test suite for the
     stack has to cover both, through the adapter.
 
+## Found by the baby steps (added 2026-09-26)
+
+19. **What does a query's answer look like?** Appendix A says `result-envelope` carries
+    "command and query results", so DSOR-SCH-01 covers a query's answer. But a result
+    envelope must name an outcome, and none fits a read. `COMMITTED`, `READY`, and
+    `PENDING_APPROVAL` need a proposal and a payload hash. `VALIDATED` passes with only a
+    `decision`, but it answers a `validate_only` dry run. DSOR-FRS-01a also asks every
+    query result to state `observed_at`, the resource version, the connector, and the
+    freshness delivered, and the closed schema has no field for any of them. Step 04's
+    learner build answers a query with `{ data, correlation }` and records that this
+    breaks DSOR-SCH-01. Does the result envelope need an outcome for a read, or does a
+    query's answer need a schema of its own?
+20. **Is a code's retry class the one in the §28 table?** DSOR-ERR-01a asks for "a code
+    from this table ... a retry class". The error-envelope schema ties a class to a code
+    for only three codes: `OUTCOME_UNKNOWN`, `RESOURCE_HELD`, and `BATCH_PARTIAL`. So
+    `AUTHORIZATION_DENIED` with `safe_same_key`, "denied, try again at once", passes the
+    schema. Should the rule say "the retry class the table gives that code", and should
+    the schema tie all 32 codes? Two rows also carry a condition the schema cannot see:
+    `DEPENDENCY_TIMEOUT` is `safe_same_key` only for queries and for commands that
+    provably did not run, and `INTERNAL_ERROR` is `never` "for commands".
+21. **Which caller does `principal_id` name, and which does `agent_id`?** DSOR-COR-01a
+    carries both ids through connectors, audit, and events, and the correlation schema
+    lists both. Nothing says what either one holds. The audit record already names the
+    subject and the actor chain in its `identity` block. Its example sets only
+    `agent_id`, even though the subject is `user_123`. §36 also sets `dsor.principal_id`
+    in every database transaction, and does not say whose id it is. Step 05's learner
+    build names an agent in `agent_id` and anyone else in `principal_id`, and records
+    that as its own choice. Is `principal_id` the subject, and `agent_id` the agent in
+    the actor chain? Which one does §36 set?
+22. **What may a caller's own `request_id` hold?** §32 lets a caller send a `request_id`,
+    and DSOR-COR-01a carries it into connectors, audit, and events. The schema asks only
+    for a string. So a line break, a control character, a megabyte of text, an id in the
+    form DSoR makes, or another caller's id all travel on unchanged. Step 05's learner
+    build accepts 1 to 128 characters and refuses anything else with
+    `VALIDATION_FAILED`, as its own decision, and never checks for repeats. It even
+    echoes the caller's own text to a caller with no login. Should the specification
+    bound the form of the correlation ids a caller sends, and say what DSoR does with a
+    bad one? Must a request id be unique for a principal? The same goes for `task_id`,
+    `trace_id`, and `session_id`. Step 09's learner build found a cost of saying nothing:
+    PostgreSQL's `jsonb` refuses the NUL character and half of an emoji. An id holding
+    one made the decision record fail, so the call was refused as
+    `EVIDENCE_STORE_UNAVAILABLE` and left no record at all, from a store that was
+    healthy. The build now also refuses an id that is not well-formed text or holds a
+    control character, and records that refusal.
+23. **What does a membership's `scopes` hold?** §12 gives each tenant membership `roles`
+    and `scopes`, and nothing else in the specification mentions membership scopes. The
+    security context has `tokenScopes`, and DSOR-DEL-01b and DSOR-DEL-02 use token
+    scopes. DSOR-IDN-04a accepts "role and scope assertions" only from an authoritative
+    issuer. Step 05's learner build stores roles and leaves scopes out. Are membership
+    scopes the scope assertions of DSOR-IDN-04a? How do they combine with token scopes
+    in the intersection that DSOR-DEL-02 computes? Or should the field go?
+24. **How does DSoR find an identifier inside the arguments?** DSOR-SRC-02b refuses a
+    tenant, principal, or delegation id "inside operation arguments" that disagrees with
+    the security context. An operation contract names its input schema, but marks no
+    field as such an identifier. `bind` shows where a resource URI sits, and a URI
+    carries its tenant. Nothing shows where a principal or a delegation id sits. Step
+    05's learner build checks a list of field names: `principal`, `subject`, `user`, and
+    six more. It misses other spellings, such as `principalId` or a nested
+    `invoice.principal`. It also refuses an operation that uses one of those names for
+    other data, such as the `subject` of an email. Should a contract mark the input
+    fields that carry a principal, tenant, or delegation id? Then DSOR-SRC-02b could be
+    checked exactly, and the injection suite of DSOR-SRC-01b could be built from the
+    same marks.
+25. **In which identity mode does an agent call at L1?** §0.2 calls L1 "a supervised
+    trainee". §13.2 has three modes, and `direct` is for "a human or application, for
+    itself", so it does not fit an agent. The rules that settle an agent's mode are all
+    L2: DSOR-DEL-03a and DSOR-DEL-03b ask for a verifiable actor chain in
+    `on_behalf_of`, and DSOR-DEL-07 asks for a delegation in `unattended`. But
+    DSOR-IDN-02a, that an agent logs in with its own credentials, is L1. And the
+    security context, which requires an identity mode, is an Appendix A artifact. So an
+    L1 deployment can receive an agent's call with no rule that says which mode it is
+    in, or what proves the person the agent works for. Step 05's learner build meets
+    exactly this case: the agent logs in as itself, has no mode, and reads INV-1008
+    just as `cfo_100` does. Must an agent at L1 call `on_behalf_of`? If so, should
+    DSOR-DEL-03a be L1? Or does serving an agent need L2? Step 06's learner build shows
+    what the gap costs. It gives the agent a stand-in role that grants `invoice:read`,
+    until delegations arrive in step 18. Then anyone who can ask the agent can read
+    what it reads: with the CFO role granting nothing, `cfo_100` is denied INV-1008
+    directly, and gets it by asking the agent. That is T3, the confused deputy, for
+    reads.
+26. **May a refusal show that an operation exists?** DSOR-ERR-01b forbids an error
+    that reveals "the existence or attributes of a resource the caller is not
+    authorized to read". An operation is not a resource, so no rule covers it. Step
+    06's learner build refuses an unknown name with `UNSUPPORTED_CAPABILITY`, and a
+    known operation the caller may not call with `AUTHORIZATION_DENIED`, naming the
+    permission it needs. So any caller who can log in can list which operations exist,
+    and what each one needs. Should an operation the caller may not call be refused
+    exactly like one that does not exist? Should DSOR-ERR-01b cover operations too?
+27. **May one permission grant another?** §15 fixes the form `<resource>:<action>`,
+    with an optional `.propose`, and §7.3 says what the `.propose` form allows. The
+    pattern refuses `*`, so a wildcard is out. Nothing says whether a permission may
+    imply another, for example whether `invoice:issue` grants `invoice:read`. Step
+    06's learner build grants a permission only for the very same text (its decision
+    2). Is that DSoR's rule, or each deployment's choice? If one permission may imply
+    another, where is that written down, so that someone can review it?
+28. **Where is an operation's input schema defined?** Every contract names one, such as
+    `PaymentExecutionRequest` in §7, and line 6 of §21 validates the input. But neither
+    Appendix A nor the schemas package defines any input schema, and nothing says where
+    one lives, how a contract's name finds it, or whether it must close its top level
+    with `additionalProperties: false`, as every Appendix A schema does. Step 07's
+    learner build keeps its own, `InvoiceGetRequest` and `InvoiceIssueRequest`, in a
+    folder beside the contracts. Its start-up refuses an input schema that lets unlisted
+    fields through, and one that no contract names. Should the specification say where
+    input schemas live, and require them to be closed?
+29. **Which code does an unknown field that names a principal get?** DSOR-SRC-02b asks
+    for `TENANT_MISMATCH` or `AUTHORIZATION_DENIED` when a principal id in the arguments
+    disagrees with the security context. Step 07's learner build refuses every field its
+    input schema does not list, at line 6. So `as_user: "cfo_100"` is refused, but with
+    `VALIDATION_FAILED`. DSoR cannot tell that a field it does not know names a
+    principal. This is question 24 seen from the other side. Is a closed input schema
+    enough to meet DSOR-SRC-02b, whatever the code? Or must a contract mark the fields
+    that carry a principal, so that each one gets the rule's own code?
+30. **At which line of the pipeline does DSOR-SRC-02b's tenant check run?** A canonical
+    URI in the arguments carries its tenant, as in `dsor://org_999/invoice/INV-1008`.
+    Line 6 of §21 checks only the URI's shape, as `resourceUri` does, so the URI passes.
+    Line 2 resolves the tenant, but runs before the input is validated. Line 9 reads the
+    bound state, and `bind` shows where the URI sits. Step 07's learner build answers
+    user_123 with "not built yet" for that URI, and leaves the check to step 10. Should
+    §21 say which line compares a tenant inside the arguments with the resolved tenant,
+    so that no interface can skip it?
+31. **What does the record say when the store saved it, and the reply was lost?**
+    DSOR-EXE-03b sends `EVIDENCE_STORE_UNAVAILABLE` when the control-plane store cannot
+    accept the decision record. A database can accept the record and then lose the reply
+    that says so: the connection drops after the commit. DSoR then believes the write
+    failed. The caller hears `EVIDENCE_STORE_UNAVAILABLE`, while the log holds a record
+    that says `ALLOW` with the result `ok`. Step 08's learner build keeps its log in
+    memory, where this cannot happen, and leaves it to step 09. Must the decision record
+    say what the caller heard, so a second record is needed when the write's outcome is
+    unknown? Or is a decision record that DSoR could not confirm treated like an intent
+    record with no outcome (DSOR-EXE-04b), and reconciled later?
+32. **What does a failed read at line 9 answer, and what does its record say?** Step 09's
+    learner build reads INV-1008 from PostgreSQL at line 9. When the database is down,
+    the caller hears `INTERNAL_ERROR`, retry `never`, and the record says `ALLOW`,
+    because DSoR's checks let the call reach its code. §28 has `CONNECTOR_UNAVAILABLE`,
+    which says the source is down and invites a retry. Must a read that fails at line 9
+    answer `CONNECTOR_UNAVAILABLE`? And should the record tell "allowed, and answered"
+    apart from "allowed, but the read failed"?
+33. **What does "durably" mean in DSOR-EXE-02?** Step 09's learner build answers only
+    after PostgreSQL has committed the record, and proves that the record survives when
+    every connection is closed and new ones are opened. That is a restart, not a crash.
+    §47 asks for fault injection. The rule does not say whether "durably" means
+    committed on one server, flushed to its disk, or copied to a second machine. Neon,
+    for example, confirms a commit only once its storage has the change. Should §21 or
+    §30 say what durable means, and should §47 name the test: kill the process right
+    after the answer, and find the record?
+34. **Where may the migration role's credential live?** §36 separates `dsor_migration`,
+    which owns the tables, from `dsor_runtime`, which the program runs as. It does not
+    say where the migration credential is kept. Step 09's learner build keeps both
+    connection strings in one `.env` file. Its first version loaded the whole file into
+    the running program, so an attacker who controlled the program held the owner's key
+    and could rewrite the log. The build now loads only the runtime string, but anyone
+    who can read `.env` still holds both. DSOR-CNR-02 keeps connector credentials away
+    from the agent and the model. Should a rule keep the migration credential out of the
+    runtime's reach too, for example in a separate store that only the migration job can
+    read?
+35. **Is a foreign URI "not found", or a tenant mismatch?** The baby-steps map says step
+    10 is done when "a URI for another company returns the same 'not found' as a URI
+    that does not exist". DSOR-SRC-02b says a tenant identifier in the arguments that
+    disagrees with the security context "MUST cause `TENANT_MISMATCH` or
+    `AUTHORIZATION_DENIED`", and a canonical URI's first part is a tenant identifier.
+    Step 10's learner build follows the rule: every foreign URI gets `TENANT_MISMATCH`,
+    whether its resource exists or not, so DSOR-ERR-01b still holds, and the probe
+    shows in the audit log. Should the map say "the same answer whether the resource
+    exists or not", and should §21 name the code? This refines question 30, which asks
+    at which line.
+36. **What tenant does the audit record of a refusal before line 2 carry?**
+    `audit-record.schema.json` requires `tenant`. A call refused at line 1, with no
+    login, has no tenant yet, and one refused at line 2 names a company the caller may
+    not belong to. Step 10's learner build leaves the record's tenant empty for both, and
+    keeps a non-member's claimed company under `extensions`, never as the tenant, so a
+    stranger cannot write into another company's audit partition. Should the schema
+    allow a record with no tenant, or should §29's aggregated counts cover these
+    refusals only?
+37. **Why does §6's invoice list no `tenant_id`?** DSOR-TEN-01a says every tenant-owned
+    resource carries its `tenant_id`. The invoice in §6's example has none, and step 10's
+    learner build adds it to the row and to the invoice DSoR returns. Should §6 show it?
+38. **May the migration job change the runtime role's password?** Step 09's learner
+    build sets `dsor_runtime`'s password from `DSOR_DB_URL` on every `pnpm migrate`, so
+    the password is written in one place only. Step 10's build found live that a login
+    opening at that moment can fail, so its database tests now run one file at a time.
+    Should the migration job create the runtime role only, and leave its credential to a
+    separate, rarer rotation step?
+39. **Should audit record numbers be counted per tenant?** DSOR-TEN-02a says audit
+    partitions MUST be keyed by tenant. Step 11's learner build keeps each company's
+    records apart with row-level security, but one sequence numbers the records of every
+    company. So the gaps in one company's numbers show when, and how often, other
+    companies are served. `EXPLAIN ANALYZE` shows a similar count for every table.
+    Does "keyed by tenant" cover the numbering, so a record's number is counted within
+    its tenant, and should §30 or §36 say so?
+40. **What ties the tenant setting to the authenticated request?** §36 sets
+    `dsor.tenant_id` per transaction, and calls row-level security defense in depth. In
+    step 11's learner build, a program holding `dsor_runtime`'s login can set any tenant,
+    read that tenant's rows, and add records to its audit log. The write policy cannot
+    catch a wrong tenant, because the record and the setting come from one value. Is that the whole promise of
+    the store's layer in DSOR-TEN-01b, a lock against mistakes only, or should §36 name
+    something stronger, such as a role per tenant, or a setting only a trusted function can
+    change?
+41. **Should the cross-tenant suite also call each operation in its own tenant, and
+    search the answer?** DSOR-TEN-02b asks for a suite that "exercises every operation
+    with a foreign-tenant URI". When one check refuses every foreign URI before any
+    operation's code runs, such a suite tests that check, and not the operations. Step
+    12's learner build planted three operations that leaked another tenant's data, and
+    each passed a suite of foreign URIs only. It now also sends each operation's example
+    in the caller's own tenant, searches the answer for a `tenant_id` or a URI of another
+    tenant, and works from both tenants. Should §14 ask for this, or say what the
+    foreign-URI suite is meant to prove?
+42. **How is an operation with no URI in its input tested across tenants?** DSOR-TEN-02b
+    names a foreign-tenant URI. A query such as `invoice.list`, whose input may hold only
+    a page size, has none to swap. Step 12's learner build calls that a finding, so its
+    suite stays red until the step that adds such an operation decides. Should §14 say
+    how such an operation is exercised, for example by searching its same-tenant answer
+    for rows of another tenant?
+    Step 13's learner build, which adds `invoice.list`, answers one way. The cursor looks
+    like an id and cannot hold a URI, so the suite checks the list by its rows. It asks
+    once, then calls the list as every permitted caller of both tenants, with its example
+    and with only its required fields. Every item must carry the caller's `tenant_id`,
+    and an empty page is a finding, because it checks nothing. The suite still counts the
+    list as "exercised", though no foreign URI was sent. Is that what DSOR-TEN-02b means
+    for such an operation?
+43. **What is a "result size"?** DSOR-QRY-01 asks for "a server-side maximum page size
+    and maximum result size on every query", and says no more. Step 13's learner build
+    counts a page in rows, and a result in bytes: the answer's data written as JSON, in
+    UTF-8, at most 64 KiB, with the correlation not counted. A row count misses one huge
+    row, and a byte count alone lets a million tiny rows through. Is a result size
+    counted in bytes, in rows, or both? Measured on the data, the envelope, or what
+    leaves on the wire? And before masking (§19) or after it? Step 14's learner build
+    answers the last part one way: after masking, counting the data and the list of what
+    was withheld, because that list holds field names taken from the data.
+44. **Which code answers "this result is too large to give"?** §28 has none. Step 13's
+    learner build refuses with `UNSUPPORTED_CAPABILITY`, retry `never`, because asking
+    again gets the same answer. The same refusal comes when one row alone is larger than
+    the cap, and then every row after it is out of reach: no page can step over it.
+    Should §28 name a code for this, and should §7.1 say what happens to a row larger
+    than the cap?
+45. **Where do a query's page size and result size live?** DSOR-QRY-01 asks for
+    server-side maxima on every query, but `operation-contract.schema.json` has no field
+    for either. Step 13's learner build writes one pair in code for every query: 10 rows
+    and 64 KiB. Should a query's contract carry its own maxima, under a ceiling DSoR sets,
+    so that a contract can lower its cap but never raise it past the server's?
+46. **Does DSOR-CLS-03 cover refusals and empty answers?** "Every query response MUST
+    carry a classification label." The error envelope's schema allows no
+    `classification`, so a refusal cannot carry one. Step 14's learner build reads "every
+    query response" as every answer that carries data. An answer that holds no field,
+    such as an empty page, has no "highest classification among the fields it contains":
+    the build calls it `public`. Should §19.2 say whether a refusal is a query response,
+    and how an answer with no field is labelled?
+47. **Is the label taken after masking, or from the whole record?** DSOR-CLS-03 says "the
+    highest classification among the fields it contains". Step 14's learner build takes
+    the fields the answer still contains after masking, so the agent's `INV-1008` is
+    `internal` and `cfo_100`'s is `confidential`. Read as the fields of the record the
+    answer came from, both would be `confidential`, and the label would tell the agent
+    about data it was not given. Which is meant?
+48. **Which clearance does `accounts-payable-fte` hold?** §19.2's example gives it
+    `confidential`, which lets it see `amount`. The map's step 14 "done when" asks for
+    the agent to see a masked `amount`. Step 14's learner build gives it `internal`.
+    Should the example change, or the map?
+49. **What is the audit record's kind `classified_read` for?** The audit-record schema
+    lists it, and no prose names it. Step 14's learner build records a read's
+    `resources` and `row_count` on the one decision record each call leaves, and puts the
+    answer's label under `extensions`, because the audit record has no field for a
+    classification. Is a classified read meant to be a second record? Should the audit
+    record carry the read's classification?
+50. **Should a label say anything about a field's value?** A classification belongs to a
+    field. Step 14's learner build found that an operation's code can put an amount
+    inside `status`, `next_cursor`, or `capped`, fields an agent may see, and the agent
+    gets it. Masking cannot see this. Only a check of each result against its output
+    schema could. Should DSOR-CLS-02a, or DSOR-SCH-01 for results, say that a query's
+    result is checked against its output schema before masking?
+51. **Are the freshness modes written `CURRENT` or `current`?** §27's table, DSOR-FRS-01b,
+    and `decision-bundle.schema.json` write `CURRENT`. `common.schema.json`, which the
+    operation contract and the connector schemas use, writes `current`. Step 15's learner
+    build follows the schemas, so a reader meets both spellings. Which one is normative?
+52. **Where does `connector_defined` rank among the modes?** Step 15's learner build
+    labels an answer from several reads with the weakest mode. That needs an order, and
+    §27 gives none for `connector_defined`, whose strength the connector documents. The
+    build ranks it below `bounded_staleness` and above `observational`. Should §27 give
+    the order, or say that an answer combining reads states each read's mode?
+53. **Where does the audit record keep a read's freshness?** DSOR-AUD-01's
+    `audit-record.schema.json` has a `connector` field, but no field for the mode
+    delivered or `observed_at`. The decision bundle keeps both for each state read
+    (DSOR-AUD-03a, L2). Step 15's learner build keeps the connector in the record's own
+    field and the rest under `extensions`. The query answer's side is question 19.
+54. **Which connector does an answer from several reads name?** DSOR-FRS-01a asks a query
+    result to state "the connector", one. A query that reads an invoice from PostgreSQL
+    and a vendor from a cache has two. Step 15's learner build names the connector of the
+    oldest read, so a cache can hide behind `postgres` in the record when its read is
+    the newer one. Should the result state each read's connector?
+55. **Does a freshness label describe the data, or only the reads?** DSOR-FRS-01a asks for
+    "the mode actually delivered". Step 15's learner build labels the reads a call made
+    through its bound store. Code that keeps a copy of `INV-1008` from an earlier call,
+    reads anything fresh, and answers with the copy, gets `current`. Checking that every
+    row in an answer equals a row read in this call would close it; the build leaves that
+    for a step of its own. Is the mode delivered a property of each value in the answer,
+    and must DSoR enforce it?
+56. **How does DSoR know a connector labels its reads honestly?** DSOR-FRS-01b forbids DSoR
+    to label a cached value `CURRENT`, but the mode comes from the connector. Step 15's
+    learner build accepts a cache that passes on the `current` label it copied, and a
+    `current` label dated in the future. Checking a `current` label's time against the
+    call would compare the connector's clock with DSoR's. Should a connector's declared
+    `freshness` (`connector.schema.json`) be verified, and how?
+57. **Must DSoR check what a row-level security policy says, or only that one is in
+    force?** DSOR-RP-01b asks tenant tables for `FORCE ROW LEVEL SECURITY`. Step 16's
+    learner build checks at start-up that each company table has row-level security
+    enabled and forced. It does not read the policies. An owner who adds a second policy
+    `USING (true)` beside the real one opens every company's rows, and start-up sees
+    nothing. Step 11's database test compares every policy, but nothing runs it before
+    start-up. Should the reference profile name the policy a tenant table must carry, so
+    that DSoR can compare it?
+58. **Who besides `dsor_runtime` may touch DSoR's own store?** DSOR-MOD-01 asks for a store
+    "separate from agent context", and DSOR-RP-01a limits `dsor_runtime`. Step 16's
+    learner build checks only `dsor_runtime`'s privileges. A new login given `UPDATE` on
+    `dsor.audit`, or made a member of `dsor_runtime`, passes start-up. The owner and
+    Neon's own roles must keep theirs. Should the specification say which roles may hold
+    privileges on the control-plane store, beside DSOR-AUD-05b for reading the log?
+59. **How often must DSoR check its own store?** Step 16's learner build compares the
+    database with its map each time the program starts. A grant made while it runs is seen
+    only at the next start. No rule asks DSoR to check its store's privileges at all.
+    Should one, and is start-up enough, or must DSoR check again while it runs?
+60. **Can a foreign table be proven on a real database?** Step 16's learner build refuses
+    a foreign table at start-up, and its unit tests name one. Its owner test makes a view,
+    a materialized view, a partitioned table, a rule, a trigger, and a `SECURITY DEFINER`
+    function on Neon, inside a transaction it rolls back, but no foreign table. A foreign
+    table needs an extension such as `postgres_fdw`, which the build has not tried on Neon.
+    So no test shows the catalog read naming a real foreign table. Can a build make one on
+    Neon and roll it back, and should the reference profile forbid foreign tables in the
+    database that holds the control-plane store?
+61. **Does the store accept a record that it does not keep?** DSOR-EXE-03b says DSoR must
+    not execute if the control-plane store "cannot accept" the decision or intent record.
+    A rule `DO INSTEAD NOTHING` on the log, or a trigger that returns `NULL`, makes
+    PostgreSQL take the `INSERT` without an error and keep no row. Step 16's review found
+    that steps 09 to 16 then answered every call and kept no record. The learner builds
+    now count the rows that the `INSERT` wrote, and refuse unless the count is one. Should
+    DSOR-EXE-03b say that "accept" means that the record is kept? Should §47's table list
+    "a store that says yes and keeps nothing" as a fault to inject?
+62. **Does a foreign table share a transaction?** DSOR-EXE-04a applies "where the
+    connector's store and the control-plane store share a transaction". A foreign table
+    from `postgres_fdw` shows another database's table inside DSoR's database, so it looks
+    like one transaction. It is not one. The PostgreSQL manual says that `postgres_fdw`
+    cannot "prepare the remote transaction for two-phase commit". So a crash in `COMMIT`
+    can keep a payment in one database and lose DSoR's record in the other. A local run
+    on 2026-10-03 showed two more problems. PostgreSQL refuses row-level security on a
+    foreign table. And the tenant setting does not travel to the other database. Should
+    §21 or §36 say, as a common mistake, that a foreign table does not share a
+    transaction, so that DSOR-EXE-03a and the unknown-outcome rules apply?
+63. **Must a security check read PostgreSQL's own catalog?** The learner builds check
+    DSOR-RP-01a at start-up, and step 16 checks the store's privileges, through
+    PostgreSQL's catalog and functions such as `has_table_privilege`. The owner can put
+    `public` first in the search path, and make functions and views there with the same
+    names. Then the check reads the look-alikes, and a login that can change the log
+    passes. The learner builds now pin the search path to `pg_catalog` in a transaction of
+    their own, and their tests plant look-alikes. Should the reference profile require
+    that every security check reads PostgreSQL's own catalog?
+64. **May a list of undo operations be empty?** The contract schema makes a
+    `compensatable` or `saga` command write `execution.compensated_by`, the operations
+    that undo it. It accepts `[]`, a name with no contract, and an operation that no role
+    may run. In each case the command says "can be undone", and nothing can undo it. Step
+    03's review found the empty list. Step 17's learner build refuses all three at
+    start-up. Should DSOR-EXE-05c say that the list names at least one command that DSoR
+    can run to the end, and that someone may run?
+65. **What does a caller hear when the record fails after a command ran?** DSOR-EXE-03b
+    says DSoR must not execute when its store cannot accept the decision record, and the
+    caller receives `EVIDENCE_STORE_UNAVAILABLE`. Its retry class, `safe_same_key`, is true
+    when nothing ran. Step 17's learner build writes a draft payment first and its record
+    after, so a failed record leaves the draft behind. Then a retry with no idempotency key
+    writes a second draft. DSOR-ERR-02 forbids `safe_same_key` for a command "unless the
+    side effect provably did not occur", but it names a connector error, and this is the
+    evidence store's. The build answers `INTERNAL_ERROR`, whose retry class is `never`.
+    Should §28 say which code applies when the evidence store fails after a side effect? Or
+    does the intent record of DSOR-EXE-03a, written before the side effect, mean that a
+    conforming DSoR never meets this case?
+66. **Is a payment's link to its invoice named `invoice` or `invoice_id`?** §6 names a
+    link with `_id`: an invoice holds `vendor_id`. §7's example contract for
+    `payment.execute` binds `invoice: state.payment.invoice` and
+    `vendor: state.payment.vendor`, which read fields named `invoice` and `vendor`. Step
+    17's learner build follows §6, with `invoice_id` and `vendor_id`. Should §7's example
+    read `state.payment.invoice_id`, or should §7 say how a bind follows a link to another
+    record?
+67. **Which constraints does DSOR-DEL-02 cover, and what if DSoR cannot check one?**
+    DSOR-DEL-02 computes authority from "the delegation's grants and constraints". The
+    slip's schema holds a time window, counterparties, resources, and limits. Only the
+    limits have rules of their own (DSOR-DEL-06a to 06e). No rule names `time_window` or
+    `counterparties`, and no rule says what DSoR does with a constraint it cannot check yet,
+    such as a vendor rule before vendor records exist. DSOR-MON-04 and DSOR-CTL-07 resolve
+    the unchecked restrictively, for money and for controls. Step 18's learner build refuses
+    any slip that carries a constraint, with `DELEGATION_REQUIRED`. Should DSOR-DEL-02 say
+    that a constraint DSoR cannot evaluate makes the slip unusable?
+68. **What does a token with no scopes allow?** DSOR-DEL-02 puts the token's scopes into the
+    intersection, and DSOR-DEL-01b says a token never widens a slip. A token can carry no
+    scopes at all, and the learner builds' tokens carry none. If "no scopes" means
+    everything, the token never narrows. If it means nothing, every call from an agent is
+    refused. Step 18's learner build reads it as "narrows nothing". Should §13 say which?
+    (Open question 23 asks the same of a membership's scopes.)
+69. **Which slip decides the refusal when none is usable?** DSOR-DEL-09 refuses when two
+    *active* slips could cover a call. An agent can also hold several slips that are not
+    usable: one torn up, one past its date, one suspended. Each has its own code. The slip
+    has no time of signing or tearing up, so DSoR cannot pick "the latest". Step 18's
+    learner build keeps one slip per agent and company, whatever its status, by a unique
+    key. Should §13 say which code applies when several unusable slips exist, or that there
+    is at most one?
+70. **Which code does a suspended slip give?** The slip's `status` may be `active`,
+    `suspended`, `revoked`, or `expired`. §28 has `DELEGATION_EXPIRED` and
+    `DELEGATION_REVOKED`, both retry class `never`, and no code for a suspended slip. A
+    suspension may be lifted, so `never` may be wrong for it. Step 18's learner build answers
+    `DELEGATION_REQUIRED`. Should §28 name a code, and a retry class, for a suspended slip?
+71. **May anyone but a person sign a slip?** §13 calls a delegation "a permission slip from
+    a human to an agent". The schema's `delegator` is any string. DSOR-DEL-02 intersects the
+    slip with "the delegator's current authority", which an application or a system account
+    also has. Step 18's learner build lets only a principal of type `human`, with a
+    membership in the company, sign. A slip from anyone else grants nothing. Should the rule
+    say so, or should the schema?
+72. **Should the running example's slip run out on 2026-12-31?** §13's `del_100`, and
+    `examples/delegation.example.json`, expire on 2026-12-31T23:59:59Z. An implementation
+    that tests with the running example finds every call from the agent refused with
+    `DELEGATION_EXPIRED` from 2027-01-01. Step 18's learner build dates its slips 2099-12-31
+    for this reason. Should the example's date move far ahead, or should §0.4 say that its
+    dates are only examples?
+73. **Which code does a denial under DSOR-IDN-06 give?** DSOR-IDN-06 says DSoR denies the
+    command when the delegator's current authority cannot be established within the bound of
+    §44, and names no code. `AUTHORIZATION_DENIED` and the `DELEGATION_*` codes all carry the
+    retry class `never`, though a directory may answer again a minute later. Step 19's learner
+    build answers `FRESHNESS_UNSATISFIABLE`, retry `after_delay`. But DSOR-FRS-02b, which
+    defines that code for a connector, also says DSoR must "not fall back to a cache", and the
+    learner build keeps the directory's last answer for an outage, inside the bound. Should §28
+    name a code for DSOR-IDN-06? And is an answer inside its bound fresh, or the cache that
+    DSOR-FRS-02b forbids?
+74. **Does DSOR-IDN-06 cover reads?** It says DSoR denies "the command". DSOR-DEL-02 computes an
+    agent's authority at decision time from the delegator's current authority, so a read needs
+    that authority too. Step 19's learner build refuses an agent's reads as well. Should the
+    rule say "request"?
+75. **Should a duration accept `PT` and `P1DT`?** The duration pattern of `common.schema.json`
+    accepts `PT`, with nothing after the `T`, and `P1DT`. ISO 8601 allows neither. Step 19's
+    learner build follows the schema, and reads `PT` as zero. Should the pattern require a
+    number after `T`?
+76. **Who may lift a slip's suspension?** DSOR-IDN-07 says DSoR must suspend every delegation
+    of a signer whom the role source reports as suspended or deprovisioned. DSOR-DEL-04a names
+    who may revoke a slip. DSOR-OPS-01d says "a suspension or freeze MUST be lifted only by a
+    human holding `control:suspend`", but it sits in §18, among the operational controls of
+    line ④, and does not say whether it covers a slip suspended under DSOR-IDN-07. Nor does any
+    rule say what tells DSoR that the signer is back. Step 19b's learner build lets only the
+    database owner lift one, by hand. Should DSOR-OPS-01d name delegations, or should §13 have
+    a rule of its own?
+77. **Does one company's report reach the signer's slips in another company?** DSOR-IDN-07
+    says "every delegation that principal granted". DSOR-IDN-04a accepts role assertions only
+    from the role source of the active tenant, and DSOR-IDN-03b forbids a write across tenants.
+    Step 19b's learner build suspends only the reporting company's slips: her slip in another
+    company waits for that company's own directory. Is that what the rule means?
+78. **How fast must the slips change?** DSOR-IDN-07 gives no time bound. Step 19b's learner
+    build learns of a suspension only when one of the signer's agents calls, so a suspension
+    that starts and ends between two calls is never applied. Should the rule bound the delay,
+    or ask for a push from the role source, or a regular sweep?
+79. **Does "not listed" count as deprovisioned?** A login system often deletes a person who
+    leaves, and its directory then answers "not found", not "deprovisioned". Step 19b's learner
+    build treats both alike, so a re-created account cannot quietly revive her agent. But a
+    directory that answers "not found" by mistake, from a wrong key or a slow copy, then
+    suspends slips until a person lifts them. Should DSOR-IDN-07 name the case?
+80. **Should start-up read the row-level security policies, not only check that they are on?**
+    DSOR-RP-01b asks for `FORCE ROW LEVEL SECURITY`, and step 16's learner build refuses to start
+    without it. It does not read the policies. Since step 17 the runtime writes some columns,
+    and since step 19b it may update a slip's status, under a restrictive policy. A stray
+    permissive policy for `UPDATE` would be joined to the company's rule with OR, and reach every
+    company's rows, and start-up would not notice. The learner builds' database tests list every
+    policy exactly, but tests run before a deployment, not at each start. Should the reference
+    profile ask for a check of the policies themselves?
+81. **Should every record carry a correlation id that DSoR makes?** DSOR-COR-01b makes DSoR
+    generate a `request_id` only when the caller supplies none, so most records carry the
+    caller's own text. An agent can reuse another call's `request_id` and tie its records to
+    calls that are not its own. Step 19b's learner build copies the call's whole correlation,
+    the agent's id included (DSOR-COR-01a), into the record of each suspension, but the request
+    id is still the agent's. Should the audit record carry an id that only DSoR makes?
+82. **Which refusals does a claim keep?** §22 says "A recorded `DENY` is replayed like any other
+    result", and a new attempt uses a new key. §28 gives `LIMIT_EXCEEDED`, `COOLING_OFF_ACTIVE`,
+    and `FRESHNESS_UNSATISFIABLE` the class `after_delay`, and `STALE_STATE` the class
+    `after_state_refresh`. Neither class says which key the later retry uses. Step 20's learner
+    build keeps every refusal of a command's code with its claim, except `INTERNAL_ERROR`, which
+    DSoR throws for its own faults, and a refusal whose class is `safe_same_key`, the only class
+    that promises a retry with the same key. A hostile review asked for the narrower reading:
+    keep only refusals whose class is `never`. Should §28 say, for each class, whether the retry
+    uses the same key?
+83. **Is a contract's version part of a claim's scope?** DSOR-IDM-01b names the operation. Step
+    20's learner build leaves the version out, so a retry that meets version 2 of a contract
+    hears version 1's answer. If version 2 changed what the work does, that answer describes
+    work that version 2 would not do. Should the rule say which?
+84. **What does a claim keep when the outcome is unknown?** A command whose side effect may have
+    happened, `OUTCOME_UNKNOWN`, is neither a decision nor a failure that changed nothing. A claim
+    that keeps it stops a second execution, but the local writes of the same transaction would
+    be undone. A claim that drops it lets a retry execute twice. DSOR-UNK-01b says the outcome
+    is reported as unknown. Should §22 say how the claim and the intent record of §33 meet?
+85. **Should a replay's record name an id that DSoR makes?** Step 20's learner build writes
+    `replay_of` with the first call's `request_id`. That id is the caller's own text when the
+    caller sends one (DSOR-COR-01b), and a retry often sends the same one, so the replay's record
+    can name its own request id. Question 81 asks the same of every record.
+86. **Which record's version does a command name?** DSOR-CON-01b speaks of "the resource
+    version". `payment.create` writes a payment, and its caller decided on an invoice. Step 21's
+    learner build makes `expected_version` the invoice's for `payment.create`, and the payment's
+    for `payment.cancel`. Should a contract name the resource whose version it checks?
+87. **Must a version survive a record's removal?** Step 21's learner build keeps a version per
+    row, from 1. A row removed and added again starts at 1, so a decision made on the old row's
+    version 1 passes, for a different record under the same id. DSOR-CNR-03b asks for the native
+    version. Should §23 require versions that never repeat for an id, such as one sequence for
+    all rows?
+88. **Should start-up read a trigger's function, not only its definition?** Step 21's learner
+    build lets a business table have a trigger, which raises a row's version, and refuses any
+    trigger the store map does not name word for word, or one switched off. The function's body
+    is not read, so an owner could change it to raise nothing. Question 80 asks the same of
+    row-level security policies.
+89. **Is COMMITTED final for a command that can be undone?** §26.2 says that the states on the
+    picture's right-hand edge are final, and names COMMITTED and FAILED among them. Its last line
+    moves COMMITTED or FAILED to COMPENSATING for `COMPENSATABLE` and `SAGA` commands, and
+    `payment.create` is compensatable. DSOR-APR-01c forbids leaving a terminal state. Step 22's
+    learner build keeps COMMITTED and FAILED final, and makes an undo a proposal of its own, for
+    `payment.cancel`. Is a compensation a move of the same proposal, or a proposal of its own?
+90. **Can a READY proposal be cancelled, or expire?** The picture draws one move out of READY:
+    EXECUTING. In `propose_only` mode a READY proposal waits for `proposal.execute` (§26.2's
+    table). DSOR-DEL-04c cancels a revoked slip's proposals that are `PENDING_APPROVAL` or
+    `APPROVED`, and not one that is READY, so a READY proposal under a torn-up slip waits
+    forever. Should the picture draw READY to CANCELLED, EXPIRED, and INVALIDATED?
+    Step 25's learner build shows the cost: when user_123 tears up del_100, the agent's prepared
+    draft waits in READY for ever, and holds 31,400.00 USD of the day for a slip that can spend
+    nothing. On 2026-10-10 that learner proposed yes for two of the three: §26.2 draws
+    READY → CANCELLED and READY → EXPIRED, DSOR-DEL-04c names READY, and a new requirement gives
+    a READY proposal an expiry. Step 25c's learner build, `mj_25c_ready_can_end`, builds the
+    proposal: a tear-up cancels a READY proposal with the slip's other waiting work, and a sweep
+    expires one when its company's lifetime has passed, at most §44's 30 days for an approval.
+    READY → INVALIDATED is left open.
+91. **Does a command refused before line 8 leave a proposal?** §26.1 says that every command
+    invocation in `execute` or `propose_only` mode creates a proposal. §21 puts line 8 after the
+    permission check, the input check, and the claim of the key, so a refusal at one of them
+    returns before line 8. The picture's PROPOSED to DENIED suggests a denial can be a proposal's
+    end. Step 22's learner build makes no proposal before line 8. Which calls must leave one?
+92. **May a `.propose` holder ask for a dry run?** §7.3 says that a principal that holds a
+    `.propose` form, and not the full permission, "can invoke the command in `propose_only` mode
+    only". So its `validate_only` call is refused, though a dry run changes nothing and would tell
+    a clerk whether its prepared call passes DSoR's checks. Step 23's learner build refuses it, as
+    the sentence reads. Is `validate_only` meant to be open to a `.propose` holder?
+93. **Is an idempotency key bound to its invocation mode?** §22 binds a key to its scope and its
+    payload hash, and says nothing of the mode. Without a binding, a `propose_only` call that
+    reuses an `execute` call's key replays COMMITTED, and an `execute` call that reuses a
+    `propose_only` call's key hears READY while nothing runs. Step 23's learner build keeps the mode
+    beside the payload hash, and refuses another mode with IDEMPOTENCY_CONFLICT. Should the mode be
+    part of the claim, or of the payload hash?
+94. **What does a dry run answer when a check says no?** `result-envelope.schema.json` allows
+    `outcome: VALIDATED` with any `decision`, DENY too, and has no field for the reason. §7.3 says
+    only that the mode returns "the outcome". Step 23's learner build gives a refused dry run the
+    real call's error envelope, so VALIDATED always says ALLOW. Which shape does the specification
+    mean?
+95. **May a dry run suspend a slip?** DSOR-OPR-06 says a `validate_only` invocation must not cause
+    a side effect. DSOR-IDN-07 says that when the role source reports a delegator as deprovisioned
+    or suspended, DSoR must suspend every delegation that principal granted, and line 3 runs in a
+    dry run too. Step 23's learner build keeps the suspension: it is DSoR's own control state, which
+    the directory's news changes, not the command's effect. Is a suspension that a dry run learns
+    of a side effect of the dry run?
+96. **Should DSOR-DEL-06c name READY?** §21 reserves at line 10 in every mode but
+    `validate_only`, and §26.4 says "The reservation taken when the proposal was created is found
+    again by proposal id". So a proposal that waits in READY holds its reservation. But
+    DSOR-DEL-06c lists the states that hold one, and READY is not in the list. Step 24's learner
+    build first read the list as "READY holds nothing", and its review changed that: a prepared
+    call reserves, and the reservation is held while the proposal waits. Nothing releases it yet,
+    because READY has no move to CANCELLED or EXPIRED (question 90). Should DSOR-DEL-06c name
+    READY, and DSOR-DEL-06d name the move that ends a READY proposal's wait? Step 25c's learner
+    build, of the change proposed under question 90, releases a READY proposal's booking at
+    CANCELLED and at EXPIRED, as DSOR-DEL-06d's list already allows.
+97. **Does undoing a command give its spending back?** A COMMITTED proposal's reservation stays
+    counted. When `payment.cancel` cancels the draft, no money has moved, but the day's total
+    still holds the draft's amount. Step 24's learner build gives nothing back: the cancel is a
+    proposal of its own. Should a compensation release the reservation of the command it undoes?
+98. **How does `after_delay` meet a kept refusal?** §28 gives `LIMIT_EXCEEDED` the retry class
+    `after_delay`. §22 replays a recorded DENY, so a retry with the same key hears
+    `LIMIT_EXCEEDED` again, even on a new day. Step 24's learner build keeps the refusal with its
+    claim, so the caller retries later with a new key. Should a refusal whose retry class is
+    `after_delay` keep its claim?
+99. **How does DSoR know what a command spends?** §13.4 limits what an agent spends, and says
+    nothing of how DSoR learns the amount of a command. Step 24's learner build lets the contract
+    name it, beside its `bind`, as `spends: state.invoice.open_amount`. Should the operation
+    contract have a field for the amount a command counts against a limit?
+100. **Who is a tenant administrator?** DSOR-DEL-04a lets "a tenant administrator" revoke any
+    delegation. The specification defines no role, permission, or claim that makes a person one.
+    Step 25's learner build adds a role of its own, `tenant_admin`, held by a new person,
+    admin_100, and checks it in DSoR's own work, against the caller's roles in the active
+    company only. Should the specification name the role, or the permission that makes a person a
+    tenant administrator?
+101. **Does DSOR-SRC-02b cover the record a call acts on?** The rule refuses "a tenant, principal,
+    or delegation identifier inside operation arguments that disagrees with the security
+    context". `delegation.revoke` names the slip it tears up, and a person calls under no slip,
+    so read word by word the rule refuses every tear-up. Step 25's learner build names the slip
+    in a field called `slip`, which line ③ does not read as a claimed authority, as
+    `payment.cancel` names its payment. Should the rule say that it covers the authority a call
+    claims, and not the record a call acts on?
+102. **May an agent pull the emergency brake?** DSOR-OPS-01d and §45 say that only a human
+    holding `control:suspend` lifts a suspension or a freeze. Nothing says who may pull one. A
+    watchdog agent could stop a runaway agent in seconds; a compromised one could freeze the
+    whole company until a person wakes up. Step 25b's learner build lets only a person holding
+    `control:suspend` pull it too. Should the specification say who may pull the brake?
+103. **Which operations stop an agent?** §13.3 lets a person revoke a delegation, and §18 lets one
+    suspend an agent or freeze a tenant. Neither names an operation, an input, or a permission
+    for revocation. Steps 25 and 25b's learner builds add `delegation.revoke`, `control.suspend`,
+    and `control.lift`, and name a brake's target by a URI of their own: `dsor://org_456/agent/{id}`
+    and `dsor://org_456/tenant/org_456`. Should the specification name these operations and
+    their targets, as §26.1 names `proposal.execute`?
+104. **Does a suspension refuse a dry run?** §18 says a suspended agent "can make no state
+    change". A `validate_only` call makes none, so the words allow it. Step 25b's learner build
+    refuses it, at line 4, because a dry run must hear what the real call would hear (DSOR-OPR-06).
+    On 2026-10-10 that learner proposed that §18 say so: a suspension or a freeze refuses a command
+    from the agent in every invocation mode, `validate_only` included. Should it?
+105. **Who expires a proposal, and through what?** §26.2 draws moves to EXPIRED, and §44 bounds
+    how long an approval may live, but no operation expires a proposal and no principal is named
+    to do it. Step 25c's learner build adds DSoR's own command `proposal.expire_due { company }`,
+    with its key, its proposal, and its record, called by a login of subject type `system`,
+    `dsor-scheduler`, whose role holds `proposal:expire` only. The time is the database's own:
+    each proposal's `expires_at`, set once when it is made. Should the specification name an
+    expiry operation, the kind of principal that calls it, and whose clock decides?
+    Step 27's learner build expires a `PENDING_APPROVAL` proposal the same way, so a proposal's
+    `expires_at` is also its approval window, which §26.2 names and does not size.
+106. **How is a converted reservation rounded?** DSOR-MON-06 converts each reservation into the
+    limit's currency, and a quotient such as 9,000 × 1.0800 ÷ 0.8532 never ends. The
+    specification names no scale and no direction. Step 26's learner build keeps six places
+    after the point and rounds up, so the day's total can hold a millionth too much, never a
+    millionth too little. A comparison needs no rounding, because it multiplies across. Should
+    DSOR-MON-06 name the scale and the direction?
+107. **From which time does a rate's age count, and who vouches for it?** DSOR-MON-04 refuses a
+    rate "older than `max_rate_age`", and DSOR-MON-05 records "the rate timestamp", but neither
+    says which time that is. Step 26's learner build counts from the time the source published
+    the sheet, as the loader sends it, by the database's clock, and refuses a time in the future.
+    So a loader that sends an old sheet with a new time makes it fresh. Should the specification
+    name the time, and say who vouches for it?
+108. **What does the record of a call that waits for an approval say in `authorization`?** The
+    audit record's `authorization` allows `ALLOW` or `DENY` only. A call that a control stops at
+    `PENDING_APPROVAL` is neither allowed to run nor denied. Step 27's learner build records
+    `ALLOW`, for the caller's right to ask, with the result `PENDING_APPROVAL`, and the control's
+    own outcome `REQUIRE_APPROVAL` in `controls`. Should the audit record allow `REQUIRE_APPROVAL`
+    there, or say which of the two it means?
+109. **Where does a control's own reason for a `DENY` go?** DSOR-EXE-02 records "the reason for any
+    `DENY`", and an item of the audit record's `controls` allows no field for it. Step 27's learner
+    build keeps the reason in its own extensions, and the record's `reason` holds the words the
+    caller heard, which name no rule. Should the `controls` item carry the reason?
+110. **At line ⑩, do the controls come before the limits?** §21 lists "controls, SoD, limits", and
+    §41's walk-through of the nightly run checks the limits first. The final answer is the same,
+    because `DENY` wins. Only the refusal the caller hears differs when both refuse. Step 27's
+    learner build follows §21. Should the specification fix the order, or say that it does not
+    matter?
+111. **What does a contract's `controls` field mean?** `payment.create`'s contract says
+    `"controls": []`, and a control in the company's own store governs it. Is the contract's list
+    the controls that may govern the operation, the ones that must, or a note for readers? Nothing
+    in step 27's learner build reads it.
+112. **May a control's test vector pass by an evaluation error?** DSOR-CTL-02c runs the vectors,
+    and DSOR-CTL-07 makes an error apply the effect. So a vector that gives no state passes when it
+    expects the effect, and a rule switches on behind a test that tests nothing. Step 27's learner
+    build lets an error pass a vector only when its cause is a currency with no usable rate: the
+    vector DSOR-CTL-02d asks for. Should DSOR-CTL-02c say that a vector must evaluate?
+113. **Is an evaluation's time bounded?** CEL defines `matches` with RE2, whose time grows with the
+    text in a straight line. A library that runs it with backtracking can take exponential time on
+    a text the agent sends. Step 27's learner build refuses `matches` at start-up. Should Appendix
+    B require RE2's semantics, or §44 bound the time of one evaluation?
+    Step 28's learner build found a second case: CEL's macros, `all`, `exists`, `exists_one`,
+    `map`, and `filter`, loop, and a loop inside a loop multiplies the time. Seven levels of
+    ten-element lists took about a second, and every company's calls waited. Step 28 lets a person
+    write a condition over the network, so its learner build refuses a condition that loops. A
+    bound on the steps of one evaluation would allow loops and still stop the stall.
+
+114. **Who may own a new control, and who answers when its owner abuses it?** DSOR-CTL-02a says a
+    control is activated, suspended, or retired "only by its human control owner". It does not say
+    who may create a control, or name its owner. In step 28's learner build, a person who holds
+    `rule:draft` and `rule:manage` writes a new rule, names themselves its owner, and switches it
+    on. A rule that refuses every payment then stops the company, and DSOR-CTL-02a leaves nobody
+    else who may switch it off, not a tenant administrator, not a second owner. Should §17.4 say
+    who appoints a control's owner, or give a recorded override that a second person must approve?
+
+115. **How does an owner review a draft that someone else wrote?** §17.2 lets `compiled_by` be an
+    agent and requires `reviewed_by` to be a human, so the specification expects a policy
+    compiler to draft and an owner to review. But no operation reads a draft, and nothing ties a
+    switch-on to the text that the owner read. In step 28's learner build, the owner of a rule
+    switched on, by its number, a version 9 that someone else wrote, which said `false`. Its
+    learner build now lets the owner switch on only a draft the owner wrote. Should a switch-on
+    name a fingerprint of the version's text, as an approval names a fingerprint of the request
+    (§26.3), with an operation that reads a version?
+
+116. **What does `superseded_version` name, and where does a decision record put the authority's
+    version in force?** DSOR-CTL-04 asks every decision record to identify each evaluated control
+    "together with the authority reference and version in force". The audit record and the
+    decision bundle give each control `authority` and an integer `superseded_version`, and nothing
+    else, and the specification never explains `superseded_version`. In step 28b's learner build a
+    stale rule's record keeps the authority it cites, so the chain of §17.4 leads to the text it
+    enforces, sets `superseded_version` to the cited version, and puts KSoR's version in force in
+    the tutorial's own extensions. Its first build put the version in force in `authority`, and
+    lost the fingerprint of the text the rule enforces. Should §17.4 say what each field holds, and
+    give the version in force a field of its own?
+
+117. **Does `on_stale` apply to every call a stale control governs, or only when its condition
+    holds?** §17.4 says that "during `stale_grace` a stale control behaves per `on_stale`", and
+    DSOR-CTL-03c says that after it, the control "MUST yield at least `REQUIRE_APPROVAL`". If
+    `on_stale` applies only when the condition holds, a policy that tightened from 25,000 to 20,000
+    USD leaves every payment between the two lines unchecked for ever, and `require_approval` on a
+    rule whose effect is already an approval changes nothing. Step 28b's learner build applies it
+    to every call the rule governs, so every payment waits for a person while the rule is stale,
+    and a rule whose effect is `deny`, which names no approver, refuses. Which reading does §17.4
+    mean?
+
+118. **What happens when a control's authority cannot be confirmed within the bound of §44?**
+    DSOR-CTL-03a asks DSoR to detect a superseded authority within 24 hours at L2. A sweep that
+    nothing calls, or a KSoR that is down for days, detects nothing, and the control stays active on
+    a policy that nobody confirmed. For the signer's authority, DSOR-IDN-06 makes DSoR deny when it
+    cannot be established within its bound. Step 28b's learner build counts such a policy as
+    unanswered, marks nothing, and builds no timer; a policy that KSoR no longer lists counts the
+    same way. And the owner's notice is written beside the mark, but nothing reads or sends it.
+    Should a control whose authority is unconfirmed past the bound count as stale, and should
+    §17.4 say how the owner is told?
+
+119. **May an owner move a control from a governed source to `local`?** DSOR-CTL-01b says a control
+    with no governed source declares `authority.system: local`. In step 28b's learner build the
+    owner of a stale rule can switch on a new version that keeps the old condition and cites
+    `local`, and no sweep ever asks about it again: the drift check is gone, with a record but
+    with no second person. Should a control that cited a governed source keep one, or should moving
+    to `local` need another person's approval?
+
+120. **Does one person's approval satisfy two requirements of different roles?** DSOR-AUT-02c says
+    that when several `REQUIRE_*` outcomes apply, all of them must be satisfied, and DSOR-SOD-04c
+    (L3) counts distinct people within one requirement's quorum. Neither says whether one person
+    who holds two roles, a CFO who is also a tenant administrator, satisfies a rule that asks for
+    the CFO and another that asks for a tenant administrator with one approval. Step 29's learner
+    build lets one approval satisfy every open requirement whose role the approver holds, so two
+    rules written to ask for two people may be met by one. Should two requirements need two people?
+
+121. **What does an approval's `status` say once its proposal expires?** `approval.schema.json`
+    lists `active`, `revoked`, `expired`, and `consumed`, and DSOR-APR-04a makes an approval expire.
+    Step 29's learner build keeps an approval as it was given, `active`, with the `expires_at` of
+    its proposal, and nothing changes it. Past that time it counts for nothing, and the sweep
+    expires the proposal, but the kept record still says `active`. Is `status` meant to be stored
+    and moved, so that an approval record changes after it is given, or computed when it is read?
+
+122. **Whose approval is a prepared approval that someone else releases?** DSOR-OPR-05 lets every
+    command run in `propose_only` mode, and DSOR-APR-05a accepts `proposal.approve` only from the
+    approver's own direct call. In step 29's learner build, cfo_100's `proposal.approve` in
+    `propose_only` mode ends as a `READY` proposal of the approval itself, which step 31's
+    `proposal.execute` could release later, perhaps by another person who may release it. The
+    approval would then be given at the release, by the releaser's call, in cfo_100's name. Should
+    `proposal.approve` refuse `propose_only`, or should a release of it count only from the
+    approver?
+    *Since step 31's learner build:* `proposal.execute` does not release DSoR's own work, so a
+    prepared approval is never released there: it hears `UNSUPPORTED_CAPABILITY` (that step's D14).
+    The question stays for the day such a release is built.
+
+123. **Should DSoR warn when nobody outside a request's chain can give the approval a rule asks
+    for?** DSOR-SOD-02 keeps the person who signed an agent's slip from approving the agent's
+    requests. In step 30's learner build, org_456 has one AP supervisor, user_123, who signed
+    `del_100`, and a rule of the company's own asks an AP supervisor to approve payments above
+    10,000 USD. Every such payment of the agent waits until it expires, and nothing says so ahead of
+    time. Step 29's learner build checks that a rule asks only for a role that could approve at all;
+    nothing checks that someone outside the chain holds it. Should the switch-on of such a rule, or
+    the answer to a request it stops, say that nobody may approve it?
+124. **Which retry class does a limit on one payment give?** §28 gives `LIMIT_EXCEEDED` the
+    retry class `after_delay`. That fits a running total, such as a daily limit, which has room
+    again the next day. A slip's limit per payment does not change with time, so waiting cannot
+    help, and `after_delay` invites a retry that is refused again. The `my_18` learner build
+    answers `LIMIT_EXCEEDED`, as DSOR-DEL-06e names, with the table's retry class. Should §28
+    give the per-payment case the class `never`, or name a code of its own for it?
+125. **What does a record say when an authority was never established?** The audit record's
+    `identity.subject_authority` requires an `as_of` time. When a role source answers with no
+    time, or is never asked because DSoR refused first, there is no such time. The `my_19`
+    learner build writes the decision's own time, which reads as though the authority was
+    checked then. Should `as_of` be optional, or should `subject_authority` be able to say that
+    the authority was not established?
+126. **Does an allowed replay need a record?** §21 stops at step 7 for a replay and returns the
+    recorded result. §29 says "every decision from step 3 onward is recorded individually". A
+    replay refused at steps 3 to 5, because authority changed (§22), is recorded, while a replay
+    that passes them leaves no record, not even its own request id. The `my_20` learner build
+    records nothing for an allowed replay. Should a replay be recorded, perhaps as a kind of its
+    own, or should §29 say that a replay is not a decision?
+127. **May a request name a slip, or an agent, as the thing it acts on?** DSOR-SRC-02b refuses "a
+    tenant, principal, or delegation identifier inside operation arguments that disagrees with
+    the security context". Read literally, a delegator could never name the slip they revoke,
+    which DSOR-DEL-04a says they may, and a person could never name the agent they stop under
+    DSOR-OPS-01a. The `my_25` learner build reads the rule as covering the authority a request
+    runs under: it refuses the argument names `principal`, `principal_id`, `delegation` and
+    `delegation_id`, and calls the slip or agent an operation acts on its `target`. Should
+    DSOR-SRC-02b say that it covers the request's own authority, and not the resource an
+    operation acts on?
+128. **Are `COMMITTED` and `FAILED` final?** §26.2's plain words say "Once a proposal is
+    `COMMITTED`, `FAILED`, `REJECTED`, and so on, it never moves again." The diagram's last
+    line moves `COMMITTED` and `FAILED` to `COMPENSATING` for compensatable and saga commands.
+    The `my_22` learner build follows the plain words: its map has no compensation moves,
+    though its `payment.create` is declared `compensatable`. Should the plain words say "final,
+    except for compensation"?
+129. **Where does a transition record say what moved?** `DSOR-AUD-01` asks for a record of every
+    proposal transition, and `DSOR-APR-01b` for each transition's actor and cause. The audit
+    record has `kind: proposal_transition` and a `result`, but no field for the state left, the
+    actor that moved it, or the cause. The `my_22` learner build writes the state entered as the
+    `result`, and the state left, the actor and the cause as text in `reason`, where they are
+    inside the hash but not separate fields. Should `audit-record.schema.json` give a transition
+    `from`, `to`, `actor` and `cause`?
+
+130. **Can an agent's own traffic delay a person's brake past §44?** `DSOR-OPS-01b` asks a
+    suspension or freeze to take effect for new decisions within §44's bound, 60 seconds at L2 and
+    5 seconds at L3, "without cooperation from the agent runtime". In the `my_22` to `my_25`
+    learner builds every record goes to the end of its company's log one writer at a time (decision
+    158 in the learner's notes), so a person's `control.suspend` waits for its turns behind the
+    agent's records already waiting. On a database 127 ms away a turn is a few round trips, and
+    twenty payments sent at once took about 34 seconds. A revocation waits for the same turns, and
+    `DSOR-DEL-04b` asks it to take effect within 60 seconds at L2. Nothing yet limits how many
+    requests an agent sends (`DSOR-OPS-02`). Should a control command's records go ahead of the
+    agent's, or is a rate limit the only answer the specification needs?
+
+131. **What is a waiting retry told when its own refusal cannot be recorded?** A request with the
+    idempotency key of one still being carried out waits for its answer, and if none comes it is
+    told `OUTCOME_UNKNOWN`. That refusal is a decision, so `DSOR-EXE-02` records it before the
+    response, and if the record cannot be written, `DSOR-EXE-03b` refuses with
+    `EVIDENCE_STORE_UNAVAILABLE`, whose retry class §28 fixes at `safe_same_key`: nothing was done,
+    send it again. For the retry that is true; the first request, still running, may yet do it.
+    Measured in the `my_20` learner build on a database 127 ms away, before decision 158: of fifty
+    requests with one key, 47 or 48 were told `EVIDENCE_STORE_UNAVAILABLE` this way. Should an
+    evidence failure after `OUTCOME_UNKNOWN` keep `OUTCOME_UNKNOWN`, or should §28 let
+    `EVIDENCE_STORE_UNAVAILABLE` carry another retry class here?
+
+132. **May a `READY` proposal move to `INVALIDATED`?** §26.2's picture draws `APPROVED` to
+    `INVALIDATED`, and no move out of `READY` but to `EXECUTING`. DSOR-APR-03c says a proposal moves
+    to `INVALIDATED` when "a new `REQUIRE_*` or `DENY` outcome appears" at its release. In step 31's
+    learner build, the agent prepares INV-1009 in `propose_only` mode, a rule then asks the CFO above
+    5,000 USD, and user_123's release invalidates it: the build adds the move, as step 25c added
+    `READY` to `CANCELLED` and `EXPIRED` (open question 90). Should §26.2 draw it, or should such a
+    proposal move on to `PENDING_APPROVAL` and wait for the approval the new rule asks for?
+
+133. **Should `proposal.execute` take `propose_only` mode?** DSOR-OPR-05 lets every command be
+    called in three modes. A release prepared in `propose_only` mode would itself wait for a release.
+    Step 31's learner build refuses that mode for `proposal.execute` with `VALIDATION_FAILED`, and
+    allows a dry run, which checks everything again and moves nothing (its D13). Should
+    DSOR-OPR-05 name the release as an exception?
+
+134. **Should a brake or a suspended signer invalidate a waiting payment, or only stop it for now?**
+    DSOR-APR-03c invalidates a proposal when a check fails at its release. In step 31's learner build,
+    a check that cannot be made now (a directory with no recent answer, no usable exchange rate)
+    leaves the proposal waiting, and the same key may retry (its D15). But an emergency brake on the
+    agent, or a signer the directory lists as suspended, invalidates it for good, though both can be
+    lifted within the hour. Should the specification separate a "no" that can be lifted from a "no"
+    that cannot, at the release?
+
+135. **Who may hear which proposal holds an invoice?** DSOR-EXC-01 asks the refusal of a second
+    attempt to name the existing proposal. DSOR-ERR-01b keeps an error from revealing a resource the
+    caller may not read. In step 32's learner build, any caller of org_456 who asks to pay INV-1008
+    while a proposal for it is in flight hears that proposal's address and state, whoever asked for
+    it (its D8). Should the refusal name a proposal the caller could not read, or say only that an
+    attempt is in flight?
+
+136. **What does a proposal in flight commit, when its amount is worked out at its execution?**
+    DSOR-EXC-02 counts "amounts committed to in-flight proposals", and Appendix B's `dsor_in_flight`
+    sums them. In step 32's learner build, `payment.create` drafts the invoice's whole open amount,
+    read at its release, so one in flight is counted as committing all of it, and a second attempt
+    finds nothing left to pay (its D9). A command that pays part of an invoice would commit a part.
+    Should the proposal keep the amount it was decided on, so the count is a sum, or is "all of it"
+    right for a command whose amount is read late?
+
+137. **What is a second attempt over part of an `exclusive_over` list?** The contract schema lets
+    `in_flight.exclusive_over` name several resources. In step 32's learner build, a contract names
+    one at most (its D6). With two, such as a payment and its invoice, does a second proposal
+    conflict when it shares one of them, or only when it shares both?
+
+138. **Is a stale request refused at the decision, or only at the work?** §21 puts the concurrency
+    check at line 14, with the work. In step 32's learner build, the preconditions run at line ⑨,
+    before the work, and a request decided on another version of a draft invoice then heard the
+    precondition's `CONFLICT` before `STALE_STATE`. The build checks the version at line ⑨ too, for
+    every call and mode, so a stale request prepared in `propose_only` mode is refused at once,
+    where step 23 let it wait `READY` (its D13). Should DSOR-CON-01b apply at line 9 as well as at
+    line 14?
+
+139. **What is a consequential command?** DSOR-AUD-03a asks a decision bundle "for each
+    consequential command", and the specification does not define the word. In step 33's learner
+    build, every decision about a command from line ④ on has one: every mode and every outcome, a
+    refusal, a dry run, a replay, and DSoR's own commands too. A call refused at lines ① to ③ has
+    none, since a bundle must name under whose authority the call asked (its D1). Should the
+    specification say which decisions need a bundle, and whether a dry run or a replay is one?
+
+140. **How is a conversion's rate written when neither currency is the sheet's base?**
+    DSOR-MON-05 asks a bundle to record "the rate". A sheet of the ECB says how much of each
+    currency 1 EUR buys, so GBP to USD is 1.0800 ÷ 0.8532, which does not end. Step 33's learner
+    build writes it to at most twelve places, rounded half up, and keeps the sheet's own lines in its
+    extensions, so the exact answer can be worked out again (its D6). Should the specification say
+    how a rate is written, or ask for the sheet's lines?
+
+141. **Which approval does a bundle name when several people approved?** `decision-bundle.schema.json`
+    has one `approval`, with one `id`, and `approvers` as a list, so one approval may hold several
+    approvers. `approval.schema.json` lets each person's yes be an approval of its own, as in step
+    29's learner build. With two, step 33's learner build names the first in `approval.id`, every
+    approver in `approvers`, and each approval in its rule's `satisfied_by` (its D7). Should
+    `approval` be a list?
+
+142. **Which operation does a release's bundle name?** §26.4 runs steps 9 and 10 of a release "for
+    the target command", and §29's example bundle names `payment.execute@1` with its proposal. In
+    step 33's learner build, a release's bundle names the stored request's operation, such as
+    `payment.create@1`, and its record names the operation called, `proposal.execute@1` (its D8).
+    Should the specification say which one a bundle names?
+
+143. **May the agent's free text hold a restricted value?** DSOR-AUD-06 asks DSoR to record what the
+    agent says about itself, its rationale too, and DSOR-AUD-05a keeps raw `RESTRICTED` values out
+    of audit records. Free text has no classification, so an agent may write a bank account into
+    its rationale, and DSoR cannot tell. Step 33's learner build keeps the words as sent, bounded in
+    length, and on one line (its D10 and D11). Should the specification bound or mask
+    `agent_asserted`, or let DSoR keep only a hash of it?
+
+144. **Where does a bundle keep the answer the caller heard?** `decision-bundle.schema.json` has
+    `authorization` and `execution.result`, and no field for the code the caller heard, such as
+    `LIMIT_EXCEEDED`, or its reason, which DSOR-EXE-02 asks the decision to record. Step 33's
+    learner build keeps both in its extensions (its D13). Should the bundle have a field for them?
+
+145. **May a connector reach its system through that system's own MCP server?** §35 says what a
+    connector must declare and keep (its capabilities, its credentials), and §38 makes MCP the
+    agent's way into DSoR. Payment providers already publish MCP servers, and banks will follow.
+    The specification never says whether a connector may use one as its transport. If it may, the
+    connector still holds the credentials (DSOR-CNR-02) and still states its capabilities itself:
+    an MCP tool's `idempotentHint` is a hint, never a guarantee (§38.2). Should §35 say so, and
+    should it say that the agent must never be connected to the same MCP server (DSOR-CNR-04)?
+    Raised by the learner on 2026-10-17, before step 34.
+
+146. **Where does a contract define fallback semantics?** DSOR-CNR-01b lets an operation go to a
+    connector that lacks a capability "unless the contract defines fallback semantics", and
+    `operation-contract.schema.json` has no field for them. Step 34's learner build routes no
+    operation to a connector that lacks a need (its D6). Should the contract gain a field, or
+    should the clause go?
+
+147. **Is a replay refused while its connector is out of service?** DSOR-IDM-01c gives back the
+    recorded answer of a request already run. Step 34's learner build checks the connector at line
+    ④, before line ⑦'s claim, so a replay during an outage hears `CONNECTOR_UNAVAILABLE` though its
+    answer is in DSoR's own store, as a replay under the brake does. Should a replay that reads
+    nothing from the connector pass the breaker?
+
+148. **Which key is "its own idempotency key"?** DSOR-IDM-03 asks DSoR to pass the bank "a key
+    derived from its own idempotency key". A caller's key changes when a caller retries with a new
+    one, and DSOR-IDM-04 makes the proposal's id the idempotency key of its execution. Step 35's
+    learner build derives the bank's key from the company and the proposal's id, so every attempt
+    at one proposal carries one key (its D3). Should DSOR-IDM-03 name the proposal's key?
+
+149. **What does `safe_same_key` promise once a failure is recorded?** §28 gives
+    `CONNECTOR_UNAVAILABLE` the retry class `safe_same_key`. DSOR-IDM-01c makes a claimed key with
+    the same payload return "the recorded status or result without re-execution". Step 36's learner
+    build commits the claim with the intent record before the bank is asked, so a bank that then
+    says "sent nothing" is a recorded failure: a retry with the same key is safe, and gives the same
+    failure back (its D5). The caller needs a new key to try again. Should the retry class mean
+    "safe and useful with the same key", and should an error recorded after the intent record carry
+    a class that says "safe with a new key"?
+150. **How does the start-up sweep tell a crash from a call still running?** DSOR-EXE-04b treats an
+    intent record with no final outcome as `OUTCOME_UNKNOWN`. Step 36's learner build ends every
+    open record at start-up (its D4). A record of a call that another server is still running looks
+    the same as one a crash left behind, so the sweep is safe only while no other program serves the
+    same database. Should an intent record carry an owner and a lease, so the sweep ends only the
+    records whose owner is gone?
+151. **Is `RESOURCE_HELD` a recorded result?** DSOR-IDM-01c makes a claimed key return "the recorded
+    status or result without re-execution", and §28 gives `RESOURCE_HELD` the retry class
+    `after_reconciliation`. If the claim records it, the same key replays it even after
+    reconciliation, and the advice to retry then is useless with that key. Step 37's learner build
+    keeps nothing for `RESOURCE_HELD`, as for a refusal that says only "not now", so the same key
+    runs once the hold is lifted (its D3 and D4). Should the specification say which refusals a
+    claim records?
+152. **What does a same-key retry hear after an unknown payment is settled `FAILED`?** DSOR-UNK-02
+    makes a replay return the current status while the proposal is `OUTCOME_UNKNOWN`, and §25.3
+    settles it. Nothing names the answer once it is settled. Step 38's learner build answers
+    `CONFLICT`, whose retry class is "never", with "send it again with a new key", because
+    `CONNECTOR_UNAVAILABLE` is "retry with the same key" and that key can only hear this again.
+    Should §28 have a code for "settled as never received"?
+153. **When is a bank's "no payment with this key" final?** DSOR-UNK-04a settles with "the evidence
+    used", and a lookup that finds nothing reads as "never received it". A real bank may still be
+    processing an order it has not recorded yet. Step 38's learner build believes the answer at
+    once. Should the connector declare how long after a send its lookup is final, and reconciliation
+    wait that long before it settles `FAILED`?
+155. **What is an audit record's `sequence`?** audit-record.schema.json requires `chain`, `sequence`,
+    `previous_hash`, and `record_hash`, and its example's `sequence` reads as the record's place in
+    its chain. Step 39's learner build keeps `sequence` as the log's own counter across every
+    chain, from step 09, and puts the place in a column of its own, `chain_position`. Should §30 or
+    the schema say which `sequence` is: the place in the chain, or a counter of the whole log?
+156. **What must a checkpoint hold, beyond the chains?** DSOR-AUD-04d asks that every chain be
+    covered by each checkpoint, and §30 that checkpoints be anchored outside the store. Step 39b's
+    learner build found that this is not enough: the owner rewrote a chain, the next routine
+    checkpoint vouched for the rewrite, and the older checkpoint was deleted. Its checkpoints also
+    name the checkpoint before them and their database, and the signer refuses to sign over a log
+    that does not hold against the checkpoints already kept. Should §30 require a checkpoint to
+    name its predecessor and its store, and the signer to verify before it signs?
+154. **When does an unknown outcome's hour start?** DSOR-UNK-04c escalates "an occurrence
+    unresolved after the bound". Step 38b's learner build counts from the alert, raised with the
+    move to `OUTCOME_UNKNOWN`. After a crash, that move is the start-up sweep's, so three hours down
+    and one hour after is four hours after the money may have left. Should the bound count from the
+    intent record, written just before the bank was asked, and should §44 say so?
+157. **How should a request carry `trace_id`, `session_id`, and `task_id`?** DSOR-COR-01a asks DSoR
+    to propagate all three through connectors, audit, and events, and the request envelope has no
+    field for any of them. An agent's `task_id` can arrive only inside `agent_asserted`, the agent's
+    own words, which step 33 keeps in the record and the bundle and nowhere else. Step 40's learner
+    build carries `request_id`, `agent_id` or `principal_id`, and `tenant_id` in every event, and
+    none of the three. Should the envelope name them, and should §32 say which may come from an agent
+    and which DSoR must set itself?
+158. **Is a released hold removed, or kept?** §25 says a proposal's holds are released when it
+    leaves `OUTCOME_UNKNOWN`, and DSOR-UNK-03b holds a resource only while its proposal is unknown.
+    Neither says what a released hold becomes. Step 37's learner build keeps every hold row and
+    reads the proposal behind each one before a send, so the check slows with an invoice's history:
+    in step 40's database tests, about 56 old holds of INV-9001 took longer than a 50 ms bank. Should
+    a released hold be removed, or marked released, so that the check reads only live holds?
+159. **Where does a batch keep its totals per counterparty?** DSOR-BAT-02a binds a batch's approval
+    to its totals per currency and per counterparty. `proposal.schema.json` has `manifest_hash`, and
+    `totals` as one amount per currency, and no field for the totals per counterparty. Step 41's
+    learner build keeps them in a field of its own, `vendor_totals`, one amount per vendor and
+    currency. Should the schema add such a field, and should the approval's input carry it?
+
+160. **Where does a command name the proposal it supersedes, and who may supersede one?**
+    DSOR-APR-12 says "a change is a new proposal that names the one it supersedes", and
+    `proposal.schema.json` has `supersedes`. No input schema, and no part of the request envelope,
+    says where the new command carries it, and §26.1 does not say who may supersede a proposal, in
+    which states, or whether an approval of the old one counts for the new one (§8 says it never does
+    for a batch). Step 41b's learner build carries it in the request envelope, beside the mode; lets
+    only the old proposal's own requester supersede it (an agent under the same slip, as DSOR-APR-11
+    binds a release), while it is `READY`, `PENDING_APPROVAL`, or `APPROVED`; and carries no approval
+    over. Should the specification name the field's place, the caller, and the states?
+161. **Must a supersession be atomic, and may the new proposal run at once?** DSOR-APR-12 moves the
+    superseded proposal to `CANCELLED`, but does not say that this and the new proposal happen in one
+    transaction, what happens to the old proposal's reservation, or what a refused replacement
+    leaves behind. Step 41b's learner build does all of it in one transaction: the old reservation is
+    given back first, the new command is checked from the start, and any refusal undoes the
+    replacement. Its review found that a new command that runs at once could be refused by the
+    company's code after the old one was cancelled, so the learner decided that a replacement never
+    runs at once: it waits `READY` or for its approval. Should the specification require the
+    atomicity, and say whether a superseding command may execute in the same call?
+162. **Should the REST binding name an HTTP status for each code, and the headers of the envelope?**
+    §39 says the mode, the idempotency key, the expected version, and the correlation identifiers
+    have "one canonical representation per interface, documented by the implementation", and names
+    no HTTP status and no header. Many HTTP clients repeat a 500, 502, 503, or 504 by themselves, so
+    a binding that maps `OUTCOME_UNKNOWN` to one of them invites a retry the retry class forbids.
+    Step 42's learner build gives a status that clients repeat only to a code whose retry class is
+    `safe_same_key` or `after_delay` (409 for `OUTCOME_UNKNOWN` and `RESOURCE_HELD`), and one header
+    for each field of the envelope. Should §39 name the status of each code, or at least forbid a
+    repeated status for `after_reconciliation` and `never`?
+163. **May an interface answer a request before the pipeline, below business authorization?**
+    DSOR-OPR-04b forbids an interface's own business authorization, and DSOR-EXE-02 records every
+    decision before the response. Some refusals happen below both: an HTTP server's 400 for a request
+    it cannot parse, 431 for headers that are too large, a cap on a body's size, and a check of the
+    `Host` header against DNS rebinding. Step 42's learner build hands everything it can to the
+    pipeline, so it is recorded, and Node keeps the 400 and the 431. Should §39 say which transport
+    refusals an interface may make by itself, and whether they leave evidence?
+164. **May DSoR use a role or scope that a configured issuer puts in a token?** DSOR-IDN-04a accepts
+    role and scope assertions "only from a token issuer or role source configured as authoritative
+    for the active tenant", so a configured issuer's `role` claim seems allowed. Step 43's learner
+    build reads no claim but the issuer and the subject, and takes every role from DSoR's own table,
+    because Managed Better Auth's `role` is one value for the whole sign-in service, not per company.
+    Should the specification say when an issuer's roles may count, and how a role in one company is
+    kept from counting in another? And should a token for people carry DSoR's own audience
+    (DSOR-RP-02b names it for the OAuth binding only)?
+165. **How long may DSoR keep an issuer's published keys?** A key the issuer stops publishing still
+    checks a token for as long as DSoR keeps the keys it fetched. Step 43's learner build keeps them
+    ten minutes, `jose`'s default, and fetches again at once for a key name it lacks. §44 bounds the
+    staleness of the role source and of reads, not of keys. Should it bound this too?
+166. **How does a person's login first come to name a principal?** DSOR-IDN-01 says DSoR maps a
+    login to a principal, but not how a link is made, by whom, or how it ends. Step 43's learner build,
+    revised by the learner, links a login only by an invitation: a tenant administrator invites a
+    person, DSoR keeps the code's hash, and the person's first call with the code links that login,
+    once, within seven days; unlinking ends it on the next call. Should the specification name a
+    joining and a leaving flow, who may run them, and what evidence each leaves?
+167. **Is a login's link one for all of DSoR, or one per company?** In step 43's learner build a link
+    has no company, so an administrator of one company who unlinks a person ends that person's login
+    in every company. No person of the story belongs to two companies, so no test meets it. Should a
+    link, or its end, belong to a company?
+168. **How fresh must a present person's roles be?** §44 bounds how old an absent signer's authority
+    may be (DSOR-IDN-06: 24 hours at L2, 1 hour at L3), but sets no bound for the roles of a person on
+    the call, such as cfo_100 approving. Step 43b's learner build reads DSoR's own table at every
+    call, so the bound does not arise there; a company whose roles come from its own directory, or
+    from its tokens, will need one. Should §44 bound it too?
+169. **Who may change a role, and how many must agree?** DSOR-IDN-05 names DSoR-held role
+    assignments as a role source, but the specification does not say who may change them, nor
+    whether a role that may approve needs more than one person to grant. Step 43b's learner build
+    lets a tenant administrator grant and revoke, and makes a role that may approve or grant wait for
+    a second administrator's confirmation. Should the specification say so, with a requirement id?

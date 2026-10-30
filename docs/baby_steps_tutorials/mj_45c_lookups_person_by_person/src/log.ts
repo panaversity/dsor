@@ -1,0 +1,587 @@
+// The log of decisions, one record for every answer call gives, written before the answer
+// leaves. DSOR-EXE-02 in specs/dsor/03-execution.md, section 21.
+// This file holds the log in memory, for the unit tests. The log the program uses is a
+// table in the database: createDbLog in postgres.ts.
+import type { ClaimTransaction } from "./claims.ts";
+import { randomUUID } from "node:crypto";
+import type { AgentAsserted } from "./asserted.ts";
+import type { BrakeBy } from "./brakes.ts";
+import { checkBundle, type DecisionBundle, type SealedBundle } from "./bundle.ts";
+import type { Freshness, FreshnessMode } from "./freshness.ts";
+import type { Label } from "./labels.ts";
+import type { ControlOutcome, Denial, StaleOfRecord } from "./controls.ts";
+import type { Conversion, Unconvertible } from "./limits.ts";
+import type { Answer, Correlation } from "./envelope.ts";
+import type { Contract } from "./registry.ts";
+import type { Mode } from "./request.ts";
+import type { PolicyInForce, RuleBy } from "./rulebook.ts";
+import type { Cause } from "./tokens.ts";
+
+// The audit record's own field names, where this step can fill them honestly (step 08's
+// README, decision 5).
+/** What call decided about one request. The log adds the rest of the record. */
+export type Decision = {
+  kind: "decision";
+  operation?: string;
+  authorization: "ALLOW" | "DENY";
+  result: string;
+  reason?: string;
+  correlation: Correlation;
+  // The company the call worked in. None when the call was refused before
+  // DSoR had checked one (step 10's README, decision 6).
+  tenant?: string;
+  // Fields this tutorial adds, under a name of its own (DSOR-SCH-02): the company a
+  // non-member asked for (step 10's README, decision 6), or the label of what a read
+  // returned (step 14's README, decision 7).
+  // And the mode and time of what a read returned (step 15's README, decision
+  // 7).
+  extensions?: {
+    [namespace: string]: {
+      requested_tenant?: string;
+      classification?: Label;
+      freshness?: { mode: FreshnessMode; observed_at: string };
+      // A keyed command's key, and, for a replay, the request id of the first
+      // call (step 20's README, decision 8).
+      idempotency?: { key: string; replay_of?: string };
+      // The command's proposal, so the decision and the records of its moves
+      // can be found together (step 22's README, decision 5).
+      proposal?: string;
+      // The mode a command was called in. The audit record has no field for it
+      // (DSOR-SCH-02; step 23's README, decision 10).
+      invocation_mode?: Mode;
+      // The sheet and the rates a conversion used. DSOR-MON-05 puts them in the
+      // decision bundle, which step 33 builds (step 26's README, decision L7).
+      conversion?: Conversion;
+      // When no rate was usable, which currency and why. The answer leaves both
+      // out, for an agent's clearance (step 26's review, finding H1).
+      unconvertible?: Unconvertible;
+      // Each control that refused the call, and its own reason, which the caller's
+      // words leave out (step 27's README, decision D13; step 27's review, finding L2).
+      denied_by?: Denial[];
+      // Each stale control line ⑩ evaluated: when DSoR marked it, and the
+      // version of its policy in force, which the audit record's controls field has no place for
+      // (DSOR-CTL-04; step 28b's README, decision D11).
+      stale?: StaleOfRecord[];
+      // At a release, the version of each rule the request was decided under,
+      //   beside the version the controls field names now, which DSOR-APR-03d puts in the decision
+      //   bundle (step 31's README, decision D3; step 33's README, decision D13).
+      approved_under?: { control: string; version: number }[];
+      // What the agent said about itself, as line ① checked it, under the name the
+      //   bundle uses, so a call with no bundle keeps it too (DSOR-AUD-06; step 33's README, D11).
+      agent_asserted?: AgentAsserted;
+      // The login of a call made with a token: the issuer, and the client the
+      //   person used. The person is the record's correlation (step 44's README, decision 44-11).
+      login?: { issuer: string; client: string };
+      // A refused token: why, and who it speaks for once its signature checked.
+      //   Never the token. The caller heard only "log in first" (step 44's README, decisions 44-10
+      //   and 44-11).
+      refused_token?: RefusedToken;
+    };
+  };
+  // What a read returned, in the audit record's own fields (DSOR-CLS-05).
+  resources?: string[];
+  row_count?: number;
+  // Which connector served the read, in the audit record's own field.
+  connector?: string;
+  // An agent's call names the slip it ran under, and the person who signed
+  // it, in the audit record's own fields (step 18's README, decision 8).
+  delegation?: string;
+  identity?: {
+    mode: "unattended";
+    subject: string;
+    actor_chain: string[];
+    // Where DSoR learned what the subject holds, and as of when (step 19's
+    // README, decision 7).
+    subject_authority: { source: "role_source"; as_of: string };
+  };
+  // Each control line ⑩ evaluated, in the audit record's own field: its id, version,
+  // outcome, the policy it came from, and the error when it could not be evaluated (DSOR-EXE-02;
+  // step 27's README, decision D14).
+  controls?: ControlOutcome[];
+  // The decision's bundle, by its id, in the audit record's own field. A decision
+  //   about a command from line ④ on has one, and its record names it (step 33's README, D1, D2).
+  decision_bundle?: string;
+};
+
+// And where DSoR learned what the signer holds, and as of when: her
+// company's directory, at the time of the answer DSoR used (step 19's README, decision 7).
+/** Whose authority an agent's call ran under: its slip, the person who signed it, the agent, and the source and time of her authority. */
+export type Authority = {
+  delegation: string;
+  subject: string;
+  actor: string;
+  source: "role_source";
+  as_of: string;
+};
+
+// The log's second kind of record. When a company's directory reports the
+// person who signed a slip as gone, DSoR suspends the slip and records the change. Nothing was
+// allowed or denied, so the record has no authorization (step 19b's README, decisions 5 and
+// 10).
+/** Why DSoR suspends a person's slips: the directory's word, the time of its answer, and the call that heard it. */
+export type SuspendReason = { word: string; as_of: string; correlation: Correlation };
+
+/** The record of one change to a slip: DSoR suspended it, or a person tore it up. */
+export type DelegationChange = {
+  kind: "delegation_change";
+  // Or revoked, when a person tears the slip up (step 25's README, decision D6).
+  result: "suspended" | "revoked";
+  // The directory's word: suspended or gone (step 45). For the people who read
+  // the log, never for the agent.
+  reason: string;
+  // The call that heard it: its whole correlation, as the call's own record has it
+  // (DSOR-COR-01a; step 19b's README, decision 14).
+  correlation: Correlation;
+  tenant: string;
+  delegation: string;
+  // DSoR itself made the change, on the word of the company's directory.
+  // Or a person tore the slip up, in direct mode, on the login DSoR gave that person.
+  identity: {
+    mode: "direct";
+    subject: string;
+    actor_chain: [];
+    subject_authority: { source: "role_source" | "token"; as_of: string };
+  };
+};
+
+// The record of a slip that a person tore up. It names the person, their own words, and
+// their call. Nothing was allowed or denied by the change itself: the tear-up's own decision record
+// says ALLOW (step 25's README, decision D6).
+/** Why a person tears up a slip: who they are, as of when, their own words, and their call. */
+export type RevokeReason = {
+  person: string;
+  as_of: string;
+  words: string;
+  correlation: Correlation;
+};
+
+/** The record of one slip that a person tore up. */
+export function revocationOf(
+  tenant: string,
+  delegation: string,
+  why: RevokeReason,
+): DelegationChange {
+  return {
+    kind: "delegation_change",
+    result: "revoked",
+    reason: why.words,
+    // A copy, so a record cannot change with the call's correlation afterwards.
+    correlation: { ...why.correlation },
+    tenant,
+    delegation,
+    identity: {
+      mode: "direct",
+      subject: why.person,
+      actor_chain: [],
+      subject_authority: { source: "token", as_of: why.as_of },
+    },
+  };
+}
+
+// The log's fourth kind of record, a change to an operational control. Each pull
+// and each lift of a brake leaves one, in the command's own transaction. It names the person, their
+// words, their call, and the target, in resources, as audit-record.schema.json has it. Nothing was
+// allowed or denied by the change itself: the command's own decision record says ALLOW (step
+// 25b's README, decision D6).
+/** The record of one pull or lift of a brake. */
+export type OperationalControl = {
+  kind: "operational_control";
+  // A brake on one agent, a freeze of the company, or the lift of either.
+  result: "suspended" | "frozen" | "lifted";
+  // The person's own words.
+  reason: string;
+  correlation: Correlation;
+  tenant: string;
+  // The brake's target: the agent, or the company.
+  resources: [string];
+  // The person, in direct mode, on the login DSoR gave that person.
+  identity: {
+    mode: "direct";
+    subject: string;
+    actor_chain: [];
+    subject_authority: { source: "token"; as_of: string };
+  };
+};
+
+/** A brake's target as a canonical URI: the agent, or the company for a freeze. */
+export function targetUri(tenant: string, agent: string | undefined): string {
+  return agent === undefined
+    ? `dsor://${tenant}/tenant/${tenant}`
+    : `dsor://${tenant}/agent/${agent}`;
+}
+
+/** The record of one pull or lift of a brake on a target, by a person. */
+export function controlOf(
+  tenant: string,
+  agent: string | undefined,
+  result: OperationalControl["result"],
+  by: BrakeBy,
+): OperationalControl {
+  return {
+    kind: "operational_control",
+    result,
+    reason: by.words,
+    // A copy, so a record cannot change with the call's correlation afterwards.
+    correlation: { ...by.correlation },
+    tenant,
+    resources: [targetUri(tenant, agent)],
+    identity: {
+      mode: "direct",
+      subject: by.person,
+      actor_chain: [],
+      subject_authority: { source: "token", as_of: by.as_of },
+    },
+  };
+}
+
+// The log's fifth kind of record, a change to a company's rule. Each draft and each
+// move of a version leaves one, in the change's own transaction. It names the person, their words,
+// their call, and the rule, in resources, as audit-record.schema.json has it. The record has no
+// field for a version or for the status it left, so they sit under this tutorial's own name, as a
+// proposal's move keeps the state it left (DSOR-SCH-02). Nothing was allowed or denied by the
+// change itself: the command's own decision record says ALLOW (step 28's README, decision D14).
+/** The record of one draft or one move of a version of a company's rule. */
+export type ControlChange = {
+  kind: "control_change";
+  // The status the version moved to: draft for a new version.
+  // And stale_authority, for the sweep's mark (step 28b's README, decision D5).
+  result: "draft" | "active" | "suspended" | "retired" | "stale_authority";
+  // The person's own words.
+  reason: string;
+  correlation: Correlation;
+  tenant: string;
+  // The rule's address: dsor://org_456/rule/high-value-payment.
+  resources: [string];
+  // The person, in direct mode, on the login DSoR gave that person.
+  identity: {
+    mode: "direct";
+    subject: string;
+    actor_chain: [];
+    subject_authority: { source: "token"; as_of: string };
+  };
+  // The version, and the status it left. A draft left none.
+  // And for a mark, the version of the policy that KSoR had in force.
+  extensions: {
+    [namespace: string]: { version: number; from?: string; in_force?: PolicyInForce };
+  };
+};
+
+/** The record of one draft or one move of a version of a company's rule, by a person, or by the sweep's mark. */
+export function controlChangeOf(
+  tenant: string,
+  id: string,
+  version: number,
+  from: string | undefined,
+  to: ControlChange["result"],
+  by: RuleBy,
+  // For a mark, the version of the policy in force.
+  in_force?: PolicyInForce,
+): ControlChange {
+  const moved = from === undefined ? { version } : { version, from };
+  return {
+    kind: "control_change",
+    result: to,
+    reason: by.words,
+    // A copy, so a record cannot change with the call's correlation afterwards.
+    correlation: { ...by.correlation },
+    tenant,
+    resources: [`dsor://${tenant}/rule/${id}`],
+    identity: {
+      mode: "direct",
+      subject: by.person,
+      actor_chain: [],
+      subject_authority: { source: "token", as_of: by.as_of },
+    },
+    extensions: {
+      [OURS]: in_force === undefined ? moved : { ...moved, in_force: { ...in_force } },
+    },
+  };
+}
+
+// One record for each slip suspended. Both slip stores build it here, so the
+// record in memory and the row in dsor.audit have one shape (step 19b's README, decision 5).
+/** The record of one slip that DSoR suspended. */
+export function changeOf(tenant: string, delegation: string, why: SuspendReason): DelegationChange {
+  return {
+    kind: "delegation_change",
+    result: "suspended",
+    reason: why.word,
+    // A copy, so a record cannot change with the call's correlation afterwards.
+    correlation: { ...why.correlation },
+    tenant,
+    delegation,
+    identity: {
+      mode: "direct",
+      subject: "dsor",
+      actor_chain: [],
+      subject_authority: { source: "role_source", as_of: why.as_of },
+    },
+  };
+}
+
+// The log's third kind of record. Each move of a proposal leaves one, in the same
+// transaction as the move, so a move and its record are both kept or neither is (DSOR-APR-01b).
+// The log is the place DSOR-AUD-01 names (step 22's README, decision 4). A move allows and
+// denies nothing, so the record has no authorization, as a change to a slip has none.
+/** Who made one move of a proposal, in the audit record's own shape. */
+export type Mover = {
+  mode: "direct" | "unattended";
+  subject: string;
+  actor_chain: string[];
+  subject_authority: { source: "token" | "role_source"; as_of: string };
+};
+
+/** The record of one move of a proposal. */
+export type ProposalTransition = {
+  kind: "proposal_transition";
+  // The proposal's operation and its contract's version, such as payment.create@1.
+  operation: string;
+  // The state the proposal moved to.
+  result: string;
+  // Why it moved: the move's cause.
+  reason: string;
+  // The call that moved it: its whole correlation, as the call's own record has it.
+  correlation: Correlation;
+  tenant: string;
+  // Who moved it: the caller for the first move, DSoR itself for the others.
+  identity: Mover;
+  // The proposal, by its URI, in the audit record's own field for what a record is about.
+  resources: [string];
+  // The state the proposal left, under this tutorial's own name: the audit record has no field
+  // for it (DSOR-SCH-02). The first record, which makes the proposal, left no state.
+  extensions?: { [namespace: string]: { from: string } };
+};
+
+/** The record of one move of a proposal. Both proposal stores build it here, so the record in memory and the row in dsor.audit have one shape. */
+export function transitionOf(
+  tenant: string,
+  uri: string,
+  operation: string,
+  from: string | undefined,
+  to: string,
+  mover: Mover,
+  cause: string,
+  correlation: Correlation,
+): ProposalTransition {
+  return {
+    kind: "proposal_transition",
+    operation,
+    result: to,
+    reason: cause,
+    // Copies, so a record cannot change with the call's correlation or its mover afterwards.
+    correlation: { ...correlation },
+    tenant,
+    identity: structuredClone(mover),
+    resources: [uri],
+    ...(from === undefined ? {} : { extensions: { [OURS]: { from } } }),
+  };
+}
+
+// What a query's answer returned, for its record (step 14's README,
+// decision 7).
+/** The URIs a read returned, the label of its answer, and how fresh it was. */
+// And its freshness (step 15's README, decision 7). A command's answer has
+// no freshness, so its record names its rows and its label only (step 17's README,
+// decision 2).
+export type Read = { resources: string[]; classification: Label; freshness?: Freshness };
+
+// The reverse domain name this tutorial's own record fields sit under (DSOR-SCH-02).
+const OURS = "org.panaversity.steps";
+
+/** One record in the log: a decision, with its id, its place in the log, and its time. */
+export type DecisionRecord = Decision & { record_id: string; sequence: number; at: string };
+
+// add is async, so a log in memory and a log in a database have the same shape. add
+// finishes only once the record is kept (step 09's README, decision 9).
+// What every log shares is add, the one function call uses. How a log is
+// read depends on where it is kept: the database log reads one company at a time (step
+// 11's README, decision 6).
+/** What call needs of a log: add a decision. */
+// And its bundle, when it has one, kept with it or not at all (step 33's README, D2).
+// And, when given, the claim's own transaction, which a log of the same database
+//   writes into, so the record commits with the work (step 36b's README, decision D1). A log in
+//   memory has no transaction, and keeps the record at once.
+export type DecisionLog = {
+  add: (decision: Decision, bundle?: DecisionBundle, within?: ClaimTransaction) => Promise<void>;
+};
+
+/** The log in memory, for the unit tests: add a decision, and read a copy of every record. */
+// And a copy of every bundle (step 33's README, D3).
+export type MemoryLog = DecisionLog & {
+  records: () => Promise<DecisionRecord[]>;
+  bundles: () => Promise<SealedBundle[]>;
+};
+
+/**
+ * Refuses a record and a bundle that do not belong together: a record that names another bundle
+ * than the one given, names one that is not given, or names none when one is given. Both logs
+ * check this before they keep anything (step 33's README, D2).
+ */
+export function checkPair(decision: Decision, bundle: DecisionBundle | undefined): void {
+  const named = decision.decision_bundle;
+  if (named === bundle?.decision_id) return;
+  const given = bundle === undefined ? "none" : bundle.decision_id;
+  throw new Error(
+    `the record names bundle ${String(named ?? "none")}, and the log was given ${given}`,
+  );
+}
+
+/** A new, empty log, held in memory. */
+export function createLog(): MemoryLog {
+  // Only the two functions below can reach this list, so nothing else can change or
+  // remove a record (step 08's README, decision 6).
+  const kept: DecisionRecord[] = [];
+  // And the bundles, which only these functions reach too (step 33's README, D3).
+  const sealed: SealedBundle[] = [];
+  // Frozen, so nobody who holds the log can replace add with a function that writes
+  // nothing. Found by step 08's review.
+  return Object.freeze({
+    add: async (decision: Decision, bundle?: DecisionBundle): Promise<void> => {
+      // Both checks before anything is kept, so a bundle the log cannot take keeps
+      //   neither it nor its record (step 33's README, D2).
+      checkPair(decision, bundle);
+      if (bundle !== undefined) checkBundle(bundle);
+      // A copy, so a caller that changes its decision, or the answer that shares its
+      // correlation, cannot change the record afterwards.
+      const record_id = `aud_${randomUUID()}`;
+      const at = new Date().toISOString();
+      kept.push({ record_id, sequence: kept.length + 1, at, ...structuredClone(decision) });
+      // The record's time is the bundle's, as on the database, where one transaction gives both.
+      if (bundle !== undefined) sealed.push({ ...structuredClone(bundle), sealed_at: at });
+    },
+    // A copy too, so a reader cannot change what it read.
+    records: async (): Promise<DecisionRecord[]> => structuredClone(kept),
+    bundles: async (): Promise<SealedBundle[]> => structuredClone(sealed),
+  });
+}
+
+/** A refused token in its record: the cause, and who it speaks for once its signature checked. */
+export type RefusedToken = { cause: Cause; issuer?: string; subject?: string; client?: string };
+
+/**
+ * What line ① learned about a call's token, for its record: the login of one that
+ * counts, or why one was refused. Nothing for a key (step 44's README, decision 44-11).
+ */
+export type TokenOfRecord =
+  | { login: { issuer: string; client: string } }
+  | { refused_token: RefusedToken };
+
+// What the record says about an answer (step 08's README, decision 5).
+/** What the record says about an answer. */
+export function decisionOf(
+  answer: Answer,
+  contract: Contract | undefined,
+  // Called reachedCode until step 22. True once DSoR's checks allowed the call.
+  allowed: boolean,
+  // The active tenant, once line ② has checked it.
+  tenant: string | undefined,
+  // The well-formed company the caller named, checked or not.
+  claimed: string | undefined,
+  // What the answer returned, when it returned data.
+  read?: Read,
+  // The slip an agent's call ran under, once line ③ found it.
+  under?: Authority,
+  // The key line ⑦ claimed, and, for a replay, the first call's request id.
+  idempotency?: { key: string; replay_of?: string },
+  // The command's proposal, once line ⑧ made it or a replay gave it back.
+  proposal?: string,
+  // The mode line ① read. Only a command's record names it: a query has none.
+  mode?: Mode,
+  // The sheet and the rates line ⑩ converted with, when it did.
+  conversion?: Conversion,
+  // And which currency had no usable rate, and why, when none was.
+  unconvertible?: Unconvertible,
+  // And each control line ⑩ evaluated, when one governs the operation.
+  controls?: ControlOutcome[],
+  // And each control that refused the call, with its reason.
+  deniedBy?: Denial[],
+  // And each stale control line ⑩ evaluated, with the version in force.
+  stale?: StaleOfRecord[],
+  // And, at a release, the versions the request was decided under.
+  approvedUnder?: { control: string; version: number }[],
+  // And what the agent said about itself, when it said something (step 33's README, D11).
+  asserted?: AgentAsserted,
+  // And what line ① learned about the call's token (decisions 44-10 and 44-11).
+  token?: TokenOfRecord,
+): Decision {
+  const refused = "code" in answer;
+  // This tutorial's own fields, gathered in one place, so a command's record can name both
+  // its label and its key (DSOR-SCH-02).
+  // Gathered here, where each part used to set the whole extensions field.
+  const ours = {
+    // A claim is kept only when no company was checked: line ② refused the one named.
+    ...(tenant === undefined && claimed !== undefined ? { requested_tenant: claimed } : {}),
+    // The answer's label and freshness, beside its rows below. The connector has a field of
+    // its own in the audit record, and the mode and time do not (step 15's README, decision 7).
+    ...(read === undefined
+      ? {}
+      : {
+          classification: read.classification,
+          ...(read.freshness === undefined
+            ? {}
+            : {
+                freshness: { mode: read.freshness.mode, observed_at: read.freshness.observed_at },
+              }),
+        }),
+    // The key, never the fingerprint or the answer: those stay in the claim (step 20's README,
+    // decision 8).
+    ...(idempotency === undefined ? {} : { idempotency: { ...idempotency } }),
+    ...(proposal === undefined ? {} : { proposal }),
+    ...(mode !== undefined && contract?.["kind"] === "command" ? { invocation_mode: mode } : {}),
+    ...(conversion === undefined ? {} : { conversion: structuredClone(conversion) }),
+    ...(unconvertible === undefined ? {} : { unconvertible: { ...unconvertible } }),
+    ...(deniedBy === undefined ? {} : { denied_by: structuredClone(deniedBy) }),
+    ...(stale === undefined || stale.length === 0 ? {} : { stale: structuredClone(stale) }),
+    ...(approvedUnder === undefined ? {} : { approved_under: structuredClone(approvedUnder) }),
+    ...(asserted === undefined ? {} : { agent_asserted: structuredClone(asserted) }),
+    ...(token === undefined ? {} : structuredClone(token)),
+  };
+  return {
+    kind: "decision",
+    // A name with no contract has no version, so the record names no operation. The
+    // refusal's message, in reason, says what was asked for.
+    ...(contract === undefined
+      ? {}
+      : { operation: `${contract.id}@${String(contract["version"])}` }),
+    authorization: allowed ? "ALLOW" : "DENY",
+    // What the caller heard: "ok", or the code, and its message as the reason. Or
+    // PENDING_APPROVAL, for a call that waits for an approval (step 27's README, decision D14).
+    result: refused
+      ? answer.code
+      : "outcome" in answer && answer.outcome === "PENDING_APPROVAL"
+        ? "PENDING_APPROVAL"
+        : "ok",
+    ...(refused ? { reason: answer.message } : {}),
+    correlation: answer.correlation,
+    ...(tenant === undefined ? {} : { tenant }),
+    // An agent's call names the slip it ran under, and the person who signed
+    // it, in the audit record's own fields. A person's record, and a refusal before line ③
+    // found a slip, name neither (step 18's README, decision 8).
+    ...(under === undefined
+      ? {}
+      : {
+          delegation: under.delegation,
+          identity: {
+            mode: "unattended",
+            subject: under.subject,
+            actor_chain: [under.actor],
+            // Her company's directory, and the time of the answer DSoR used
+            // (DSOR-DEL-10; step 19's README, decision 7).
+            subject_authority: { source: under.source, as_of: under.as_of },
+          },
+        }),
+    // Who, what, and how many (DSOR-CLS-05). URIs, a count, and a label,
+    // never a value read (DSOR-AUD-05a). A read returns data only after line ②, so a
+    // claimed company is never beside it.
+    ...(read === undefined
+      ? {}
+      : {
+          resources: read.resources,
+          row_count: read.resources.length,
+          // The answer's freshness: its connector, in the record's own field.
+          ...(read.freshness === undefined ? {} : { connector: read.freshness.connector }),
+        }),
+    ...(Object.keys(ours).length === 0 ? {} : { extensions: { [OURS]: ours } }),
+    ...(controls === undefined ? {} : { controls: structuredClone(controls) }),
+  };
+}
