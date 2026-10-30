@@ -6,7 +6,8 @@
 // payment it prepared is thrown away at its release. And no agent works under a slip it signed.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { memoryAnswers } from "../src/answers.ts";
-import type { FakeDirectory } from "../src/directory.ts";
+import { createRoleSource, type RoleSettings } from "../src/authority.ts";
+import type { Directory, FakeDirectory } from "../src/directory.ts";
 import { createLog } from "../src/log.ts";
 import type { Payment } from "../src/payment.ts";
 import { call } from "../src/pipeline.ts";
@@ -16,7 +17,9 @@ import type { RequestEnvelope } from "../src/request.ts";
 import { memorySlips, type MemorySlips, type Slip } from "../src/slips.ts";
 import {
   A_PERSON,
+  AGENT,
   CFO,
+  contract,
   DEL_100,
   DEL_101,
   DEL_102,
@@ -25,6 +28,7 @@ import {
   keyed,
   NOT_A_MEMBER,
   OUR_EXTENSIONS,
+  shippedWith,
   slipRegistry,
   storyDirectories,
   SUPERVISOR,
@@ -69,6 +73,17 @@ async function stateOf(w: RuleWorld, id: string): Promise<string | undefined> {
   return (await w.proposals.get("org_456", id))?.state;
 }
 
+/** The world's registry with a role source that calls svc_ap_bot a member, and an application. */
+function lax(w: RuleWorld): Registry {
+  const memberOf = async () => ({
+    roles: ["CFO"],
+    source: "role_source" as const,
+    as_of: new Date().toISOString(),
+    type: "application" as const,
+  });
+  return { ...w.registry, roleSource: { ...w.registry.roleSource, memberOf } };
+}
+
 /** Sets DSoR's clock to this time of the story's night, in UTC. */
 function at(time: string): void {
   vi.setSystemTime(new Date(`${NIGHT}T${time}Z`));
@@ -85,7 +100,10 @@ describe("C2: a person's own call counts only when her company says she is human
         result: "AUTHORIZATION_DENIED",
         correlation: { principal_id: "svc_ap_bot" },
         extensions: {
-          [OUR_EXTENSIONS]: { requested_tenant: "org_456", not_a_person: "application" },
+          [OUR_EXTENSIONS]: {
+            requested_tenant: "org_456",
+            not_a_person: { person: "svc_ap_bot", type: "application" },
+          },
         },
       },
     ]);
@@ -97,7 +115,9 @@ describe("C2: a person's own call counts only when her company says she is human
       const answer = await asSvc(() => w.ask(SVC, "invoice.get", INVOICE));
       expect(answer).toMatchObject({ code: "AUTHORIZATION_DENIED", message: NOT_A_MEMBER });
       const [record] = await w.log.records();
-      expect(record?.extensions?.[OUR_EXTENSIONS]).toMatchObject({ not_a_person: type });
+      expect(record?.extensions?.[OUR_EXTENSIONS]).toMatchObject({
+        not_a_person: { person: "svc_ap_bot", type },
+      });
     }
   });
 
@@ -141,6 +161,65 @@ describe("C2: a person's own call counts only when her company says she is human
   });
 });
 
+describe("C2 and D32: a non-person's own calls use its answer for 10 minutes, as a stranger's do", () => {
+  const READ = { invoice: "dsor://org_456/invoice/INV-1008" };
+  const BOTS = ["bot_1", "bot_2", "bot_3", "bot_4"];
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    at("02:00:00");
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** This account reads INV-1008 for itself, with a key that names it as every login names a person. */
+  function readsAs(registry: Registry, id: string): Promise<unknown> {
+    const login: Principal = { id, type: "human", memberships: [] };
+    const envelope = { token: `tok_${id}`, tenant: "org_456" };
+    return withPlanted(`tok_${id}`, login, () =>
+      call(registry, createLog(), envelope, "invoice.get", READ),
+    );
+  }
+
+  // Found by step 45e's review, finding 2: at 10 seconds, four scripts used up the budget in 50
+  //   seconds, and a new person heard the stranger's words.
+  it("D32: four accounts that org_456 says are applications read every 10 seconds for 50 seconds: org_456 is asked about each once, and user_124, a new person, reads INV-1008", async () => {
+    const directories = storyDirectories();
+    const org456 = directories.get("org_456")!;
+    for (const bot of BOTS) {
+      org456.set(bot, { status: "active", roles: ["ap_clerk"], type: "application" });
+    }
+    org456.set("user_124", { status: "active", roles: ["ap_clerk"], type: "human" });
+    const registry = slipRegistry(undefined, undefined, [], directories);
+    const before = org456.asked();
+    for (const second of ["00", "10", "20", "30", "40", "50"]) {
+      at(`02:00:${second}`);
+      for (const bot of BOTS) {
+        expect(await readsAs(registry, bot)).toMatchObject({ message: NOT_A_MEMBER });
+      }
+    }
+    expect(org456.asked() - before).toBe(4);
+    at("02:00:51");
+    expect(await readsAs(registry, "user_124")).toMatchObject({ data: { id: "INV-1008" } });
+  });
+
+  it("D32: org_456 fixes svc_ap_bot's mark to human at 02:00:30. Its own reads hear the stranger's words until 02:10:00, 10 minutes after DSoR asked, and then it reads", async () => {
+    const directories = storyDirectories();
+    const org456 = directories.get("org_456")!;
+    org456.set("svc_ap_bot", { status: "active", roles: ["CFO"], type: "application" });
+    const registry = slipRegistry(undefined, undefined, [], directories);
+    expect(await readsAs(registry, "svc_ap_bot")).toMatchObject({ message: NOT_A_MEMBER });
+    at("02:00:30");
+    org456.set("svc_ap_bot", { status: "active", roles: ["CFO"], type: "human" });
+    at("02:09:59");
+    expect(await readsAs(registry, "svc_ap_bot")).toMatchObject({ message: NOT_A_MEMBER });
+    at("02:10:00");
+    expect(await readsAs(registry, "svc_ap_bot")).toMatchObject({ data: { id: "INV-1008" } });
+  });
+});
+
 describe("C3: an approval counts only from an account its company says is human (DSOR-SOD-01a, DSOR-SOD-01b)", () => {
   it("DSOR-SOD-01b: svc_ap_bot, which org_456 lists as its CFO and says is an application, approves PAY-901: it is refused, and PAY-901 still waits", async () => {
     const w = await worldWhere("application");
@@ -179,20 +258,8 @@ describe("C3: an approval counts only from an account its company says is human 
   it("DSOR-SOD-01b: the approval reads the type that line ② found, never the login's: with a role source that calls svc_ap_bot a member and an application, PAY-901 still waits", async () => {
     const w = await worldWhere("application");
     const { id, uri, payload_hash } = await waiting(w);
-    const lax: Registry = {
-      ...w.registry,
-      roleSource: {
-        ...w.registry.roleSource,
-        memberOf: async () => ({
-          roles: ["CFO"],
-          source: "role_source",
-          as_of: new Date().toISOString(),
-          type: "application",
-        }),
-      },
-    };
     const answer = await asSvc(() =>
-      call(lax, w.log, keyed(SVC), "proposal.approve", { proposal: uri, payload_hash }),
+      call(lax(w), w.log, keyed(SVC), "proposal.approve", { proposal: uri, payload_hash }),
     );
     // Line ⑤ refuses it, by the contract's people_only (step 25's README, decision D4).
     expect(answer).toMatchObject({
@@ -200,6 +267,103 @@ describe("C3: an approval counts only from an account its company says is human 
       message: '"proposal.approve" is for people only, and svc_ap_bot is not a person',
     });
     expect(await stateOf(w, id)).toBe("PENDING_APPROVAL");
+  });
+});
+
+// Found by step 45e's review, finding 5: line ⑤ refused the test above, so the approval's own guard
+//   at line ⑨ was proven only with DSoR's own system logins. With people_only gone, it is reached.
+describe("C3: the approval's own guard reads the type that line ② found", () => {
+  it("DSOR-SOD-01b: with people_only gone from the contract too, and a role source that calls svc_ap_bot a member and an application, line ⑨ refuses it: not a person, and PAY-901 still waits", async () => {
+    const { extensions: _gone, ...approve } = contract("proposal.approve");
+    const w = await ruleWorldOnTuesday(undefined, undefined, undefined, shippedWith(approve));
+    w.directories
+      .get("org_456")!
+      .set("svc_ap_bot", { status: "active", roles: ["CFO"], type: "application" });
+    const { id, uri, payload_hash } = await waiting(w);
+    const answer = await asSvc(() =>
+      call(lax(w), w.log, keyed(SVC), "proposal.approve", { proposal: uri, payload_hash }),
+    );
+    expect(answer).toMatchObject({
+      code: "AUTHORIZATION_DENIED",
+      message: '"proposal.approve" is accepted only from a person, on their own login',
+    });
+    expect(await stateOf(w, id)).toBe("PENDING_APPROVAL");
+  });
+});
+
+describe("C3 at a release: DSoR asks each approver's company again (D31; DSOR-APR-03a)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-06T15:05:00Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** While org_456 says svc_ap_bot is human, it approves PAY-901, which is APPROVED then. */
+  async function approvedBySvc(w: RuleWorld): Promise<{ id: string; uri: string }> {
+    const { id, uri, payload_hash } = await waiting(w);
+    const answer = await asSvc(() =>
+      w.ask(keyed(SVC), "proposal.approve", { proposal: uri, payload_hash }),
+    );
+    expect(answer).toMatchObject({ outcome: "COMMITTED", data: { state: "APPROVED" } });
+    // 11 seconds later, so the release asks again, and does not use the answer of 10 seconds ago
+    //   (step 45's README, D3).
+    vi.setSystemTime(new Date("2026-10-06T15:05:11Z"));
+    return { id, uri };
+  }
+
+  it("D31: svc_ap_bot approves PAY-901 while org_456 says human. Once org_456 says application, the agent's release throws PAY-901 away, and the record names svc_ap_bot's type", async () => {
+    const w = await worldWhere("human");
+    const { id, uri } = await approvedBySvc(w);
+    w.directories
+      .get("org_456")!
+      .set("svc_ap_bot", { status: "active", roles: ["CFO"], type: "application" });
+    expect(await w.ask(keyed(AGENT), "proposal.execute", { proposal: uri })).toMatchObject({
+      code: "APPROVAL_INVALIDATED",
+      message: `proposal ${id} is INVALIDATED: SOD_VIOLATION`,
+    });
+    expect(await stateOf(w, id)).toBe("INVALIDATED");
+    expect(w.drafted).toStrictEqual([]);
+    const record = (await w.log.records()).at(-1);
+    expect(record?.extensions?.[OUR_EXTENSIONS]).toMatchObject({
+      not_a_person: { person: "svc_ap_bot", type: "application" },
+    });
+  });
+
+  it("D31: the same release, while org_456 still says svc_ap_bot is human, pays", async () => {
+    const w = await worldWhere("human");
+    const { uri } = await approvedBySvc(w);
+    expect(await w.ask(keyed(AGENT), "proposal.execute", { proposal: uri })).toMatchObject({
+      outcome: "COMMITTED",
+    });
+    expect(w.drafted).toHaveLength(1);
+  });
+
+  it("D31: when org_456 cannot answer about the approver at the release, PAY-901 waits, still APPROVED", async () => {
+    const w = await worldWhere("human");
+    const { id, uri } = await approvedBySvc(w);
+    // Another DSoR server, which keeps no answers yet, and whose question about svc_ap_bot fails.
+    const base = w.directories.get("org_456")!;
+    const failing: Directory = {
+      ask: async (who: string) => {
+        if (who === "svc_ap_bot") throw new Error("the lookup about svc_ap_bot fails");
+        return base.ask(who);
+      },
+    };
+    const settings: RoleSettings = new Map([
+      ["org_456", { kind: "idp_lookup", max_staleness: "PT1H", ms: 3_600_000 }],
+    ]);
+    const other: Registry = {
+      ...w.registry,
+      roleSource: createRoleSource(settings, new Map([["org_456", failing]])),
+    };
+    expect(
+      await call(other, w.log, keyed(AGENT), "proposal.execute", { proposal: uri }),
+    ).toMatchObject({ code: "FRESHNESS_UNSATISFIABLE" });
+    expect(await stateOf(w, id)).toBe("APPROVED");
+    expect(w.drafted).toStrictEqual([]);
   });
 });
 
@@ -235,10 +399,17 @@ describe("C4: a release asks again about the person who asked for herself (D27)"
     const proposal = await prepared();
     at("02:00:11");
     org456.set("svc_ap_bot", { status: "active", roles: ["ap_supervisor"], type: "application" });
+    const log = createLog();
     expect(
-      await call(registry, createLog(), keyed(SUPERVISOR), "proposal.execute", { proposal }),
+      await call(registry, log, keyed(SUPERVISOR), "proposal.execute", { proposal }),
     ).toMatchObject({ code: "APPROVAL_INVALIDATED" });
     expect(rows).toStrictEqual([]);
+    // Found by step 45e's review, finding 3: D27's record names the type at a release too, and
+    //   whose it is, since the caller here is user_123.
+    const [record] = await log.records();
+    expect(record?.extensions?.[OUR_EXTENSIONS]).toMatchObject({
+      not_a_person: { person: "svc_ap_bot", type: "application" },
+    });
   });
 
   it("D27: the same release, while org_456 still says svc_ap_bot is human, pays", async () => {

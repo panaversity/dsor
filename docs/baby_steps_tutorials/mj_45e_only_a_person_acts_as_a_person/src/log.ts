@@ -77,9 +77,10 @@ export type Decision = {
       //   Never the token. The caller heard only "log in first" (step 44's README, decisions 44-10
       //   and 44-11).
       refused_token?: RefusedToken;
-      // NEW IN STEP 45e: the kind of account a person's company says she is, when line ② refused
-      //   her for it. The caller heard only the stranger's words (step 45e's README, C2; D27).
-      not_a_person?: PrincipalType;
+      // NEW IN STEP 45e: an account its company says is no person, and its type, when line ② or a
+      //   release refused it for that. The caller heard no type (step 45e's README, C2 and C3; D27,
+      //   D31; the review's finding 3).
+      not_a_person?: { person: string; type: PrincipalType };
     };
   };
   // What a read returned, in the audit record's own fields (DSOR-CLS-05).
@@ -509,7 +510,7 @@ export function decisionOf(
   // And what line ① learned about the call's token (decisions 44-10 and 44-11).
   token?: TokenOfRecord,
   // NEW IN STEP 45e: and the type of an account line ② refused as no person (D27).
-  notAPerson?: PrincipalType,
+  notAPerson?: { person: string; type: PrincipalType },
 ): Decision {
   const refused = "code" in answer;
   // This tutorial's own fields, gathered in one place, so a command's record can name both
@@ -542,7 +543,7 @@ export function decisionOf(
     ...(approvedUnder === undefined ? {} : { approved_under: structuredClone(approvedUnder) }),
     ...(asserted === undefined ? {} : { agent_asserted: structuredClone(asserted) }),
     ...(token === undefined ? {} : structuredClone(token)),
-    ...(notAPerson === undefined ? {} : { not_a_person: notAPerson }),
+    ...(notAPerson === undefined ? {} : { not_a_person: { ...notAPerson } }),
   };
   return {
     kind: "decision",

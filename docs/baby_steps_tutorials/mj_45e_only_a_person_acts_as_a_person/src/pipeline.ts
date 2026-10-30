@@ -239,9 +239,10 @@ export async function call(
   // What line ① learned about the call's token: the issuer and client of one that
   //   counts, or why one was refused and who it speaks for (decisions 44-10 and 44-11).
   let tokenOfCall: TokenOfRecord | undefined;
-  // NEW IN STEP 45e: the kind of account a person's company says she is, when line ② refused her
-  //   for it. The record names it; the caller hears the stranger's words (step 45e's README, C2).
-  let notAPersonOfRecord: PrincipalType | undefined;
+  // NEW IN STEP 45e: an account its company says is no person, and its type, when line ② or a
+  //   release refused it for that. The record names both; the caller hears no type (step 45e's
+  //   README, C2 and C3; D27, D31; the review's finding 3).
+  let notAPersonOfRecord: { person: string; type: PrincipalType } | undefined;
   // The label of each read the code makes, noted by the bound store. Only the
   // checklist holds this notebook (step 15's README, decision 5).
   const reads = newReads();
@@ -367,7 +368,7 @@ export async function call(
           // NEW IN STEP 45e: an account its company says is no person hears the stranger's words,
           //   and its record names the type (step 45e's README, C2; D27).
           .catch((thrown: unknown) => {
-            if (thrown instanceof NotAPerson) notAPersonOfRecord = thrown.type;
+            if (thrown instanceof NotAPerson) notAPersonOfRecord = whoIsNot(thrown);
             throw thrown;
           });
         caller = {
@@ -1231,7 +1232,15 @@ export async function call(
       }
       const given = await proposals.approvals(tenant, runId);
       evidence.counted = await line(10, () =>
-        checkApprovals(loaded, [...waitsFor.values()], given, slips, tenant),
+        checkApprovals(
+          loaded,
+          [...waitsFor.values()],
+          given,
+          slips,
+          tenant,
+          registry.roleSource,
+          JSON.stringify(target.id),
+        ),
       );
     };
     // A run's dry run: each line checked as the real run checks it, outside any claim, with no lock
@@ -1384,7 +1393,15 @@ export async function call(
       const given = await proposals.approvals(tenant, id);
       // And what it counted, for the bundle (step 33's README, D7).
       evidence.counted = await line(10, () =>
-        checkApprovals(loaded, requires ?? [], given, slips, tenant),
+        checkApprovals(
+          loaded,
+          requires ?? [],
+          given,
+          slips,
+          tenant,
+          registry.roleSource,
+          JSON.stringify(target.id),
+        ),
       );
     };
     if (released !== undefined) {
@@ -1420,6 +1437,9 @@ export async function call(
           try {
             await checkAgain(outside, loaded, target, false);
           } catch (thrown) {
+            // NEW IN STEP 45e: the record names a requester or an approver who is no person (step 45e's
+            //   README, D27 and D31; the review's finding 3).
+            if (thrown instanceof NotAPerson) notAPersonOfRecord = whoIsNot(thrown);
             if (!isOutcome(thrown) || !invalidates(thrown)) throw thrown;
             // The real release would invalidate it. The dry run says so, and moves nothing.
             const id = proposalIdOf(tenant, released);
@@ -2096,6 +2116,9 @@ export async function call(
                     try {
                       await checkAgain(stores, loaded, target, true);
                     } catch (thrown) {
+                      // NEW IN STEP 45e: the record names a requester or an approver who is no person (step 45e's
+                      //   README, D27 and D31; the review's finding 3).
+                      if (thrown instanceof NotAPerson) notAPersonOfRecord = whoIsNot(thrown);
                       if (!isOutcome(thrown) || !invalidates(thrown)) throw thrown;
                       const by = {
                         mover: dsorMover(loaded.requester),
@@ -2590,4 +2613,10 @@ async function endNote(
     id,
     "value" in outcome ? "committed" : unknown ? "outcome_unknown" : "failed",
   );
+}
+
+// NEW IN STEP 45e: who a refusal of an account that is no person names, for the record (D27, D31).
+/** The account and its type, from a refusal of an account that is no person. */
+function whoIsNot(refusal: NotAPerson): { person: string; type: PrincipalType } {
+  return { person: refusal.person, type: refusal.type };
 }

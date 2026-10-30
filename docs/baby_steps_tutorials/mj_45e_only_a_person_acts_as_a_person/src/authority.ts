@@ -34,15 +34,23 @@ export class SignerGone extends Refusal {
   }
 }
 
-// NEW IN STEP 45e: the refusal when a company says an account is no person. It has the stranger's
-//   code and words, so the caller hears what every non-member hears, and it carries the type, so
-//   line ② can name it in the record (step 45e's README, C2; D27).
-/** The stranger's refusal, which carries, for the record only, what kind of account it is. */
+// NEW IN STEP 45e: the refusal when a company says an account is no person. By default it has the
+//   stranger's code and words, so the caller hears what every non-member hears. It carries the
+//   account and its type, so the record can name both: at line ②, and at a release, whose caller
+//   is someone else (step 45e's README, C2 and C3; D27, D31; the review's finding 3).
+/** A refusal of an account that is no person, which carries, for the record only, who and what it is. */
 export class NotAPerson extends Refusal {
+  readonly person: string;
   readonly type: PrincipalType;
 
-  constructor(type: PrincipalType) {
-    super("AUTHORIZATION_DENIED", "the caller may not work in the tenant it named");
+  constructor(
+    person: string,
+    type: PrincipalType,
+    code: ErrorCode = "AUTHORIZATION_DENIED",
+    message = "the caller may not work in the tenant it named",
+  ) {
+    super(code, message);
+    this.person = person;
     this.type = type;
   }
 }
@@ -74,6 +82,10 @@ export type RoleSource = {
     // she is not the caller (found by step 45c's review, finding 1).
     own?: boolean,
   ) => Promise<MemberAuthority>;
+  // NEW IN STEP 45e: and what kind of account a person is now, which a release asks about each
+  //   approver (step 45e's README, C3; D31).
+  /** What kind of account her company says a person is now, or a refusal. */
+  typeOf: (tenant: string, person: string, name: string) => Promise<PrincipalType>;
 };
 
 const SHIPPED = fileURLToPath(new URL("../role-sources.json", import.meta.url));
@@ -445,7 +457,11 @@ export function createRoleSource(
     const recent = await kept.get(tenant, person);
     const since = recent === undefined ? Number.NaN : askedAt - recent.asked;
     // A stranger's own call uses the answer that she is gone for 10 minutes (D26).
-    const window = budgeted && recent?.answer["status"] === "gone" ? STRANGER_MS : REUSE_MS;
+    // NEW IN STEP 45e: and so does an account that its company says is no person, which D27 makes
+    //   a stranger: at 10 seconds, a few scripts used up the budget (step 45e's README, D32; found
+    //   by its review, finding 2).
+    const stranger = recent?.answer["status"] === "gone" || recent?.answer["type"] !== "human";
+    const window = budgeted && stranger ? STRANGER_MS : REUSE_MS;
     const reuse =
       recent !== undefined && since >= 0 && since < window && askedAt - recent.at < setting.ms;
     // The lookup in flight about this person in this company, if there is one, and
@@ -596,9 +612,17 @@ export function createRoleSource(
       //   hears the same words, and a release that asks about it throws the proposal away (step
       //   45e's README, C2 and C4; D27). Line ② writes the type on the caller (C3).
       const { type } = found.answer;
-      if (type !== "human") throw new NotAPerson(type);
+      if (type !== "human") throw new NotAPerson(person, type);
       const { roles } = found.answer;
       return { roles: [...roles], source: "role_source", as_of: found.as_of, type };
+    },
+    // NEW IN STEP 45e: the same question about an approver, asked at a release. It is not her call,
+    //   so it spends no budget, and it refuses nothing but what DSoR cannot use or does not have
+    //   now: an approver who left still has a type, and step 46 asks what she may approve (step
+    //   45e's README, C3; D31).
+    typeOf: async (tenant: string, person: string, name: string): Promise<PrincipalType> => {
+      const { answer } = await current(tenant, person, name, `${person}, who approved it,`);
+      return answer.type;
     },
   });
 }

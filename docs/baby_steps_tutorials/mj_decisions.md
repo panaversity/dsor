@@ -683,6 +683,42 @@ close in entries 35 to 37.
   leaves a company exposed as long as its setting says so, and adds a setting forever.
 - **Built in** step 45e.
 
+## 51 · A release asks again what each approver is (2026-10-30), D31
+
+**Decided by:** the learner, on Claude Code's recommendation, after step 45e's review (finding 1).
+
+- **What.** At a release, DSoR asks each approver's company again, as it asks about the requester,
+  what kind of account she is. When the company now says she is not `human`, her approval no longer
+  counts, and the proposal is thrown away with `SOD_VIOLATION`. When the company cannot answer now,
+  the proposal waits. Only the type is asked about: an approver who left still counts.
+- **Why.** DSOR-APR-03a re-evaluates segregation of duties against current state at execution, and
+  DSOR-SOD-01b is one of those rules. Since step 45e a type can change: the review's real run had
+  `svc_ap_bot` approve PAY-901 while its company still said `human`, and PAY-901 was paid after the
+  company marked it `application`.
+- **Cost.** One more lookup per approver at each release, and a release waits while the company's
+  server cannot answer. An approver who left after approving still counts: whether her job still
+  allows the approval is step 46's question, who may approve and up to how much.
+- **Rejected.** Asking about the type and the job together, which voids the approvals of a CFO who
+  leaves and decides part of step 46 now; keeping the approval as given, which lets a script's
+  approval outlive its re-marking for the proposal's lifetime, 7 days.
+- **Built in** step 45e.
+
+## 52 · A non-person's own calls use its answer for 10 minutes (2026-10-30), D32
+
+**Decided by:** the learner, on Claude Code's recommendation, after step 45e's review (finding 2).
+
+- **What.** When a company's answer says an account is not `human`, DSoR uses that answer for the
+  account's own calls for 10 minutes, as entry 42 (D26) does for a person who is gone. Its
+  company's other questions about it still use the answer for 10 seconds.
+- **Why.** D27 makes a non-person a stranger, so its own calls spend the company's budget of 20
+  lookups a minute (D23). In the review's real run, four scripts that read every 10 seconds used up
+  the budget in 50 seconds, and a new person heard the stranger's words.
+- **Cost.** When the company fixes a person marked as a script by mistake, her own calls hear the
+  stranger's words for up to 10 more minutes.
+- **Rejected.** Spending no budget on a non-person, which tells it during an outage that the
+  company's server is down; keeping 10 seconds, which lets a few scripts lock new people out.
+- **Built in** step 45e.
+
 ## Open
 
 - **The SSO writes a key's row on every check.** Better Auth updates `updatedAt` each time, so all

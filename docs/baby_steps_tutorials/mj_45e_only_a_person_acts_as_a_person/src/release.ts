@@ -2,7 +2,7 @@
 // README, decisions D2, D7, D12, and D13). Line ⑧ loads the proposal the input names, instead of
 // making one. Line ⑨ first asks who may release it, and whether it waits to be released. Then the
 // stored request is checked again on live data, and runs.
-import type { RoleSource } from "./authority.ts";
+import { NotAPerson, type RoleSource } from "./authority.ts";
 import { checkBrake, holdBrake, type BrakeStore } from "./brakes.ts";
 import { checkDelegation, holdSlip } from "./delegation.ts";
 import type { Approval } from "./approvals.ts";
@@ -275,6 +275,10 @@ export async function checkApprovals(
   given: readonly Approval[],
   slips: Pick<SlipStore, "get">,
   tenant: string,
+  // NEW IN STEP 45e: and the role source, to ask what each approver is now, and the operation's
+  //   name, for the words of a refusal (step 45e's README, C3; D31).
+  roleSource: Pick<RoleSource, "typeOf">,
+  name: string,
 ): Promise<Counted> {
   for (const approval of given) {
     for (const { principal } of approval.approvers) {
@@ -290,6 +294,19 @@ export async function checkApprovals(
   const counted = given.filter(
     (a) => a.status === "active" && a.payload_hash === found.payload_hash,
   );
+  // NEW IN STEP 45e: and each approval that counts was given by a person, by her company's answer
+  //   now, not only when she gave it: since step 45e an account's type can change (DSOR-APR-03a,
+  //   DSOR-SOD-01b; step 45e's README, C3 and D31). The words name no type, and the record does.
+  //   A company that cannot answer now leaves the proposal waiting, as for the requester (D15).
+  for (const approval of counted) {
+    for (const { principal } of approval.approvers) {
+      const type = await roleSource.typeOf(tenant, principal, name);
+      if (type !== "human") {
+        const why = `the approval of ${principal} no longer counts`;
+        throw new NotAPerson(principal, type, "SOD_VIOLATION", why);
+      }
+    }
+  }
   for (const now of requires) {
     const { control, control_version: version } = now;
     const { role, quorum } = now.approval;
