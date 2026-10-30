@@ -4,6 +4,14 @@
 uses. DSoR acts as a person only on `human`: at a person's own call, for a slip's signer, at an
 approval, and at a release (DSOR-SOD-01a, DSOR-SOD-01b, DSOR-IDN-01).
 
+> **Status on 2026-10-30: partly built.** Built and tested: an answer may carry `type` and
+> `issuer`, and an answer in another server's ids is a fault (C1). A non-person is refused at line
+> ②, at an approval, at a release, and as a slip's signer (C2 to C5). Not built yet: the Panaversity
+> SSO sends neither field, and DSoR does not require them, so an answer without them reads as
+> before (C1, C6, C7). The review, the live run, and this README's sections from "What changed" on
+> wait too. Found while building: step 19's words for a signer who left now say "does not list as an
+> active person", so they are true for a signer who is no person too.
+
 ## In plain words
 
 Since step 45, DSoR keeps no table of people. It asks each company's sign-in server about a person,
