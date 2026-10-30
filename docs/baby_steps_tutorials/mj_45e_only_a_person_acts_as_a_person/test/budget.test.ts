@@ -10,7 +10,15 @@ import { lookupDirectory } from "../src/lookup.ts";
 import { call } from "../src/pipeline.ts";
 import type { Registry } from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
-import { AGENT, CFO, MASKED_1008_OF_456, SUPERVISOR, keyed, slipRegistry } from "./helpers.ts";
+import {
+  A_PERSON,
+  AGENT,
+  CFO,
+  MASKED_1008_OF_456,
+  SUPERVISOR,
+  keyed,
+  slipRegistry,
+} from "./helpers.ts";
 import { NIGHT } from "./role-source-list.ts";
 import { startSignInServer, type SignInServer } from "./sign-in-server.ts";
 
@@ -43,6 +51,7 @@ function keptAbout(person: string, clock: string, roles: string[]): [string, str
     status: "active",
     roles,
     as_of: `${NIGHT}T${clock}Z`,
+    ...A_PERSON,
   };
   return ["org_456", person, { answer, at: time(clock), asked: time(clock) }];
 }

@@ -4,13 +4,15 @@
 // this tutorial writes itself, inside DSoR's program, with a switch for "off" and "stuck".
 // A real one is the company's own system, reached over a network (step 19's README,
 // decision 1). DSoR's side of the question is in authority.ts.
+// NEW IN STEP 45e: the stand-in answers in the ids of the server it stands in for (D20).
+import { shippedIssuer } from "./sign-in.ts";
 
 /** What a directory holds about one person: whether they still work there, and their jobs. */
 export type Person = {
   status: string;
   roles: string[];
-  // NEW IN STEP 45e: and what kind of account it is, when the directory says (step 45e's README,
-  //   D18). Until the servers send it, an entry may leave it out (D30, the expand move).
+  // NEW IN STEP 45e: and what kind of account it is. An entry that names none is a person's, as
+  //   the Panaversity SSO answers for every account (step 45e's README, C7; D18).
   type?: string;
 };
 
@@ -38,7 +40,12 @@ export type FakeDirectory = Directory & {
 };
 
 /** A fake directory of one company, holding these people. It starts on. */
-export function fakeDirectory(tenant: string, people: Record<string, Person>): FakeDirectory {
+export function fakeDirectory(
+  tenant: string,
+  people: Record<string, Person>,
+  // NEW IN STEP 45e: whose ids its answers use: sign-in.json's, unless a test gives another (D20).
+  issuer: string | undefined = shippedIssuer(),
+): FakeDirectory {
   // A copy, so a caller that changes its own list cannot change the directory afterwards.
   const kept = new Map(Object.entries(structuredClone(people)));
   let state: "on" | "off" | "stuck" = "on";
@@ -57,11 +64,14 @@ export function fakeDirectory(tenant: string, people: Record<string, Person>): F
       // the time the facts were read.
       const entry = kept.get(person);
       const as_of = new Date().toISOString();
-      if (entry === undefined) return { tenant, person, status: "gone", roles: [], as_of };
-      const { status, roles, type } = structuredClone(entry);
-      const answer = { tenant, person, status, roles: status === "active" ? roles : [], as_of };
-      // NEW IN STEP 45e: the type, when the entry has one (D18, D30).
-      return type === undefined ? answer : { ...answer, type };
+      // NEW IN STEP 45e: and every answer names its type, a person's unless the entry says
+      //   otherwise, and the server whose ids it uses (step 45e's README, C7; D18, D20).
+      const named = { type: entry?.type ?? "human", ...(issuer === undefined ? {} : { issuer }) };
+      if (entry === undefined) {
+        return { tenant, person, status: "gone", roles: [], as_of, ...named };
+      }
+      const { status, roles } = structuredClone(entry);
+      return { tenant, person, status, roles: status === "active" ? roles : [], as_of, ...named };
     },
     set: (person: string, entry: Person | undefined): void => {
       if (entry === undefined) kept.delete(person);

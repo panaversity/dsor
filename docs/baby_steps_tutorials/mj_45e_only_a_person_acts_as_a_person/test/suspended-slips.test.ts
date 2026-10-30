@@ -17,6 +17,7 @@ import {
   type SlipStore,
 } from "../src/slips.ts";
 import {
+  A_PERSON,
   AGENT,
   DEL_100,
   DEL_101,
@@ -124,6 +125,7 @@ function answering(fields: Record<string, unknown>): Directory {
       tenant: "org_456",
       person,
       as_of: new Date().toISOString(),
+      ...A_PERSON,
       ...fields,
     }),
   };

@@ -10,7 +10,7 @@ import { lookupDirectory } from "../src/lookup.ts";
 import { call } from "../src/pipeline.ts";
 import type { Registry } from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
-import { AGENT, CFO, MASKED_1008_OF_456, USER_700, slipRegistry } from "./helpers.ts";
+import { A_PERSON, AGENT, CFO, MASKED_1008_OF_456, USER_700, slipRegistry } from "./helpers.ts";
 import { NIGHT } from "./role-source-list.ts";
 import { startSignInServer, type SignInServer } from "./sign-in-server.ts";
 
@@ -105,7 +105,14 @@ function driven(): {
     fail: async (person) => (await next(person)).drop(),
     answer: async (person, roles) => {
       const as_of = new Date().toISOString();
-      (await next(person)).settle({ tenant: "org_456", person, status: "active", roles, as_of });
+      (await next(person)).settle({
+        tenant: "org_456",
+        person,
+        status: "active",
+        roles,
+        as_of,
+        ...A_PERSON,
+      });
     },
   };
 }
@@ -138,6 +145,7 @@ function knownAnswers(): KeptAnswers {
         status: "active",
         roles: ["ap_clerk"],
         as_of: `${NIGHT}T01:00:00Z`,
+        ...A_PERSON,
       };
       return ["org_456", person, { answer, at, asked: at }];
     }),

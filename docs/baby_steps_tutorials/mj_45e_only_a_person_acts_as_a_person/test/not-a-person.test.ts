@@ -15,6 +15,7 @@ import type { Registry } from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
 import { memorySlips, type MemorySlips, type Slip } from "../src/slips.ts";
 import {
+  A_PERSON,
   CFO,
   DEL_100,
   DEL_101,
@@ -125,6 +126,7 @@ describe("C2: a person's own call counts only when her company says she is human
         roles: ["CFO"],
         as_of: new Date(twoHoursAgo).toISOString(),
         type,
+        issuer: A_PERSON.issuer,
       };
       const kept = memoryAnswers([
         ["org_456", "svc_ap_bot", { answer, at: twoHoursAgo, asked: twoHoursAgo }],

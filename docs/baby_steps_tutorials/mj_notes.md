@@ -315,21 +315,31 @@ and reverted the same day. `git show e2f6965d` holds every file, ready to apply.
 
   ```json
   { "tenant": "org_456", "person": "user_123", "status": "active",
-    "roles": ["ap_supervisor"], "as_of": "2026-10-28T01:55:00Z" }
+    "roles": ["ap_supervisor"], "as_of": "2026-10-28T01:55:00Z",
+    "type": "human", "issuer": "https://login.org456.example" }
   ```
 
-  All five fields are required. `status` is `active`, `suspended`, or `gone`. `roles` holds DSoR's
+  All seven fields are required: the first five since step 45, `type` and `issuer` since step 45e. `status` is `active`, `suspended`, or `gone`. `roles` holds DSoR's
   role names and is empty unless `status` is `active`. One rejection test for each constraint. The
   status test must clear `roles` too, or the roles rule rejects the answer and the status rule
   goes untested: found by breaking each rule on purpose.
-- **Two more fields, decided in the review of D15 (2026-10-28), not built yet** (`mj_decisions.md`,
-  entries 35 and 37):
+- **Two more fields, decided in the review of D15 (2026-10-28), built in step 45e (2026-10-30)**
+  (`mj_decisions.md`, entries 35, 37, and 47 to 50):
   - `type`, one of §12's principal types: `human`, `agent`, `application`, or `system`. A rule for
     §12.1: DSoR MUST treat a principal resolved through a role source as `human` only when the role
-    source's answer gives that type.
+    source's answer gives that type. Step 45e treats any other type as no member at a person's own
+    call and at a release, and as a signer who left for a slip (D27, D28); those are the tutorial's
+    choices, not part of the proposal.
   - `issuer`, the sign-in server whose ids `person` uses. The first §12.1 rule above grows: an
     answer counts only when it names the tenant, the principal, and the issuer whose principal ids
-    DSoR uses for that tenant.
+    DSoR uses for that tenant. Step 45e compares it exactly, so a slash at the end is another
+    issuer, and an answer in another issuer's ids is a fault (D29).
+  - **How a deployment adds them, from step 45e (D30):** DSoR first accepts both as optional, then
+    each server sends them, and only then does DSoR require them. Built in that order, with the
+    Panaversity SSO's commit in between. A DSoR that requires them before a server sends them treats
+    every answer from that server as a fault. A §37.1 note worth adding: wait at least the longest
+    `max_staleness` between the last server's change and the requirement, because an answer DSoR
+    kept from before, without the fields, becomes a fault, not a fallback.
 - **Around it:** a row in Appendix A; the two §12.1 rules in §45's row for the unattended agent; a
   §47 case for a role source that answers about someone else or sends an unreadable reply; version
   1.5.0, with `TARGET_SPEC_VERSION`, which a test keeps in step; a history entry; and a decision in

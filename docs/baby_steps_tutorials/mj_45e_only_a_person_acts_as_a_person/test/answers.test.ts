@@ -10,7 +10,7 @@ import type { Payment } from "../src/payment.ts";
 import { call } from "../src/pipeline.ts";
 import type { Registry } from "../src/registry.ts";
 import type { Slip } from "../src/slips.ts";
-import { AGENT, DEL_100, MASKED_1008_OF_456, keyed, slipRegistry } from "./helpers.ts";
+import { A_PERSON, AGENT, DEL_100, MASKED_1008_OF_456, keyed, slipRegistry } from "./helpers.ts";
 import {
   futureNewsForgotten,
   futureNewsGoes,
@@ -150,6 +150,7 @@ describe("the role source reads what DSoR keeps (step 19's README, decisions 14 
     status,
     roles: status === "active" ? roles : [],
     as_of: `${NIGHT}T${time}Z`,
+    ...A_PERSON,
   });
   const ms = (time: string): number => Date.parse(`${NIGHT}T${time}Z`);
 

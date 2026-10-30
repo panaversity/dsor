@@ -10,7 +10,7 @@ import { lookupDirectory } from "../src/lookup.ts";
 import { call } from "../src/pipeline.ts";
 import type { Registry } from "../src/registry.ts";
 import type { RequestEnvelope } from "../src/request.ts";
-import { AGENT, CFO, MASKED_1008_OF_456, slipRegistry } from "./helpers.ts";
+import { A_PERSON, AGENT, CFO, MASKED_1008_OF_456, slipRegistry } from "./helpers.ts";
 import { NIGHT } from "./role-source-list.ts";
 import { startSignInServer, type SignInServer } from "./sign-in-server.ts";
 
@@ -52,6 +52,7 @@ function keptAt0159(): [string, string, Kept] {
     status: "active",
     roles: ["ap_supervisor"],
     as_of: `${NIGHT}T01:59:00Z`,
+    ...A_PERSON,
   };
   return ["org_456", "user_123", { answer, at: time("01:59:00"), asked: time("01:59:00") }];
 }
@@ -75,6 +76,7 @@ beforeEach(async () => {
         status: "active",
         roles: ["ap_clerk"],
         as_of: `${NIGHT}T01:00:00Z`,
+        ...A_PERSON,
       };
       return ["org_456", person, { answer, at: time("01:00:00"), asked: time("01:00:00") }];
     },

@@ -14,7 +14,7 @@ import {
   laterAnswerStays,
   newerNewsStays,
 } from "./kept-answers.ts";
-import { AGENT, MASKED_1008_OF_456, storyDirectories } from "./helpers.ts";
+import { A_PERSON, AGENT, MASKED_1008_OF_456, storyDirectories } from "./helpers.ts";
 import { NO_PRIVILEGE, dbRegistry, newPool, tryThenRollBack } from "./db.ts";
 import { startSignInServer, type SignInServer } from "./sign-in-server.ts";
 
@@ -44,6 +44,7 @@ async function keptFrom30SecondsAgo(): Promise<number> {
     person: "user_123",
     status: "active",
     roles: ["ap_supervisor"],
+    ...A_PERSON,
   };
   await createDbAnswers(pool).keep("org_456", "user_123", {
     answer: { ...answer, as_of: new Date(at).toISOString() },

@@ -50,7 +50,9 @@
     "person",
     "status",
     "roles",
-    "as_of"
+    "as_of",
+    "type",
+    "issuer"
   ],
   "if": {
     "properties": {

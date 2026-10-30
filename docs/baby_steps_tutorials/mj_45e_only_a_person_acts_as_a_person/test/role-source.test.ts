@@ -16,9 +16,11 @@ import type { Payment } from "../src/payment.ts";
 import { call } from "../src/pipeline.ts";
 import { logins } from "../src/principals.ts";
 import { buildRegistry } from "../src/registry.ts";
+import { checkSignIn, readSignIn } from "../src/sign-in.ts";
 import { memorySlips } from "../src/slips.ts";
 import type { Slip, SlipStore } from "../src/slips.ts";
 import {
+  A_PERSON,
   AGENT,
   CFO,
   DEL_100,
@@ -473,6 +475,7 @@ describe("C3 and C4: with no answer, a kept answer counts only while it is young
         status: "active",
         roles,
         as_of: new Date().toISOString(),
+        ...A_PERSON,
       });
       const directory: Directory = {
         ask: async () =>
@@ -579,6 +582,7 @@ describe("C3 and C4: with no answer, a kept answer counts only while it is young
           status: "active",
           roles,
           as_of: new Date().toISOString(),
+          ...A_PERSON,
         };
         if (after === 0) return answer;
         return new Promise((resolve) => setTimeout(() => resolve(answer), after));
@@ -921,6 +925,9 @@ describe("C10: an answer DSoR cannot use is a fault, and is never used", () => {
       status: "active",
       roles: ["ap_supervisor"],
       as_of: new Date().toISOString(),
+      // NEW IN STEP 45e: a person, in the ids of sign-in.json's server (step 45e's README, C1).
+      type: "human",
+      issuer: checkSignIn(readSignIn()).signIn!.issuer,
       ...fields,
     };
   }
@@ -936,6 +943,10 @@ describe("C10: an answer DSoR cannot use is a fault, and is never used", () => {
     //   45e's README, C1; D18, D20, D29).
     ["with the type robot (step 45e's D18)", aboutHer({ type: "robot" })],
     ["in another server's ids (step 45e's D29)", aboutHer({ issuer: "https://hr.org456.example" })],
+    // NEW IN STEP 45e: the servers send both now, so an answer without either is a fault too
+    //   (step 45e's README, C1; D30, the contract move).
+    ["with no type (step 45e's D30)", without(aboutHer(), "type")],
+    ["with no issuer (step 45e's D30)", without(aboutHer(), "issuer")],
     ["with roles while gone (step 45's D4)", aboutHer({ status: "gone" })],
     ["with no as_of (step 45's D4)", without(aboutHer(), "as_of")],
     ["with an as_of that is not a time (step 45's D4)", aboutHer({ as_of: "yesterday" })],

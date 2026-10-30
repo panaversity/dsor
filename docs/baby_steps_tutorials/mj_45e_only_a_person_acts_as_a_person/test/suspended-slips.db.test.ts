@@ -15,7 +15,7 @@ import type { Directory, FakeDirectory } from "../src/directory.ts";
 import { call } from "../src/pipeline.ts";
 import { createDbLog } from "../src/postgres.ts";
 import type { Principal } from "../src/principals.ts";
-import { DEL_100, storyDirectories, withPlanted } from "./helpers.ts";
+import { A_PERSON, DEL_100, storyDirectories, withPlanted } from "./helpers.ts";
 import {
   NO_PRIVILEGE,
   RUNTIME_URL,
@@ -617,6 +617,7 @@ describe("C7: two calls at once make one change and one record", () => {
               tenant: "org_456",
               person,
               as_of: new Date().toISOString(),
+              ...A_PERSON,
               ...SUSPENDED,
               roles: [],
             };

@@ -1,7 +1,7 @@
 // NEW IN STEP 45e: a company's answer may say what kind of account it is about, and whose ids it
 // uses: `type` and `issuer` (step 45e's README, C1 and C6; D18, D20, D29, D30). An issuer that is not
-// sign-in.json's is a fault, as an answer about someone else is. Until the servers send both
-// fields, an answer without them is read as before (D30, the expand move). The agent drafts under
+// sign-in.json's is a fault, as an answer about someone else is. The servers send both fields
+// now, so an answer without either is a fault too (D30, the contract move). The agent drafts under
 // del_100, so line ③ asks about user_123, the slip's signer.
 import { describe, expect, it } from "vitest";
 import { memoryAnswers } from "../src/answers.ts";
@@ -52,11 +52,17 @@ function draft(registry: Registry): Promise<unknown> {
   return call(registry, createLog(), keyed(AGENT), "payment.create", CREATE);
 }
 
-describe("C1 and C6: the answer learns type and issuer, and does not need them yet", () => {
-  it("D30: an answer without type and issuer still counts, as before this step (the expand move)", async () => {
-    const { registry, rows } = dsor(aboutHer());
-    expect(await draft(registry)).toMatchObject({ data: { status: "draft" } });
-    expect(rows).toHaveLength(1);
+describe("C1 and C6: the answer carries type and issuer, and needs both", () => {
+  it("D30: an answer without a type is a fault, now that the servers send one (the contract move)", async () => {
+    const { registry, rows } = dsor(aboutHer({ issuer: SSO }));
+    expect(await draft(registry)).toMatchObject({ code: "INTERNAL_ERROR", message: CANNOT_USE });
+    expect(rows).toStrictEqual([]);
+  });
+
+  it("D30: an answer without an issuer is a fault too", async () => {
+    const { registry, rows } = dsor(aboutHer({ type: "human" }));
+    expect(await draft(registry)).toMatchObject({ code: "INTERNAL_ERROR", message: CANNOT_USE });
+    expect(rows).toStrictEqual([]);
   });
 
   it("D18, D20: an answer that says human, in sign-in.json's ids, counts", async () => {
@@ -85,7 +91,15 @@ describe("C1: an answer in another server's ids is a fault (D29)", () => {
   it("D29: an answer with org_456's HR server as its issuer is a fault, and DSoR's kept answer about her is erased", async () => {
     const minuteAgo = Date.now() - 60_000;
     const kept = memoryAnswers([
-      ["org_456", "user_123", { answer: aboutHer({}, minuteAgo), at: minuteAgo, asked: minuteAgo }],
+      [
+        "org_456",
+        "user_123",
+        {
+          answer: aboutHer({ type: "human", issuer: SSO }, minuteAgo),
+          at: minuteAgo,
+          asked: minuteAgo,
+        },
+      ],
     ]);
     const { registry, rows } = dsor(aboutHer({ type: "human", issuer: HR }), kept);
     expect(await draft(registry)).toMatchObject({ code: "INTERNAL_ERROR", message: CANNOT_USE });

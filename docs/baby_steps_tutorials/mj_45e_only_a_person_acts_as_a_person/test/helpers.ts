@@ -29,6 +29,7 @@ import { call } from "../src/pipeline.ts";
 import { NO_CONTROLS } from "../src/rulebook.ts";
 import { memorySlips, NO_SLIPS, type SlipStore } from "../src/slips.ts";
 import { logins, type Principal } from "../src/principals.ts";
+import { shippedIssuer } from "../src/sign-in.ts";
 import { STAND_IN_KEYS } from "../src/stand-in.ts";
 import {
   buildRegistry,
@@ -355,6 +356,13 @@ export const USER_700: RequestEnvelope = { token: "tok_e1a7", tenant: "org_789" 
 // The messages of step 10's refusals, typed out rather than imported.
 export const BAD_TENANT = "a tenant must be an id like org_456, named in the request envelope";
 export const NOT_A_MEMBER = "the caller may not work in the tenant it named";
+// NEW IN STEP 45e: what every answer names since the servers send both: a person, in the ids of
+//   sign-in.json's server. A test spreads it into an answer it builds by hand (step 45e's README,
+//   C1; D18, D20, D30).
+export const A_PERSON: { type: "human"; issuer: string } = {
+  type: "human",
+  issuer: shippedIssuer()!,
+};
 export const FOREIGN_URI = "the arguments name a resource outside the active tenant";
 
 /** The message when the envelope carries a field besides its three (step 10's decision 11). */

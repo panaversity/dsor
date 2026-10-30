@@ -7,7 +7,7 @@ import { lookupDirectory } from "../src/lookup.ts";
 import { call } from "../src/pipeline.ts";
 import { createDbAnswers } from "../src/postgres.ts";
 import type { Registry } from "../src/registry.ts";
-import { AGENT, MASKED_1008_OF_456, storyDirectories } from "./helpers.ts";
+import { A_PERSON, AGENT, MASKED_1008_OF_456, storyDirectories } from "./helpers.ts";
 import { dbRegistry, newPool } from "./db.ts";
 import { startSignInServer, type SignInServer } from "./sign-in-server.ts";
 
@@ -35,6 +35,7 @@ async function keptFrom30SecondsAgo(): Promise<void> {
     status: "active",
     roles: ["ap_supervisor"],
     as_of: new Date(at).toISOString(),
+    ...A_PERSON,
   };
   await createDbAnswers(pool).keep("org_456", "user_123", { answer, at, asked: at });
 }
@@ -96,6 +97,7 @@ describe("C4, D8, and D10: the pause is in each DSoR server's memory, and the ke
         status: "active",
         roles: ["ap_clerk"],
         as_of: new Date(at).toISOString(),
+        ...A_PERSON,
       };
       await createDbAnswers(pool).keep("org_456", person, { answer, at, asked: at });
       await paused.roleSource.memberOf("org_456", person, '"invoice.get"').catch(() => undefined);

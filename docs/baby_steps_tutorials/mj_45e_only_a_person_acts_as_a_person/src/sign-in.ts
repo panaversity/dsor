@@ -32,6 +32,14 @@ export function readSignIn(path: string = SHIPPED): SignInSource {
   return { file: "sign-in.json", text: readFileSync(path, "utf8") };
 }
 
+// NEW IN STEP 45e: the server whose ids DSoR's tokens use, from sign-in.json, which start-up checks
+//   (step 44's README, claim C5). A company's answer must name it, and the stand-in names it too
+//   (step 45e's README, D20). None when the file is wrong, and then no answer counts.
+/** The issuer in sign-in.json, the one an answer must name, or none if the file is wrong. */
+export function shippedIssuer(): string | undefined {
+  return checkSignIn(readSignIn()).signIn?.issuer;
+}
+
 const FIELDS = [
   "issuer",
   "jwks",

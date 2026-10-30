@@ -10,7 +10,7 @@ import { Refusal, type ErrorCode } from "./envelope.ts";
 import { keysWrittenTwice } from "./json.ts";
 import type { Principal, PrincipalType } from "./principals.ts";
 // NEW IN STEP 45e: sign-in.json names the server whose ids DSoR's tokens use (D20).
-import { checkSignIn, readSignIn } from "./sign-in.ts";
+import { shippedIssuer } from "./sign-in.ts";
 import type { Slip } from "./slips.ts";
 import { isTenantId } from "./uri.ts";
 
@@ -213,19 +213,11 @@ type Answer = {
   roles: string[];
   as_of: string;
   // NEW IN STEP 45e: what kind of account the answer is about, one of §12's four, and the server
-  //   whose ids it uses. Both may be missing until the servers send them (step 45e's README, C1 and
-  //   C6; D18, D20, D30).
-  type?: "human" | "agent" | "application" | "system";
-  issuer?: string;
+  //   whose ids it uses. Both are required: DSoR accepted them first as optional, then the servers
+  //   sent them, and only then did DSoR require them (step 45e's README, C1 and C6; D18, D20, D30).
+  type: PrincipalType;
+  issuer: string;
 };
-
-// NEW IN STEP 45e: the server whose ids DSoR's tokens use, from sign-in.json, which start-up checks
-//   (step 44's README, claim C5). None when the file is wrong, and then no answer that names an
-//   issuer counts (step 45e's README, D20).
-/** The issuer in sign-in.json, the one an answer must name, or none if the file is wrong. */
-function shippedIssuer(): string | undefined {
-  return checkSignIn(readSignIn()).signIn?.issuer;
-}
 
 // An answer's as_of may run ahead of DSoR's clock by one minute at most, and then
 // counts as the moment DSoR asked; further ahead, the reply is one DSoR cannot use (D4, D13).
@@ -547,7 +539,7 @@ export function createRoleSource(
       //   permission, and no person stands behind this one. The words gain "person", so they are
       //   true for both. Her slips' records name the type, where a person who left has her status
       //   (step 45e's README, C5; D28).
-      const type = typeOf(answer);
+      const { type } = answer;
       if (answer.status !== "active" || type !== "human") {
         const whom = `whom the directory of ${tenant} does not list as an active person`;
         throw new SignerGone(
@@ -585,7 +577,7 @@ export function createRoleSource(
         before.answer.status === "active" &&
         // NEW IN STEP 45e: and a person. DSoR knows an account its company says is no person as no
         //   member, so an outage tells it no more than a stranger hears (step 45e's README, D27).
-        typeOf(before.answer) === "human";
+        before.answer.type === "human";
       // Her own call, at line ②, spends the company's budget when DSoR knows
       // nothing about her (C4, D23), and hears the stranger's words. A release's question about
       // the person who made a request does neither: she is not the caller, and a company that
@@ -603,19 +595,12 @@ export function createRoleSource(
       // NEW IN STEP 45e: and an account its company says is no person is no member either. It
       //   hears the same words, and a release that asks about it throws the proposal away (step
       //   45e's README, C2 and C4; D27). Line ② writes the type on the caller (C3).
-      const type = typeOf(found.answer);
+      const { type } = found.answer;
       if (type !== "human") throw new NotAPerson(type);
       const { roles } = found.answer;
       return { roles: [...roles], source: "role_source", as_of: found.as_of, type };
     },
   });
-}
-
-// NEW IN STEP 45e: an answer that names no type is read as a person's until the servers send one
-//   (step 45e's README, D30, the expand move).
-/** The kind of account an answer is about. */
-function typeOf(answer: Answer): PrincipalType {
-  return answer.type ?? "human";
 }
 
 /** The directory's answer, or none if it fails or takes longer than DSoR waits. */
@@ -685,8 +670,7 @@ function usable(
   if (fields.tenant !== tenant || fields.person !== person) return false;
   // NEW IN STEP 45e: and in the ids of DSoR's own sign-in server, exactly. An answer in another
   //   server's ids may be about someone else with the same id: a fault, as one about someone else
-  //   is (step 45e's README, C1; D20, D29). Until the servers send it, an answer may name none
-  //   (D30, the expand move).
-  if (fields.issuer !== undefined && fields.issuer !== issuer) return false;
+  //   is (step 45e's README, C1; D20, D29). The schema makes every answer name one (D30).
+  if (fields.issuer !== issuer) return false;
   return Number.isFinite(timeOf(fields.as_of));
 }

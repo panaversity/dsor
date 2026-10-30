@@ -6,6 +6,7 @@
 // `pnpm start` gets a stand-in of its own (D7).
 import { createServer } from "node:http";
 import type { AddressInfo, Socket } from "node:net";
+import { shippedIssuer } from "../src/sign-in.ts";
 import type { Entry } from "./role-source-list.ts";
 
 /** The path of the lookup on this server. A real server chooses its own (D11). */
@@ -124,6 +125,10 @@ export async function startSignInServer(
         status: entry.status,
         roles: entry.status === "active" ? entry.roles : [],
         as_of: readTime ?? new Date().toISOString(),
+        // NEW IN STEP 45e: a person, in sign-in.json's ids, as the Panaversity SSO answers since
+        //   its own step 45e commit (step 45e's README, C7).
+        type: "human",
+        issuer: shippedIssuer(),
       };
       response
         .writeHead(answeredWith, { "content-type": "application/json" })
